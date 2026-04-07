@@ -134,21 +134,6 @@ internal class EventSlotDelegatePlanResolver(
         if ('<' !in typeName || !typeName.endsWith(">")) {
             return null
         }
-        val source = typeName.substringAfter('<').substringBeforeLast('>')
-        val parts = mutableListOf<String>()
-        var depth = 0
-        var start = 0
-        source.forEachIndexed { index, char ->
-            when (char) {
-                '<' -> depth++
-                '>' -> depth--
-                ',' -> if (depth == 0) {
-                    parts += source.substring(start, index).trim()
-                    start = index + 1
-                }
-            }
-        }
-        parts += source.substring(start).trim()
-        return parts
+        return splitGenericArguments(typeName.substringAfter('<').substringBeforeLast('>'))
     }
 }

@@ -8,21 +8,21 @@ internal fun splitGenericArguments(source: String): List<String> {
     if (source.isBlank()) {
         return emptyList()
     }
-    val arguments = mutableListOf<String>()
-    var depth = 0
-    var start = 0
-    source.forEachIndexed { index, char ->
-        when (char) {
-            '<' -> depth++
-            '>' -> depth--
-            ',' -> if (depth == 0) {
-                arguments += source.substring(start, index).trim()
-                start = index + 1
+    return buildList {
+        var depth = 0
+        var start = 0
+        source.forEachIndexed { index, char ->
+            when (char) {
+                '<' -> depth++
+                '>' -> depth--
+                ',' -> if (depth == 0) {
+                    add(source.substring(start, index).trim())
+                    start = index + 1
+                }
             }
         }
+        add(source.substring(start).trim())
     }
-    arguments += source.substring(start).trim()
-    return arguments
 }
 
 internal fun canonicalWinRtInterfaceName(interfaceName: String): String =

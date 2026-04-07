@@ -2086,32 +2086,6 @@ internal actual object WinRtProjectedObjectAuthoringBridge {
         return ProjectionTypeKey(rawType, splitTopLevel(argumentSource, ',').map(String::trim))
     }
 
-    private fun splitTopLevel(source: String, separator: Char): List<String> {
-        if (source.isBlank()) {
-            return emptyList()
-        }
-        val parts = mutableListOf<String>()
-        val current = StringBuilder()
-        var parenthesisDepth = 0
-        var angleDepth = 0
-        source.forEach { character ->
-            when (character) {
-                '(' -> parenthesisDepth += 1
-                ')' -> parenthesisDepth -= 1
-                '<' -> angleDepth += 1
-                '>' -> angleDepth -= 1
-            }
-            if (character == separator && parenthesisDepth == 0 && angleDepth == 0) {
-                parts += current.toString()
-                current.setLength(0)
-            } else {
-                current.append(character)
-            }
-        }
-        parts += current.toString()
-        return parts
-    }
-
     private fun iterableFirstMethod(
         iterable: Iterable<*>,
         elementProjectionTypeKey: String,

@@ -6,7 +6,7 @@ object WinMdConfigurationResolver {
     fun resolve(extension: WinMdExtension): ResolvedWinMdConfiguration {
         val explicitWinMdFiles = extension.winmdFiles.map(Path::of)
 
-        val requestedNuGetPackages = mutableListOf<NuGetComponentReference>().apply {
+        val requestedNuGetPackages = buildList {
             addAll(extension.nugetComponents)
             extension.nugetPackageId?.let { packageId ->
                 add(

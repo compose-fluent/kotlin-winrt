@@ -71,30 +71,4 @@ object WinRtProjectionFactoryRegistry {
         }
     }
 
-    private fun splitTopLevel(
-        source: String,
-        separator: Char,
-    ): List<String> {
-        if (source.isBlank()) {
-            return emptyList()
-        }
-        val parts = mutableListOf<String>()
-        var parenthesisDepth = 0
-        var angleDepth = 0
-        var start = 0
-        source.forEachIndexed { index, char ->
-            when (char) {
-                '(' -> parenthesisDepth += 1
-                ')' -> parenthesisDepth -= 1
-                '<' -> angleDepth += 1
-                '>' -> angleDepth -= 1
-                separator -> if (parenthesisDepth == 0 && angleDepth == 0) {
-                    parts += source.substring(start, index).trim()
-                    start = index + 1
-                }
-            }
-        }
-        parts += source.substring(start).trim()
-        return parts
-    }
 }
