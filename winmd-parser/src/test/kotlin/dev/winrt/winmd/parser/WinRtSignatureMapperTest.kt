@@ -1,8 +1,8 @@
 package dev.winrt.winmd.parser
 
+import dev.winrt.winmd.plugin.WinMdField
 import dev.winrt.winmd.plugin.WinMdModel
 import dev.winrt.winmd.plugin.WinMdNamespace
-import dev.winrt.winmd.plugin.WinMdField
 import dev.winrt.winmd.plugin.WinMdType
 import dev.winrt.winmd.plugin.WinMdTypeKind
 import org.junit.Assert.assertEquals
@@ -119,188 +119,164 @@ class WinRtSignatureMapperTest {
     private val projectionTypeMapper = WinRtProjectionTypeMapper()
 
     @Test
-    fun maps_runtime_class_to_rc_signature_using_default_interface() {
-        assertEquals(
-            "rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222})",
-            mapper.signatureFor("Microsoft.UI.Xaml.UIElement", "Microsoft.UI.Xaml"),
-        )
+    fun maps_signatures_from_cases() {
+        signatureCases().forEach { case ->
+            assertEquals(
+                case.expected,
+                mapper.signatureFor(case.typeName, case.currentNamespace),
+            )
+        }
     }
 
     @Test
-    fun maps_runtime_class_to_rc_signature_for_default_interface_in_same_namespace() {
-        assertEquals(
-            "rc(Microsoft.UI.Xaml.DependencyObject;{11111111-1111-1111-1111-111111111111})",
-            mapper.signatureFor("Microsoft.UI.Xaml.DependencyObject", "Microsoft.UI.Xaml"),
-        )
+    fun maps_interface_ids_from_cases() {
+        interfaceIdCases().forEach { case ->
+            assertEquals(
+                case.expected,
+                mapper.interfaceIdFor(case.typeName, case.currentNamespace),
+            )
+        }
     }
 
     @Test
-    fun maps_specialized_generic_interface_to_pinterface_signature() {
-        assertEquals(
-            "pinterface({913337e9-11a1-4345-a3a2-4e7f956e222d};rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IVector`1<Microsoft.UI.Xaml.UIElement>",
-                "Microsoft.UI.Xaml.Controls",
-            ),
-        )
+    fun maps_projection_type_keys_from_cases() {
+        projectionTypeKeyCases().forEach { case ->
+            assertEquals(
+                case.expected,
+                projectionTypeMapper.projectionTypeKeyFor(case.typeName, case.currentNamespace),
+            )
+        }
     }
 
-    @Test
-    fun computes_parameterized_interface_iid_from_specialized_signature() {
-        assertEquals(
-            "344089a3-ea12-587e-aa3f-cfefad439688",
-            mapper.interfaceIdFor(
-                "Windows.Foundation.Collections.IVector`1<Microsoft.UI.Xaml.UIElement>",
-                "Microsoft.UI.Xaml.Controls",
-            ),
-        )
-    }
+    private fun signatureCases(): List<SignatureCase> = listOf(
+        SignatureCase(
+            typeName = "Microsoft.UI.Xaml.UIElement",
+            currentNamespace = "Microsoft.UI.Xaml",
+            expected = "rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222})",
+        ),
+        SignatureCase(
+            typeName = "Microsoft.UI.Xaml.DependencyObject",
+            currentNamespace = "Microsoft.UI.Xaml",
+            expected = "rc(Microsoft.UI.Xaml.DependencyObject;{11111111-1111-1111-1111-111111111111})",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IVector`1<Microsoft.UI.Xaml.UIElement>",
+            currentNamespace = "Microsoft.UI.Xaml.Controls",
+            expected = "pinterface({913337e9-11a1-4345-a3a2-4e7f956e222d};rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Point",
+            currentNamespace = "Windows.Foundation",
+            expected = "struct(Windows.Foundation.Point;f4;f4)",
+        ),
+        SignatureCase(
+            typeName = "Windows.UI.Color",
+            currentNamespace = "Windows.UI",
+            expected = "struct(Windows.UI.Color;u1;u1;u1;u1)",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Rect",
+            currentNamespace = "Microsoft.UI.Xaml",
+            expected = "struct(Windows.Foundation.Rect;f4;f4;f4;f4)",
+        ),
+        SignatureCase(
+            typeName = "Size",
+            currentNamespace = "Windows.Foundation",
+            expected = "struct(Windows.Foundation.Size;f4;f4)",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.EventRegistrationToken",
+            currentNamespace = "Windows.Foundation",
+            expected = "struct(Windows.Foundation.EventRegistrationToken;i8)",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IVectorView`1<Windows.Foundation.Rect>",
+            currentNamespace = "Microsoft.UI.Xaml",
+            expected = "pinterface({bbe1fa4c-b0e3-4583-baef-1f1b2e483e56};struct(Windows.Foundation.Rect;f4;f4;f4;f4))",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IVectorView`1<String>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "pinterface({bbe1fa4c-b0e3-4583-baef-1f1b2e483e56};string)",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IMap`2<String, Microsoft.UI.Xaml.UIElement>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "pinterface({fbd6f7c2-0035-4f89-91cb-6b0bf5d8c9d6};string;rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IMapView`2<String, Microsoft.UI.Xaml.UIElement>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "pinterface({e5f839be-1a86-4e27-b357-f8c0d2d9d0d1};string;rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IMapView`2<String, Windows.Foundation.Collections.IVectorView`1<Microsoft.UI.Xaml.UIElement>>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "pinterface({e5f839be-1a86-4e27-b357-f8c0d2d9d0d1};string;pinterface({bbe1fa4c-b0e3-4583-baef-1f1b2e483e56};rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222})))",
+        ),
+        SignatureCase(
+            typeName = "Windows.Foundation.Collections.IKeyValuePair`2<String, Microsoft.UI.Xaml.UIElement>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "pinterface({8f4cf5d3-0fa1-4c97-aab5-2e6f2d0b5e5e};string;rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
+        ),
+    )
 
-    @Test
-    fun computes_parameterized_interface_iid_for_scalar_arguments() {
-        assertEquals(
-            "51ceb9ce-8ac1-5bad-9d98-1f197b39a5db",
-            mapper.interfaceIdFor(
-                "Windows.Foundation.Collections.IVectorView`1<String>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-    }
+    private fun interfaceIdCases(): List<InterfaceIdCase> = listOf(
+        InterfaceIdCase(
+            typeName = "Windows.Foundation.Collections.IVector`1<Microsoft.UI.Xaml.UIElement>",
+            currentNamespace = "Microsoft.UI.Xaml.Controls",
+            expected = "344089a3-ea12-587e-aa3f-cfefad439688",
+        ),
+        InterfaceIdCase(
+            typeName = "Windows.Foundation.Collections.IVectorView`1<String>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "51ceb9ce-8ac1-5bad-9d98-1f197b39a5db",
+        ),
+    )
 
-    @Test
-    fun maps_struct_to_struct_signature_using_field_signatures() {
-        assertEquals(
-            "struct(Windows.Foundation.Point;f4;f4)",
-            mapper.signatureFor("Windows.Foundation.Point", "Windows.Foundation"),
-        )
-        assertEquals(
-            "struct(Windows.UI.Color;u1;u1;u1;u1)",
-            mapper.signatureFor("Windows.UI.Color", "Windows.UI"),
-        )
-    }
+    private fun projectionTypeKeyCases(): List<ProjectionTypeKeyCase> = listOf(
+        ProjectionTypeKeyCase(
+            typeName = "Microsoft.UI.Xaml.Interop.IBindableVector",
+            currentNamespace = "Microsoft.UI.Xaml.Interop",
+            expected = "kotlin.collections.MutableList",
+        ),
+        ProjectionTypeKeyCase(
+            typeName = "Windows.UI.Xaml.Interop.IBindableVector",
+            currentNamespace = "Windows.UI.Xaml.Interop",
+            expected = "kotlin.collections.MutableList",
+        ),
+        ProjectionTypeKeyCase(
+            typeName = "Windows.Foundation.Collections.IVector`1<Microsoft.UI.Xaml.UIElement>",
+            currentNamespace = "Microsoft.UI.Xaml.Controls",
+            expected = "kotlin.collections.MutableList<Microsoft.UI.Xaml.UIElement>",
+        ),
+        ProjectionTypeKeyCase(
+            typeName = "Windows.Foundation.Collections.IVectorView`1<String>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "kotlin.collections.List<String>",
+        ),
+        ProjectionTypeKeyCase(
+            typeName = "Windows.Foundation.Collections.IMapView`2<String, Windows.Foundation.Collections.IVectorView`1<Microsoft.UI.Xaml.UIElement>>",
+            currentNamespace = "Windows.Foundation.Collections",
+            expected = "kotlin.collections.Map<String, kotlin.collections.List<Microsoft.UI.Xaml.UIElement>>",
+        ),
+    )
 
-    @Test
-    fun maps_well_known_struct_signatures_without_metadata() {
-        assertEquals(
-            "struct(Windows.Foundation.Rect;f4;f4;f4;f4)",
-            mapper.signatureFor("Windows.Foundation.Rect", "Microsoft.UI.Xaml"),
-        )
-        assertEquals(
-            "struct(Windows.Foundation.Size;f4;f4)",
-            mapper.signatureFor("Size", "Windows.Foundation"),
-        )
-        assertEquals(
-            "struct(Windows.Foundation.EventRegistrationToken;i8)",
-            mapper.signatureFor("Windows.Foundation.EventRegistrationToken", "Windows.Foundation"),
-        )
-    }
+    private data class SignatureCase(
+        val typeName: String,
+        val currentNamespace: String,
+        val expected: String,
+    )
 
-    @Test
-    fun maps_well_known_struct_arguments_inside_parameterized_interfaces_without_metadata() {
-        assertEquals(
-            "pinterface({bbe1fa4c-b0e3-4583-baef-1f1b2e483e56};struct(Windows.Foundation.Rect;f4;f4;f4;f4))",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IVectorView`1<Windows.Foundation.Rect>",
-                "Microsoft.UI.Xaml",
-            ),
-        )
-    }
+    private data class InterfaceIdCase(
+        val typeName: String,
+        val currentNamespace: String,
+        val expected: String,
+    )
 
-    @Test
-    fun maps_bindable_vector_to_cswinrt_projection_type_key() {
-        assertEquals(
-            "kotlin.collections.MutableList",
-            projectionTypeMapper.projectionTypeKeyFor(
-                "Microsoft.UI.Xaml.Interop.IBindableVector",
-                "Microsoft.UI.Xaml.Interop",
-            ),
-        )
-    }
-
-    @Test
-    fun maps_windows_ui_bindable_vector_to_cswinrt_projection_type_key() {
-        assertEquals(
-            "kotlin.collections.MutableList",
-            projectionTypeMapper.projectionTypeKeyFor(
-                "Windows.UI.Xaml.Interop.IBindableVector",
-                "Windows.UI.Xaml.Interop",
-            ),
-        )
-    }
-
-    @Test
-    fun maps_specialized_vector_to_generic_list_projection_type_key() {
-        assertEquals(
-            "kotlin.collections.MutableList<Microsoft.UI.Xaml.UIElement>",
-            projectionTypeMapper.projectionTypeKeyFor(
-                "Windows.Foundation.Collections.IVector`1<Microsoft.UI.Xaml.UIElement>",
-                "Microsoft.UI.Xaml.Controls",
-            ),
-        )
-    }
-
-    @Test
-    fun preserves_scalar_generic_arguments_in_signature_and_projection_keys() {
-        assertEquals(
-            "pinterface({bbe1fa4c-b0e3-4583-baef-1f1b2e483e56};string)",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IVectorView`1<String>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-        assertEquals(
-            "kotlin.collections.List<String>",
-            projectionTypeMapper.projectionTypeKeyFor(
-                "Windows.Foundation.Collections.IVectorView`1<String>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-    }
-
-    @Test
-    fun maps_dictionary_interfaces_to_parameterized_interface_signatures() {
-        assertEquals(
-            "pinterface({fbd6f7c2-0035-4f89-91cb-6b0bf5d8c9d6};string;rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IMap`2<String, Microsoft.UI.Xaml.UIElement>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-        assertEquals(
-            "pinterface({e5f839be-1a86-4e27-b357-f8c0d2d9d0d1};string;rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IMapView`2<String, Microsoft.UI.Xaml.UIElement>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-    }
-
-    @Test
-    fun maps_nested_dictionary_interfaces_to_parameterized_interface_signatures() {
-        assertEquals(
-            "pinterface({e5f839be-1a86-4e27-b357-f8c0d2d9d0d1};string;pinterface({bbe1fa4c-b0e3-4583-baef-1f1b2e483e56};rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222})))",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IMapView`2<String, Windows.Foundation.Collections.IVectorView`1<Microsoft.UI.Xaml.UIElement>>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-        assertEquals(
-            "kotlin.collections.Map<String, kotlin.collections.List<Microsoft.UI.Xaml.UIElement>>",
-            projectionTypeMapper.projectionTypeKeyFor(
-                "Windows.Foundation.Collections.IMapView`2<String, Windows.Foundation.Collections.IVectorView`1<Microsoft.UI.Xaml.UIElement>>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-    }
-
-    @Test
-    fun maps_key_value_pair_to_parameterized_interface_signature() {
-        assertEquals(
-            "pinterface({8f4cf5d3-0fa1-4c97-aab5-2e6f2d0b5e5e};string;rc(Microsoft.UI.Xaml.UIElement;{22222222-2222-2222-2222-222222222222}))",
-            mapper.signatureFor(
-                "Windows.Foundation.Collections.IKeyValuePair`2<String, Microsoft.UI.Xaml.UIElement>",
-                "Windows.Foundation.Collections",
-            ),
-        )
-    }
+    private data class ProjectionTypeKeyCase(
+        val typeName: String,
+        val currentNamespace: String,
+        val expected: String,
+    )
 }
