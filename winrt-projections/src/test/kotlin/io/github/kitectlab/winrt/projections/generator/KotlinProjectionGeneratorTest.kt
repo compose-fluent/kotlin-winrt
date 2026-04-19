@@ -478,6 +478,14 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidgetStatics",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("33333333-2222-3333-4444-555555555555"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Loaded",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodRowId = 11,
+                                    removeMethodRowId = 12,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -519,6 +527,19 @@ class KotlinProjectionGeneratorTest {
                             name = "WidgetStatics",
                             kind = WinRtTypeKind.RuntimeClass,
                             isStaticType = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("55555555-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -566,8 +587,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("acquireInterface(instance, DEFAULT_INTERFACE_IID)"))
         assertTrue(widgetContents.contains("public fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public val count: Int"))
+        assertTrue(widgetContents.contains("public fun addChanged(handler: WidgetHandler): Int"))
         assertTrue(widgetContents.contains("public fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public fun removeChanged(token: Int)"))
+        assertTrue(widgetContents.contains("public fun addLoaded(handler: WidgetHandler): Int"))
         assertTrue(widgetContents.contains("public fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
@@ -765,7 +788,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_struct_and_delegate_member_marshaling_until_cswinrt_parity_exists() {
+    fun generator_rejects_struct_and_non_unit_delegate_member_marshaling_until_cswinrt_parity_exists() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -780,10 +803,11 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRtTypeKind.Delegate,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "Invoke",
-                                    returnTypeName = "Unit",
+                                    returnTypeName = "Boolean",
                                     parameters = listOf(WinRtParameterDefinition("value", "String")),
                                 ),
                             ),
@@ -830,6 +854,93 @@ class KotlinProjectionGeneratorTest {
         assertNotNull(error)
         assertTrue(error is IllegalArgumentException)
         assertTrue(error!!.message.orEmpty().contains("Struct(Sample.Foundation.Point)") || error.message.orEmpty().contains("Delegate(Sample.Foundation.WidgetHandler)"))
+    }
+
+    @Test
+    fun generator_binds_unit_delegate_parameters_for_methods_and_events() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler")),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodRowId = 11,
+                                    removeMethodRowId = 12,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler")),
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodRowId = 11,
+                                    removeMethodRowId = 12,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("public fun setHandler(handler: WidgetHandler)"))
+        assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("WinRtDelegateBridge.createUnitDelegate"))
+        assertTrue(widgetContents.contains("parameterKinds = listOf(WinRtDelegateValueKind.HSTRING)"))
+        assertTrue(widgetContents.contains("handler(__args[0] as String)"))
+        assertTrue(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
+        assertFalse(widgetContents.contains("public fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
     }
 
     @Test
@@ -891,6 +1002,7 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRtTypeKind.Delegate,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "Invoke",
@@ -1124,6 +1236,7 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRtTypeKind.Delegate,
+                            iid = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "Invoke",
@@ -1150,6 +1263,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal val TITLE_GETTER_SLOT: Int = IWidget.Metadata.TITLE_GETTER_SLOT"))
         assertTrue(widgetContents.contains("public var title: String"))
         assertTrue(widgetContents.contains("public val maxCount: Int"))
+        assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int"))
         assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
