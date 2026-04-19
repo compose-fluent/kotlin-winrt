@@ -28,6 +28,7 @@ import com.squareup.kotlinpoet.asClassName
 import java.net.URI
 import java.time.Duration
 import java.time.OffsetDateTime
+import kotlin.LazyThreadSafetyMode
 import java.util.concurrent.CompletableFuture
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
@@ -41,6 +42,7 @@ private val URI_CLASS_NAME = URI::class.asClassName()
 private val OFFSET_DATE_TIME_CLASS_NAME = OffsetDateTime::class.asClassName()
 private val DURATION_CLASS_NAME = Duration::class.asClassName()
 private val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
+private val LAZY_THREAD_SAFETY_MODE_CLASS_NAME = LazyThreadSafetyMode::class.asClassName()
 private val MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "MutableList")
 private val MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "MutableMap")
 
@@ -418,13 +420,50 @@ class KotlinProjectionRenderer {
 
     private fun renderRuntimeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
-        applyCommonTypeShape(builder, plan)
+        applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
+        if (KotlinProjectionModifier.Sealed in plan.modifiers) {
+            builder.addKdoc(
+                "WinRT sealed runtime class shell emitted as a regular Kotlin class because Kotlin sealed constructors would block RCW wrapping and activation.\n",
+            )
+        }
+        builder.primaryConstructor(
+            FunSpec.constructorBuilder()
+                .addModifiers(KModifier.INTERNAL)
+                .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                .addModifiers(KModifier.PRIVATE)
+                .initializer("_inner")
+                .build(),
+        )
+        if (plan.defaultInterfaceIid != null) {
+            builder.addProperty(
+                PropertySpec.builder("_defaultInterface", IUNKNOWN_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .delegate(
+                        CodeBlock.of(
+                            "lazy(%T.PUBLICATION) { Metadata.acquireDefaultInterface(_inner) }",
+                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                        ),
+                    )
+                    .build(),
+            )
+        }
         plan.defaultInterfaceName?.let { defaultInterfaceName ->
             builder.addSuperinterface(resolveTypeName(defaultInterfaceName))
         }
         plan.type.implementedInterfaces
             .filterNot { it.isDefault }
             .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
+        if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
+            builder.addFunction(
+                FunSpec.constructorBuilder()
+                    .callThisConstructor("ActivationFactory.activate()")
+                    .build(),
+            )
+        }
         plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderStubMethod(it)) }
         plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderStubProperty(it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
@@ -497,12 +536,13 @@ class KotlinProjectionRenderer {
         builder: TypeSpec.Builder,
         plan: KotlinTypeProjectionPlan,
         addModifiers: Boolean = true,
+        emitKotlinSealed: Boolean = true,
     ) {
         builder.addModifiers(renderVisibility(plan.visibility))
         if (addModifiers) {
             plan.modifiers.forEach { modifier ->
                 when (modifier) {
-                    KotlinProjectionModifier.Sealed -> builder.addModifiers(KModifier.SEALED)
+                    KotlinProjectionModifier.Sealed -> if (emitKotlinSealed) builder.addModifiers(KModifier.SEALED)
                     KotlinProjectionModifier.Static -> Unit
                 }
             }
@@ -760,6 +800,7 @@ class KotlinProjectionRenderer {
         builder: TypeSpec.Builder,
         plan: KotlinTypeProjectionPlan,
     ) {
+        val projectedClassName = ClassName(plan.packageName, plan.type.name)
         builder.addProperty(
             PropertySpec.builder("TYPE_NAME", String::class)
                 .addModifiers(KModifier.CONST)
@@ -797,6 +838,18 @@ class KotlinProjectionRenderer {
                             IUNKNOWN_REFERENCE_CLASS_NAME,
                         ),
                     )
+                    .build(),
+            )
+        }
+        if (plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
+            KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
+            KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds) {
+            builder.addFunction(
+                FunSpec.builder("wrap")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .returns(projectedClassName)
+                    .addCode("return %T(instance)\n", projectedClassName)
                     .build(),
             )
         }

@@ -49,22 +49,24 @@ class KotlinProjectionGeneratorTest {
         val iJsonObject = filesByName.getValue("IJsonObject.kt").contents
         val iJsonValueStatics = filesByName.getValue("IJsonValueStatics.kt").contents
 
-        assertTrue(jsonObject, jsonObject.contains("public sealed class JsonObject : IJsonObject"))
+        assertTrue(jsonObject, jsonObject.contains("public class JsonObject internal constructor("))
+        assertTrue(jsonObject, jsonObject.contains("private val _inner: InspectableReference"))
         assertTrue(jsonObject, jsonObject.contains("public fun getNamedString(name: String): String"))
         assertTrue(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(jsonObject, jsonObject.contains("public fun tryParse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
+        assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
 
-        assertTrue(jsonArray, jsonArray.contains("public sealed class JsonArray : IJsonArray"))
+        assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
         assertTrue(jsonArray, jsonArray.contains("public fun getStringAt(index: UInt): String"))
         assertTrue(jsonArray, jsonArray.contains("public fun create(): JsonArray = error(\"Not yet bound to winrt-runtime\")"))
 
-        assertTrue(jsonValue, jsonValue.contains("public sealed class JsonValue : IJsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("public class JsonValue internal constructor("))
         assertTrue(jsonValue, jsonValue.contains("public fun stringify(): String"))
         assertTrue(jsonValue, jsonValue.contains("public fun createStringValue(`value`: String): JsonValue"))
 
-        assertTrue(jsonError, jsonError.contains("public sealed class JsonError"))
+        assertTrue(jsonError, jsonError.contains("public class JsonError internal constructor("))
         assertTrue(jsonError, jsonError.contains("public fun getJsonStatus(hResult: Int): JsonErrorStatus"))
 
         assertTrue(iJsonObject, iJsonObject.contains("public fun getNamedArray(name: String): JsonArray"))
@@ -148,7 +150,8 @@ class KotlinProjectionGeneratorTest {
 
         assertEquals("io/github/kitectlab/winrt/projections/windows/data/json/JsonObject.kt", file.relativePath)
         assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
-        assertTrue(file.contents.contains("public class JsonObject"))
+        assertTrue(file.contents.contains("public class JsonObject internal constructor("))
+        assertTrue(file.contents.contains("private val _inner: InspectableReference"))
         assertTrue(file.contents.contains("public fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(file.contents.contains("companion object"))
         assertTrue(file.contents.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
@@ -499,9 +502,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun removeChanged(token: Int)"))
 
         val widgetContents = filesByName.getValue("Widget.kt").contents
-        assertTrue(widgetContents.contains("public sealed class Widget : IWidget"))
+        assertTrue(widgetContents.contains("public class Widget internal constructor("))
+        assertTrue(widgetContents.contains("private val _inner: InspectableReference"))
+        assertTrue(widgetContents.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("public constructor() : this(ActivationFactory.activate())"))
         assertTrue(widgetContents.contains("public val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
+        assertTrue(widgetContents.contains("internal fun wrap(instance: InspectableReference): Widget = Widget(instance)"))
         assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
         assertTrue(widgetContents.contains("internal const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
@@ -638,7 +645,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents.contains("import io.github.kitectlab.winrt.projections.sample.foundation.IWidgetBase"))
         assertTrue(interfaceContents.contains("interface IWidgetView : IWidgetBase"))
         assertTrue(classContents.contains("import io.github.kitectlab.winrt.projections.sample.foundation.IWidgetBase"))
-        assertTrue(classContents.contains("class WidgetView : IWidgetBase"))
+        assertTrue(classContents.contains("class WidgetView internal constructor("))
+        assertTrue(classContents.contains(") : IWidgetBase"))
     }
 
     @Test
@@ -808,7 +816,10 @@ class KotlinProjectionGeneratorTest {
         val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
         val widgetContents = filesByName.getValue("Widget.kt").contents
 
-        assertTrue(widgetContents.contains("class Widget : IWidget, IWidgetExtra"))
+        assertTrue(widgetContents.contains("class Widget internal constructor("))
+        assertTrue(widgetContents.contains(": IWidget"))
+        assertTrue(widgetContents.contains("IWidgetExtra"))
+        assertTrue(widgetContents.contains("private val _inner: InspectableReference"))
         assertTrue(widgetContents.contains("public var title: String"))
         assertTrue(widgetContents.contains("public val maxCount: Int"))
         assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
