@@ -2,8 +2,8 @@ package io.github.kitectlab.winrt.projections.windows.data.json
 
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.IUnknownReference
-import io.github.kitectlab.winrt.runtime.JvmWinRtRuntime
 import io.github.kitectlab.winrt.runtime.KnownHResults
+import io.github.kitectlab.winrt.runtime.WinRtProjectionSupport
 import io.github.kitectlab.winrt.runtime.WinRtRuntimeException
 
 class JsonObject internal constructor(
@@ -71,28 +71,19 @@ class JsonObject internal constructor(
         private const val GET_NAMED_BOOLEAN_SLOT = 12
         private val IID_IJSON_OBJECT_STATICS = Guid("2289F159-54DE-45D8-ABCC-22603FA066A0")
 
-        fun parse(json: String): JsonObject {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_OBJECT_STATICS,
-            ).getOrThrow()
-            factory.use {
-                return JsonObject(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
+        fun parse(json: String): JsonObject =
+            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_OBJECT_STATICS) {
+                JsonObject(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
             }
-        }
 
         fun tryParse(json: String): JsonObject? {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_OBJECT_STATICS,
-            ).getOrThrow()
-            factory.use {
+            return WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_OBJECT_STATICS) {
                 val (reference, succeeded) = it.invokeTryParseObjectMethodWithStringArg(TRY_PARSE_SLOT, json)
                 if (!succeeded || reference == null) {
                     reference?.close()
                     return null
                 }
-                return JsonObject(reference)
+                JsonObject(reference)
             }
         }
     }

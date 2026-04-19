@@ -2,8 +2,7 @@ package io.github.kitectlab.winrt.projections.windows.data.json
 
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.IUnknownReference
-import io.github.kitectlab.winrt.runtime.JvmWinRtRuntime
-import io.github.kitectlab.winrt.runtime.ActivationFactoryReference
+import io.github.kitectlab.winrt.runtime.WinRtProjectionSupport
 
 class JsonArray internal constructor(
     private val reference: IUnknownReference,
@@ -38,35 +37,22 @@ class JsonArray internal constructor(
         private const val GET_BOOLEAN_AT_SLOT = 10
         private val IID_IJSON_ARRAY_STATICS = Guid("DB1434A9-E164-499F-93E2-8A8F49BB90BA")
 
-        fun create(): JsonArray {
-            val factory = JvmWinRtRuntime.getActivationFactory(runtimeClassName = RUNTIME_CLASS_NAME).getOrThrow()
-            (factory as ActivationFactoryReference).use {
-                return JsonArray(IUnknownReference(it.activateInstance().pointer))
-            }
-        }
+        fun create(): JsonArray =
+            JsonArray(WinRtProjectionSupport.activateUnknown(RUNTIME_CLASS_NAME))
 
-        fun parse(json: String): JsonArray {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_ARRAY_STATICS,
-            ).getOrThrow()
-            factory.use {
-                return JsonArray(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
+        fun parse(json: String): JsonArray =
+            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_ARRAY_STATICS) {
+                JsonArray(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
             }
-        }
 
         fun tryParse(json: String): JsonArray? {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_ARRAY_STATICS,
-            ).getOrThrow()
-            factory.use {
+            return WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_ARRAY_STATICS) {
                 val (reference, succeeded) = it.invokeTryParseObjectMethodWithStringArg(TRY_PARSE_SLOT, json)
                 if (!succeeded || reference == null) {
                     reference?.close()
                     return null
                 }
-                return JsonArray(reference)
+                JsonArray(reference)
             }
         }
     }

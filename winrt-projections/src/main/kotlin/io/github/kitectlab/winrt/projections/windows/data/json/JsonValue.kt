@@ -2,7 +2,7 @@ package io.github.kitectlab.winrt.projections.windows.data.json
 
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.IUnknownReference
-import io.github.kitectlab.winrt.runtime.JvmWinRtRuntime
+import io.github.kitectlab.winrt.runtime.WinRtProjectionSupport
 
 class JsonValue internal constructor(
     private val reference: IUnknownReference,
@@ -44,59 +44,35 @@ class JsonValue internal constructor(
         private const val CREATE_STRING_VALUE_SLOT = 10
         private val IID_IJSON_VALUE_STATICS = Guid("5F6B544A-2F53-48E1-91A3-F78B50A6345C")
 
-        fun parse(json: String): JsonValue {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_VALUE_STATICS,
-            ).getOrThrow()
-            factory.use {
-                return JsonValue(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
+        fun parse(json: String): JsonValue =
+            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
+                JsonValue(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
             }
-        }
 
         fun tryParse(json: String): JsonValue? {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_VALUE_STATICS,
-            ).getOrThrow()
-            factory.use {
+            return WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
                 val (reference, succeeded) = it.invokeTryParseObjectMethodWithStringArg(TRY_PARSE_SLOT, json)
                 if (!succeeded || reference == null) {
                     reference?.close()
                     return null
                 }
-                return JsonValue(reference)
+                JsonValue(reference)
             }
         }
 
-        fun createBooleanValue(value: Boolean): JsonValue {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_VALUE_STATICS,
-            ).getOrThrow()
-            factory.use {
-                return JsonValue(it.invokeObjectMethodWithBooleanArg(CREATE_BOOLEAN_VALUE_SLOT, value))
+        fun createBooleanValue(value: Boolean): JsonValue =
+            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
+                JsonValue(it.invokeObjectMethodWithBooleanArg(CREATE_BOOLEAN_VALUE_SLOT, value))
             }
-        }
 
-        fun createNumberValue(value: Double): JsonValue {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_VALUE_STATICS,
-            ).getOrThrow()
-            factory.use {
-                return JsonValue(it.invokeObjectMethodWithDoubleArg(CREATE_NUMBER_VALUE_SLOT, value))
+        fun createNumberValue(value: Double): JsonValue =
+            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
+                JsonValue(it.invokeObjectMethodWithDoubleArg(CREATE_NUMBER_VALUE_SLOT, value))
             }
-        }
 
-        fun createStringValue(value: String): JsonValue {
-            val factory = JvmWinRtRuntime.getActivationFactory(
-                runtimeClassName = RUNTIME_CLASS_NAME,
-                interfaceId = IID_IJSON_VALUE_STATICS,
-            ).getOrThrow()
-            factory.use {
-                return JsonValue(it.invokeObjectMethodWithStringArg(CREATE_STRING_VALUE_SLOT, value))
+        fun createStringValue(value: String): JsonValue =
+            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
+                JsonValue(it.invokeObjectMethodWithStringArg(CREATE_STRING_VALUE_SLOT, value))
             }
-        }
     }
 }
