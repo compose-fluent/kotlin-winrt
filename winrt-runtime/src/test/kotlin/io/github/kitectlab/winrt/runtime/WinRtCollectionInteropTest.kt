@@ -3,6 +3,7 @@ package io.github.kitectlab.winrt.runtime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
@@ -46,6 +47,52 @@ class WinRtCollectionInteropTest {
             assertSame(element.pointer, vectorView.getAt(1u).pointer)
             assertEquals(listOf(7), vectorView.uintSlots)
             assertEquals(listOf(6 to 1u), vectorView.uintArgSlots)
+        }
+    }
+
+    @Test
+    fun map_and_map_view_wrappers_use_expected_slots() {
+        Arena.ofConfined().use { arena ->
+            val key = FakeReference(arena)
+            val value = FakeReference(arena)
+            val lookedUp = FakeReference(arena)
+            val mapView = FakeMapViewReference(
+                arena = arena,
+                lookupResult = lookedUp,
+                sizeResult = 5u,
+                hasKeyResult = true,
+            )
+            val map = FakeMapReference(
+                arena = arena,
+                lookupResult = lookedUp,
+                sizeResult = 5u,
+                hasKeyResult = true,
+                insertResult = true,
+                mapViewResult = mapView,
+            )
+
+            assertSame(lookedUp.pointer, map.lookup(key).pointer)
+            assertEquals(5u, map.size())
+            assertTrue(map.hasKey(key))
+            assertTrue(map.insert(key, value))
+            map.remove(key)
+            map.clear()
+            assertSame(mapView.pointer, map.getView(Guid("00000000-0000-0000-0000-000000000301")).pointer)
+
+            assertEquals(listOf(6 to key), map.lookupSlots)
+            assertEquals(listOf(8 to key), map.hasKeySlots)
+            assertEquals(listOf(10 to (key to value)), map.insertSlots)
+            assertEquals(listOf(11 to key), map.removeSlots)
+            assertEquals(listOf(12), map.clearSlots)
+            assertEquals(listOf(9), map.getViewSlots)
+            assertEquals(listOf(7), map.uintSlots)
+
+            assertSame(lookedUp.pointer, mapView.lookup(key).pointer)
+            assertEquals(5u, mapView.size())
+            assertTrue(mapView.hasKey(key))
+            assertEquals(listOf(6 to key), mapView.lookupSlots)
+            assertEquals(listOf(8 to key), mapView.hasKeySlots)
+            assertEquals(listOf(7), mapView.uintSlots)
         }
     }
 
@@ -115,6 +162,100 @@ class WinRtCollectionInteropTest {
         }
 
         override fun createUnknownReference(pointer: MemorySegment, interfaceId: Guid): IUnknownReference = getAtResult
+
+        override fun close() = Unit
+    }
+
+    private open class FakeMapViewReference(
+        arena: Arena,
+        private val lookupResult: IUnknownReference,
+        private val sizeResult: UInt,
+        private val hasKeyResult: Boolean,
+    ) : WinRtMapViewReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000205")) {
+        val lookupSlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val hasKeySlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val uintSlots = mutableListOf<Int>()
+
+        override fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference {
+            lookupSlots += slot to value
+            return lookupResult
+        }
+
+        override fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean {
+            hasKeySlots += slot to value
+            return hasKeyResult
+        }
+
+        override fun invokeUInt32Method(slot: Int): UInt {
+            uintSlots += slot
+            return sizeResult
+        }
+
+        override fun createUnknownReference(pointer: MemorySegment, interfaceId: Guid): IUnknownReference = lookupResult
+
+        override fun close() = Unit
+    }
+
+    private class FakeMapReference(
+        arena: Arena,
+        lookupResult: IUnknownReference,
+        sizeResult: UInt,
+        hasKeyResult: Boolean,
+        private val insertResult: Boolean,
+        private val mapViewResult: WinRtMapViewReference,
+    ) : WinRtMapReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000206")) {
+        val lookupSlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val hasKeySlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val uintSlots = mutableListOf<Int>()
+        val insertSlots = mutableListOf<Pair<Int, Pair<ComObjectReference, ComObjectReference>>>()
+        val removeSlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val clearSlots = mutableListOf<Int>()
+        val getViewSlots = mutableListOf<Int>()
+
+        private val delegate = FakeMapViewReference(arena, lookupResult, sizeResult, hasKeyResult)
+        private val lookedUpReference = lookupResult
+
+        override fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference {
+            lookupSlots += slot to value
+            return delegate.invokeObjectMethodWithObjectArg(slot, value)
+        }
+
+        override fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean {
+            hasKeySlots += slot to value
+            return delegate.invokeBooleanMethodWithObjectArg(slot, value)
+        }
+
+        override fun invokeUInt32Method(slot: Int): UInt {
+            uintSlots += slot
+            return delegate.invokeUInt32Method(slot)
+        }
+
+        override fun invokeBooleanMethodWithTwoObjectArgs(
+            slot: Int,
+            first: ComObjectReference,
+            second: ComObjectReference,
+        ): Boolean {
+            insertSlots += slot to (first to second)
+            return insertResult
+        }
+
+        override fun invokeUnitMethodWithObjectArg(slot: Int, value: ComObjectReference) {
+            removeSlots += slot to value
+        }
+
+        override fun invokeUnitMethod(slot: Int) {
+            clearSlots += slot
+        }
+
+        override fun invokeObjectMethod(slot: Int): IUnknownReference {
+            getViewSlots += slot
+            return mapViewResult
+        }
+
+        override fun createUnknownReference(pointer: MemorySegment, interfaceId: Guid): IUnknownReference =
+            lookedUpReference
+
+        override fun createMapViewReference(pointer: MemorySegment, interfaceId: Guid): WinRtMapViewReference = mapViewResult
 
         override fun close() = Unit
     }

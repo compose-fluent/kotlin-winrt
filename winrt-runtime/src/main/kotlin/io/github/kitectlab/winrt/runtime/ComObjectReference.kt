@@ -69,7 +69,7 @@ open class ComObjectReference(
         }
     }
 
-    fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference {
+    open fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference {
         Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
             val hr = invokeIntMethod(
@@ -86,6 +86,52 @@ open class ComObjectReference(
             )
             WindowsRuntimePlatform.checkSucceeded(hr)
             return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    open fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                value.pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
+        }
+    }
+
+    open fun invokeBooleanMethodWithTwoObjectArgs(
+        slot: Int,
+        first: ComObjectReference,
+        second: ComObjectReference,
+    ): Boolean {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                first.pointer,
+                second.pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
         }
     }
 
@@ -149,7 +195,7 @@ open class ComObjectReference(
         }
     }
 
-    fun invokeUnitMethod(slot: Int) {
+    open fun invokeUnitMethod(slot: Int) {
         val hr = invokeIntMethod(
             slot = slot,
             descriptor = FunctionDescriptor.of(
@@ -161,7 +207,7 @@ open class ComObjectReference(
         WindowsRuntimePlatform.checkSucceeded(hr)
     }
 
-    fun invokeUnitMethodWithObjectArg(slot: Int, value: ComObjectReference) {
+    open fun invokeUnitMethodWithObjectArg(slot: Int, value: ComObjectReference) {
         val hr = invokeIntMethod(
             slot = slot,
             descriptor = FunctionDescriptor.of(

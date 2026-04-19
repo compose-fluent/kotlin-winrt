@@ -12,5 +12,7 @@ typealias WinRtDelegateHandle = io.github.kitectlab.winrt.runtime.WinRtDelegateH
 typealias WinRtDelegateValueKind = io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
 typealias WinRtIterableReference = io.github.kitectlab.winrt.runtime.WinRtIterableReference
 typealias WinRtIteratorReference = io.github.kitectlab.winrt.runtime.WinRtIteratorReference
+typealias WinRtMapReference = io.github.kitectlab.winrt.runtime.WinRtMapReference
+typealias WinRtMapViewReference = io.github.kitectlab.winrt.runtime.WinRtMapViewReference
 typealias WinRtVectorViewReference = io.github.kitectlab.winrt.runtime.WinRtVectorViewReference
 typealias ReferencedHString = io.github.kitectlab.winrt.runtime.ReferencedHString
