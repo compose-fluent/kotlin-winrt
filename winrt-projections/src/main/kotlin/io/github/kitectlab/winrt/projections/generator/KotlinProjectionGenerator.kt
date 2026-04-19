@@ -106,8 +106,19 @@ data class KotlinTypeProjectionPlan(
     val specializationKinds: List<KotlinProjectionSpecializationKind> = emptyList(),
     val interfaceIid: Guid? = null,
     val defaultInterfaceName: String? = null,
+    val defaultInterfaceIid: Guid? = null,
     val staticInterfaceNames: List<String> = emptyList(),
+    val staticInterfaceBindings: List<KotlinProjectionInterfaceBinding> = emptyList(),
+    val activatableFactoryInterfaceName: String? = null,
+    val activatableFactoryInterfaceIid: Guid? = null,
+    val composableFactoryInterfaceName: String? = null,
+    val composableFactoryInterfaceIid: Guid? = null,
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
+)
+
+data class KotlinProjectionInterfaceBinding(
+    val qualifiedName: String,
+    val iid: Guid? = null,
 )
 
 data class KotlinProjectionFile(
@@ -153,15 +164,26 @@ class KotlinProjectionPlanner(
     private val validator: KotlinProjectionContractValidator = KotlinProjectionContractValidator(),
 ) {
     fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> =
-        validator.validate(model).namespaces.flatMap(::planNamespace)
-
-    fun planNamespace(namespace: WinRtNamespace): List<KotlinTypeProjectionPlan> =
-        namespace.normalized().types.mapNotNull { type ->
-            validator.validateType(type)
-            planType(type)
+        validator.validate(model).let { normalized ->
+            val interfaceIidsByName = normalized.namespaces
+                .flatMap(WinRtNamespace::types)
+                .associate { it.qualifiedName to it.iid }
+            normalized.namespaces.flatMap { planNamespace(it, interfaceIidsByName) }
         }
 
-    private fun planType(type: WinRtTypeDefinition): KotlinTypeProjectionPlan? {
+    fun planNamespace(
+        namespace: WinRtNamespace,
+        interfaceIidsByName: Map<String, Guid?> = emptyMap(),
+    ): List<KotlinTypeProjectionPlan> =
+        namespace.normalized().types.mapNotNull { type ->
+            validator.validateType(type)
+            planType(type, interfaceIidsByName)
+        }
+
+    private fun planType(
+        type: WinRtTypeDefinition,
+        interfaceIidsByName: Map<String, Guid?>,
+    ): KotlinTypeProjectionPlan? {
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
             WinRtTypeKind.RuntimeClass -> KotlinProjectionDeclarationKind.Class
@@ -186,7 +208,18 @@ class KotlinProjectionPlanner(
             specializationKinds = planSpecializations(type),
             interfaceIid = type.iid,
             defaultInterfaceName = type.defaultInterfaceName,
+            defaultInterfaceIid = type.defaultInterfaceName?.let(interfaceIidsByName::get),
             staticInterfaceNames = type.activation.staticInterfaceNames,
+            staticInterfaceBindings = type.activation.staticInterfaceNames.map { interfaceName ->
+                KotlinProjectionInterfaceBinding(
+                    qualifiedName = interfaceName,
+                    iid = interfaceIidsByName[interfaceName],
+                )
+            },
+            activatableFactoryInterfaceName = type.activation.activatableFactoryInterfaceName,
+            activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(interfaceIidsByName::get),
+            composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
+            composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(interfaceIidsByName::get),
             companionKinds = planCompanions(type),
         )
     }
@@ -507,42 +540,80 @@ class KotlinProjectionRenderer {
                         .initializer("%S", plan.type.qualifiedName)
                         .build(),
                 )
-                .addProperty(
-                    PropertySpec.builder("FACTORY_INTERFACE", String::class)
-                        .addModifiers(KModifier.CONST)
-                        .initializer("%S", plan.type.activation.activatableFactoryInterfaceName.orEmpty())
-                        .build(),
-                )
-                .build()
-
-        KotlinProjectionCompanionKind.StaticInterfaces ->
-            TypeSpec.objectBuilder("StaticInterfaces")
                 .apply {
-                    plan.staticInterfaceNames.forEach { interfaceName ->
+                    plan.activatableFactoryInterfaceName?.let { interfaceName ->
                         addProperty(
-                            PropertySpec.builder(interfaceName.substringAfterLast('.').uppercase(), String::class)
+                            PropertySpec.builder("FACTORY_INTERFACE", String::class)
                                 .addModifiers(KModifier.CONST)
                                 .initializer("%S", interfaceName)
+                                .build(),
+                        )
+                    }
+                    plan.activatableFactoryInterfaceIid?.let { iid ->
+                        addProperty(
+                            PropertySpec.builder("FACTORY_INTERFACE_IID", GUID_CLASS_NAME)
+                                .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                                 .build(),
                         )
                     }
                 }
                 .build()
 
+        KotlinProjectionCompanionKind.StaticInterfaces ->
+            TypeSpec.objectBuilder("StaticInterfaces")
+                .apply {
+                    plan.staticInterfaceBindings.forEach { binding ->
+                        addProperty(
+                            PropertySpec.builder(binding.qualifiedName.substringAfterLast('.').uppercase(), String::class)
+                                .addModifiers(KModifier.CONST)
+                                .initializer("%S", binding.qualifiedName)
+                                .build(),
+                        )
+                        binding.iid?.let { iid ->
+                            addProperty(
+                                PropertySpec.builder("${binding.qualifiedName.substringAfterLast('.').uppercase()}_IID", GUID_CLASS_NAME)
+                                    .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                                    .build(),
+                            )
+                        }
+                    }
+                }
+                .build()
+
         KotlinProjectionCompanionKind.ComposableFactory ->
             TypeSpec.objectBuilder("ComposableFactory")
-                .addProperty(
-                    PropertySpec.builder("DEFAULT_INTERFACE", String::class)
-                        .addModifiers(KModifier.CONST)
-                        .initializer("%S", plan.defaultInterfaceName.orEmpty())
-                        .build(),
-                )
-                .addProperty(
-                    PropertySpec.builder("FACTORY_INTERFACE", String::class)
-                        .addModifiers(KModifier.CONST)
-                        .initializer("%S", plan.type.activation.composableFactoryInterfaceName.orEmpty())
-                        .build(),
-                )
+                .apply {
+                    plan.defaultInterfaceName?.let { interfaceName ->
+                        addProperty(
+                            PropertySpec.builder("DEFAULT_INTERFACE", String::class)
+                                .addModifiers(KModifier.CONST)
+                                .initializer("%S", interfaceName)
+                                .build(),
+                        )
+                    }
+                    plan.defaultInterfaceIid?.let { iid ->
+                        addProperty(
+                            PropertySpec.builder("DEFAULT_INTERFACE_IID", GUID_CLASS_NAME)
+                                .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                                .build(),
+                        )
+                    }
+                    plan.composableFactoryInterfaceName?.let { interfaceName ->
+                        addProperty(
+                            PropertySpec.builder("FACTORY_INTERFACE", String::class)
+                                .addModifiers(KModifier.CONST)
+                                .initializer("%S", interfaceName)
+                                .build(),
+                        )
+                    }
+                    plan.composableFactoryInterfaceIid?.let { iid ->
+                        addProperty(
+                            PropertySpec.builder("FACTORY_INTERFACE_IID", GUID_CLASS_NAME)
+                                .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                                .build(),
+                        )
+                    }
+                }
                 .build()
     }
 
@@ -559,6 +630,21 @@ class KotlinProjectionRenderer {
         plan.interfaceIid?.let { iid ->
             builder.addProperty(
                 PropertySpec.builder("IID", GUID_CLASS_NAME)
+                    .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                    .build(),
+            )
+        }
+        plan.defaultInterfaceName?.let { interfaceName ->
+            builder.addProperty(
+                PropertySpec.builder("DEFAULT_INTERFACE", String::class)
+                    .addModifiers(KModifier.CONST)
+                    .initializer("%S", interfaceName)
+                    .build(),
+            )
+        }
+        plan.defaultInterfaceIid?.let { iid ->
+            builder.addProperty(
+                PropertySpec.builder("DEFAULT_INTERFACE_IID", GUID_CLASS_NAME)
                     .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                     .build(),
             )

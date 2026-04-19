@@ -172,6 +172,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("66666666-7777-8888-9999-000000000000"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IComposableWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("aaaaaaaa-7777-8888-9999-000000000000"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
@@ -195,7 +207,19 @@ class KotlinProjectionGeneratorTest {
 
         assertEquals(interfaceIid, interfacePlan.interfaceIid)
         assertEquals("Sample.Foundation.IWidget", classPlan.defaultInterfaceName)
+        assertEquals(interfaceIid, classPlan.defaultInterfaceIid)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), classPlan.staticInterfaceNames)
+        assertEquals(
+            listOf(
+                KotlinProjectionInterfaceBinding(
+                    qualifiedName = "Sample.Foundation.IWidgetStatics",
+                    iid = Guid("66666666-7777-8888-9999-000000000000"),
+                ),
+            ),
+            classPlan.staticInterfaceBindings,
+        )
+        assertEquals("Sample.Foundation.IComposableWidgetFactory", classPlan.composableFactoryInterfaceName)
+        assertEquals(Guid("aaaaaaaa-7777-8888-9999-000000000000"), classPlan.composableFactoryInterfaceIid)
         assertEquals(
             listOf(KotlinProjectionCompanionKind.Metadata),
             interfacePlan.companionKinds,
@@ -397,6 +421,24 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("44444444-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             isSealedType = true,
@@ -460,8 +502,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
+        assertTrue(widgetContents.contains("public val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("public object StaticInterfaces"))
+        assertTrue(widgetContents.contains("public val IWIDGETSTATICS_IID: Guid = Guid(\"33333333-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("public object ComposableFactory"))
+        assertTrue(widgetContents.contains("public const val DEFAULT_INTERFACE: String = \"Sample.Foundation.IWidget\""))
+        assertTrue(widgetContents.contains("public val DEFAULT_INTERFACE_IID: Guid = Guid(\"22222222-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
