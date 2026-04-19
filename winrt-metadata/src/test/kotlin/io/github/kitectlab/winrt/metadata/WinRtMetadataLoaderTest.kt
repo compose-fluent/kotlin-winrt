@@ -81,6 +81,7 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })
         assertEquals(listOf("Update"), iWidget.methods.map { it.name })
         assertEquals("Unit", iWidget.methods.single().returnTypeName)
+        assertEquals(listOf(4), iWidget.methods.map { it.methodRowId })
         assertEquals(listOf("input", "written", "state"), iWidget.methods.single().parameters.map { it.name })
         assertEquals(listOf("String", "Int", "Int"), iWidget.methods.single().parameters.map { it.typeName })
         assertEquals(
@@ -92,10 +93,14 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf(true, false), iWidget.properties.map { it.isReadOnly })
         assertEquals(listOf("get_Name", "get_Value"), iWidget.properties.map { it.getterMethodName })
         assertEquals(listOf(null, "set_Value"), iWidget.properties.map { it.setterMethodName })
+        assertEquals(listOf(5, 7), iWidget.properties.map { it.getterMethodRowId })
+        assertEquals(listOf(null, 8), iWidget.properties.map { it.setterMethodRowId })
         assertEquals(listOf("Changed"), iWidget.events.map { it.name })
         assertEquals(listOf("Sample.Foundation.WidgetHandler"), iWidget.events.map { it.delegateTypeName })
         assertEquals(listOf("add_Changed"), iWidget.events.map { it.addMethodName })
         assertEquals(listOf("remove_Changed"), iWidget.events.map { it.removeMethodName })
+        assertEquals(listOf(9), iWidget.events.map { it.addMethodRowId })
+        assertEquals(listOf(10), iWidget.events.map { it.removeMethodRowId })
 
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)

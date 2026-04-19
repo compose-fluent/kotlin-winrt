@@ -73,6 +73,7 @@ class WinRtMetadataModelTest {
                                     name = "zeta",
                                     returnTypeName = "Unit",
                                     parameters = listOf(WinRtParameterDefinition(" value ", " String ", WinRtParameterDirection.Ref)),
+                                    methodRowId = 20,
                                 ),
                             ),
                             properties = listOf(
@@ -80,6 +81,7 @@ class WinRtMetadataModelTest {
                                     name = " Name ",
                                     typeName = " String ",
                                     getterMethodName = " get_Name ",
+                                    getterMethodRowId = 30,
                                 ),
                             ),
                             events = listOf(
@@ -87,6 +89,7 @@ class WinRtMetadataModelTest {
                                     name = " Changed ",
                                     delegateTypeName = " Sample.Foundation.WidgetHandler ",
                                     addMethodName = " add_Changed ",
+                                    addMethodRowId = 40,
                                 ),
                             ),
                         ),
@@ -114,11 +117,13 @@ class WinRtMetadataModelTest {
                                 WinRtMethodDefinition(
                                     name = "alpha",
                                     returnTypeName = "Unit",
+                                    methodRowId = 10,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "zeta",
                                     returnTypeName = "Unit",
                                     parameters = listOf(WinRtParameterDefinition("value", "String", WinRtParameterDirection.Ref)),
+                                    methodRowId = 20,
                                 ),
                             ),
                             properties = listOf(
@@ -126,12 +131,15 @@ class WinRtMetadataModelTest {
                                     name = "Name",
                                     typeName = "String",
                                     getterMethodName = "get_Name",
+                                    getterMethodRowId = 30,
                                 ),
                                 WinRtPropertyDefinition(
                                     name = "Value",
                                     typeName = "Int",
                                     getterMethodName = "get_Value",
                                     setterMethodName = "set_Value",
+                                    getterMethodRowId = 31,
+                                    setterMethodRowId = 32,
                                 ),
                             ),
                             events = listOf(
@@ -139,6 +147,7 @@ class WinRtMetadataModelTest {
                                     name = "Changed",
                                     delegateTypeName = "Sample.Foundation.WidgetHandler",
                                     removeMethodName = "remove_Changed",
+                                    removeMethodRowId = 41,
                                 ),
                             ),
                         ),
@@ -166,6 +175,7 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), widget.activation.staticInterfaceNames)
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.composableFactoryInterfaceName)
         assertEquals(listOf("alpha", "zeta"), widget.methods.map { it.name })
+        assertEquals(listOf(10, 20), widget.methods.map { it.methodRowId })
         assertEquals(listOf("value"), widget.methods.last().parameters.map { it.name })
         assertEquals(listOf("String"), widget.methods.last().parameters.map { it.typeName })
         assertEquals(listOf(WinRtParameterDirection.Ref), widget.methods.last().parameters.map { it.direction })
@@ -173,9 +183,13 @@ class WinRtMetadataModelTest {
         assertEquals(listOf(true, false), widget.properties.map { it.isReadOnly })
         assertEquals(listOf("get_Name", "get_Value"), widget.properties.map { it.getterMethodName })
         assertEquals(listOf(null, "set_Value"), widget.properties.map { it.setterMethodName })
+        assertEquals(listOf(30, 31), widget.properties.map { it.getterMethodRowId })
+        assertEquals(listOf(null, 32), widget.properties.map { it.setterMethodRowId })
         assertEquals(listOf("Changed"), widget.events.map { it.name })
         assertEquals(listOf("Sample.Foundation.WidgetHandler"), widget.events.map { it.delegateTypeName })
         assertEquals(listOf("add_Changed"), widget.events.map { it.addMethodName })
         assertEquals(listOf("remove_Changed"), widget.events.map { it.removeMethodName })
+        assertEquals(listOf(40), widget.events.map { it.addMethodRowId })
+        assertEquals(listOf(41), widget.events.map { it.removeMethodRowId })
     }
 }

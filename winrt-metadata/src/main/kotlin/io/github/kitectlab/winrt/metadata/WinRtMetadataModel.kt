@@ -84,11 +84,13 @@ data class WinRtMethodDefinition(
     val returnTypeName: String,
     val parameters: List<WinRtParameterDefinition> = emptyList(),
     val isStatic: Boolean = false,
+    val methodRowId: Int? = null,
 ) {
     fun normalized(): WinRtMethodDefinition = copy(
         name = name.trim(),
         returnTypeName = returnTypeName.trim(),
         parameters = parameters.map(WinRtParameterDefinition::normalized),
+        methodRowId = methodRowId?.takeIf { it > 0 },
     )
 
     internal fun signatureKey(): String = buildString {
@@ -100,6 +102,23 @@ data class WinRtMethodDefinition(
         append('|')
         append(parameters.joinToString(",") { it.signatureKey() })
     }
+
+    internal fun sortKey(): Pair<Int, String> = (methodRowId ?: Int.MAX_VALUE) to signatureKey()
+
+    internal fun merge(other: WinRtMethodDefinition): WinRtMethodDefinition {
+        require(signatureKey() == other.signatureKey()) {
+            "Can only merge identical methods: ${signatureKey()} vs ${other.signatureKey()}"
+        }
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtMethodDefinition(
+            name = left.name,
+            returnTypeName = left.returnTypeName,
+            parameters = left.parameters,
+            isStatic = left.isStatic,
+            methodRowId = listOfNotNull(left.methodRowId, right.methodRowId).minOrNull(),
+        )
+    }
 }
 
 data class WinRtPropertyDefinition(
@@ -108,6 +127,8 @@ data class WinRtPropertyDefinition(
     val isStatic: Boolean = false,
     val getterMethodName: String? = null,
     val setterMethodName: String? = null,
+    val getterMethodRowId: Int? = null,
+    val setterMethodRowId: Int? = null,
 ) {
     val isReadOnly: Boolean
         get() = setterMethodName == null
@@ -117,6 +138,8 @@ data class WinRtPropertyDefinition(
         typeName = typeName.trim(),
         getterMethodName = getterMethodName?.trim(),
         setterMethodName = setterMethodName?.trim(),
+        getterMethodRowId = getterMethodRowId?.takeIf { it > 0 },
+        setterMethodRowId = setterMethodRowId?.takeIf { it > 0 },
     )
 
     internal fun signatureKey(): String = buildString {
@@ -126,6 +149,9 @@ data class WinRtPropertyDefinition(
         append('|')
         append(typeName)
     }
+
+    internal fun sortKey(): Pair<Int, String> =
+        (getterMethodRowId ?: setterMethodRowId ?: Int.MAX_VALUE) to signatureKey()
 
     internal fun merge(other: WinRtPropertyDefinition): WinRtPropertyDefinition {
         require(name == other.name && typeName == other.typeName) {
@@ -139,6 +165,8 @@ data class WinRtPropertyDefinition(
             isStatic = left.isStatic || right.isStatic,
             getterMethodName = left.getterMethodName ?: right.getterMethodName,
             setterMethodName = left.setterMethodName ?: right.setterMethodName,
+            getterMethodRowId = listOfNotNull(left.getterMethodRowId, right.getterMethodRowId).minOrNull(),
+            setterMethodRowId = listOfNotNull(left.setterMethodRowId, right.setterMethodRowId).minOrNull(),
         )
     }
 }
@@ -149,12 +177,16 @@ data class WinRtEventDefinition(
     val isStatic: Boolean = false,
     val addMethodName: String? = null,
     val removeMethodName: String? = null,
+    val addMethodRowId: Int? = null,
+    val removeMethodRowId: Int? = null,
 ) {
     fun normalized(): WinRtEventDefinition = copy(
         name = name.trim(),
         delegateTypeName = delegateTypeName.trim(),
         addMethodName = addMethodName?.trim(),
         removeMethodName = removeMethodName?.trim(),
+        addMethodRowId = addMethodRowId?.takeIf { it > 0 },
+        removeMethodRowId = removeMethodRowId?.takeIf { it > 0 },
     )
 
     internal fun signatureKey(): String = buildString {
@@ -164,6 +196,9 @@ data class WinRtEventDefinition(
         append('|')
         append(delegateTypeName)
     }
+
+    internal fun sortKey(): Pair<Int, String> =
+        (addMethodRowId ?: removeMethodRowId ?: Int.MAX_VALUE) to signatureKey()
 
     internal fun merge(other: WinRtEventDefinition): WinRtEventDefinition {
         require(name == other.name && delegateTypeName == other.delegateTypeName) {
@@ -177,6 +212,8 @@ data class WinRtEventDefinition(
             isStatic = left.isStatic || right.isStatic,
             addMethodName = left.addMethodName ?: right.addMethodName,
             removeMethodName = left.removeMethodName ?: right.removeMethodName,
+            addMethodRowId = listOfNotNull(left.addMethodRowId, right.addMethodRowId).minOrNull(),
+            removeMethodRowId = listOfNotNull(left.removeMethodRowId, right.removeMethodRowId).minOrNull(),
         )
     }
 }
@@ -207,16 +244,22 @@ data class WinRtTypeDefinition(
     fun normalized(): WinRtTypeDefinition {
         val normalizedMethods = methods
             .map(WinRtMethodDefinition::normalized)
-            .sortedWith(compareBy(WinRtMethodDefinition::signatureKey))
-            .distinctBy(WinRtMethodDefinition::signatureKey)
+            .groupBy(WinRtMethodDefinition::signatureKey)
+            .values
+            .map { duplicates -> duplicates.reduce(WinRtMethodDefinition::merge) }
+            .sortedWith(compareBy<WinRtMethodDefinition>({ it.methodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
         val normalizedProperties = properties
             .map(WinRtPropertyDefinition::normalized)
-            .sortedWith(compareBy(WinRtPropertyDefinition::signatureKey))
-            .distinctBy(WinRtPropertyDefinition::signatureKey)
+            .groupBy(WinRtPropertyDefinition::signatureKey)
+            .values
+            .map { duplicates -> duplicates.reduce(WinRtPropertyDefinition::merge) }
+            .sortedWith(compareBy<WinRtPropertyDefinition>({ it.getterMethodRowId ?: it.setterMethodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
         val normalizedEvents = events
             .map(WinRtEventDefinition::normalized)
-            .sortedWith(compareBy(WinRtEventDefinition::signatureKey))
-            .distinctBy(WinRtEventDefinition::signatureKey)
+            .groupBy(WinRtEventDefinition::signatureKey)
+            .values
+            .map { duplicates -> duplicates.reduce(WinRtEventDefinition::merge) }
+            .sortedWith(compareBy<WinRtEventDefinition>({ it.addMethodRowId ?: it.removeMethodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
 
         return copy(
             namespace = namespace.trim(),
@@ -265,18 +308,20 @@ data class WinRtTypeDefinition(
             genericParameterCount = maxOf(left.genericParameterCount, right.genericParameterCount),
             activation = left.activation.merge(right.activation),
             methods = (left.methods + right.methods)
-                .sortedWith(compareBy(WinRtMethodDefinition::signatureKey))
-                .distinctBy(WinRtMethodDefinition::signatureKey),
+                .groupBy(WinRtMethodDefinition::signatureKey)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtMethodDefinition::merge) }
+                .sortedWith(compareBy<WinRtMethodDefinition>({ it.methodRowId ?: Int.MAX_VALUE }, { it.signatureKey() })),
             properties = (left.properties + right.properties)
                 .groupBy(WinRtPropertyDefinition::signatureKey)
                 .values
                 .map { duplicates -> duplicates.reduce(WinRtPropertyDefinition::merge) }
-                .sortedWith(compareBy(WinRtPropertyDefinition::signatureKey)),
+                .sortedWith(compareBy<WinRtPropertyDefinition>({ it.getterMethodRowId ?: it.setterMethodRowId ?: Int.MAX_VALUE }, { it.signatureKey() })),
             events = (left.events + right.events)
                 .groupBy(WinRtEventDefinition::signatureKey)
                 .values
                 .map { duplicates -> duplicates.reduce(WinRtEventDefinition::merge) }
-                .sortedWith(compareBy(WinRtEventDefinition::signatureKey)),
+                .sortedWith(compareBy<WinRtEventDefinition>({ it.addMethodRowId ?: it.removeMethodRowId ?: Int.MAX_VALUE }, { it.signatureKey() })),
         )
     }
 }

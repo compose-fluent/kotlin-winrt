@@ -489,6 +489,7 @@ private class MetadataTables private constructor(
                         )
                     },
                     isStatic = rawMethod.flags and METHOD_ATTRIBUTE_STATIC != 0,
+                    methodRowId = methodRowId,
                 )
             }
     }
@@ -512,6 +513,8 @@ private class MetadataTables private constructor(
             isStatic = listOfNotNull(getter, setter).any { it.flags and METHOD_ATTRIBUTE_STATIC != 0 },
             getterMethodName = getter?.name,
             setterMethodName = setter?.name,
+            getterMethodRowId = accessors.getterMethodRowId,
+            setterMethodRowId = accessors.setterMethodRowId,
         )
     }
 
@@ -531,6 +534,8 @@ private class MetadataTables private constructor(
             isStatic = listOfNotNull(addMethod, removeMethod).any { it.flags and METHOD_ATTRIBUTE_STATIC != 0 },
             addMethodName = addMethod?.name,
             removeMethodName = removeMethod?.name,
+            addMethodRowId = accessors.addMethodRowId,
+            removeMethodRowId = accessors.removeMethodRowId,
         )
     }
 
