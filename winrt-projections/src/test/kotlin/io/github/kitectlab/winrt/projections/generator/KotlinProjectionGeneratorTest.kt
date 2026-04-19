@@ -1065,4 +1065,5 @@ class KotlinProjectionGeneratorTest {
                 ),
             ),
         )
+
 }
