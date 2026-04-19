@@ -17,6 +17,16 @@ class WinRtDelegateHandle internal constructor(
         callback(arguments)
     }
 
+    fun invokeAbiForTesting(arguments: List<Any?>) {
+        check(!closed.get()) { "Delegate handle is already closed." }
+        callback(
+            WinRtDelegateAbiMarshaller.decodeArguments(
+                parameterKinds = descriptor.parameterKinds,
+                abiArguments = arguments,
+            ),
+        )
+    }
+
     override fun close() {
         if (closed.compareAndSet(false, true)) {
             releaseAction()

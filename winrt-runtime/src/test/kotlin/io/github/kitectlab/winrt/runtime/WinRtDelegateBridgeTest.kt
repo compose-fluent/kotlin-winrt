@@ -1,6 +1,8 @@
 package io.github.kitectlab.winrt.runtime
 
+import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,6 +26,31 @@ class WinRtDelegateBridgeTest {
         }
 
         assertEquals(listOf("sender", 42L, "payload"), captured)
+    }
+
+    @Test
+    fun delegate_handle_decodes_abi_arguments() {
+        var captured: List<Any?> = emptyList()
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(
+                WinRtDelegateValueKind.OBJECT,
+                WinRtDelegateValueKind.INT64,
+                WinRtDelegateValueKind.HSTRING,
+            ),
+        ) { args ->
+            captured = args
+        }
+
+        HString.create("payload").use { hString ->
+            handle.use {
+                it.invokeAbiForTesting(listOf(MemorySegment.NULL, 42L, hString.handle))
+            }
+        }
+
+        assertNull(captured[0])
+        assertEquals(42L, captured[1])
+        assertEquals("payload", captured[2])
     }
 
     @Test
