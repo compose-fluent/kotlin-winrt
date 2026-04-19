@@ -20,10 +20,9 @@ plugins {
 }
 
 include(
-    ":kom",
-    ":winrt-core",
-    ":winmd-parser-plugin",
-    ":winmd-parser",
-    ":generated-winrt-bindings",
-    ":sample-jvm-winui3",
+    ":winrt-runtime",
+    ":winrt-metadata",
+    ":winrt-authoring",
+    ":winrt-projections",
+    ":winrt-samples",
 )

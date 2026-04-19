@@ -11,22 +11,22 @@
 
 ## JVM Primary Path
 
-- [ ] Establish the JVM-first Gradle multi-module structure with the Kotlin top-level module names `winrt-runtime`, `winrt-metadata`, `winrt-authoring`, `winrt-projections`, and `winrt-samples`, and wire it into settings.gradle.kts (正在做)
-- [ ] Migrate the existing Kotlin package layout to `io.github.kitectlab.winrt`
-- [ ] Create the `winrt-runtime` module and land the JVM runtime foundation corresponding directly to `.cswinrt/src/WinRT.Runtime`
-- [ ] Create the `winrt-metadata` module and land the JVM metadata foundation aligned with the metadata-loading responsibilities inside `.cswinrt/src/cswinrt`
+- [x] Establish the JVM-first Gradle multi-module structure with the Kotlin top-level module names `winrt-runtime`, `winrt-metadata`, `winrt-authoring`, `winrt-projections`, and `winrt-samples`, and wire it into settings.gradle.kts
+- [ ] Migrate the existing Kotlin package layout to `io.github.kitectlab.winrt` (正在做: new modules use the canonical package root, but the legacy `sample-jvm-winui3` sources still need to be migrated or absorbed)
+- [ ] Create the `winrt-runtime` module and land the JVM runtime foundation corresponding directly to `.cswinrt/src/WinRT.Runtime` (正在做: module now covers GUID/HRESULT primitives, COM/WinRT init, activation factory lookup, instance activation, minimal `IUnknown` lifetime, `IInspectable.GetRuntimeClassName`, and reusable `string/object/unit` call shapes)
+- [ ] Create the `winrt-metadata` module and land the JVM metadata foundation aligned with the metadata-loading responsibilities inside `.cswinrt/src/cswinrt` (正在做: seeded the initial type/namespace model only)
 - [ ] Create the generator surface aligned with `.cswinrt/src/cswinrt` while keeping Kotlin tests inside the owning modules
-- [ ] Create the `winrt-authoring` module and land the JVM authoring and hosting foundation corresponding directly to `.cswinrt/src/Authoring`
-- [ ] Create the `winrt-projections` module and wire deterministic generated output corresponding directly to `.cswinrt/src/Projections`
-- [ ] Create the `winrt-samples` module and wire the JVM sample validation surface corresponding directly to `.cswinrt/src/Samples`
+- [ ] Create the `winrt-authoring` module and land the JVM authoring and hosting foundation corresponding directly to `.cswinrt/src/Authoring` (正在做: module exists, host/source-generator parity still missing)
+- [ ] Create the `winrt-projections` module and wire deterministic generated output corresponding directly to `.cswinrt/src/Projections` (正在做: module exists, generated bindings not yet migrated)
+- [ ] Create the `winrt-samples` module and wire the JVM sample validation surface corresponding directly to `.cswinrt/src/Samples` (正在做: module now contains a real WinRT JSON smoke sample on top of `winrt-runtime`, but the legacy WinUI sample surface still needs migration)
 - [ ] Place tests in the relevant module source sets instead of creating a separate top-level tests module
-- [ ] Rename or delete legacy top-level modules that do not match the strict `.cswinrt/src` names
+- [ ] Rename or delete legacy top-level modules that do not match the strict `.cswinrt/src` names (正在做: legacy `sample-jvm-winui3` is still present on disk and not yet absorbed)
 - [ ] Complete WinUI 3 startup, bootstrap, resource, and message-loop validation through the `winrt-samples` module and per-module test layouts
 
 ## .cswinrt Alignment Slices
 
-- [ ] Align activation factory lookup and runtime-class activation semantics
-- [ ] Align COM/WinRT marshaling, HRESULT translation, and lifetime management
+- [ ] Align activation factory lookup and runtime-class activation semantics (正在做: `winrt-runtime` now has JVM-side `RoGetActivationFactory`/`DllGetActivationFactory` scaffolding plus instance activation, but full manifest-free probing and factory caching still need parity work)
+- [ ] Align COM/WinRT marshaling, HRESULT translation, and lifetime management (正在做: `winrt-runtime` now covers minimal `IUnknown` lifetime, `IInspectable.GetRuntimeClassName`, and reusable `string/object/unit` vtable call shapes, but marshaling breadth, ownership policies, and projected ABI coverage are still incomplete)
 - [ ] Align delegate bridges, delegate handles, and callback marshaling
 - [ ] Align generic interface projection, parameterized IID, and type-signature behavior
 - [ ] Align collection projection for iterable/list/map/view adapters
