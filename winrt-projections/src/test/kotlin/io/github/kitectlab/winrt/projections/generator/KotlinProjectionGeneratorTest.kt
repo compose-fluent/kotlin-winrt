@@ -968,6 +968,117 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_single_parameter_string_and_uint32_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getNamedString",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "getStringAt",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("index", "UInt")),
+                                    methodRowId = 11,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "rename",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                    methodRowId = 12,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setSelectedIndex",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("index", "UInt")),
+                                    methodRowId = 13,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodName = "get_Title",
+                                    getterMethodRowId = 14,
+                                    setterMethodName = "put_Title",
+                                    setterMethodRowId = 15,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getNamedString",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "getStringAt",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("index", "UInt")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "rename",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setSelectedIndex",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("index", "UInt")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodName = "get_Title",
+                                    setterMethodName = "put_Title",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("public fun getNamedString(name: String): String"))
+        assertTrue(widgetContents.contains("invokeHStringMethodWithStringArg(Metadata.GETNAMEDSTRING_SLOT"))
+        assertTrue(widgetContents.contains("public fun getStringAt(index: UInt): String"))
+        assertTrue(widgetContents.contains("invokeHStringMethodWithUInt32Arg(Metadata.GETSTRINGAT_SLOT"))
+        assertTrue(widgetContents.contains("public fun rename(name: String)"))
+        assertTrue(widgetContents.contains("invokeUnitMethodWithStringArg(Metadata.RENAME_SLOT"))
+        assertTrue(widgetContents.contains("public fun setSelectedIndex(index: UInt)"))
+        assertTrue(widgetContents.contains("invokeUnitMethodWithUInt32Arg(Metadata.SETSELECTEDINDEX_SLOT"))
+        assertTrue(widgetContents.contains("public var title: String"))
+        assertTrue(widgetContents.contains("invokeUnitMethodWithStringArg(Metadata.TITLE_SETTER_SLOT"))
+    }
+
+    @Test
     fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

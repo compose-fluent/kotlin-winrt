@@ -1007,6 +1007,8 @@ class KotlinProjectionRenderer {
         parameterName: String,
     ): CodeBlock? =
         when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit ->
+                CodeBlock.of("%L.invokeUnitMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.String ->
                 CodeBlock.of("return %L.invokeHStringMethodWithStringArg(%L, %L).toKString()", ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.Boolean ->
@@ -1029,6 +1031,8 @@ class KotlinProjectionRenderer {
         parameterName: String,
     ): CodeBlock? =
         when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit ->
+                CodeBlock.of("%L.invokeUnitMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.String ->
                 CodeBlock.of("return %L.invokeHStringMethodWithUInt32Arg(%L, %L).toKString()", ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.Boolean ->

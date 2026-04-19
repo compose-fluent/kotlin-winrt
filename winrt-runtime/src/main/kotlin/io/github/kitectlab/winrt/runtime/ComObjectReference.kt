@@ -322,6 +322,36 @@ open class ComObjectReference(
         }
     }
 
+    open fun invokeUnitMethodWithStringArg(slot: Int, value: String) {
+        HString.create(value).use { hString ->
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                hString.handle,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+        }
+    }
+
+    open fun invokeUnitMethodWithUInt32Arg(slot: Int, value: UInt) {
+        val hr = invokeIntMethod(
+            slot = slot,
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT,
+            ),
+            pointer,
+            value.toInt(),
+        )
+        WindowsRuntimePlatform.checkSucceeded(hr)
+    }
+
     fun invokeDoubleMethod(slot: Int): Double {
         Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.JAVA_DOUBLE)
