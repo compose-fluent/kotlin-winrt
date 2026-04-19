@@ -9,9 +9,10 @@ import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.Guid
+import io.github.kitectlab.winrt.runtime.HResult
+import io.github.kitectlab.winrt.runtime.HString
 import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
-import io.github.kitectlab.winrt.runtime.WinRtAbiMarshalers
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -35,9 +36,10 @@ import java.util.concurrent.CompletableFuture
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 private val GUID_CLASS_NAME = Guid::class.asClassName()
 private val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
+private val HRESULT_CLASS_NAME = HResult::class.asClassName()
+private val HSTRING_CLASS_NAME = HString::class.asClassName()
 private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 private val IINSPECTABLE_REFERENCE_CLASS_NAME = IInspectableReference::class.asClassName()
-private val ABI_MARSHALERS_CLASS_NAME = WinRtAbiMarshalers::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
 private val URI_CLASS_NAME = URI::class.asClassName()
@@ -47,6 +49,9 @@ private val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
 private val LAZY_THREAD_SAFETY_MODE_CLASS_NAME = LazyThreadSafetyMode::class.asClassName()
 private val MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "MutableList")
 private val MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "MutableMap")
+private val ARENA_CLASS_NAME = ClassName("java.lang.foreign", "Arena")
+private val FUNCTION_DESCRIPTOR_CLASS_NAME = ClassName("java.lang.foreign", "FunctionDescriptor")
+private val VALUE_LAYOUT_CLASS_NAME = ClassName("java.lang.foreign", "ValueLayout")
 
 private typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
 
@@ -954,23 +959,12 @@ class KotlinProjectionRenderer {
         ownerCachePropertyName: String,
         slotExpression: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
-    ): CodeBlock? {
-        return when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%T.invokeUnit(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
-            KotlinProjectionAbiValueKind.String ->
-                CodeBlock.of("return %T.invokeString(%L, %L).toKString()", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
-            KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %T.invokeBoolean(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
-            KotlinProjectionAbiValueKind.Int32 ->
-                CodeBlock.of("return %T.invokeInt32(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
-            KotlinProjectionAbiValueKind.UInt32 ->
-                CodeBlock.of("return %T.invokeUInt32(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
-            KotlinProjectionAbiValueKind.Double ->
-                CodeBlock.of("return %T.invokeDouble(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
-            else -> renderBoundObjectInvocation(ownerCachePropertyName, slotExpression, returnBinding)
-        }
-    }
+    ): CodeBlock? =
+        renderInlineAbiInvocation(
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+        )
 
     private fun renderSingleParameterBoundInvocation(
         ownerCachePropertyName: String,
@@ -1019,24 +1013,20 @@ class KotlinProjectionRenderer {
         slotExpression: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterName: String,
-    ): CodeBlock? =
-        when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%T.invokeUnitWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.String ->
-                CodeBlock.of("return %T.invokeStringWithStringArg(%L, %L, %L).toKString()", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %T.invokeBooleanWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.Double ->
-                CodeBlock.of("return %T.invokeDoubleWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.ProjectedObject,
-            KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
-                returnBinding = returnBinding,
-                call = CodeBlock.of("%T.invokeObjectWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
-            )
-            else -> null
-        }
+    ): CodeBlock? {
+        val invocation = renderInlineAbiInvocation(
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterDescriptorLayouts = listOf(CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)),
+            invokeArguments = listOf(CodeBlock.of("__arg0.handle")),
+        ) ?: return null
+        return CodeBlock.builder()
+            .beginControlFlow("%T.create(%L).use { __arg0 ->", HSTRING_CLASS_NAME, parameterName)
+            .add("%L", invocation)
+            .endControlFlow()
+            .build()
+    }
 
     private fun renderBooleanParameterInvocation(
         ownerCachePropertyName: String,
@@ -1044,17 +1034,13 @@ class KotlinProjectionRenderer {
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterName: String,
     ): CodeBlock? =
-        when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%T.invokeUnitWithBooleanArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.ProjectedObject,
-            KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
-                returnBinding = returnBinding,
-                call = CodeBlock.of("%T.invokeObjectWithBooleanArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
-            )
-            else -> null
-        }
+        renderInlineAbiInvocation(
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterDescriptorLayouts = listOf(CodeBlock.of("%T.JAVA_BYTE", VALUE_LAYOUT_CLASS_NAME)),
+            invokeArguments = listOf(CodeBlock.of("if (%L) 1.toByte() else 0.toByte()", parameterName)),
+        )
 
     private fun renderDoubleParameterInvocation(
         ownerCachePropertyName: String,
@@ -1062,17 +1048,13 @@ class KotlinProjectionRenderer {
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterName: String,
     ): CodeBlock? =
-        when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%T.invokeUnitWithDoubleArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.ProjectedObject,
-            KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
-                returnBinding = returnBinding,
-                call = CodeBlock.of("%T.invokeObjectWithDoubleArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
-            )
-            else -> null
-        }
+        renderInlineAbiInvocation(
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterDescriptorLayouts = listOf(CodeBlock.of("%T.JAVA_DOUBLE", VALUE_LAYOUT_CLASS_NAME)),
+            invokeArguments = listOf(CodeBlock.of("%L", parameterName)),
+        )
 
     private fun renderUInt32ParameterInvocation(
         ownerCachePropertyName: String,
@@ -1080,79 +1062,140 @@ class KotlinProjectionRenderer {
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterName: String,
     ): CodeBlock? =
-        when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%T.invokeUnitWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.String ->
-                CodeBlock.of("return %T.invokeStringWithUInt32Arg(%L, %L, %L).toKString()", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %T.invokeBooleanWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.Double ->
-                CodeBlock.of("return %T.invokeDoubleWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
-            KotlinProjectionAbiValueKind.ProjectedObject,
-            KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
-                returnBinding = returnBinding,
-                call = CodeBlock.of("%T.invokeObjectWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
-            )
-            else -> null
-        }
+        renderInlineAbiInvocation(
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterDescriptorLayouts = listOf(CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME)),
+            invokeArguments = listOf(CodeBlock.of("%L.toInt()", parameterName)),
+        )
 
     private fun renderObjectParameterInvocation(
         ownerCachePropertyName: String,
         slotExpression: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBinding: KotlinProjectionAbiParameterBinding,
-    ): CodeBlock? {
-        return when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%T.invokeUnitWithObjectArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterBinding.name)
-            KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %T.invokeBooleanWithObjectArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterBinding.name)
-            KotlinProjectionAbiValueKind.ProjectedObject,
-            KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
-                returnBinding = returnBinding,
-                call = CodeBlock.of("%T.invokeObjectWithObjectArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterBinding.name),
-            )
-            else -> null
-        }
-    }
+    ): CodeBlock? =
+        renderInlineAbiInvocation(
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterDescriptorLayouts = listOf(CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)),
+            invokeArguments = listOf(CodeBlock.of("%L.pointer", parameterBinding.name)),
+        )
 
-    private fun renderBoundObjectInvocation(
+    private fun renderInlineAbiInvocation(
         ownerCachePropertyName: String,
         slotExpression: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
-    ): CodeBlock? =
-        renderBoundObjectInvocationWithCall(
-            returnBinding = returnBinding,
-            call = CodeBlock.of("%T.invokeObject(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression),
-        )
-
-    private fun renderBoundObjectInvocationWithCall(
-        returnBinding: KotlinProjectionAbiTypeBinding,
-        call: CodeBlock,
+        parameterDescriptorLayouts: List<CodeBlock> = emptyList(),
+        invokeArguments: List<CodeBlock> = emptyList(),
     ): CodeBlock? {
         val returnType = resolveTypeName(returnBinding.typeName)
-        val rawReturnType = returnType as? ClassName ?: return null
-        return if (returnBinding.kind == KotlinProjectionAbiValueKind.ProjectedObject) {
-            CodeBlock.of(
-                "return %L.use { %T.Metadata.wrap(it.asInspectable()) }",
-                call,
-                rawReturnType,
-            )
-        } else if (returnBinding.kind == KotlinProjectionAbiValueKind.InspectableReference &&
-            rawReturnType == IINSPECTABLE_REFERENCE_CLASS_NAME) {
-            CodeBlock.of(
-                "return %L.use { it.asInspectable() }",
-                call,
-            )
-        } else if (returnBinding.kind == KotlinProjectionAbiValueKind.UnknownReference &&
-            rawReturnType == IUNKNOWN_REFERENCE_CLASS_NAME) {
-            CodeBlock.of("return %L", call)
-        } else {
-            null
+        val rawReturnType = returnType as? ClassName
+        val resultAllocationLayout = when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit -> null
+            KotlinProjectionAbiValueKind.String,
+            KotlinProjectionAbiValueKind.ProjectedObject,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.JAVA_BYTE", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int32,
+            KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.JAVA_DOUBLE", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Unsupported -> return null
         }
+
+        if ((returnBinding.kind == KotlinProjectionAbiValueKind.ProjectedObject ||
+                returnBinding.kind == KotlinProjectionAbiValueKind.UnknownReference ||
+                returnBinding.kind == KotlinProjectionAbiValueKind.InspectableReference) &&
+            rawReturnType == null
+        ) {
+            return null
+        }
+
+        val code = CodeBlock.builder()
+        if (resultAllocationLayout != null) {
+            code.beginControlFlow("return %T.ofConfined().use { __arena ->", ARENA_CLASS_NAME)
+            code.addStatement("val __resultOut = __arena.allocate(%L)", resultAllocationLayout)
+        }
+        code.add("val __hr = %L.invokeAbi(\n", ownerCachePropertyName)
+        code.indent()
+        code.add("slot = %L,\n", slotExpression)
+        code.add("descriptor = %T.of(\n", FUNCTION_DESCRIPTOR_CLASS_NAME)
+        code.indent()
+        code.add("%T.JAVA_INT,\n", VALUE_LAYOUT_CLASS_NAME)
+        code.add("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
+        parameterDescriptorLayouts.forEach { layout ->
+            code.add(",\n%L", layout)
+        }
+        if (resultAllocationLayout != null) {
+            code.add(",\n%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
+        }
+        code.add("\n")
+        code.unindent()
+        code.add(")")
+        invokeArguments.forEach { argument ->
+            code.add(",\n%L", argument)
+        }
+        if (resultAllocationLayout != null) {
+            code.add(",\n__resultOut")
+        }
+        code.add("\n")
+        code.unindent()
+        code.add(")\n")
+        code.addStatement("%T(__hr).requireSuccess()", HRESULT_CLASS_NAME)
+
+        when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit -> Unit
+            KotlinProjectionAbiValueKind.String ->
+                code.addStatement(
+                    "return %T.fromHandle(__resultOut.get(%T.ADDRESS, 0), owner = true).use { it.toKString() }",
+                    HSTRING_CLASS_NAME,
+                    VALUE_LAYOUT_CLASS_NAME,
+                )
+            KotlinProjectionAbiValueKind.Boolean ->
+                code.addStatement("return __resultOut.get(%T.JAVA_BYTE, 0).toInt() != 0", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int32 ->
+                code.addStatement("return __resultOut.get(%T.JAVA_INT, 0)", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.UInt32 ->
+                code.addStatement("return __resultOut.get(%T.JAVA_INT, 0).toUInt()", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Double ->
+                code.addStatement("return __resultOut.get(%T.JAVA_DOUBLE, 0)", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.ProjectedObject ->
+                code.addStatement(
+                    "return %T(__resultOut.get(%T.ADDRESS, 0)).use { %T.Metadata.wrap(it.asInspectable()) }",
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    VALUE_LAYOUT_CLASS_NAME,
+                    rawReturnType!!,
+                )
+            KotlinProjectionAbiValueKind.InspectableReference ->
+                if (rawReturnType == IINSPECTABLE_REFERENCE_CLASS_NAME) {
+                    code.addStatement(
+                        "return %T(__resultOut.get(%T.ADDRESS, 0)).use { it.asInspectable() }",
+                        IUNKNOWN_REFERENCE_CLASS_NAME,
+                        VALUE_LAYOUT_CLASS_NAME,
+                    )
+                } else {
+                    return null
+                }
+            KotlinProjectionAbiValueKind.UnknownReference ->
+                if (rawReturnType == IUNKNOWN_REFERENCE_CLASS_NAME) {
+                    code.addStatement(
+                        "return %T(__resultOut.get(%T.ADDRESS, 0))",
+                        IUNKNOWN_REFERENCE_CLASS_NAME,
+                        VALUE_LAYOUT_CLASS_NAME,
+                    )
+                } else {
+                    return null
+                }
+            KotlinProjectionAbiValueKind.Unsupported -> return null
+        }
+
+        if (resultAllocationLayout != null) {
+            code.endControlFlow()
+        }
+        return code.build()
     }
 
     private fun renderEventFunctions(event: WinRtEventDefinition, abstract: Boolean): List<FunSpec> {

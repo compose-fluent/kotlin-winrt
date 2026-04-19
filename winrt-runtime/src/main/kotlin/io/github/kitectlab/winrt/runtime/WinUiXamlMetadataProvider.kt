@@ -1,6 +1,9 @@
 package io.github.kitectlab.winrt.runtime
 
+import java.lang.foreign.Arena
+import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemorySegment
+import java.lang.foreign.ValueLayout
 
 object WinUiXamlInterfaceIds {
     val IXamlMetadataProvider: Guid = Guid("A96251F0-2214-5D53-8746-CE99A2593CD7")
@@ -28,14 +31,26 @@ class WinUiXamlMetadataProviderReference(
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
 ) : IUnknownReference(pointer, interfaceId) {
     fun getXamlTypeByFullName(fullName: String): WinUiXamlTypeReference =
-        WinRtAbiMarshalers.invokeObjectWithStringArg(this, WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName, fullName)
-            .let { reference ->
-                try {
+        HString.create(fullName).use { hString ->
+            Arena.ofConfined().use { arena ->
+                val resultOut = arena.allocate(ValueLayout.ADDRESS)
+                val hr = invokeAbi(
+                    slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    hString.handle,
+                    resultOut,
+                )
+                HResult(hr).requireSuccess()
+                IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0)).use { reference ->
                     WinUiXamlTypeReference(reference.getRef(), WinUiXamlInterfaceIds.IXamlType)
-                } finally {
-                    reference.close()
                 }
             }
+        }
 }
 
 object WinUiXamlMetadataProvider {

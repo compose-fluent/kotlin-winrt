@@ -955,17 +955,19 @@ class KotlinProjectionGeneratorTest {
             .getValue("Widget.kt")
             .contents
 
+        assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("public fun refresh()"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeUnit(_defaultInterface, Metadata.REFRESH_SLOT)"))
+        assertTrue(widgetContents.contains("slot = Metadata.REFRESH_SLOT"))
         assertTrue(widgetContents.contains("public fun version(): Int"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeInt32(_defaultInterface, Metadata.VERSION_SLOT)"))
+        assertTrue(widgetContents.contains("slot = Metadata.VERSION_SLOT"))
         assertTrue(widgetContents.contains("public fun isReady(): Boolean"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeBoolean(_defaultInterface, Metadata.ISREADY_SLOT)"))
+        assertTrue(widgetContents.contains("slot = Metadata.ISREADY_SLOT"))
         assertTrue(widgetContents.contains("public fun label(): String"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeString("))
+        assertTrue(widgetContents.contains("invokeAbi("))
+        assertTrue(widgetContents.contains("HString.fromHandle("))
         assertTrue(widgetContents.contains("Metadata.LABEL_SLOT"))
         assertTrue(widgetContents.contains("Metadata.NAME_GETTER_SLOT"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeInt32(_defaultInterface, Metadata.COUNT_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("Metadata.COUNT_GETTER_SLOT"))
     }
 
     @Test
@@ -1067,16 +1069,19 @@ class KotlinProjectionGeneratorTest {
             .getValue("Widget.kt")
             .contents
 
+        assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("public fun getNamedString(name: String): String"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeStringWithStringArg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("HString.create(name)"))
+        assertTrue(widgetContents.contains("Metadata.GETNAMEDSTRING_SLOT"))
         assertTrue(widgetContents.contains("public fun getStringAt(index: UInt): String"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeStringWithUInt32Arg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("index.toInt()"))
+        assertTrue(widgetContents.contains("Metadata.GETSTRINGAT_SLOT"))
         assertTrue(widgetContents.contains("public fun rename(name: String)"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeUnitWithStringArg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("Metadata.RENAME_SLOT"))
         assertTrue(widgetContents.contains("public fun setSelectedIndex(index: UInt)"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeUnitWithUInt32Arg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("Metadata.SETSELECTEDINDEX_SLOT"))
         assertTrue(widgetContents.contains("public var title: String"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeUnitWithStringArg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("Metadata.TITLE_SETTER_SLOT"))
     }
 
     @Test
@@ -1171,14 +1176,16 @@ class KotlinProjectionGeneratorTest {
             .getValue("Widget.kt")
             .contents
 
+        assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("public fun setReady(ready: Boolean)"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeUnitWithBooleanArg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("if (ready) 1.toByte() else 0.toByte()"))
+        assertTrue(widgetContents.contains("Metadata.SETREADY_SLOT"))
         assertTrue(widgetContents.contains("public fun createNumberValue("))
         assertTrue(widgetContents.contains("Double): WidgetValue"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeObjectWithDoubleArg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("Metadata.CREATENUMBERVALUE_SLOT"))
         assertTrue(widgetContents.contains("WidgetValue.Metadata.wrap"))
         assertTrue(widgetContents.contains("public var ready: Boolean"))
-        assertTrue(widgetContents.contains("WinRtAbiMarshalers.invokeUnitWithBooleanArg(_defaultInterface,"))
+        assertTrue(widgetContents.contains("Metadata.READY_SETTER_SLOT"))
     }
 
     @Test
