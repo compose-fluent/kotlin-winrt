@@ -50,8 +50,13 @@ class KotlinProjectionGeneratorTest {
         val iJsonValueStatics = filesByName.getValue("IJsonValueStatics.kt").contents
 
         assertTrue(jsonObject, jsonObject.contains("public class JsonObject internal constructor("))
+        assertTrue(jsonObject, jsonObject.contains("IJsonObject"))
+        assertTrue(jsonObject, jsonObject.contains("IWinRTObject"))
         assertTrue(jsonObject, jsonObject.contains("private val _inner: InspectableReference"))
+        assertTrue(jsonObject, jsonObject.contains("override val nativeObject: ComObjectReference"))
         assertTrue(jsonObject, jsonObject.contains("public fun getNamedString(name: String): String"))
+        assertTrue(jsonObject, jsonObject.contains("public fun setNamedValue(name: String, `value`: JsonValue)"))
+        assertTrue(jsonObject, jsonObject.contains("(value as IWinRTObject).nativeObject.pointer"))
         assertTrue(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject"))
         assertFalse(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(jsonObject, jsonObject.contains("HString.create(json).use { __jsonAbi ->"))
@@ -634,6 +639,95 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
         assertTrue(widgetContents.contains("public val count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
+    }
+
+    @Test
+    fun generator_binds_projected_object_parameters_via_iwinrtobject() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetValue",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetValue",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetValue",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetValue", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setValue",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "Sample.Foundation.WidgetValue")),
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setNamedValue",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("value", "Sample.Foundation.WidgetValue"),
+                                    ),
+                                    methodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setValue",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "Sample.Foundation.WidgetValue")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setNamedValue",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("value", "Sample.Foundation.WidgetValue"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("IWidget"))
+        assertTrue(widgetContents.contains("IWinRTObject"))
+        assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
+        assertTrue(widgetContents.contains("public fun setValue(`value`: WidgetValue)"))
+        assertTrue(widgetContents.contains("(value as IWinRTObject).nativeObject.pointer"))
+        assertTrue(widgetContents.contains("public fun setNamedValue(name: String, `value`: WidgetValue)"))
+        assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
     }
 
     @Test

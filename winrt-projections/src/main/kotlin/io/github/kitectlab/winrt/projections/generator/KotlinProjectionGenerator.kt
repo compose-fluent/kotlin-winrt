@@ -8,11 +8,13 @@ import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.runtime.ActivationFactory
+import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.HString
 import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
+import io.github.kitectlab.winrt.runtime.IWinRTObject
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -36,10 +38,12 @@ import java.util.concurrent.CompletableFuture
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 private val GUID_CLASS_NAME = Guid::class.asClassName()
 private val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
+private val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
 private val HRESULT_CLASS_NAME = HResult::class.asClassName()
 private val HSTRING_CLASS_NAME = HString::class.asClassName()
 private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 private val IINSPECTABLE_REFERENCE_CLASS_NAME = IInspectableReference::class.asClassName()
+private val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
 private val URI_CLASS_NAME = URI::class.asClassName()
@@ -856,6 +860,16 @@ class KotlinProjectionRenderer {
                 .initializer("_inner")
                 .build(),
         )
+        builder.addProperty(
+            PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
+                .addModifiers(KModifier.OVERRIDE)
+                .getter(
+                    FunSpec.getterBuilder()
+                        .addCode("return _inner\n")
+                        .build(),
+                )
+                .build(),
+        )
         if (plan.defaultInterfaceIid != null) {
             builder.addProperty(
                 PropertySpec.builder("_defaultInterface", IUNKNOWN_REFERENCE_CLASS_NAME)
@@ -894,6 +908,7 @@ class KotlinProjectionRenderer {
         plan.type.implementedInterfaces
             .filterNot { it.isDefault }
             .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
+        builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
         if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
             builder.addFunction(
                 FunSpec.constructorBuilder()
@@ -1177,6 +1192,14 @@ class KotlinProjectionRenderer {
                 abiLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
                 invokeDescriptorLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
                 abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            )
+            KotlinProjectionAbiValueKind.ProjectedObject -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiLayout = CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME),
+                invokeDescriptorLayout = CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME),
+                abiArgumentExpression = CodeBlock.of("(%L as %T).nativeObject.pointer", parameterName, IWINRT_OBJECT_CLASS_NAME),
             )
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> KotlinProjectionAbiMarshalerPlan(
