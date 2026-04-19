@@ -7,10 +7,14 @@ import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
+import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.Guid
+import io.github.kitectlab.winrt.runtime.IInspectableReference
+import io.github.kitectlab.winrt.runtime.IUnknownReference
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
@@ -28,6 +32,9 @@ import java.util.concurrent.CompletableFuture
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 private val GUID_CLASS_NAME = Guid::class.asClassName()
+private val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
+private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
+private val IINSPECTABLE_REFERENCE_CLASS_NAME = IInspectableReference::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
 private val URI_CLASS_NAME = URI::class.asClassName()
@@ -557,6 +564,29 @@ class KotlinProjectionRenderer {
                         )
                     }
                 }
+                .addFunction(
+                    FunSpec.builder("acquire")
+                        .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
+                        .addCode(
+                            CodeBlock.of(
+                                "return %T.get(RUNTIME_CLASS%L)\n",
+                                ACTIVATION_FACTORY_CLASS_NAME,
+                                if (plan.activatableFactoryInterfaceIid != null) ", FACTORY_INTERFACE_IID" else "",
+                            ),
+                        )
+                        .build(),
+                )
+                .addFunction(
+                    FunSpec.builder("activate")
+                        .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
+                        .addCode(
+                            CodeBlock.of(
+                                "return %T.activateInstance(RUNTIME_CLASS)\n",
+                                ACTIVATION_FACTORY_CLASS_NAME,
+                            ),
+                        )
+                        .build(),
+                )
                 .build()
 
         KotlinProjectionCompanionKind.StaticInterfaces ->
@@ -573,10 +603,26 @@ class KotlinProjectionRenderer {
                             addProperty(
                                 PropertySpec.builder("${binding.qualifiedName.substringAfterLast('.').uppercase()}_IID", GUID_CLASS_NAME)
                                     .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
-                                    .build(),
+                                .build(),
                             )
                         }
                     }
+                    plan.staticInterfaceBindings
+                        .filter { it.iid != null }
+                        .forEach { binding ->
+                            addFunction(
+                                FunSpec.builder(binding.qualifiedName.substringAfterLast('.').replaceFirstChar(Char::lowercase))
+                                    .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
+                                    .addCode(
+                                        CodeBlock.of(
+                                            "return %T.get(Metadata.TYPE_NAME, %L_IID)\n",
+                                            ACTIVATION_FACTORY_CLASS_NAME,
+                                            binding.qualifiedName.substringAfterLast('.').uppercase(),
+                                        ),
+                                    )
+                                    .build(),
+                            )
+                        }
                 }
                 .build()
 
@@ -614,6 +660,18 @@ class KotlinProjectionRenderer {
                         )
                     }
                 }
+                .addFunction(
+                    FunSpec.builder("acquire")
+                        .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
+                        .addCode(
+                            CodeBlock.of(
+                                "return %T.get(Metadata.TYPE_NAME%L)\n",
+                                ACTIVATION_FACTORY_CLASS_NAME,
+                                if (plan.composableFactoryInterfaceIid != null) ", FACTORY_INTERFACE_IID" else "",
+                            ),
+                        )
+                        .build(),
+                )
                 .build()
     }
 
