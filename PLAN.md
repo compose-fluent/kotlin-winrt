@@ -10,6 +10,7 @@
 - [x] Adjust AGENTS.md to use Kotlin-style top-level module names `winrt-runtime`, `winrt-metadata`, `winrt-authoring`, `winrt-projections`, and `winrt-samples`, with tests kept inside each module
 - [x] Exclude legacy `sample-jvm-winui3` from the active refactor scope unless explicitly requested
 - [x] Clarify in AGENTS.md that implementation is `.cswinrt`-reference-first and design-first rather than test-driven reverse engineering
+- [x] Write a hard repository-level constraint that `.cswinrt` responsibility convergence must be preserved: repeated Kotlin enumeration of the same runtime type/category/shape decisions is not acceptable when `.cswinrt` already centralizes that logic
 
 ## Direction
 
@@ -17,6 +18,7 @@
 - [ ] Drive current work in this order: `winrt-runtime` ABI/runtime foundation -> `winrt-metadata` WinMD loading and model construction -> generator pipeline inside the `.cswinrt/src/cswinrt` responsibility split -> deterministic checked-in output in `winrt-projections` -> `winrt-authoring` hosting/authoring support -> `winrt-samples` validation surfaces -> targeted tests that confirm parity instead of defining behavior
 - [ ] For each active slice, keep the corresponding `.cswinrt` source area explicit in the task text or WIP note before expanding tests
 - [ ] Reject test-driven backfilling when `.cswinrt` parity has not been established yet; if a test passes but the matching `.cswinrt` contract is still unknown, keep the slice open
+- [ ] Reject duplicated Kotlin branch tables for the same runtime or generator semantic classification; if `.cswinrt` converges a decision into one helper/registry/marshaler/type-name layer, the Kotlin implementation must converge it too instead of repeating the enumeration in parallel files
 
 ## Current Focus Queue
 
@@ -28,6 +30,7 @@
 - [ ] Freeze now: do not expand `winrt-metadata`, generator breadth, `winrt-projections`, `winrt-authoring`, or `winrt-samples` beyond maintenance needed to support Focus 1 through Focus 5.
 - [ ] Freeze now: do not resume the unfrozen generator queue items `collection-parameter parity`, bindable collection ABI categories, interface-proxy ABI, or broader projection output growth until Focus 1 through Focus 5 are materially tighter.
 - [ ] Exit condition: only after Focus 1 through Focus 5 are reduced to bounded residual gaps may the active queue move back to metadata/generator expansion.
+- [ ] Convergence gate: during Focus 4 and Focus 5, do not accept new runtime or generator growth that re-enumerates already-known primitive kinds, projection mappings, collection/bindable shapes, or ABI categories in another file; first collapse that decision into the Kotlin abstraction that corresponds to the `.cswinrt` ownership point.
 
 ## Ordered Implementation Stages
 
@@ -102,6 +105,7 @@
 - [ ] Runtime 1.18: complete `.cswinrt/src/WinRT.Runtime/Projections/EventHandler.cs`, `GenericDelegateHelper.net5.cs`, `DelegateExtensions.cs`, `EventRegistrationToken*`, `Interop/StandardDelegates.cs`, and `Interop/EventSource*` parity next: event source caches, registration-token tables, helper delegates, standard delegate ABI helpers, and projected event plumbing beyond the current minimal delegate bridge.
 - [ ] Runtime 1.19: complete `.cswinrt/src/WinRT.Runtime/Projections/ICommand*`, `ICustomPropertyProvider*`, `INotifyPropertyChanged*`, `INotifyCollectionChanged*`, `INotifyDataErrorInfo*`, `PropertyChangedEventHandler.cs`, `PropertyChangedEventArgs.cs`, `NotifyCollectionChangedEventHandler.cs`, `NotifyCollectionChangedEventArgs.cs`, `DataErrorsChangedEventArgs.cs`, `IServiceProvider*`, and `IStringable.cs` parity next: XAML binding/runtime projections, non-generic event projections, property/data-error change event args, and remaining system-service projection helpers.
 - [ ] Runtime gate: the existing delegate and generic collection helpers already present in `winrt-runtime` are still only partial runtime parity; do not use their presence as justification to skip unfinished Runtime 1.12 through Runtime 1.19 work or the broader Runtime Remaining Parity Inventory below.
+- [ ] Runtime gate: while closing Runtime 1.16 through Runtime 1.19, do not introduce fresh duplicated primitive/category/shape classifiers in `Marshalers`, `GuidGenerator`, `TypeNameSupport`, `Projections`, collection helpers, bindable helpers, or generator call planners. If a new slice needs one of those decisions, refactor it into the shared `.cswinrt`-aligned owner first.
 
 ## Runtime Remaining Parity Inventory
 

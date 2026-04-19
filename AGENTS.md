@@ -155,6 +155,10 @@ Do not claim that Kotlin modules are aligned with `.cswinrt` unless the top-leve
 6. Generated code should be reproducible, deterministic, and derived from metadata plus runtime conventions rather than hand-maintained edits.
 7. When a test fails, do not start by changing the design to satisfy the test. First compare the failing area against `.cswinrt`, confirm the intended contract, and only then decide whether the implementation, generator logic, or the test expectation is wrong.
 8. Do not treat green tests as proof that a slice is correctly designed if the corresponding `.cswinrt` reference path has not yet been inspected and mapped.
+9. Do not repeatedly enumerate the same runtime type families, projection categories, or ABI shape decisions across multiple Kotlin files when `.cswinrt` already centralizes that decision in a smaller set of helpers, registries, marshalers, or type-name/signature utilities.
+10. Before adding a new runtime `when`/`if` ladder over primitive kinds, inspectable/interface categories, projection mappings, collection shapes, bindable shapes, or runtime-class-name rules, first identify where `.cswinrt` owns that decision and prefer adding to the corresponding Kotlin shared abstraction instead of duplicating the branch table locally.
+11. If Kotlin/JVM forces a narrower implementation than `.cswinrt`, keep the deviation at the final platform adaptation point only. Do not let that platform-specific adaptation justify copying the same type/category enumeration into `GuidGenerator`, `TypeNameSupport`, `Projections`, collection helpers, bindable helpers, generator emitters, or tests.
+12. Treat repeated local branch tables for the same semantic classification as a design bug, not as harmless duplication. Either the responsibility belongs in one shared runtime abstraction or the `.cswinrt` ownership mapping has not been identified correctly yet.
 
 ## Commit Discipline
 
@@ -194,3 +198,4 @@ Do not claim that Kotlin modules are aligned with `.cswinrt` unless the top-leve
 3. Do not introduce broad architectural rewrites unless they improve parity with `.cswinrt` and preserve dual-target viability.
 4. Do not mark a feature complete until the runtime contract, generation logic, and affected validation surface are updated together.
 5. Any intentional gap with `.cswinrt` must be called out explicitly and kept traceable.
+6. Do not write new runtime or generator code that duplicates an existing type/category/shape enumeration when the corresponding `.cswinrt` slice already converges that decision into a shared abstraction. Matching `.cswinrt` responsibility convergence is mandatory, not optional cleanup.
