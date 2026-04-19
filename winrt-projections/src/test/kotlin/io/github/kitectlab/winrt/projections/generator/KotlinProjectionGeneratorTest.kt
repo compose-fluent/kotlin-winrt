@@ -964,6 +964,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("slot = Metadata.ISREADY_SLOT"))
         assertTrue(widgetContents.contains("public fun label(): String"))
         assertTrue(widgetContents.contains("invokeAbi("))
+        assertTrue(widgetContents.contains("return Arena.ofConfined().use { __arena ->"))
         assertTrue(widgetContents.contains("HString.fromHandle("))
         assertTrue(widgetContents.contains("Metadata.LABEL_SLOT"))
         assertTrue(widgetContents.contains("Metadata.NAME_GETTER_SLOT"))
@@ -1071,7 +1072,8 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("public fun getNamedString(name: String): String"))
-        assertTrue(widgetContents.contains("HString.create(name)"))
+        assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
+        assertFalse(widgetContents.contains("-> {"))
         assertTrue(widgetContents.contains("Metadata.GETNAMEDSTRING_SLOT"))
         assertTrue(widgetContents.contains("public fun getStringAt(index: UInt): String"))
         assertTrue(widgetContents.contains("index.toInt()"))
