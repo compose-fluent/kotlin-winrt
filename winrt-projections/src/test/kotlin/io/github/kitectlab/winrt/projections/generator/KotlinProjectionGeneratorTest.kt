@@ -1804,6 +1804,132 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_read_only_iterable_and_vector_view_runtime_surfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IIterable<String>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameList",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IVectorView<String>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NameIterable",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameIterable",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INameIterable",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NameList",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameList",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INameList",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val iterableContents = files.getValue("NameIterable.kt").contents
+        val listContents = files.getValue("NameList.kt").contents
+
+        assertTrue(iterableContents, iterableContents.contains("Iterable<String> by __iNameIterableIterableCollection"))
+        assertTrue(iterableContents, iterableContents.contains("override fun iterator(): Iterator<String>"))
+        assertTrue(iterableContents, iterableContents.contains("IIterable.Metadata.FIRST_SLOT"))
+        assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
+        assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.HASCURRENT_GETTER_SLOT"))
+        assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.MOVENEXT_SLOT"))
+
+        assertTrue(listContents, listContents.contains("List<String> by __iNameListVectorViewCollection"))
+        assertTrue(listContents, listContents.contains("AbstractList"))
+        assertTrue(listContents, listContents.contains("IVectorView.Metadata.GETAT_SLOT"))
+        assertTrue(listContents, listContents.contains("IVectorView.Metadata.SIZE_GETTER_SLOT"))
+    }
+
+    @Test
+    fun generator_projects_read_only_map_view_runtime_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IMapView<String, Int>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NameMap",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameMap",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INameMap",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val mapContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("NameMap.kt")
+            .contents
+
+        assertTrue(mapContents, mapContents.contains("Map<String, Int> by __iNameMapMapViewCollection"))
+        assertTrue(mapContents, mapContents.contains("AbstractMap"))
+        assertTrue(mapContents, mapContents.contains("IMapView.Metadata.LOOKUP_SLOT"))
+        assertTrue(mapContents, mapContents.contains("IMapView.Metadata.HASKEY_SLOT"))
+        assertTrue(mapContents, mapContents.contains("IIterable.Metadata.FIRST_SLOT"))
+        assertTrue(mapContents, mapContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
+        assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+        assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+    }
+
+    @Test
     fun planner_rejects_interface_surface_without_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
