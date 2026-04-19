@@ -22,7 +22,22 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf("Sample.Foundation", "Windows.Foundation.Metadata"), model.namespaces.map { it.name })
         val sampleNamespace = model.namespaces.first { it.name == "Sample.Foundation" }
         assertEquals(
-            listOf("Color", "IBox", "IWidget", "IWidgetBase", "IWidgetFactory", "IWidgetStatics", "Point", "Widget", "WidgetHandler"),
+            listOf(
+                "Color",
+                "IBox",
+                "IInternalContract",
+                "IWidget",
+                "IWidgetBase",
+                "IWidgetFactory",
+                "IWidgetOverrides",
+                "IWidgetStatics",
+                "Point",
+                "Widget",
+                "WidgetAttribute",
+                "WidgetContract",
+                "WidgetHandler",
+                "WidgetStaticsClass",
+            ),
             sampleNamespace.types.map { it.name },
         )
         assertEquals(
@@ -33,9 +48,14 @@ class WinRtMetadataLoaderTest {
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
+                WinRtTypeKind.Interface,
+                WinRtTypeKind.Interface,
                 WinRtTypeKind.Struct,
                 WinRtTypeKind.RuntimeClass,
+                WinRtTypeKind.RuntimeClass,
+                WinRtTypeKind.Struct,
                 WinRtTypeKind.Delegate,
+                WinRtTypeKind.RuntimeClass,
             ),
             sampleNamespace.types.map { it.kind },
         )
@@ -43,6 +63,11 @@ class WinRtMetadataLoaderTest {
         val widget = sampleNamespace.types.first { it.name == "Widget" }
         assertEquals(Guid("33333333-3333-3333-3333-333333333333"), widget.iid)
         assertEquals("System.Object", widget.baseTypeName)
+        assertFalse(widget.isProjectionInternal)
+        assertFalse(widget.isExclusiveTo)
+        assertFalse(widget.isApiContract)
+        assertFalse(widget.isAttributeType)
+        assertFalse(widget.isSealedType)
         assertNull(widget.defaultInterfaceName)
         assertEquals(listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetBase"), widget.implementedInterfaces.map { it.interfaceName })
         assertEquals(1, widget.genericParameterCount)
@@ -75,6 +100,27 @@ class WinRtMetadataLoaderTest {
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)
 
+        val iWidgetOverrides = sampleNamespace.types.first { it.name == "IWidgetOverrides" }
+        assertTrue(iWidgetOverrides.isExclusiveTo)
+        assertFalse(iWidgetOverrides.isProjectionInternal)
+
+        val internalContract = sampleNamespace.types.first { it.name == "IInternalContract" }
+        assertTrue(internalContract.isProjectionInternal)
+
+        val widgetAttribute = sampleNamespace.types.first { it.name == "WidgetAttribute" }
+        assertEquals("System.Attribute", widgetAttribute.baseTypeName)
+        assertTrue(widgetAttribute.isAttributeType)
+        assertTrue(widgetAttribute.isSealedType)
+
+        val widgetContract = sampleNamespace.types.first { it.name == "WidgetContract" }
+        assertTrue(widgetContract.isApiContract)
+
+        val widgetStaticsClass = sampleNamespace.types.first { it.name == "WidgetStaticsClass" }
+        assertTrue(widgetStaticsClass.isStaticType)
+
+        val color = sampleNamespace.types.first { it.name == "Color" }
+        assertTrue(color.isSealedType)
+
         assertEquals(listOf("Update"), widget.methods.map { it.name })
         assertEquals(listOf("Name", "Value"), widget.properties.map { it.name })
         assertEquals(listOf("Changed"), widget.events.map { it.name })
@@ -105,7 +151,22 @@ class WinRtMetadataLoaderTest {
         assertEquals(1, discovered.count { it.fileName == assembly.fileName })
         assertEquals(firstLoad, secondLoad)
         assertEquals(
-            listOf("Color", "IBox", "IWidget", "IWidgetBase", "IWidgetFactory", "IWidgetStatics", "Point", "Widget", "WidgetHandler"),
+            listOf(
+                "Color",
+                "IBox",
+                "IInternalContract",
+                "IWidget",
+                "IWidgetBase",
+                "IWidgetFactory",
+                "IWidgetOverrides",
+                "IWidgetStatics",
+                "Point",
+                "Widget",
+                "WidgetAttribute",
+                "WidgetContract",
+                "WidgetHandler",
+                "WidgetStaticsClass",
+            ),
             sampleNamespace.types.map { it.name },
         )
     }
@@ -168,6 +229,18 @@ class WinRtMetadataLoaderTest {
 
                 [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
                 public sealed class ProtectedAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.Interface, AllowMultiple = false)]
+                public sealed class ExclusiveToAttribute : Attribute
+                {
+                    public ExclusiveToAttribute(Type type) {}
+                }
+
+                [AttributeUsage(AttributeTargets.Interface, AllowMultiple = false)]
+                public sealed class ProjectionInternalAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.Struct, AllowMultiple = false)]
+                public sealed class ApiContractAttribute : Attribute {}
             }
 
             namespace Sample.Foundation
@@ -189,6 +262,12 @@ class WinRtMetadataLoaderTest {
                 public interface IWidgetStatics {}
 
                 public interface IBox<T> {}
+
+                [Windows.Foundation.Metadata.ExclusiveTo(typeof(Widget<>))]
+                public interface IWidgetOverrides {}
+
+                [WinRT.Interop.ProjectionInternal]
+                public interface IInternalContract {}
 
                 [Windows.Foundation.Metadata.Guid("33333333-3333-3333-3333-333333333333")]
                 [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
@@ -212,7 +291,22 @@ class WinRtMetadataLoaderTest {
 
                 public struct Point { public int X; public int Y; }
 
+                [Windows.Foundation.Metadata.ApiContract]
+                public struct WidgetContract { public int Version; }
+
+                public sealed class WidgetAttribute : System.Attribute {}
+
+                public abstract class WidgetStaticsClass {}
+
                 public delegate void WidgetHandler();
+            }
+
+            namespace WinRT.Interop
+            {
+                using System;
+
+                [AttributeUsage(AttributeTargets.Interface, AllowMultiple = false)]
+                public sealed class ProjectionInternalAttribute : Attribute {}
             }
             """.trimIndent(),
         )

@@ -245,6 +245,13 @@ private class MetadataTables private constructor(
                     kind = raw.classify(typeDefNames, typeRefNames),
                     iid = extractGuid(typeAttributes),
                     baseTypeName = decodeTypeDefOrRefQualifiedName(raw.extendsToken, typeDefNames, typeRefNames),
+                    isProjectionInternal = typeAttributes.any { it.typeName == WINRT_INTEROP_PROJECTION_INTERNAL },
+                    isExclusiveTo = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO },
+                    isApiContract = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_API_CONTRACT },
+                    isAttributeType = decodeTypeDefOrRefQualifiedName(raw.extendsToken, typeDefNames, typeRefNames) == SYSTEM_ATTRIBUTE,
+                    isStaticType = raw.classify(typeDefNames, typeRefNames) == WinRtTypeKind.RuntimeClass &&
+                        (raw.flags and TYPE_ATTRIBUTE_ABSTRACT) != 0,
+                    isSealedType = (raw.flags and TYPE_ATTRIBUTE_SEALED) != 0,
                     defaultInterfaceName = defaultInterfaceName,
                     implementedInterfaces = implementedInterfaces,
                     genericParameterCount = raw.genericParameterCount,
@@ -949,12 +956,18 @@ private class MetadataTables private constructor(
             "System.Runtime.InteropServices.GuidAttribute",
             "Windows.Foundation.Metadata.GuidAttribute",
         )
+        private const val WINRT_INTEROP_PROJECTION_INTERNAL = "WinRT.Interop.ProjectionInternalAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO = "Windows.Foundation.Metadata.ExclusiveToAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_API_CONTRACT = "Windows.Foundation.Metadata.ApiContractAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_DEFAULT = "Windows.Foundation.Metadata.DefaultAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_OVERRIDABLE = "Windows.Foundation.Metadata.OverridableAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_PROTECTED = "Windows.Foundation.Metadata.ProtectedAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_ACTIVATABLE = "Windows.Foundation.Metadata.ActivatableAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_STATIC = "Windows.Foundation.Metadata.StaticAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_COMPOSABLE = "Windows.Foundation.Metadata.ComposableAttribute"
+        private const val SYSTEM_ATTRIBUTE = "System.Attribute"
+        private const val TYPE_ATTRIBUTE_ABSTRACT = 0x00000080
+        private const val TYPE_ATTRIBUTE_SEALED = 0x00000100
 
         private const val CODED_TYPE_DEF_OR_REF_TYPE_DEF = 0
         private const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1

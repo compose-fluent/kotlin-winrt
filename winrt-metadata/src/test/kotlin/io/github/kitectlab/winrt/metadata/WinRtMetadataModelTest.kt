@@ -57,6 +57,8 @@ class WinRtMetadataModelTest {
                             name = "Widget",
                             kind = WinRtTypeKind.Unknown,
                             baseTypeName = " System.Object ",
+                            isProjectionInternal = true,
+                            isSealedType = true,
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition(" Sample.Foundation.IWidget ", isProtected = true),
                             ),
@@ -97,6 +99,8 @@ class WinRtMetadataModelTest {
                             namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
+                            isAttributeType = true,
+                            isStaticType = true,
                             defaultInterfaceName = " Sample.Foundation.IWidget ",
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
@@ -149,6 +153,10 @@ class WinRtMetadataModelTest {
         val widget = normalized.namespaces.single().types.single()
         assertEquals(WinRtTypeKind.RuntimeClass, widget.kind)
         assertEquals("System.Object", widget.baseTypeName)
+        assertEquals(true, widget.isProjectionInternal)
+        assertEquals(true, widget.isAttributeType)
+        assertEquals(true, widget.isStaticType)
+        assertEquals(true, widget.isSealedType)
         assertEquals("Sample.Foundation.IWidget", widget.defaultInterfaceName)
         assertEquals(listOf("Sample.Foundation.IWidget"), widget.implementedInterfaces.map { it.interfaceName })
         assertEquals(listOf(true), widget.implementedInterfaces.map { it.isDefault })

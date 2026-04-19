@@ -12,6 +12,35 @@ private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt",
 enum class KotlinProjectionDeclarationKind {
     Interface,
     Class,
+    Enum,
+    Struct,
+    Delegate,
+}
+
+enum class KotlinProjectionCompanionKind {
+    Metadata,
+    ActivationFactory,
+    StaticInterfaces,
+    ComposableFactory,
+}
+
+enum class KotlinProjectionVisibility {
+    Public,
+    Internal,
+}
+
+enum class KotlinProjectionSpecializationKind {
+    None,
+    AttributeClass,
+    ApiContract,
+    ExclusiveInterface,
+    ProjectionInternal,
+    StaticClass,
+}
+
+enum class KotlinProjectionModifier {
+    Sealed,
+    Static,
 }
 
 data class KotlinTypeProjectionPlan(
@@ -19,9 +48,13 @@ data class KotlinTypeProjectionPlan(
     val packageName: String,
     val relativePath: String,
     val declarationKind: KotlinProjectionDeclarationKind,
+    val visibility: KotlinProjectionVisibility = KotlinProjectionVisibility.Public,
+    val modifiers: List<KotlinProjectionModifier> = emptyList(),
+    val specializationKinds: List<KotlinProjectionSpecializationKind> = emptyList(),
     val interfaceIid: Guid? = null,
     val defaultInterfaceName: String? = null,
     val staticInterfaceNames: List<String> = emptyList(),
+    val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
 data class KotlinProjectionFile(
@@ -79,7 +112,14 @@ class KotlinProjectionPlanner(
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
             WinRtTypeKind.RuntimeClass -> KotlinProjectionDeclarationKind.Class
-            else -> return null
+            WinRtTypeKind.Enum -> KotlinProjectionDeclarationKind.Enum
+            WinRtTypeKind.Struct -> if (type.isApiContract) {
+                KotlinProjectionDeclarationKind.Enum
+            } else {
+                KotlinProjectionDeclarationKind.Struct
+            }
+            WinRtTypeKind.Delegate -> KotlinProjectionDeclarationKind.Delegate
+            WinRtTypeKind.Unknown -> return null
         }
         val packageName = (ROOT_PACKAGE_SEGMENTS + namespaceSegments(type.namespace)).joinToString(".")
         val relativePath = packageName.replace('.', '/') + "/${type.name}.kt"
@@ -88,10 +128,72 @@ class KotlinProjectionPlanner(
             packageName = packageName,
             relativePath = relativePath,
             declarationKind = declarationKind,
+            visibility = planVisibility(type),
+            modifiers = planModifiers(type),
+            specializationKinds = planSpecializations(type),
             interfaceIid = type.iid,
             defaultInterfaceName = type.defaultInterfaceName,
             staticInterfaceNames = type.activation.staticInterfaceNames,
+            companionKinds = planCompanions(type),
         )
+    }
+
+    private fun planCompanions(type: WinRtTypeDefinition): List<KotlinProjectionCompanionKind> = buildList {
+        if (shouldEmitMetadataCompanion(type)) {
+            add(KotlinProjectionCompanionKind.Metadata)
+        }
+        if (type.kind == WinRtTypeKind.RuntimeClass && type.activation.isActivatable) {
+            add(KotlinProjectionCompanionKind.ActivationFactory)
+        }
+        if (type.kind == WinRtTypeKind.RuntimeClass && type.activation.staticInterfaceNames.isNotEmpty()) {
+            add(KotlinProjectionCompanionKind.StaticInterfaces)
+        }
+        if (type.kind == WinRtTypeKind.RuntimeClass && type.activation.composableFactoryInterfaceName != null) {
+            add(KotlinProjectionCompanionKind.ComposableFactory)
+        }
+    }
+
+    private fun shouldEmitMetadataCompanion(type: WinRtTypeDefinition): Boolean = when (type.kind) {
+        WinRtTypeKind.Interface -> !type.isExclusiveTo
+        WinRtTypeKind.RuntimeClass -> !type.isStaticType && !type.isAttributeType
+        else -> false
+    }
+
+    private fun planVisibility(type: WinRtTypeDefinition): KotlinProjectionVisibility =
+        if (type.isProjectionInternal || (type.kind == WinRtTypeKind.Interface && type.isExclusiveTo)) {
+            KotlinProjectionVisibility.Internal
+        } else {
+            KotlinProjectionVisibility.Public
+        }
+
+    private fun planModifiers(type: WinRtTypeDefinition): List<KotlinProjectionModifier> = buildList {
+        if (type.isStaticType) {
+            add(KotlinProjectionModifier.Static)
+        }
+        if (type.isAttributeType || (type.kind == WinRtTypeKind.RuntimeClass && type.isSealedType && !type.isStaticType)) {
+            add(KotlinProjectionModifier.Sealed)
+        }
+    }
+
+    private fun planSpecializations(type: WinRtTypeDefinition): List<KotlinProjectionSpecializationKind> = buildList {
+        if (type.isAttributeType) {
+            add(KotlinProjectionSpecializationKind.AttributeClass)
+        }
+        if (type.isApiContract) {
+            add(KotlinProjectionSpecializationKind.ApiContract)
+        }
+        if (type.isExclusiveTo) {
+            add(KotlinProjectionSpecializationKind.ExclusiveInterface)
+        }
+        if (type.isProjectionInternal) {
+            add(KotlinProjectionSpecializationKind.ProjectionInternal)
+        }
+        if (type.isStaticType) {
+            add(KotlinProjectionSpecializationKind.StaticClass)
+        }
+        if (isEmpty()) {
+            add(KotlinProjectionSpecializationKind.None)
+        }
     }
 
     private fun namespaceSegments(namespace: String): List<String> =
@@ -111,6 +213,9 @@ class KotlinProjectionRenderer {
                 when (plan.declarationKind) {
                     KotlinProjectionDeclarationKind.Interface -> append(renderInterface(plan))
                     KotlinProjectionDeclarationKind.Class -> append(renderClass(plan))
+                    KotlinProjectionDeclarationKind.Enum -> append(renderEnum(plan))
+                    KotlinProjectionDeclarationKind.Struct -> append(renderStruct(plan))
+                    KotlinProjectionDeclarationKind.Delegate -> append(renderDelegate(plan))
                 }
             }.trimEnd() + "\n",
         )
@@ -147,6 +252,15 @@ class KotlinProjectionRenderer {
         }
         appendLine("}")
     }
+
+    private fun renderEnum(plan: KotlinTypeProjectionPlan): String =
+        "enum class ${plan.type.name} {\n}\n"
+
+    private fun renderStruct(plan: KotlinTypeProjectionPlan): String =
+        "data class ${plan.type.name}(\n)\n"
+
+    private fun renderDelegate(plan: KotlinTypeProjectionPlan): String =
+        "fun interface ${plan.type.name} {\n    operator fun invoke(): Unit\n}\n"
 
     private fun renderSignature(method: WinRtMethodDefinition): String {
         val parameters = method.parameters.joinToString(", ") { parameter ->

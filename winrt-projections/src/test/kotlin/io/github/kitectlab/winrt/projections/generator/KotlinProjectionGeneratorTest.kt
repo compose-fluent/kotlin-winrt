@@ -36,11 +36,16 @@ class KotlinProjectionGeneratorTest {
             listOf(
                 "io/github/kitectlab/winrt/projections/windows/data/json/IJsonValue.kt",
                 "io/github/kitectlab/winrt/projections/windows/data/json/JsonValue.kt",
+                "io/github/kitectlab/winrt/projections/windows/data/json/JsonValueType.kt",
             ),
             plans.map { it.relativePath },
         )
         assertEquals(
-            listOf(KotlinProjectionDeclarationKind.Interface, KotlinProjectionDeclarationKind.Class),
+            listOf(
+                KotlinProjectionDeclarationKind.Interface,
+                KotlinProjectionDeclarationKind.Class,
+                KotlinProjectionDeclarationKind.Enum,
+            ),
             plans.map { it.declarationKind },
         )
     }
@@ -109,7 +114,11 @@ class KotlinProjectionGeneratorTest {
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
-                            activation = WinRtActivationShape(staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics")),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                                composableFactoryInterfaceName = "Sample.Foundation.IComposableWidgetFactory",
+                            ),
                             methods = listOf(
                                 WinRtMethodDefinition(name = "create", returnTypeName = "Widget", isStatic = true),
                             ),
@@ -126,6 +135,183 @@ class KotlinProjectionGeneratorTest {
         assertEquals(interfaceIid, interfacePlan.interfaceIid)
         assertEquals("Sample.Foundation.IWidget", classPlan.defaultInterfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), classPlan.staticInterfaceNames)
+        assertEquals(
+            listOf(KotlinProjectionCompanionKind.Metadata),
+            interfacePlan.companionKinds,
+        )
+        assertEquals(
+            listOf(
+                KotlinProjectionCompanionKind.Metadata,
+                KotlinProjectionCompanionKind.ActivationFactory,
+                KotlinProjectionCompanionKind.StaticInterfaces,
+                KotlinProjectionCompanionKind.ComposableFactory,
+            ),
+            classPlan.companionKinds,
+        )
+    }
+
+    @Test
+    fun planner_maps_all_metadata_type_kinds_into_declaration_plans() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Status", kind = WinRtTypeKind.Enum),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                    ),
+                ),
+            ),
+        )
+
+        val plans = KotlinProjectionPlanner().plan(model)
+
+        assertEquals(
+            listOf(
+                KotlinProjectionDeclarationKind.Struct,
+                KotlinProjectionDeclarationKind.Enum,
+                KotlinProjectionDeclarationKind.Delegate,
+            ),
+            plans.map { it.declarationKind },
+        )
+        assertEquals(
+            listOf(
+                "Point",
+                "Status",
+                "WidgetHandler",
+            ),
+            plans.map { it.type.name },
+        )
+        assertTrue(plans.all { it.companionKinds.isEmpty() })
+    }
+
+    @Test
+    fun planner_tracks_cswinrt_declaration_ownership_traits() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetAttribute",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "System.Attribute",
+                            isAttributeType = true,
+                            isSealedType = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            isExclusiveTo = true,
+                            iid = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "InternalContract",
+                            kind = WinRtTypeKind.Interface,
+                            isProjectionInternal = true,
+                            iid = Guid("11111111-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetContract",
+                            kind = WinRtTypeKind.Struct,
+                            isApiContract = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetStatics",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isStaticType = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val plansByName = KotlinProjectionPlanner().plan(model).associateBy { it.type.name }
+
+        assertEquals(
+            listOf(KotlinProjectionSpecializationKind.AttributeClass),
+            plansByName.getValue("WidgetAttribute").specializationKinds,
+        )
+        assertEquals(
+            listOf(KotlinProjectionModifier.Sealed),
+            plansByName.getValue("WidgetAttribute").modifiers,
+        )
+        assertTrue(plansByName.getValue("WidgetAttribute").companionKinds.isEmpty())
+
+        assertEquals(KotlinProjectionVisibility.Internal, plansByName.getValue("IWidgetOverrides").visibility)
+        assertEquals(
+            listOf(KotlinProjectionSpecializationKind.ExclusiveInterface),
+            plansByName.getValue("IWidgetOverrides").specializationKinds,
+        )
+        assertTrue(plansByName.getValue("IWidgetOverrides").companionKinds.isEmpty())
+
+        assertEquals(KotlinProjectionVisibility.Internal, plansByName.getValue("InternalContract").visibility)
+        assertEquals(
+            listOf(
+                KotlinProjectionSpecializationKind.ProjectionInternal,
+            ),
+            plansByName.getValue("InternalContract").specializationKinds,
+        )
+        assertEquals(
+            listOf(KotlinProjectionCompanionKind.Metadata),
+            plansByName.getValue("InternalContract").companionKinds,
+        )
+
+        assertEquals(
+            listOf(KotlinProjectionSpecializationKind.ApiContract),
+            plansByName.getValue("WidgetContract").specializationKinds,
+        )
+        assertEquals(KotlinProjectionDeclarationKind.Enum, plansByName.getValue("WidgetContract").declarationKind)
+        assertTrue(plansByName.getValue("WidgetContract").companionKinds.isEmpty())
+
+        assertEquals(
+            listOf(KotlinProjectionSpecializationKind.StaticClass),
+            plansByName.getValue("WidgetStatics").specializationKinds,
+        )
+        assertEquals(
+            listOf(KotlinProjectionModifier.Static),
+            plansByName.getValue("WidgetStatics").modifiers,
+        )
+        assertTrue(plansByName.getValue("WidgetStatics").companionKinds.isEmpty())
+
+        assertEquals(
+            listOf(KotlinProjectionModifier.Sealed),
+            plansByName.getValue("Widget").modifiers,
+        )
+    }
+
+    @Test
+    fun generator_renders_shells_for_non_class_declarations() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Status", kind = WinRtTypeKind.Enum),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertTrue(filesByName.getValue("Status.kt").contents.contains("enum class Status"))
+        assertTrue(filesByName.getValue("Point.kt").contents.contains("data class Point"))
+        assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("fun interface WidgetHandler"))
     }
 
     @Test
