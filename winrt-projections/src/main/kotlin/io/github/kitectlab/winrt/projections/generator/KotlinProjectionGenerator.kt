@@ -6,8 +6,20 @@ import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.runtime.Guid
+import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.UNIT
+import com.squareup.kotlinpoet.asClassName
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
+private val GUID_CLASS_NAME = Guid::class.asClassName()
+private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 
 enum class KotlinProjectionDeclarationKind {
     Interface,
@@ -207,67 +219,252 @@ class KotlinProjectionRenderer {
         KotlinProjectionFile(
             relativePath = plan.relativePath,
             packageName = plan.packageName,
-            contents = buildString {
-                appendLine("package ${plan.packageName}")
-                appendLine()
-                when (plan.declarationKind) {
-                    KotlinProjectionDeclarationKind.Interface -> append(renderInterface(plan))
-                    KotlinProjectionDeclarationKind.Class -> append(renderClass(plan))
-                    KotlinProjectionDeclarationKind.Enum -> append(renderEnum(plan))
-                    KotlinProjectionDeclarationKind.Struct -> append(renderStruct(plan))
-                    KotlinProjectionDeclarationKind.Delegate -> append(renderDelegate(plan))
-                }
-            }.trimEnd() + "\n",
+            contents = FileSpec.builder(plan.packageName, plan.type.name)
+                .apply { addType(renderType(plan)) }
+                .build()
+                .toString(),
         )
 
-    private fun renderInterface(plan: KotlinTypeProjectionPlan): String = buildString {
-        appendLine("interface ${plan.type.name} {")
-        if (plan.type.methods.isEmpty()) {
-            appendLine("}")
-            return@buildString
-        }
-        plan.type.methods.forEach { method ->
-            appendLine("    ${renderSignature(method)}")
-        }
-        appendLine("}")
+    private fun renderType(plan: KotlinTypeProjectionPlan): TypeSpec = when (plan.declarationKind) {
+        KotlinProjectionDeclarationKind.Interface -> renderInterfaceShell(plan)
+        KotlinProjectionDeclarationKind.Class -> renderClassShell(plan)
+        KotlinProjectionDeclarationKind.Enum -> renderEnumShell(plan)
+        KotlinProjectionDeclarationKind.Struct -> renderStruct(plan)
+        KotlinProjectionDeclarationKind.Delegate -> renderDelegate(plan)
     }
 
-    private fun renderClass(plan: KotlinTypeProjectionPlan): String = buildString {
-        val instanceMethods = plan.type.methods.filterNot { it.isStatic }
+    private fun renderInterfaceShell(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val builder = TypeSpec.interfaceBuilder(plan.type.name)
+        applyCommonTypeShape(builder, plan)
+        plan.type.implementedInterfaces.forEach { implemented ->
+            builder.addSuperinterface(projectionClassName(implemented.interfaceName))
+        }
+        plan.type.methods.forEach { builder.addFunction(renderInterfaceMethod(it)) }
+        appendCompanionShells(builder, plan)
+        return builder.build()
+    }
+
+    private fun renderClassShell(plan: KotlinTypeProjectionPlan): TypeSpec = when {
+        KotlinProjectionSpecializationKind.AttributeClass in plan.specializationKinds -> renderAttributeClassShell(plan)
+        KotlinProjectionSpecializationKind.StaticClass in plan.specializationKinds -> renderStaticClassShell(plan)
+        else -> renderRuntimeClassShell(plan)
+    }
+
+    private fun renderRuntimeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val builder = TypeSpec.classBuilder(plan.type.name)
+        applyCommonTypeShape(builder, plan)
+        plan.defaultInterfaceName?.substringAfterLast('.')?.let { defaultInterface ->
+            builder.addSuperinterface(projectionClassName(plan.defaultInterfaceName))
+        }
+        plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderStubMethod(it)) }
         val staticMethods = plan.type.methods.filter { it.isStatic }
-
-        appendLine("class ${plan.type.name} {")
-        instanceMethods.forEach { method ->
-            appendLine("    ${renderSignature(method)} = error(\"Not yet bound to winrt-runtime\")")
+        if (staticMethods.isNotEmpty() || KotlinProjectionCompanionKind.Metadata in plan.companionKinds) {
+            builder.addType(buildMetadataCompanionShell(plan, staticMethods))
         }
-        if (staticMethods.isNotEmpty()) {
-            if (instanceMethods.isNotEmpty()) {
-                appendLine()
-            }
-            appendLine("    companion object {")
-            staticMethods.forEach { method ->
-                appendLine("        ${renderSignature(method)} = error(\"Not yet bound to winrt-runtime\")")
-            }
-            appendLine("    }")
-        }
-        appendLine("}")
+        appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
+        return builder.build()
     }
 
-    private fun renderEnum(plan: KotlinTypeProjectionPlan): String =
-        "enum class ${plan.type.name} {\n}\n"
+    private fun renderAttributeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec =
+        TypeSpec.classBuilder(plan.type.name)
+            .apply {
+                applyCommonTypeShape(this, plan)
+                superclass(ATTRIBUTE_CLASS_NAME)
+                addKdoc("attribute WinRT class shell\n")
+            }
+            .build()
 
-    private fun renderStruct(plan: KotlinTypeProjectionPlan): String =
-        "data class ${plan.type.name}(\n)\n"
+    private fun renderStaticClassShell(plan: KotlinTypeProjectionPlan): TypeSpec =
+        TypeSpec.classBuilder(plan.type.name)
+            .apply {
+                applyCommonTypeShape(this, plan)
+                addAnnotation(
+                    AnnotationSpec.builder(Suppress::class)
+                        .addMember("%S", "ClassName")
+                        .build(),
+                )
+                addKdoc("static WinRT class shell\n")
+                appendCompanionShells(this, plan)
+            }
+            .build()
 
-    private fun renderDelegate(plan: KotlinTypeProjectionPlan): String =
-        "fun interface ${plan.type.name} {\n    operator fun invoke(): Unit\n}\n"
+    private fun renderEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec =
+        TypeSpec.enumBuilder(plan.type.name)
+            .apply {
+                applyCommonTypeShape(this, plan)
+                if (KotlinProjectionSpecializationKind.ApiContract in plan.specializationKinds) {
+                    addKdoc("api contract WinRT declaration shell\n")
+                }
+            }
+            .build()
 
-    private fun renderSignature(method: WinRtMethodDefinition): String {
-        val parameters = method.parameters.joinToString(", ") { parameter ->
-            "${parameter.name}: ${parameter.typeName}"
-        }
-        return "fun ${method.name}($parameters): ${method.returnTypeName}"
+    private fun renderStruct(plan: KotlinTypeProjectionPlan): TypeSpec =
+        TypeSpec.classBuilder(plan.type.name)
+            .addModifiers(KModifier.DATA)
+            .primaryConstructor(FunSpec.constructorBuilder().build())
+            .apply { applyCommonTypeShape(this, plan, addModifiers = false) }
+            .build()
+
+    private fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val builder = TypeSpec.funInterfaceBuilder(plan.type.name)
+        applyCommonTypeShape(builder, plan)
+        builder.addFunction(
+            FunSpec.builder("invoke")
+                .addModifiers(KModifier.ABSTRACT, KModifier.OPERATOR)
+                .returns(UNIT)
+                .build(),
+        )
+        return builder.build()
     }
+
+    private fun applyCommonTypeShape(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+        addModifiers: Boolean = true,
+    ) {
+        builder.addModifiers(renderVisibility(plan.visibility))
+        if (addModifiers) {
+            plan.modifiers.forEach { modifier ->
+                when (modifier) {
+                    KotlinProjectionModifier.Sealed -> builder.addModifiers(KModifier.SEALED)
+                    KotlinProjectionModifier.Static -> Unit
+                }
+            }
+        }
+    }
+
+    private fun renderVisibility(visibility: KotlinProjectionVisibility): KModifier = when (visibility) {
+        KotlinProjectionVisibility.Public -> KModifier.PUBLIC
+        KotlinProjectionVisibility.Internal -> KModifier.INTERNAL
+    }
+
+    private fun renderInterfaceMethod(method: WinRtMethodDefinition): FunSpec =
+        FunSpec.builder(method.name)
+            .addModifiers(KModifier.ABSTRACT)
+            .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+            .returns(resolveTypeName(method.returnTypeName))
+            .build()
+
+    private fun renderStubMethod(method: WinRtMethodDefinition): FunSpec =
+        FunSpec.builder(method.name)
+            .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+            .returns(resolveTypeName(method.returnTypeName))
+            .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
+            .build()
+
+    private fun buildMetadataCompanionShell(plan: KotlinTypeProjectionPlan, staticMethods: List<WinRtMethodDefinition>): TypeSpec =
+        TypeSpec.companionObjectBuilder("Metadata")
+            .apply {
+                appendMetadataCompanionMembers(this, plan)
+                staticMethods.forEach { addFunction(renderStubMethod(it)) }
+            }
+            .build()
+
+    private fun appendCompanionShells(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+        excludeKinds: Set<KotlinProjectionCompanionKind> = emptySet(),
+    ) {
+        plan.companionKinds
+            .filterNot(excludeKinds::contains)
+            .forEach { kind ->
+                builder.addType(buildCompanionShell(kind, plan))
+            }
+    }
+
+    private fun buildCompanionShell(
+        kind: KotlinProjectionCompanionKind,
+        plan: KotlinTypeProjectionPlan,
+    ): TypeSpec = when (kind) {
+        KotlinProjectionCompanionKind.Metadata ->
+            TypeSpec.companionObjectBuilder("Metadata")
+                .apply { appendMetadataCompanionMembers(this, plan) }
+                .build()
+
+        KotlinProjectionCompanionKind.ActivationFactory ->
+            TypeSpec.objectBuilder("ActivationFactory")
+                .addProperty(
+                    PropertySpec.builder("RUNTIME_CLASS", String::class)
+                        .addModifiers(KModifier.CONST)
+                        .initializer("%S", plan.type.qualifiedName)
+                        .build(),
+                )
+                .build()
+
+        KotlinProjectionCompanionKind.StaticInterfaces ->
+            TypeSpec.objectBuilder("StaticInterfaces")
+                .apply {
+                    plan.staticInterfaceNames.forEach { interfaceName ->
+                        addProperty(
+                            PropertySpec.builder(interfaceName.substringAfterLast('.').uppercase(), String::class)
+                                .addModifiers(KModifier.CONST)
+                                .initializer("%S", interfaceName)
+                                .build(),
+                        )
+                    }
+                }
+                .build()
+
+        KotlinProjectionCompanionKind.ComposableFactory ->
+            TypeSpec.objectBuilder("ComposableFactory")
+                .addProperty(
+                    PropertySpec.builder("DEFAULT_INTERFACE", String::class)
+                        .addModifiers(KModifier.CONST)
+                        .initializer("%S", plan.defaultInterfaceName.orEmpty())
+                        .build(),
+                )
+                .build()
+    }
+
+    private fun appendMetadataCompanionMembers(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        builder.addProperty(
+            PropertySpec.builder("TYPE_NAME", String::class)
+                .addModifiers(KModifier.CONST)
+                .initializer("%S", plan.type.qualifiedName)
+                .build(),
+        )
+        plan.interfaceIid?.let { iid ->
+            builder.addProperty(
+                PropertySpec.builder("IID", GUID_CLASS_NAME)
+                    .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                    .build(),
+            )
+        }
+    }
+
+    private fun resolveTypeName(typeName: String) = when (typeName) {
+        "Unit" -> UNIT
+        "String" -> String::class.asClassName()
+        "Int" -> Int::class.asClassName()
+        "Boolean" -> Boolean::class.asClassName()
+        "Byte" -> Byte::class.asClassName()
+        "Short" -> Short::class.asClassName()
+        "Long" -> Long::class.asClassName()
+        "Float" -> Float::class.asClassName()
+        "Double" -> Double::class.asClassName()
+        "Char" -> Char::class.asClassName()
+        else -> if ('.' in typeName) projectionClassName(typeName) else ClassName.bestGuess(typeName)
+    }
+
+    private fun projectionClassName(qualifiedName: String?): ClassName {
+        require(!qualifiedName.isNullOrBlank()) {
+            "Projection class name requires a non-blank qualified name."
+        }
+        val trimmed = qualifiedName.trim()
+        val lastDot = trimmed.lastIndexOf('.')
+        if (lastDot < 0) {
+            return ClassName("", trimmed)
+        }
+        val namespace = trimmed.substring(0, lastDot)
+        val simpleName = trimmed.substring(lastDot + 1)
+        val packageName = (ROOT_PACKAGE_SEGMENTS + namespace.split('.').filter { it.isNotBlank() }.map { it.lowercase() })
+            .joinToString(".")
+        return ClassName(packageName, simpleName)
+    }
+
 }
 
 class KotlinProjectionGenerator(

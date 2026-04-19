@@ -9,5 +9,6 @@ kotlin {
 dependencies {
     implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
+    implementation(libs.kotlinpoet)
     testImplementation(libs.junit)
 }

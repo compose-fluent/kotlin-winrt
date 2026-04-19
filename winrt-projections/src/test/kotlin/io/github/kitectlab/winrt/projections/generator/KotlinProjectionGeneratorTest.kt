@@ -86,11 +86,11 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model).single()
 
         assertEquals("io/github/kitectlab/winrt/projections/windows/data/json/JsonObject.kt", file.relativePath)
-        assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.data.json"))
-        assertTrue(file.contents.contains("class JsonObject"))
-        assertTrue(file.contents.contains("fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
+        assertTrue(file.contents.contains("public class JsonObject"))
+        assertTrue(file.contents.contains("public fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(file.contents.contains("companion object"))
-        assertTrue(file.contents.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(file.contents.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertFalse(file.contents.contains("JsonValueType"))
     }
 
@@ -312,6 +312,232 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("Status.kt").contents.contains("enum class Status"))
         assertTrue(filesByName.getValue("Point.kt").contents.contains("data class Point"))
         assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("fun interface WidgetHandler"))
+    }
+
+    @Test
+    fun renderer_uses_visibility_modifiers_and_metadata_companion_shells() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IInternalContract",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            isProjectionInternal = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "create",
+                                    returnTypeName = "Widget",
+                                    isStatic = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetStatics",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isStaticType = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetContract",
+                            kind = WinRtTypeKind.Struct,
+                            isApiContract = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal interface IInternalContract"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("companion object Metadata"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("IID: Guid = Guid(\"11111111-2222-3333-4444-555555555555\")"))
+
+        val widgetContents = filesByName.getValue("Widget.kt").contents
+        assertTrue(widgetContents.contains("public sealed class Widget : IWidget"))
+        assertTrue(widgetContents.contains("companion object Metadata"))
+        assertTrue(widgetContents.contains("public fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("public object ActivationFactory"))
+        assertTrue(widgetContents.contains("public object StaticInterfaces"))
+        assertTrue(widgetContents.contains("public object ComposableFactory"))
+        assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
+
+        assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("public class WidgetStatics"))
+        assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("static WinRT class shell"))
+        assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("public enum class WidgetContract"))
+        assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("api contract WinRT declaration shell"))
+    }
+
+    @Test
+    fun renderer_resolves_cross_namespace_projection_supertypes() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetBase",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetView",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidgetBase",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "WidgetView",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetBase",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+
+        val interfaceContents = filesByName.getValue("IWidgetView.kt").contents
+        val classContents = filesByName.getValue("WidgetView.kt").contents
+
+        assertTrue(interfaceContents.contains("import io.github.kitectlab.winrt.projections.sample.foundation.IWidgetBase"))
+        assertTrue(interfaceContents.contains("interface IWidgetView : IWidgetBase"))
+        assertTrue(classContents.contains("import io.github.kitectlab.winrt.projections.sample.foundation.IWidgetBase"))
+        assertTrue(classContents.contains("class WidgetView : IWidgetBase"))
+    }
+
+    @Test
+    fun renderer_uses_specialized_attribute_shell_builder() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetAttribute",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isAttributeType = true,
+                            isSealedType = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val file = KotlinProjectionGenerator().generate(model).single()
+
+        assertTrue(
+            file.contents.contains("public sealed class WidgetAttribute : Annotation") ||
+                file.contents.contains("public sealed class WidgetAttribute : kotlin.Annotation"),
+        )
+        assertTrue(file.contents.contains("attribute WinRT class shell"))
+    }
+
+    @Test
+    fun generator_emits_deterministic_shell_files_for_equivalent_metadata() {
+        val left = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "WidgetView",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                staticInterfaceNames = listOf("Sample.UI.IWidgetViewStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "create", returnTypeName = "WidgetView", isStatic = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val right = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "WidgetView",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.UI.IWidgetViewStatics"),
+                                isActivatable = true,
+                            ),
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "create", returnTypeName = "WidgetView", isStatic = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val leftFiles = KotlinProjectionGenerator().generate(left).associateBy(KotlinProjectionFile::relativePath)
+        val rightFiles = KotlinProjectionGenerator().generate(right).associateBy(KotlinProjectionFile::relativePath)
+
+        assertEquals(leftFiles.keys, rightFiles.keys)
+        assertEquals(leftFiles.mapValues { it.value.contents }, rightFiles.mapValues { it.value.contents })
     }
 
     @Test
