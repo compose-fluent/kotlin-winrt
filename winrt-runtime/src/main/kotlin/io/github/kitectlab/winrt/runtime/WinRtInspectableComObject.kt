@@ -26,6 +26,7 @@ internal class WinRtInspectableComObject(
     interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
     private val runtimeClassName: String? = null,
     private val trustLevel: Int = 0,
+    private val managedValue: Any? = null,
 ) : AutoCloseable {
     /**
      * `.cswinrt` owns CCW backing allocation through the broader ComWrappers/object-reference
@@ -211,6 +212,24 @@ internal class WinRtInspectableComObject(
         private val lookup = MethodHandles.lookup()
         private val sharedArena: Arena = Arena.global()
         private val registry = ConcurrentHashMap<Long, WinRtInspectableComObject>()
+
+        internal fun findManagedValue(pointer: MemorySegment): Any? =
+            registry[pointerKey(pointer)]?.managedValue
+
+        internal fun inspectableBox(
+            value: Any?,
+            runtimeClassName: String? = null,
+        ): WinRtInspectableComObject =
+            WinRtInspectableComObject(
+                interfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = IID.IInspectable,
+                        methods = emptyList(),
+                    ),
+                ),
+                runtimeClassName = runtimeClassName,
+                managedValue = value,
+            )
 
         private val queryInterfaceStub: MemorySegment = linker.upcallStub(
             lookup.findStatic(
