@@ -1930,6 +1930,148 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_mapped_collection_method_and_property_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICollectionProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555554"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "names",
+                                    returnTypeName = "Windows.Foundation.Collections.IIterable<String>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "readOnlyNames",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<String>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "NameMap",
+                                    typeName = "Windows.Foundation.Collections.IMapView<String, Int>",
+                                    getterMethodName = "get_NameMap",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "CollectionProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ICollectionProvider",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "names",
+                                    returnTypeName = "Windows.Foundation.Collections.IIterable<String>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "readOnlyNames",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<String>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "NameMap",
+                                    typeName = "Windows.Foundation.Collections.IMapView<String, Int>",
+                                    getterMethodName = "get_NameMap",
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.ICollectionProvider",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("CollectionProvider.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("public fun names(): Iterable<String>"))
+        assertTrue(contents, contents.contains("public fun readOnlyNames(): List<String>"))
+        assertTrue(contents, contents.contains("public val nameMap: Map<String, Int>"))
+        assertTrue(contents, contents.contains("val __collectionRef = IUnknownReference(__resultOut.get(ValueLayout.ADDRESS, 0))"))
+        assertTrue(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
+        assertTrue(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
+        assertTrue(contents, contents.contains("return object : AbstractMap<String, Int>(), Map<String, Int>, IWinRTObject"))
+        assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
+        assertTrue(contents, contents.contains("IVectorView.Metadata.GETAT_SLOT"))
+        assertTrue(contents, contents.contains("IMapView.Metadata.LOOKUP_SLOT"))
+        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+    }
+
+    @Test
+    fun generator_rejects_unsupported_mapped_collection_return_element_binding() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "widgets",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<Sample.Foundation.IWidget>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetProvider",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "widgets",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<Sample.Foundation.IWidget>",
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidgetProvider",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty().contains(
+                "Generator read-only collection parity does not yet support IVectorView return element Interface(Sample.Foundation.IWidget)",
+            ),
+        )
+    }
+
+    @Test
     fun planner_rejects_interface_surface_without_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
