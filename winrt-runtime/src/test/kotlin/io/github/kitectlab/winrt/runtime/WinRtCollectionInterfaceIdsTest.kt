@@ -38,4 +38,17 @@ class WinRtCollectionInterfaceIdsTest {
 
         assertEquals(first, second)
     }
+
+    @Test
+    fun key_value_pair_string_signature_renders_expected_shape() {
+        val signature = WinRtCollectionInterfaceIds.keyValuePairSignature(
+            WinRtTypeSignature.string(),
+            WinRtTypeSignature.string(),
+        )
+
+        assertEquals(
+            "pinterface({02b51929-c1c4-4a7e-8940-0312b5c18500};string;string)",
+            signature.render(),
+        )
+    }
 }

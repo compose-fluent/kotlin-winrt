@@ -7,6 +7,10 @@ sealed interface WinRtTypeSignature {
         override fun render(): String = "cinterface(IInspectable)"
     }
 
+    data object StringType : WinRtTypeSignature {
+        override fun render(): String = "string"
+    }
+
     data class GuidType(
         val value: Guid,
     ) : WinRtTypeSignature {
@@ -38,6 +42,8 @@ sealed interface WinRtTypeSignature {
 
     companion object {
         fun object_(): WinRtTypeSignature = ObjectType
+
+        fun string(): WinRtTypeSignature = StringType
 
         fun guid(value: String): WinRtTypeSignature = GuidType(Guid(value))
 

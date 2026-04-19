@@ -89,6 +89,44 @@ open class ComObjectReference(
         }
     }
 
+    open fun invokeObjectMethod(slot: Int): IUnknownReference {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    open fun invokeObjectMethodWithUInt32Arg(slot: Int, value: UInt): IUnknownReference {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                value.toInt(),
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
     fun invokeHStringMethodWithStringArg(slot: Int, value: String): HString {
         HString.create(value).use { hString ->
             Arena.ofConfined().use { arena ->
@@ -169,6 +207,42 @@ open class ComObjectReference(
             value,
         )
         WindowsRuntimePlatform.checkSucceeded(hr)
+    }
+
+    open fun invokeBooleanMethod(slot: Int): Boolean {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
+        }
+    }
+
+    open fun invokeUInt32Method(slot: Int): UInt {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return resultOut.get(ValueLayout.JAVA_INT, 0).toUInt()
+        }
     }
 
     fun asInspectable(): IInspectableReference =
