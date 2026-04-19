@@ -120,12 +120,18 @@ data class KotlinTypeProjectionPlan(
     val activatableFactoryInterfaceIid: Guid? = null,
     val composableFactoryInterfaceName: String? = null,
     val composableFactoryInterfaceIid: Guid? = null,
+    val abiSlotBindings: List<KotlinProjectionAbiSlotBinding> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
 data class KotlinProjectionInterfaceBinding(
     val qualifiedName: String,
     val iid: Guid? = null,
+)
+
+data class KotlinProjectionAbiSlotBinding(
+    val constantName: String,
+    val slot: Int,
 )
 
 data class KotlinProjectionFile(
@@ -172,24 +178,29 @@ class KotlinProjectionPlanner(
 ) {
     fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> =
         validator.validate(model).let { normalized ->
+            val typesByQualifiedName = normalized.namespaces
+                .flatMap(WinRtNamespace::types)
+                .associateBy(WinRtTypeDefinition::qualifiedName)
             val interfaceIidsByName = normalized.namespaces
                 .flatMap(WinRtNamespace::types)
                 .associate { it.qualifiedName to it.iid }
-            normalized.namespaces.flatMap { planNamespace(it, interfaceIidsByName) }
+            normalized.namespaces.flatMap { planNamespace(it, interfaceIidsByName, typesByQualifiedName) }
         }
 
     fun planNamespace(
         namespace: WinRtNamespace,
         interfaceIidsByName: Map<String, Guid?> = emptyMap(),
+        typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
     ): List<KotlinTypeProjectionPlan> =
         namespace.normalized().types.mapNotNull { type ->
             validator.validateType(type)
-            planType(type, interfaceIidsByName)
+            planType(type, interfaceIidsByName, typesByQualifiedName)
         }
 
     private fun planType(
         type: WinRtTypeDefinition,
         interfaceIidsByName: Map<String, Guid?>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): KotlinTypeProjectionPlan? {
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
@@ -227,8 +238,46 @@ class KotlinProjectionPlanner(
             activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(interfaceIidsByName::get),
             composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
             composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(interfaceIidsByName::get),
+            abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName),
             companionKinds = planCompanions(type),
         )
+    }
+
+    private fun planAbiSlotBindings(
+        type: WinRtTypeDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): List<KotlinProjectionAbiSlotBinding> {
+        if (type.kind != WinRtTypeKind.Interface) {
+            return emptyList()
+        }
+        val baseSlotCount = type.implementedInterfaces.sumOf { implemented ->
+            interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, mutableSetOf())
+        }
+        val localBindings = type.localAbiMembers()
+        return localBindings.mapIndexed { index, constantName ->
+            KotlinProjectionAbiSlotBinding(
+                constantName = constantName,
+                slot = 6 + baseSlotCount + index,
+            )
+        }
+    }
+
+    private fun interfaceAbiMemberCount(
+        interfaceName: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        visiting: MutableSet<String>,
+    ): Int {
+        val type = typesByQualifiedName[interfaceName] ?: return 0
+        if (type.kind != WinRtTypeKind.Interface || !visiting.add(interfaceName)) {
+            return 0
+        }
+        return try {
+            type.implementedInterfaces.sumOf { implemented ->
+                interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, visiting)
+            } + type.localAbiMembers().size
+        } finally {
+            visiting.remove(interfaceName)
+        }
     }
 
     private fun planCompanions(type: WinRtTypeDefinition): List<KotlinProjectionCompanionKind> = buildList {
@@ -294,6 +343,38 @@ class KotlinProjectionPlanner(
             .filter { it.isNotBlank() }
             .map { it.lowercase() }
 }
+
+private data class AbiMemberOrder(
+    val rowId: Int,
+    val constantName: String,
+)
+
+private fun WinRtTypeDefinition.localAbiMembers(): List<String> =
+    buildList<AbiMemberOrder> {
+        methods.forEach { method ->
+            method.methodRowId?.let { rowId ->
+                add(AbiMemberOrder(rowId, "${method.name.uppercase()}_SLOT"))
+            }
+        }
+        properties.forEach { property ->
+            property.getterMethodRowId?.let { rowId ->
+                add(AbiMemberOrder(rowId, "${property.name.uppercase()}_GETTER_SLOT"))
+            }
+            property.setterMethodRowId?.let { rowId ->
+                add(AbiMemberOrder(rowId, "${property.name.uppercase()}_SETTER_SLOT"))
+            }
+        }
+        events.forEach { event ->
+            event.addMethodRowId?.let { rowId ->
+                add(AbiMemberOrder(rowId, "${event.name.uppercase()}_ADD_SLOT"))
+            }
+            event.removeMethodRowId?.let { rowId ->
+                add(AbiMemberOrder(rowId, "${event.name.uppercase()}_REMOVE_SLOT"))
+            }
+        }
+    }
+        .sortedBy(AbiMemberOrder::rowId)
+        .map(AbiMemberOrder::constantName)
 
 class KotlinProjectionRenderer {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
@@ -764,6 +845,14 @@ class KotlinProjectionRenderer {
                         .build(),
                 )
             }
+        }
+        plan.abiSlotBindings.forEach { binding ->
+            builder.addProperty(
+                PropertySpec.builder(binding.constantName, Int::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%L", binding.slot)
+                    .build(),
+            )
         }
     }
 
