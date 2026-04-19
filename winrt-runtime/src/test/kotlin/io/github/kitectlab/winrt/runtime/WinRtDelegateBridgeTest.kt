@@ -54,6 +54,83 @@ class WinRtDelegateBridgeTest {
     }
 
     @Test
+    fun delegate_reference_invokes_callback_through_vtable_invoke_slot() {
+        var invocationCount = 0
+        var lastPayload: String? = null
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.HSTRING),
+        ) { args ->
+            invocationCount += 1
+            lastPayload = args.single() as String?
+        }
+
+        HString.create("message").use { payload ->
+            handle.use {
+                it.createReference().use { reference ->
+                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(listOf(payload.handle)))
+                }
+            }
+        }
+
+        assertEquals(1, invocationCount)
+        assertEquals("message", lastPayload)
+    }
+
+    @Test
+    fun delegate_reference_outlives_handle_while_addrefed_reference_exists() {
+        var invocationCount = 0
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) {
+            invocationCount += 1
+        }
+
+        val reference = handle.createReference()
+        handle.close()
+
+        reference.use {
+            assertEquals(KnownHResults.S_OK, it.invokeAbi(listOf(MemorySegment.NULL)))
+            assertTrue(it.queryInterface(IID.IUnknown).getOrThrow().sameIdentity(it))
+        }
+
+        assertEquals(1, invocationCount)
+    }
+
+    @Test
+    fun delegate_invoke_returns_callback_hresult_instead_of_throwing_across_abi() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) {
+            throw WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertEquals(KnownHResults.E_ACCESSDENIED, reference.invokeAbi(listOf(MemorySegment.NULL)))
+            }
+        }
+    }
+
+    @Test
+    fun delegate_invoke_maps_unexpected_callback_failure_to_e_fail() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) {
+            error("boom")
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertEquals(KnownHResults.E_FAIL, reference.invokeAbi(listOf(MemorySegment.NULL)))
+            }
+        }
+    }
+
+    @Test
     fun delegate_descriptor_can_render_parameterized_typed_event_signature() {
         val descriptor = WinRtDelegateDescriptor(
             interfaceId = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),

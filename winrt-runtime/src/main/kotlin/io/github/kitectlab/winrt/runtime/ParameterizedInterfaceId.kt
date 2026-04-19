@@ -10,6 +10,12 @@ object ParameterizedInterfaceId {
     fun createFromSignature(signature: WinRtTypeSignature): Guid =
         createFromSignature(signature.render())
 
+    fun createFromParameterizedInterface(genericInterface: Guid, vararg arguments: WinRtTypeSignature): Guid =
+        createFromSignature(WinRtTypeSignature.parameterizedInterface(genericInterface, *arguments))
+
+    fun createFromParameterizedInterface(genericInterface: String, vararg arguments: WinRtTypeSignature): Guid =
+        createFromSignature(WinRtTypeSignature.parameterizedInterface(genericInterface, *arguments))
+
     fun createFromSignature(signature: String): Guid {
         val namespaceBytes = guidToNetworkBytes(namespace)
         val signatureBytes = signature.toByteArray(StandardCharsets.UTF_8)

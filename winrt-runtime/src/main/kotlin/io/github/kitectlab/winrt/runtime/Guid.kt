@@ -17,6 +17,18 @@ data class Guid(val value: UUID) {
         buffer.putShort(value.mostSignificantBits.toShort())
         buffer.order(ByteOrder.BIG_ENDIAN).putLong(8, value.leastSignificantBits)
     }
+
+    companion object {
+        fun readFrom(memory: MemorySegment): Guid {
+            val buffer = memory.reinterpret(AbiLayouts.GUID_SIZE_BYTES).asByteBuffer().order(ByteOrder.LITTLE_ENDIAN)
+            val data1 = buffer.getInt(0).toLong() and 0xFFFF_FFFFL
+            val data2 = buffer.getShort(4).toLong() and 0xFFFFL
+            val data3 = buffer.getShort(6).toLong() and 0xFFFFL
+            val leastSignificantBits = buffer.order(ByteOrder.BIG_ENDIAN).getLong(8)
+            val mostSignificantBits = (data1 shl 32) or (data2 shl 16) or data3
+            return Guid(UUID(mostSignificantBits, leastSignificantBits))
+        }
+    }
 }
 
 fun guidOf(value: String): Guid = Guid(value)

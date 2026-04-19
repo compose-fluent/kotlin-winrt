@@ -1,6 +1,8 @@
 package io.github.kitectlab.winrt.runtime
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
@@ -16,6 +18,69 @@ class InspectableReferenceTest {
                 inspectable.use { reference ->
                     val runtimeClass = reference.getRuntimeClassName()
                     assertEquals("Windows.Data.Json.JsonObject", runtimeClass)
+                }
+            } finally {
+                factory.close()
+            }
+        }
+    }
+
+    @Test
+    fun inspectable_reference_can_compare_identity_across_iunknown_query() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeSingleThreaded().use {
+            val factory = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                val inspectable = factory.activateInstance()
+                inspectable.use { reference ->
+                    reference.queryInterface(IID.IUnknown).getOrThrow().use { unknown ->
+                        assertTrue(reference.sameIdentity(unknown))
+                        assertTrue(unknown.sameIdentity(reference))
+                    }
+                }
+            } finally {
+                factory.close()
+            }
+        }
+    }
+
+    @Test
+    fun inspectable_reference_returns_null_for_missing_interface_query() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeSingleThreaded().use {
+            val factory = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                val inspectable = factory.activateInstance()
+                inspectable.use { reference ->
+                    val missing = reference.tryQueryInterface(Guid("00000000-0000-0000-0000-00000000DEAD"))
+                    assertEquals(null, missing)
+                }
+            } finally {
+                factory.close()
+            }
+        }
+    }
+
+    @Test
+    fun inspectable_reference_is_idempotently_disposable_and_rejects_late_calls() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeSingleThreaded().use {
+            val factory = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                val inspectable = factory.activateInstance()
+                assertFalse(inspectable.isDisposed)
+                inspectable.close()
+                inspectable.close()
+                assertTrue(inspectable.isDisposed)
+
+                try {
+                    inspectable.tryGetRuntimeClassName()
+                    throw AssertionError("Expected disposed reference to reject calls")
+                } catch (error: WinRtObjectDisposedException) {
+                    assertTrue(error.message!!.contains("disposed"))
                 }
             } finally {
                 factory.close()

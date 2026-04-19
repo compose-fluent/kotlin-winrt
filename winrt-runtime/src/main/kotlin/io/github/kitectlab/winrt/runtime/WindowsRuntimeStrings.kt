@@ -3,6 +3,7 @@ package io.github.kitectlab.winrt.runtime
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import java.nio.charset.StandardCharsets
 
 class HString private constructor(
     val handle: MemorySegment,
@@ -44,13 +45,37 @@ class HString private constructor(
         }
 
         fun createReference(value: String): ReferencedHString {
-            // Narrow temporary deviation from CsWinRT:
-            // on the JVM we don't yet have a stable zero-copy HSTRING-reference path,
-            // so this currently falls back to an owned HSTRING wrapper until the
-            // WindowsCreateStringReference header handling is implemented correctly.
-            return ReferencedHString(
-                backing = create(value),
-            )
+            if (!PlatformRuntime.isWindows) {
+                error("HSTRING is only available on Windows.")
+            }
+            if (value.isEmpty()) {
+                return ReferencedHString(
+                    handle = MemorySegment.NULL,
+                    lifetime = null,
+                )
+            }
+
+            val arena = Arena.ofConfined()
+            try {
+                val utf16 = arena.allocateFrom("$value\u0000", StandardCharsets.UTF_16LE)
+                val header = arena.allocate(AbiLayouts.HSTRING_HEADER)
+                val out = arena.allocate(ValueLayout.ADDRESS)
+                WindowsRuntimePlatform.checkSucceeded(
+                    WindowsRuntimePlatform.windowsCreateStringReference(
+                        utf16Chars = utf16,
+                        length = value.length,
+                        header = header,
+                        outHandle = out,
+                    ),
+                )
+                return ReferencedHString(
+                    handle = out.get(ValueLayout.ADDRESS, 0),
+                    lifetime = arena,
+                )
+            } catch (error: Throwable) {
+                arena.close()
+                throw error
+            }
         }
 
         fun fromHandle(handle: MemorySegment, owner: Boolean): HString = HString(handle, owner)
@@ -58,14 +83,17 @@ class HString private constructor(
 }
 
 class ReferencedHString internal constructor(
-    private val backing: HString,
+    val handle: MemorySegment,
+    private val lifetime: AutoCloseable?,
 ) : AutoCloseable {
-    val handle: MemorySegment
-        get() = backing.handle
-
-    fun toKString(): String = HString.fromHandle(handle, owner = false).toKString()
+    fun toKString(): String =
+        if (handle == MemorySegment.NULL) {
+            ""
+        } else {
+            HString.fromHandle(handle, owner = false).toKString()
+        }
 
     override fun close() {
-        backing.close()
+        lifetime?.close()
     }
 }

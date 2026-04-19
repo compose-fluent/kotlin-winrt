@@ -3,6 +3,7 @@ package io.github.kitectlab.winrt.runtime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class ActivationFactoryTest {
@@ -45,5 +46,60 @@ class ActivationFactoryTest {
         }
 
         assertEquals(0, DllModule.cachedModuleCount())
+    }
+
+    @Test
+    fun activation_factory_cache_reuses_identity_for_default_factory() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeMultithreaded().use {
+            ActivationFactory.clearCacheForTests()
+
+            val first = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            val second = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                assertTrue(first !== second)
+                assertTrue(first.sameIdentity(second))
+                assertEquals(1, ActivationFactory.cachedFactoryCount())
+            } finally {
+                first.close()
+                second.close()
+                ActivationFactory.clearCacheForTests()
+            }
+        }
+    }
+
+    @Test
+    fun activation_factory_cache_reuses_identity_for_static_interface_factory() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeMultithreaded().use {
+            ActivationFactory.clearCacheForTests()
+            val iidIJsonObjectStatics = Guid("2289F159-54DE-45D8-ABCC-22603FA066A0")
+
+            val first = ActivationFactory.get("Windows.Data.Json.JsonObject", iidIJsonObjectStatics)
+            val second = ActivationFactory.get("Windows.Data.Json.JsonObject", iidIJsonObjectStatics)
+            try {
+                assertTrue(first !== second)
+                assertTrue(first.sameIdentity(second))
+                assertEquals(1, ActivationFactory.cachedFactoryCount())
+            } finally {
+                first.close()
+                second.close()
+                ActivationFactory.clearCacheForTests()
+            }
+        }
+    }
+
+    @Test
+    fun runtime_class_activation_helper_can_activate_instance() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeMultithreaded().use {
+            val instance = JvmWinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow()
+            instance.use {
+                assertEquals("Windows.Data.Json.JsonObject", it.getRuntimeClassName())
+            }
+        }
     }
 }

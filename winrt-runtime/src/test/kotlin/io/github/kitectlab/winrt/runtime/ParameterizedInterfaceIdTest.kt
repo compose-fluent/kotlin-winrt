@@ -6,6 +6,29 @@ import org.junit.Test
 
 class ParameterizedInterfaceIdTest {
     @Test
+    fun creates_winrt_pinterface_guid_from_known_cswinrt_signature() {
+        assertEquals(
+            Guid("A4D92B05-F965-5E3C-B9E1-401FF306BA93"),
+            ParameterizedInterfaceId.createFromSignature(
+                "pinterface({913337e9-11a1-4345-a3a2-4e7f956e222d};string)",
+            ),
+        )
+    }
+
+    @Test
+    fun creates_winrt_runtime_class_signature_guid_from_known_cswinrt_signature() {
+        assertEquals(
+            Guid("D0FAAE99-FB94-5270-97AB-7F78AF83EBF1"),
+            ParameterizedInterfaceId.createFromSignature(
+                WinRtTypeSignature.runtimeClass(
+                    "Microsoft.UI.Xaml.Controls.UIElementCollection",
+                    WinRtTypeSignature.guid("23050cb1-db88-54ed-9083-5ecfb12512fd"),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun renders_parameterized_runtime_class_signature() {
         val argsSignature = WinRtTypeSignature.runtimeClass(
             "Microsoft.UI.Xaml.ResourceManagerRequestedEventArgs",
@@ -58,5 +81,18 @@ class ParameterizedInterfaceIdTest {
         )
 
         assertNotEquals(left, right)
+    }
+
+    @Test
+    fun convenience_parameterized_interface_helper_matches_signature_path() {
+        val fromConvenience = ParameterizedInterfaceId.createFromParameterizedInterface(
+            WinRtCollectionInterfaceIds.iVector,
+            WinRtTypeSignature.string(),
+        )
+        val fromSignature = ParameterizedInterfaceId.createFromSignature(
+            "pinterface({913337e9-11a1-4345-a3a2-4e7f956e222d};string)",
+        )
+
+        assertEquals(fromSignature, fromConvenience)
     }
 }

@@ -14,6 +14,68 @@ The default expectation is not to invent a new projection model. When implementi
 4. If parity is impossible, document the exact reason in the relevant code or task notes and keep the deviation narrow, explicit, and test-covered.
 5. Do not design public APIs, runtime conventions, or generator heuristics from scratch when `.cswinrt` already has a corresponding implementation strategy.
 
+## Design Direction
+
+1. The implementation direction is reference-first and design-first: inspect the matching `.cswinrt` slice, decide the Kotlin module boundary and runtime contract, then implement the Kotlin version, and only after that add or adjust tests as validation.
+2. Tests are validation tools, not design drivers. Do not infer missing architecture, API shape, marshaling rules, activation behavior, or generator policy by iterating on failing tests until something passes.
+3. Do not use test failures as the primary source of truth for what the runtime or generator should do. Use `.cswinrt` source and the planned module responsibilities as the primary source of truth, then use tests to confirm parity.
+4. If an existing test contradicts `.cswinrt`, fix the implementation or the test so that the repository moves toward `.cswinrt` parity rather than preserving a Kotlin-only behavior.
+5. Before writing a new test for a new slice, identify the matching `.cswinrt` source area and encode that mapping in code comments, task notes, or `PLAN.md` status text when it is not already obvious.
+6. Do not let ad hoc test scaffolding become the place where design decisions are made. Runtime contracts belong in `winrt-runtime`, metadata/model decisions belong in `winrt-metadata`, generator decisions belong in the generator pipeline, and tests only verify those decisions.
+
+## Execution Cadence
+
+1. Work must advance in explicit phases rather than opportunistic file-by-file edits.
+2. Phase 1 is runtime-first: implement the minimum ABI, activation, marshaling, object identity, and interface-call foundations in `winrt-runtime` that are required by the current `.cswinrt` slice.
+3. Phase 2 is metadata-second: implement WinMD loading, metadata normalization, symbol modeling, and projection-shape inputs in `winrt-metadata` only after the active runtime contracts are clear enough to support the slice being built.
+4. Phase 3 is generator-third: implement generator rules from the `.cswinrt/src/cswinrt` responsibility split only after the required metadata model and runtime contracts exist.
+5. Phase 4 is projections-fourth: generate or check in projection output in `winrt-projections` only after the corresponding generator rule is defined and the runtime/metadata contracts it depends on already exist.
+6. Phase 5 is authoring-fifth: implement `winrt-authoring` only after the runtime ABI/lifetime and metadata/generator contracts needed by the authoring slice are understood from `.cswinrt/src/Authoring`.
+7. Phase 6 is samples-and-validation last: use `winrt-samples` and per-module tests only after the corresponding runtime, metadata, generator, projection, or authoring slice has already been designed and implemented.
+8. Do not start from `winrt-projections`, sample code, or test scaffolding just because they are easier to see or quicker to make compile. If a slice appears to require projection output first, stop and fill the missing upstream runtime, metadata, or generator step instead.
+9. A later phase may contain temporary smoke coverage for an earlier phase, but it must not become the reason the earlier phase is designed backward from that coverage.
+10. If a phase is blocked, record the missing prerequisite in `PLAN.md` and continue with the earliest incomplete prerequisite rather than jumping ahead to a later module.
+
+## Required Slice Ordering
+
+Within the phase order above, the active implementation queue must also move from foundational slices to dependent slices:
+
+1. In `winrt-runtime`, prioritize ABI primitives, HRESULT/GUID/HSTRING ownership, initialization scope, object identity, activation lookup, and reusable vtable-call shapes before delegates, collections, async, or WinUI-specific conveniences.
+2. In `winrt-runtime`, land generic interface signature/IID support and delegate/callback plumbing before expecting projected collection or async surfaces to behave correctly.
+3. In `winrt-metadata`, land real WinMD loading and normalized symbol/model construction before expanding projection-shape logic or handwritten generated API coverage.
+4. In the generator pipeline, land declaration-shape planning first, then member/property/event/method emission, then special-case projection rules such as collections, async, custom mappings, and WinUI-specific behavior.
+5. In `winrt-projections`, only check in slices that are already produced by the generator path for the same feature; temporary handwritten projection code may exist only as a narrow smoke surface and must not expand as the primary implementation path.
+6. In `winrt-authoring`, start with hosting/projected-object lifetime and ABI boundary requirements from `.cswinrt/src/Authoring` before broader authoring conveniences or sample-driven glue.
+7. In `winrt-samples`, start with the smallest runtime-validation surface for the active implemented slice before broader WinUI end-to-end scenarios.
+8. Tests must follow the same dependency order: runtime unit coverage first, then metadata coverage, then generator regression coverage, then projection/sample integration coverage.
+
+For the active JVM runtime path, treat the following order inside `winrt-runtime` as the required baseline:
+
+1. ABI primitives first: `Guid`, `HRESULT`, WinRT string ownership/reference mechanics, memory layout helpers, and raw vtable-call shapes.
+2. Initialization and platform boundary second: COM/WinRT initialization scope, Windows API entry points, dynamic library loading, and error translation.
+3. Object reference and identity third: `IUnknown`/`IInspectable` wrappers, ownership/disposal rules, runtime class name lookup, and interface-cast/query support.
+4. Activation fourth: `RoGetActivationFactory`, manifest-free fallback, activation factory caching, and runtime-class activation helpers.
+5. Parameterized type-signature and IID support fifth: type-signature rendering and parameterized IID hashing required by later generic collection and delegate slices.
+6. Delegates, collections, async, and WinUI-specific runtime hooks only after the preceding runtime slices are coherent enough to support them without guesswork.
+
+For the active metadata and generator path, treat the following order as the required baseline:
+
+1. In `winrt-metadata`, start with real WinMD source ingestion, namespace/type discovery, and deterministic normalization before enriching the model with projection-specific conveniences.
+2. In `winrt-metadata`, add symbol-shape fidelity next: generic parameters, default interfaces, implemented interfaces, activatable/static/factory metadata, method/property/event signatures, and parameter passing semantics.
+3. In the generator pipeline, start with declaration planning: decide what declarations exist and how they map to Kotlin ownership before emitting detailed members.
+4. In the generator pipeline, emit declaration shells next: namespaces, enums, structs, delegates, interfaces, runtime classes, and companion/metadata surfaces in deterministic order.
+5. Only after declaration shells are stable, add member/property/event/method emission, then activation/static/factory surfaces, then special rules for collections, async, custom mappings, and WinUI-specific behavior.
+6. Do not use handwritten projection files in `winrt-projections` as the source of truth for generator behavior. Generator rules must come from `.cswinrt/src/cswinrt` responsibilities plus the metadata/runtime contracts they depend on.
+
+For the active authoring and validation path, treat the following order as the required baseline:
+
+1. In `winrt-authoring`, start with projected-object lifetime, activation/hosting boundaries, and ABI-facing authoring requirements derived from `.cswinrt/src/Authoring` before any convenience layer or sample-driven glue.
+2. In `winrt-authoring`, establish the minimum hosting contract next: what authored types expose across the ABI boundary, how factories are surfaced, and how generated/metadata assumptions connect to runtime ownership.
+3. In `winrt-samples`, start with the smallest smoke surface that validates the currently completed runtime/generator slice; keep the sample narrow enough that failures still point to the owning upstream module.
+4. Only after the corresponding runtime, metadata, generator, and authoring prerequisites exist, expand samples to WinUI bootstrap, resource loading, window lifetime, and message-loop behavior.
+5. Do not use samples as a substitute for missing runtime, generator, or authoring design. If a sample needs ad hoc glue to work, stop and move that behavior into the owning upstream module instead.
+6. Do not let sample breadth outrun authoring/runtime/generator parity. A broader sample is not progress if the underlying contracts are still provisional.
+
 ## Required Architecture
 
 Follow a layered module design that mirrors the same separation of concerns visible in `.cswinrt`:
@@ -91,6 +153,8 @@ Do not claim that Kotlin modules are aligned with `.cswinrt` unless the top-leve
 4. Favor small, composable runtime helpers and generator passes over large monolithic classes.
 5. When implementing authoring, delegates, generics, collection projections, activation, or WinUI integration, check `.cswinrt` for both the runtime contract and the generated surface shape before coding.
 6. Generated code should be reproducible, deterministic, and derived from metadata plus runtime conventions rather than hand-maintained edits.
+7. When a test fails, do not start by changing the design to satisfy the test. First compare the failing area against `.cswinrt`, confirm the intended contract, and only then decide whether the implementation, generator logic, or the test expectation is wrong.
+8. Do not treat green tests as proof that a slice is correctly designed if the corresponding `.cswinrt` reference path has not yet been inspected and mapped.
 
 ## Commit Discipline
 
@@ -109,6 +173,10 @@ Do not claim that Kotlin modules are aligned with `.cswinrt` unless the top-leve
 4. Work-in-progress items must remain task-list items and include the text `正在做` in the item label.
 5. Every code change, status change, scope split, or newly discovered implementation slice must update `PLAN.md` in the same change.
 6. Do not leave `PLAN.md` stale relative to the current repository state, current branch work, or the latest committed slice.
+7. `PLAN.md` must describe the intended design and implementation order clearly enough that another agent can continue the work without defaulting to test-driven reverse engineering.
+8. For each active slice, `PLAN.md` should state the matching `.cswinrt` responsibility area and the intended Kotlin ownership so the development direction is explicit before tests are extended.
+9. `PLAN.md` must encode the current implementation cadence in phase order, including which prerequisites must be complete before later modules such as `winrt-projections` or `winrt-samples` are allowed to expand.
+10. `PLAN.md` must keep a short current-focus queue that identifies the next few slices to finish immediately and the major slices that are explicitly frozen until those focus items are closed.
 
 ## Validation Rules
 

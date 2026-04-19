@@ -10,9 +10,15 @@ object WinRtDelegateBridge {
             interfaceId = iid,
             parameterKinds = parameterKinds,
         )
+        val comObject = WinRtDelegateComObject(
+            descriptor = descriptor,
+            callback = callback,
+        )
         return WinRtDelegateHandle(
             descriptor = descriptor,
             callback = callback,
+            comObject = comObject,
+            releaseAction = comObject::releaseManagedReference,
         )
     }
 }

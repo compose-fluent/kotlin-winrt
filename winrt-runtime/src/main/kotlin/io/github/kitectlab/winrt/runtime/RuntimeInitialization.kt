@@ -35,22 +35,17 @@ object JvmWinRtRuntime {
 
     fun getActivationFactory(runtimeClassName: String, interfaceId: Guid = IID.IActivationFactory): Result<IUnknownReference> =
         runCatching {
-            val activationResult = ActivationFactory.tryGet(runtimeClassName, interfaceId)
-            if (!activationResult.isSuccess) {
-                throw WinRtRuntimeException(
-                    "Activation factory lookup failed for $runtimeClassName with ${activationResult.hResult}",
-                    activationResult.hResult,
-                )
-            }
-            if (interfaceId == IID.IActivationFactory) {
-                ActivationFactoryReference(activationResult.pointer, interfaceId)
-            } else {
-                IUnknownReference(activationResult.pointer, interfaceId)
-            }
+            ActivationFactory.get(runtimeClassName, interfaceId)
+        }
+
+    fun activateInstance(runtimeClassName: String): Result<IInspectableReference> =
+        runCatching {
+            ActivationFactory.activateInstance(runtimeClassName)
         }
 
     fun uninitialize() {
         if (PlatformRuntime.isWindows) {
+            ActivationFactory.clearRuntimeCache()
             WindowsRuntimePlatform.roUninitialize()
         }
     }

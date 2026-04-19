@@ -49,7 +49,7 @@ internal class DllModule private constructor(
         }
 
         private fun create(fileName: String): DllModule? {
-            val moduleHandle = WindowsRuntimePlatform.loadLibraryExW(
+            val moduleHandle = WindowsRuntimePlatform.tryLoadLibraryExW(
                 WindowsRuntimePlatform.resolveModulePath(fileName),
                 loadWithAlteredSearchPath,
             )
@@ -58,8 +58,9 @@ internal class DllModule private constructor(
             }
 
             val getActivationFactoryPointer =
-                WindowsRuntimePlatform.getProcAddress(moduleHandle, dllGetActivationFactory)
+                WindowsRuntimePlatform.tryGetProcAddress(moduleHandle, dllGetActivationFactory)
             if (getActivationFactoryPointer == MemorySegment.NULL) {
+                WindowsRuntimePlatform.freeLibrary(moduleHandle)
                 return null
             }
 

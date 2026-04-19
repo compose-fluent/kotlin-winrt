@@ -23,11 +23,11 @@ object CharMarshaller {
     fun fromAbi(value: Short): Char = value.toInt().toChar()
 
     fun copyTo(value: Char, destination: MemorySegment) {
-        destination.set(ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN), 0, toAbi(value))
+        destination.set(AbiLayouts.CHAR16, 0, value)
     }
 
     fun readFrom(source: MemorySegment): Char =
-        fromAbi(source.get(ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN), 0))
+        source.get(AbiLayouts.CHAR16, 0)
 }
 
 object GuidMarshaller {
@@ -53,4 +53,40 @@ object GuidMarshaller {
 
         return Guid(UUID(msb, lsb))
     }
+}
+
+object StringMarshaller {
+    fun createMarshaler(value: String?): ReferencedHString? =
+        if (value.isNullOrEmpty()) {
+            null
+        } else {
+            HString.createReference(value)
+        }
+
+    fun getAbi(value: ReferencedHString?): MemorySegment = value?.handle ?: MemorySegment.NULL
+
+    fun getAbi(value: HString?): MemorySegment = value?.handle ?: MemorySegment.NULL
+
+    fun disposeMarshaler(value: ReferencedHString?) {
+        value?.close()
+    }
+
+    fun disposeAbi(handle: MemorySegment) {
+        if (handle != MemorySegment.NULL) {
+            WindowsRuntimePlatform.windowsDeleteString(handle)
+        }
+    }
+
+    fun fromAbi(handle: MemorySegment): String =
+        if (handle == MemorySegment.NULL) {
+            ""
+        } else {
+            HString.fromHandle(handle, owner = false).toKString()
+        }
+
+    fun fromManaged(value: String?): HString? =
+        value?.let(HString::create)
+
+    fun readFrom(source: MemorySegment): String =
+        fromAbi(source.get(ValueLayout.ADDRESS, 0))
 }

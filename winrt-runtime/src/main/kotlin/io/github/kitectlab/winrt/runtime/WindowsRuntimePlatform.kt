@@ -147,6 +147,27 @@ internal object WindowsRuntimePlatform {
         )
     }
 
+    private val freeLibraryHandle: MethodHandle by lazy {
+        downcall(
+            kernel32Lookup,
+            "FreeLibrary",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val getLastErrorHandle: MethodHandle by lazy {
+        downcall(
+            kernel32Lookup,
+            "GetLastError",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+            ),
+        )
+    }
+
     fun roGetActivationFactory(
         runtimeClassId: HString,
         interfaceId: Guid,
@@ -232,10 +253,10 @@ internal object WindowsRuntimePlatform {
         return windowsGetStringRawBufferHandle.invokeWithArguments(handle, lengthOut) as MemorySegment
     }
 
-    fun loadLibraryExW(absolutePath: String, flags: Int): MemorySegment {
+    fun tryLoadLibraryExW(absolutePath: String, flags: Int): MemorySegment {
         ensureWindows()
         Arena.ofConfined().use { arena ->
-            val path = arena.allocateFrom(absolutePath, StandardCharsets.UTF_16LE)
+            val path = arena.allocateFrom("$absolutePath\u0000", StandardCharsets.UTF_16LE)
             return loadLibraryExWHandle.invokeWithArguments(
                 path,
                 MemorySegment.NULL,
@@ -244,7 +265,15 @@ internal object WindowsRuntimePlatform {
         }
     }
 
-    fun getProcAddress(moduleHandle: MemorySegment, procedureName: String): MemorySegment {
+    fun loadLibraryExW(absolutePath: String, flags: Int): MemorySegment {
+        val handle = tryLoadLibraryExW(absolutePath, flags)
+        if (handle == MemorySegment.NULL) {
+            throw WinRtExceptionTranslator.exceptionFor(lastErrorAsHResult(), "LoadLibraryExW($absolutePath)")
+        }
+        return handle
+    }
+
+    fun tryGetProcAddress(moduleHandle: MemorySegment, procedureName: String): MemorySegment {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val name = arena.allocateFrom("$procedureName\u0000", StandardCharsets.UTF_8)
@@ -255,10 +284,32 @@ internal object WindowsRuntimePlatform {
         }
     }
 
+    fun getProcAddress(moduleHandle: MemorySegment, procedureName: String): MemorySegment {
+        val pointer = tryGetProcAddress(moduleHandle, procedureName)
+        if (pointer == MemorySegment.NULL) {
+            throw WinRtExceptionTranslator.exceptionFor(lastErrorAsHResult(), "GetProcAddress($procedureName)")
+        }
+        return pointer
+    }
+
+    fun freeLibrary(moduleHandle: MemorySegment): Boolean {
+        ensureWindows()
+        if (moduleHandle == MemorySegment.NULL) {
+            return false
+        }
+        return (freeLibraryHandle.invokeWithArguments(moduleHandle) as Int) != 0
+    }
+
+    fun lastErrorAsHResult(): HResult {
+        ensureWindows()
+        val errorCode = getLastErrorHandle.invokeWithArguments() as Int
+        return WinRtExceptionTranslator.hResultFromWin32(errorCode)
+    }
+
     fun checkSucceeded(result: Int) {
         val hResult = HResult(result)
         if (hResult.isFailure) {
-            throw WinRtRuntimeException("WinRT call failed with $hResult", hResult)
+            throw WinRtExceptionTranslator.exceptionFor(hResult)
         }
     }
 

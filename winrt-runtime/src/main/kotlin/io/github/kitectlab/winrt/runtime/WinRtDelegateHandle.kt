@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WinRtDelegateHandle internal constructor(
     val descriptor: WinRtDelegateDescriptor,
     private val callback: (List<Any?>) -> Unit,
+    private val comObject: WinRtDelegateComObject,
     private val releaseAction: () -> Unit = {},
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
@@ -25,6 +26,11 @@ class WinRtDelegateHandle internal constructor(
                 abiArguments = arguments,
             ),
         )
+    }
+
+    fun createReference(): WinRtDelegateReference {
+        check(!closed.get()) { "Delegate handle is already closed." }
+        return comObject.createReference()
     }
 
     override fun close() {
