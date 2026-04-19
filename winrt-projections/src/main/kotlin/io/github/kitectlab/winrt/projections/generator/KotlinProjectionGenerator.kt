@@ -144,6 +144,31 @@ data class KotlinProjectionInstanceMemberBinding(
     val ownerCachePropertyName: String,
     val slotInterfaceQualifiedName: String,
     val slotConstantName: String,
+    val returnBinding: KotlinProjectionAbiTypeBinding,
+    val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
+)
+
+enum class KotlinProjectionAbiValueKind {
+    Unit,
+    String,
+    Boolean,
+    Int32,
+    UInt32,
+    Double,
+    ProjectedObject,
+    UnknownReference,
+    InspectableReference,
+    Unsupported,
+}
+
+data class KotlinProjectionAbiTypeBinding(
+    val kind: KotlinProjectionAbiValueKind,
+    val typeName: String,
+)
+
+data class KotlinProjectionAbiParameterBinding(
+    val name: String,
+    val typeBinding: KotlinProjectionAbiTypeBinding,
 )
 
 data class KotlinProjectionFile(
@@ -321,6 +346,13 @@ class KotlinProjectionPlanner(
                     candidateInterfaces = candidateInterfaces,
                     typesByQualifiedName = typesByQualifiedName,
                     slotConstantName = "${method.name.uppercase()}_SLOT",
+                    returnBinding = classifyAbiTypeBinding(method.returnTypeName),
+                    parameterBindings = method.parameters.map { parameter ->
+                        KotlinProjectionAbiParameterBinding(
+                            name = parameter.name,
+                            typeBinding = classifyAbiTypeBinding(parameter.typeName),
+                        )
+                    },
                     signatureMatcher = { interfaceType ->
                         interfaceType.methods.any { it.projectionSignatureKey() == method.projectionSignatureKey() }
                     },
@@ -332,6 +364,8 @@ class KotlinProjectionPlanner(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
+                        returnBinding = classifyAbiTypeBinding(property.typeName),
+                        parameterBindings = emptyList(),
                         signatureMatcher = { interfaceType ->
                             interfaceType.properties.any {
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null
@@ -344,6 +378,13 @@ class KotlinProjectionPlanner(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${property.name.uppercase()}_SETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "value",
+                                typeBinding = classifyAbiTypeBinding(property.typeName),
+                            ),
+                        ),
                         signatureMatcher = { interfaceType ->
                             interfaceType.properties.any {
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null
@@ -358,6 +399,13 @@ class KotlinProjectionPlanner(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
+                        returnBinding = classifyAbiTypeBinding("Int"),
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "handler",
+                                typeBinding = classifyAbiTypeBinding(event.delegateTypeName),
+                            ),
+                        ),
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
@@ -371,6 +419,13 @@ class KotlinProjectionPlanner(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "token",
+                                typeBinding = classifyAbiTypeBinding("Int"),
+                            ),
+                        ),
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
@@ -387,6 +442,8 @@ class KotlinProjectionPlanner(
         candidateInterfaces: List<String>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         slotConstantName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
     ): KotlinProjectionInstanceMemberBinding? {
         candidateInterfaces.forEach { candidateInterface ->
@@ -402,9 +459,34 @@ class KotlinProjectionPlanner(
                 ownerCachePropertyName = ownerCachePropertyName(candidateInterface, candidateInterfaces.firstOrNull()),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
                 slotConstantName = slotConstantName,
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
             )
         }
         return null
+    }
+
+    private fun classifyAbiTypeBinding(typeName: String): KotlinProjectionAbiTypeBinding {
+        val trimmedTypeName = typeName.trim()
+        val rawTypeName = trimmedTypeName.substringBefore('<').removeSuffix("?")
+        val kind = when (trimmedTypeName) {
+            "Unit" -> KotlinProjectionAbiValueKind.Unit
+            "String" -> KotlinProjectionAbiValueKind.String
+            "Boolean" -> KotlinProjectionAbiValueKind.Boolean
+            "Int" -> KotlinProjectionAbiValueKind.Int32
+            "UInt" -> KotlinProjectionAbiValueKind.UInt32
+            "Double" -> KotlinProjectionAbiValueKind.Double
+            IUNKNOWN_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.UnknownReference
+            IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.InspectableReference
+            "io.github.kitectlab.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
+            "io.github.kitectlab.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
+            else -> if ('.' in rawTypeName && rawTypeName !in SPECIAL_TYPE_MAPPINGS) {
+                KotlinProjectionAbiValueKind.ProjectedObject
+            } else {
+                KotlinProjectionAbiValueKind.Unsupported
+            }
+        }
+        return KotlinProjectionAbiTypeBinding(kind = kind, typeName = trimmedTypeName)
     }
 
     private fun findDeclaringInterface(
@@ -811,17 +893,13 @@ class KotlinProjectionRenderer {
         plan: KotlinTypeProjectionPlan,
         method: WinRtMethodDefinition,
     ): FunSpec? {
-        if (method.parameters.isNotEmpty()) {
-            return null
-        }
         val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${method.name.uppercase()}_SLOT" } ?: return null
         val invocation = renderBoundInvocation(
-            ownerCachePropertyName = binding.ownerCachePropertyName,
-            slotExpression = "Metadata.${binding.bindingName}",
-            returnTypeName = method.returnTypeName,
+            binding = binding,
         ) ?: return null
         return FunSpec.builder(method.name)
             .returns(resolveTypeName(method.returnTypeName))
+            .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
             .addCode("%L\n", invocation)
             .build()
     }
@@ -837,21 +915,20 @@ class KotlinProjectionRenderer {
         val getterBinding = plan.instanceMemberBindings.firstOrNull {
             it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
         } ?: return null
-        val getterInvocation = renderBoundInvocation(
-            ownerCachePropertyName = getterBinding.ownerCachePropertyName,
-            slotExpression = "Metadata.${getterBinding.bindingName}",
-            returnTypeName = property.typeName,
-        ) ?: return null
+        val getterInvocation = renderBoundInvocation(binding = getterBinding) ?: return null
         builder.getter(
             FunSpec.getterBuilder()
                 .addCode("%L\n", getterInvocation)
                 .build(),
         )
         if (!property.isReadOnly) {
+            val setterBinding = plan.instanceMemberBindings.firstOrNull {
+                it.bindingName == "${property.name.uppercase()}_SETTER_SLOT"
+            }
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", resolveTypeName(property.typeName))
-                    .addCode("error(%S)\n", "Not yet bound to winrt-runtime")
+                    .addCode("%L\n", setterBinding?.let(::renderBoundInvocation) ?: CodeBlock.of("error(%S)", "Not yet bound to winrt-runtime"))
                     .build(),
             )
         }
@@ -859,47 +936,166 @@ class KotlinProjectionRenderer {
     }
 
     private fun renderBoundInvocation(
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): CodeBlock? {
+        val slotExpression = "Metadata.${binding.bindingName}"
+        val ownerCachePropertyName = binding.ownerCachePropertyName
+        val parameters = binding.parameterBindings
+        return when (parameters.size) {
+            0 -> renderZeroParameterBoundInvocation(ownerCachePropertyName, slotExpression, binding.returnBinding)
+            1 -> renderSingleParameterBoundInvocation(ownerCachePropertyName, slotExpression, binding.returnBinding, parameters.single())
+            else -> null
+        }
+    }
+
+    private fun renderZeroParameterBoundInvocation(
         ownerCachePropertyName: String,
         slotExpression: String,
-        returnTypeName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
     ): CodeBlock? {
-        val trimmedTypeName = returnTypeName.trim()
-        return when (trimmedTypeName) {
-            "Unit" -> CodeBlock.of("%L.invokeUnitMethod(%L)", ownerCachePropertyName, slotExpression)
-            "String" -> CodeBlock.of("return %L.invokeHStringMethod(%L).toKString()", ownerCachePropertyName, slotExpression)
-            "Boolean" -> CodeBlock.of("return %L.invokeBooleanMethod(%L)", ownerCachePropertyName, slotExpression)
-            "Int" -> CodeBlock.of("return %L.invokeInt32Method(%L)", ownerCachePropertyName, slotExpression)
-            "UInt" -> CodeBlock.of("return %L.invokeUInt32Method(%L)", ownerCachePropertyName, slotExpression)
-            "Double" -> CodeBlock.of("return %L.invokeDoubleMethod(%L)", ownerCachePropertyName, slotExpression)
-            else -> renderBoundObjectInvocation(ownerCachePropertyName, slotExpression, trimmedTypeName)
+        return when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit ->
+                CodeBlock.of("%L.invokeUnitMethod(%L)", ownerCachePropertyName, slotExpression)
+            KotlinProjectionAbiValueKind.String ->
+                CodeBlock.of("return %L.invokeHStringMethod(%L).toKString()", ownerCachePropertyName, slotExpression)
+            KotlinProjectionAbiValueKind.Boolean ->
+                CodeBlock.of("return %L.invokeBooleanMethod(%L)", ownerCachePropertyName, slotExpression)
+            KotlinProjectionAbiValueKind.Int32 ->
+                CodeBlock.of("return %L.invokeInt32Method(%L)", ownerCachePropertyName, slotExpression)
+            KotlinProjectionAbiValueKind.UInt32 ->
+                CodeBlock.of("return %L.invokeUInt32Method(%L)", ownerCachePropertyName, slotExpression)
+            KotlinProjectionAbiValueKind.Double ->
+                CodeBlock.of("return %L.invokeDoubleMethod(%L)", ownerCachePropertyName, slotExpression)
+            else -> renderBoundObjectInvocation(ownerCachePropertyName, slotExpression, returnBinding)
+        }
+    }
+
+    private fun renderSingleParameterBoundInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+    ): CodeBlock? {
+        return when (parameterBinding.typeBinding.kind) {
+            KotlinProjectionAbiValueKind.String -> renderStringParameterInvocation(
+                ownerCachePropertyName,
+                slotExpression,
+                returnBinding,
+                parameterBinding.name,
+            )
+            KotlinProjectionAbiValueKind.UInt32 -> renderUInt32ParameterInvocation(
+                ownerCachePropertyName,
+                slotExpression,
+                returnBinding,
+                parameterBinding.name,
+            )
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> renderObjectParameterInvocation(
+                ownerCachePropertyName,
+                slotExpression,
+                returnBinding,
+                parameterBinding,
+            )
+            else -> null
+        }
+    }
+
+    private fun renderStringParameterInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterName: String,
+    ): CodeBlock? =
+        when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.String ->
+                CodeBlock.of("return %L.invokeHStringMethodWithStringArg(%L, %L).toKString()", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.Boolean ->
+                CodeBlock.of("return %L.invokeBooleanMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.Double ->
+                CodeBlock.of("return %L.invokeDoubleMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.ProjectedObject,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
+                returnBinding = returnBinding,
+                call = CodeBlock.of("%L.invokeObjectMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+            )
+            else -> null
+        }
+
+    private fun renderUInt32ParameterInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterName: String,
+    ): CodeBlock? =
+        when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.String ->
+                CodeBlock.of("return %L.invokeHStringMethodWithUInt32Arg(%L, %L).toKString()", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.Boolean ->
+                CodeBlock.of("return %L.invokeBooleanMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.Double ->
+                CodeBlock.of("return %L.invokeDoubleMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.ProjectedObject,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
+                returnBinding = returnBinding,
+                call = CodeBlock.of("%L.invokeObjectMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+            )
+            else -> null
+        }
+
+    private fun renderObjectParameterInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+    ): CodeBlock? {
+        return when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit ->
+                CodeBlock.of("%L.invokeUnitMethodWithObjectArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterBinding.name)
+            KotlinProjectionAbiValueKind.Boolean ->
+                CodeBlock.of("return %L.invokeBooleanMethodWithObjectArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterBinding.name)
+            KotlinProjectionAbiValueKind.ProjectedObject,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
+                returnBinding = returnBinding,
+                call = CodeBlock.of("%L.invokeObjectMethodWithObjectArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterBinding.name),
+            )
+            else -> null
         }
     }
 
     private fun renderBoundObjectInvocation(
         ownerCachePropertyName: String,
         slotExpression: String,
-        returnTypeName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? =
+        renderBoundObjectInvocationWithCall(
+            returnBinding = returnBinding,
+            call = CodeBlock.of("%L.invokeObjectMethod(%L)", ownerCachePropertyName, slotExpression),
+        )
+
+    private fun renderBoundObjectInvocationWithCall(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        call: CodeBlock,
     ): CodeBlock? {
-        val returnType = resolveTypeName(returnTypeName)
-        val rawReturnType = when (returnType) {
-            is ClassName -> returnType
-            else -> return null
-        }
-        return if (rawReturnType.packageName.startsWith(ROOT_PACKAGE_SEGMENTS.joinToString("."))) {
+        val returnType = resolveTypeName(returnBinding.typeName)
+        val rawReturnType = returnType as? ClassName ?: return null
+        return if (returnBinding.kind == KotlinProjectionAbiValueKind.ProjectedObject) {
             CodeBlock.of(
-                "return %L.invokeObjectMethod(%L).use { %T.Metadata.wrap(it.asInspectable()) }",
-                ownerCachePropertyName,
-                slotExpression,
+                "return %L.use { %T.Metadata.wrap(it.asInspectable()) }",
+                call,
                 rawReturnType,
             )
-        } else if (rawReturnType == IINSPECTABLE_REFERENCE_CLASS_NAME) {
+        } else if (returnBinding.kind == KotlinProjectionAbiValueKind.InspectableReference &&
+            rawReturnType == IINSPECTABLE_REFERENCE_CLASS_NAME) {
             CodeBlock.of(
-                "return %L.invokeObjectMethod(%L).use { it.asInspectable() }",
-                ownerCachePropertyName,
-                slotExpression,
+                "return %L.use { it.asInspectable() }",
+                call,
             )
-        } else if (rawReturnType == IUNKNOWN_REFERENCE_CLASS_NAME) {
-            CodeBlock.of("return %L.invokeObjectMethod(%L)", ownerCachePropertyName, slotExpression)
+        } else if (returnBinding.kind == KotlinProjectionAbiValueKind.UnknownReference &&
+            rawReturnType == IUNKNOWN_REFERENCE_CLASS_NAME) {
+            CodeBlock.of("return %L", call)
         } else {
             null
         }
