@@ -52,10 +52,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("public class JsonObject internal constructor("))
         assertTrue(jsonObject, jsonObject.contains("private val _inner: InspectableReference"))
         assertTrue(jsonObject, jsonObject.contains("public fun getNamedString(name: String): String"))
-        assertTrue(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
-        assertTrue(jsonObject, jsonObject.contains("public fun tryParse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject"))
+        assertFalse(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonObject, jsonObject.contains("HString.create(json).use { __jsonAbi ->"))
+        assertTrue(jsonObject, jsonObject.contains("internal val STATIC_PARSE_SLOT: Int = IJsonObjectStatics.Metadata.PARSE_SLOT"))
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
+        assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
@@ -65,6 +68,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonValue, jsonValue.contains("public class JsonValue internal constructor("))
         assertTrue(jsonValue, jsonValue.contains("public fun stringify(): String"))
         assertTrue(jsonValue, jsonValue.contains("public fun createStringValue(`value`: String): JsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("internal val STATIC_CREATESTRINGVALUE_SLOT: Int ="))
+        assertTrue(jsonValue, jsonValue.contains("IJsonValueStatics.Metadata.CREATESTRINGVALUE_SLOT"))
 
         assertTrue(jsonError, jsonError.contains("public class JsonError internal constructor("))
         assertTrue(jsonError, jsonError.contains("public fun getJsonStatus(hResult: Int): JsonErrorStatus"))
@@ -546,6 +551,89 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("static WinRT class shell"))
         assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("public enum class WidgetContract"))
         assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("api contract WinRT declaration shell"))
+    }
+
+    @Test
+    fun generator_binds_static_methods_and_properties_through_static_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "parse",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                    getterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "parse",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    isStatic = true,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                    isStatic = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("private val _iWidgetStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("public fun iWidgetStatics(): IUnknownReference"))
+        assertTrue(widgetContents.contains("public fun parse(`value`: String): Widget"))
+        assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics().invokeAbi("))
+        assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
+        assertTrue(widgetContents.contains("public val count: Int"))
+        assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
     }
 
     @Test

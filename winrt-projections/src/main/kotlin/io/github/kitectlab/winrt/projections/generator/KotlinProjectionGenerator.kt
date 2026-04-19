@@ -132,6 +132,7 @@ data class KotlinTypeProjectionPlan(
     val composableFactoryInterfaceIid: Guid? = null,
     val abiSlotBindings: List<KotlinProjectionAbiSlotBinding> = emptyList(),
     val instanceMemberBindings: List<KotlinProjectionInstanceMemberBinding> = emptyList(),
+    val staticMemberBindings: List<KotlinProjectionStaticMemberBinding> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
@@ -148,6 +149,17 @@ data class KotlinProjectionAbiSlotBinding(
 data class KotlinProjectionInstanceMemberBinding(
     val bindingName: String,
     val ownerInterfaceQualifiedName: String,
+    val ownerCachePropertyName: String,
+    val slotInterfaceQualifiedName: String,
+    val slotConstantName: String,
+    val returnBinding: KotlinProjectionAbiTypeBinding,
+    val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
+)
+
+data class KotlinProjectionStaticMemberBinding(
+    val bindingName: String,
+    val ownerInterfaceQualifiedName: String,
+    val ownerAccessorName: String,
     val ownerCachePropertyName: String,
     val slotInterfaceQualifiedName: String,
     val slotConstantName: String,
@@ -308,6 +320,7 @@ class KotlinProjectionPlanner(
             composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(interfaceIidsByName::get),
             abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName),
             instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName),
+            staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName),
             companionKinds = planCompanions(type),
         )
     }
@@ -461,6 +474,75 @@ class KotlinProjectionPlanner(
         }.distinctBy(KotlinProjectionInstanceMemberBinding::bindingName)
     }
 
+    private fun planStaticMemberBindings(
+        type: WinRtTypeDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): List<KotlinProjectionStaticMemberBinding> {
+        if (type.kind != WinRtTypeKind.RuntimeClass) {
+            return emptyList()
+        }
+        val candidateInterfaces = type.activation.staticInterfaceNames.distinct()
+        return buildList {
+            type.methods.filter(WinRtMethodDefinition::isStatic).forEach { method ->
+                resolveStaticMemberBinding(
+                    candidateInterfaces = candidateInterfaces,
+                    typesByQualifiedName = typesByQualifiedName,
+                    bindingName = "STATIC_${method.name.uppercase()}_SLOT",
+                    slotConstantName = "${method.name.uppercase()}_SLOT",
+                    returnBinding = classifyAbiTypeBinding(method.returnTypeName),
+                    parameterBindings = method.parameters.map { parameter ->
+                        KotlinProjectionAbiParameterBinding(
+                            name = parameter.name,
+                            typeBinding = classifyAbiTypeBinding(parameter.typeName),
+                        )
+                    },
+                    signatureMatcher = { interfaceType ->
+                        interfaceType.methods.any { it.projectionSignatureIgnoringStaticKey() == method.projectionSignatureIgnoringStaticKey() }
+                    },
+                )?.let(::add)
+            }
+            type.properties.filter { it.isStatic }.forEach { property ->
+                if (property.getterMethodName != null) {
+                    resolveStaticMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        bindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT",
+                        slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
+                        returnBinding = classifyAbiTypeBinding(property.typeName),
+                        parameterBindings = emptyList(),
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.properties.any {
+                                it.projectionSignatureIgnoringStaticKey() == property.projectionSignatureIgnoringStaticKey() &&
+                                    it.getterMethodName != null
+                            }
+                        },
+                    )?.let(::add)
+                }
+                if (property.setterMethodName != null) {
+                    resolveStaticMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        bindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT",
+                        slotConstantName = "${property.name.uppercase()}_SETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "value",
+                                typeBinding = classifyAbiTypeBinding(property.typeName),
+                            ),
+                        ),
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.properties.any {
+                                it.projectionSignatureIgnoringStaticKey() == property.projectionSignatureIgnoringStaticKey() &&
+                                    it.setterMethodName != null
+                            }
+                        },
+                    )?.let(::add)
+                }
+            }
+        }.distinctBy(KotlinProjectionStaticMemberBinding::bindingName)
+    }
+
     private fun resolveInstanceMemberBinding(
         candidateInterfaces: List<String>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
@@ -480,6 +562,36 @@ class KotlinProjectionPlanner(
                 bindingName = slotConstantName,
                 ownerInterfaceQualifiedName = candidateInterface,
                 ownerCachePropertyName = ownerCachePropertyName(candidateInterface, candidateInterfaces.firstOrNull()),
+                slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+                slotConstantName = slotConstantName,
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
+            )
+        }
+        return null
+    }
+
+    private fun resolveStaticMemberBinding(
+        candidateInterfaces: List<String>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        bindingName: String,
+        slotConstantName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        signatureMatcher: (WinRtTypeDefinition) -> Boolean,
+    ): KotlinProjectionStaticMemberBinding? {
+        candidateInterfaces.forEach { candidateInterface ->
+            val slotInterfaceQualifiedName = findDeclaringInterface(
+                interfaceName = candidateInterface,
+                typesByQualifiedName = typesByQualifiedName,
+                visiting = mutableSetOf(),
+                signatureMatcher = signatureMatcher,
+            ) ?: return@forEach
+            return KotlinProjectionStaticMemberBinding(
+                bindingName = bindingName,
+                ownerInterfaceQualifiedName = candidateInterface,
+                ownerAccessorName = staticOwnerAccessorName(candidateInterface),
+                ownerCachePropertyName = staticOwnerCachePropertyName(candidateInterface),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
                 slotConstantName = slotConstantName,
                 returnBinding = returnBinding,
@@ -541,6 +653,12 @@ class KotlinProjectionPlanner(
         } else {
             "_${interfaceName.substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
         }
+
+    private fun staticOwnerAccessorName(interfaceName: String): String =
+        interfaceName.substringAfterLast('.').replaceFirstChar(Char::lowercase)
+
+    private fun staticOwnerCachePropertyName(interfaceName: String): String =
+        "_${staticOwnerAccessorName(interfaceName)}"
 
     private fun planCompanions(type: WinRtTypeDefinition): List<KotlinProjectionCompanionKind> = buildList {
         if (shouldEmitMetadataCompanion(type)) {
@@ -621,9 +739,23 @@ private fun WinRtMethodDefinition.projectionSignatureKey(): String = buildString
     append(parameters.joinToString(",") { "${it.name}:${it.typeName}:${it.direction}" })
 }
 
+private fun WinRtMethodDefinition.projectionSignatureIgnoringStaticKey(): String = buildString {
+    append(name)
+    append('|')
+    append(returnTypeName)
+    append('|')
+    append(parameters.joinToString(",") { "${it.name}:${it.typeName}:${it.direction}" })
+}
+
 private fun WinRtPropertyDefinition.projectionSignatureKey(): String = buildString {
     append(if (isStatic) 'S' else 'I')
     append('|')
+    append(name)
+    append('|')
+    append(typeName)
+}
+
+private fun WinRtPropertyDefinition.projectionSignatureIgnoringStaticKey(): String = buildString {
     append(name)
     append('|')
     append(typeName)
@@ -963,26 +1095,40 @@ class KotlinProjectionRenderer {
     ): CodeBlock? {
         val callPlan = buildAbiCallPlan(binding) ?: return null
         return renderInlineAbiInvocation(
-            ownerCachePropertyName = binding.ownerCachePropertyName,
+            invokeTargetExpression = binding.ownerCachePropertyName,
             slotExpression = "Metadata.${binding.bindingName}",
+            callPlan = callPlan,
+        )
+    }
+
+    private fun renderBoundStaticInvocation(
+        binding: KotlinProjectionStaticMemberBinding,
+    ): CodeBlock? {
+        val callPlan = buildAbiCallPlan(binding.returnBinding, binding.parameterBindings) ?: return null
+        return renderInlineAbiInvocation(
+            invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
+            slotExpression = binding.bindingName,
             callPlan = callPlan,
         )
     }
 
     private fun buildAbiCallPlan(
         binding: KotlinProjectionInstanceMemberBinding,
+    ): KotlinProjectionAbiCallPlan? =
+        buildAbiCallPlan(binding.returnBinding, binding.parameterBindings)
+
+    private fun buildAbiCallPlan(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
     ): KotlinProjectionAbiCallPlan? {
-        val parameterMarshalers = binding.parameterBindings.map { parameterBinding ->
+        val parameterMarshalers = parameterBindings.map { parameterBinding ->
             buildAbiParameterMarshaler(parameterBinding) ?: return null
         }
-        val returnMarshaler = when (binding.returnBinding.kind) {
+        val returnMarshaler = when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit -> null
-            else -> buildAbiReturnMarshaler(binding.returnBinding) ?: return null
+            else -> buildAbiReturnMarshaler(returnBinding) ?: return null
         }
-        return KotlinProjectionAbiCallPlan(
-            parameterMarshalers = parameterMarshalers,
-            returnMarshaler = returnMarshaler,
-        )
+        return KotlinProjectionAbiCallPlan(parameterMarshalers = parameterMarshalers, returnMarshaler = returnMarshaler)
     }
 
     private fun buildAbiParameterMarshaler(
@@ -1023,6 +1169,14 @@ class KotlinProjectionRenderer {
                 abiLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
                 invokeDescriptorLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
                 abiArgumentExpression = CodeBlock.of("%L.toInt()", parameterName),
+            )
+            KotlinProjectionAbiValueKind.Int32 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
+                invokeDescriptorLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
+                abiArgumentExpression = CodeBlock.of("%L", parameterName),
             )
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> KotlinProjectionAbiMarshalerPlan(
@@ -1114,7 +1268,7 @@ class KotlinProjectionRenderer {
     }
 
     private fun renderInlineAbiInvocation(
-        ownerCachePropertyName: String,
+        invokeTargetExpression: String,
         slotExpression: String,
         callPlan: KotlinProjectionAbiCallPlan,
     ): CodeBlock? {
@@ -1130,7 +1284,7 @@ class KotlinProjectionRenderer {
             code.indent()
             code.addStatement("val __resultOut = __arena.allocate(%L)", resultMarshaler.abiLayout)
         }
-        code.add("val __hr = %L.invokeAbi(\n", ownerCachePropertyName)
+        code.add("val __hr = %L.invokeAbi(\n", invokeTargetExpression)
         code.indent()
         code.add("slot = %L,\n", slotExpression)
         code.add("descriptor = %T.of(\n", FUNCTION_DESCRIPTOR_CLASS_NAME)
@@ -1204,13 +1358,57 @@ class KotlinProjectionRenderer {
         TypeSpec.companionObjectBuilder("Metadata")
             .apply {
                 appendMetadataCompanionMembers(this, plan)
-                staticMethods.forEach { addFunction(renderStubMethod(it)) }
-                staticProperties.forEach { addProperty(renderStubProperty(it)) }
+                staticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
+                staticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(it)) }
                 staticEvents.forEach { event ->
                     renderEventFunctions(event, abstract = false).forEach(::addFunction)
                 }
             }
             .build()
+
+    private fun renderBoundStaticMethod(
+        plan: KotlinTypeProjectionPlan,
+        method: WinRtMethodDefinition,
+    ): FunSpec? {
+        val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == "STATIC_${method.name.uppercase()}_SLOT" } ?: return null
+        val invocation = renderBoundStaticInvocation(binding) ?: return null
+        return FunSpec.builder(method.name)
+            .returns(resolveTypeName(method.returnTypeName))
+            .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+            .addCode("%L\n", invocation)
+            .build()
+    }
+
+    private fun renderBoundStaticProperty(
+        plan: KotlinTypeProjectionPlan,
+        property: WinRtPropertyDefinition,
+    ): PropertySpec? {
+        val builder = PropertySpec.builder(
+            property.name.replaceFirstChar(Char::lowercase),
+            resolveTypeName(property.typeName),
+        ).mutable(!property.isReadOnly)
+        val getterBinding = plan.staticMemberBindings.firstOrNull {
+            it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
+        } ?: return null
+        val getterInvocation = renderBoundStaticInvocation(getterBinding) ?: return null
+        builder.getter(
+            FunSpec.getterBuilder()
+                .addCode("%L\n", getterInvocation)
+                .build(),
+        )
+        if (!property.isReadOnly) {
+            val setterBinding = plan.staticMemberBindings.firstOrNull {
+                it.bindingName == "STATIC_${property.name.uppercase()}_SETTER_SLOT"
+            }
+            builder.setter(
+                FunSpec.setterBuilder()
+                    .addParameter("value", resolveTypeName(property.typeName))
+                    .addCode("%L\n", setterBinding?.let(::renderBoundStaticInvocation) ?: CodeBlock.of("error(%S)", "Not yet bound to winrt-runtime"))
+                    .build(),
+            )
+        }
+        return builder.build()
+    }
 
     private fun appendCompanionShells(
         builder: TypeSpec.Builder,
@@ -1287,31 +1485,48 @@ class KotlinProjectionRenderer {
             TypeSpec.objectBuilder("StaticInterfaces")
                 .apply {
                     plan.staticInterfaceBindings.forEach { binding ->
+                        val interfaceConstantName = binding.qualifiedName.substringAfterLast('.').uppercase()
+                        val ownerAccessorName = binding.qualifiedName.substringAfterLast('.').replaceFirstChar(Char::lowercase)
+                        val ownerCachePropertyName = "_$ownerAccessorName"
                         addProperty(
-                            PropertySpec.builder(binding.qualifiedName.substringAfterLast('.').uppercase(), String::class)
+                            PropertySpec.builder(interfaceConstantName, String::class)
                                 .addModifiers(KModifier.CONST)
                                 .initializer("%S", binding.qualifiedName)
                                 .build(),
                         )
                         binding.iid?.let { iid ->
                             addProperty(
-                                PropertySpec.builder("${binding.qualifiedName.substringAfterLast('.').uppercase()}_IID", GUID_CLASS_NAME)
+                                PropertySpec.builder("${interfaceConstantName}_IID", GUID_CLASS_NAME)
                                     .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
-                                .build(),
+                                    .build(),
+                            )
+                            addProperty(
+                                PropertySpec.builder(ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
+                                    .addModifiers(KModifier.PRIVATE)
+                                    .delegate(
+                                        CodeBlock.of(
+                                            "lazy(%T.PUBLICATION) { %T.get(Metadata.TYPE_NAME, %L_IID) }",
+                                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                                            ACTIVATION_FACTORY_CLASS_NAME,
+                                            interfaceConstantName,
+                                        ),
+                                    )
+                                    .build(),
                             )
                         }
                     }
                     plan.staticInterfaceBindings
                         .filter { it.iid != null }
                         .forEach { binding ->
+                            val interfaceConstantName = binding.qualifiedName.substringAfterLast('.').uppercase()
+                            val ownerAccessorName = binding.qualifiedName.substringAfterLast('.').replaceFirstChar(Char::lowercase)
                             addFunction(
-                                FunSpec.builder(binding.qualifiedName.substringAfterLast('.').replaceFirstChar(Char::lowercase))
+                                FunSpec.builder(ownerAccessorName)
                                     .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
                                     .addCode(
                                         CodeBlock.of(
-                                            "return %T.get(Metadata.TYPE_NAME, %L_IID)\n",
-                                            ACTIVATION_FACTORY_CLASS_NAME,
-                                            binding.qualifiedName.substringAfterLast('.').uppercase(),
+                                            "return _%L\n",
+                                            ownerAccessorName,
                                         ),
                                     )
                                     .build(),
@@ -1498,6 +1713,32 @@ class KotlinProjectionRenderer {
                 PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
                     .addModifiers(KModifier.INTERNAL, KModifier.CONST)
                     .initializer("%S", binding.ownerInterfaceQualifiedName)
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder("${binding.bindingName}_OWNER_CACHE", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", binding.ownerCachePropertyName)
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder(binding.bindingName, Int::class)
+                    .addModifiers(KModifier.INTERNAL)
+                    .initializer("%T.Metadata.%L", resolveTypeName(binding.slotInterfaceQualifiedName), binding.slotConstantName)
+                    .build(),
+            )
+        }
+        plan.staticMemberBindings.forEach { binding ->
+            builder.addProperty(
+                PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", binding.ownerInterfaceQualifiedName)
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder("${binding.bindingName}_OWNER_ACCESSOR", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", binding.ownerAccessorName)
                     .build(),
             )
             builder.addProperty(
