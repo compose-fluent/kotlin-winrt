@@ -9,19 +9,58 @@ import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.runtime.Guid
 import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
+import java.net.URI
+import java.time.Duration
+import java.time.OffsetDateTime
+import java.util.concurrent.CompletableFuture
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 private val GUID_CLASS_NAME = Guid::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
+private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
+private val URI_CLASS_NAME = URI::class.asClassName()
+private val OFFSET_DATE_TIME_CLASS_NAME = OffsetDateTime::class.asClassName()
+private val DURATION_CLASS_NAME = Duration::class.asClassName()
+private val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
+private val MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "MutableList")
+private val MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "MutableMap")
+
+private typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
+
+private val SPECIAL_TYPE_MAPPINGS: Map<String, SpecialTypeResolver> = mapOf(
+    "System.Object" to { ANY },
+    "WinRT.Interop.HWND" to { Long::class.asClassName() },
+    "Windows.Foundation.DateTime" to { OFFSET_DATE_TIME_CLASS_NAME },
+    "Windows.Foundation.TimeSpan" to { DURATION_CLASS_NAME },
+    "Windows.Foundation.Uri" to { URI_CLASS_NAME },
+    "Windows.Foundation.IClosable" to { AUTO_CLOSEABLE_CLASS_NAME },
+    "Windows.Foundation.IReference" to { arguments -> arguments.single().copy(nullable = true) },
+    "Windows.Foundation.Collections.IIterable" to { arguments -> Iterable::class.asClassName().parameterizedBy(arguments) },
+    "Windows.Foundation.Collections.IIterator" to { arguments -> Iterator::class.asClassName().parameterizedBy(arguments) },
+    "Windows.Foundation.Collections.IVectorView" to { arguments -> List::class.asClassName().parameterizedBy(arguments) },
+    "Windows.Foundation.Collections.IVector" to { arguments -> MUTABLE_LIST_CLASS_NAME.parameterizedBy(arguments) },
+    "Windows.Foundation.Collections.IMapView" to { arguments -> Map::class.asClassName().parameterizedBy(arguments) },
+    "Windows.Foundation.Collections.IMap" to { arguments -> MUTABLE_MAP_CLASS_NAME.parameterizedBy(arguments) },
+    "Windows.Foundation.Collections.IKeyValuePair" to { arguments -> Map.Entry::class.asClassName().parameterizedBy(arguments) },
+    "Windows.Foundation.IAsyncAction" to { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) },
+    "Windows.Foundation.IAsyncActionWithProgress" to { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) },
+    "Windows.Foundation.IAsyncOperation" to { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.single()) },
+    "Windows.Foundation.IAsyncOperationWithProgress" to { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.first()) },
+    "Microsoft.UI.Xaml.Interop.IBindableIterable" to { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
+    "Microsoft.UI.Xaml.Interop.IBindableVector" to { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
+)
 
 enum class KotlinProjectionDeclarationKind {
     Interface,
@@ -239,7 +278,7 @@ class KotlinProjectionRenderer {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
         plan.type.implementedInterfaces.forEach { implemented ->
-            builder.addSuperinterface(projectionClassName(implemented.interfaceName))
+            builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
         plan.type.methods.forEach { builder.addFunction(renderInterfaceMethod(it)) }
         plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderInterfaceProperty(it)) }
@@ -259,12 +298,12 @@ class KotlinProjectionRenderer {
     private fun renderRuntimeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
-        plan.defaultInterfaceName?.substringAfterLast('.')?.let { defaultInterface ->
-            builder.addSuperinterface(projectionClassName(plan.defaultInterfaceName))
+        plan.defaultInterfaceName?.let { defaultInterfaceName ->
+            builder.addSuperinterface(resolveTypeName(defaultInterfaceName))
         }
         plan.type.implementedInterfaces
             .filterNot { it.isDefault }
-            .forEach { implemented -> builder.addSuperinterface(projectionClassName(implemented.interfaceName)) }
+            .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
         plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderStubMethod(it)) }
         plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderStubProperty(it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
@@ -526,18 +565,60 @@ class KotlinProjectionRenderer {
         }
     }
 
-    private fun resolveTypeName(typeName: String) = when (typeName) {
-        "Unit" -> UNIT
-        "String" -> String::class.asClassName()
-        "Int" -> Int::class.asClassName()
-        "Boolean" -> Boolean::class.asClassName()
-        "Byte" -> Byte::class.asClassName()
-        "Short" -> Short::class.asClassName()
-        "Long" -> Long::class.asClassName()
-        "Float" -> Float::class.asClassName()
-        "Double" -> Double::class.asClassName()
-        "Char" -> Char::class.asClassName()
-        else -> if ('.' in typeName) projectionClassName(typeName) else ClassName.bestGuess(typeName)
+    private fun resolveTypeName(typeName: String): TypeName {
+        val trimmed = typeName.trim()
+        val genericStart = trimmed.indexOf('<')
+        if (genericStart >= 0 && trimmed.endsWith('>')) {
+            val rawType = trimmed.substring(0, genericStart)
+            val arguments = splitGenericArguments(trimmed.substring(genericStart + 1, trimmed.length - 1))
+                .map(::resolveTypeName)
+            SPECIAL_TYPE_MAPPINGS[rawType]?.let { resolver ->
+                return resolver(arguments)
+            }
+            val rawClassName = if ('.' in rawType) projectionClassName(rawType) else ClassName.bestGuess(rawType)
+            return rawClassName.parameterizedBy(arguments)
+        }
+
+        SPECIAL_TYPE_MAPPINGS[trimmed]?.let { resolver ->
+            return resolver(emptyList())
+        }
+
+        return when (trimmed) {
+            "Unit" -> UNIT
+            "String" -> String::class.asClassName()
+            "Int" -> Int::class.asClassName()
+            "UInt" -> UInt::class.asClassName()
+            "Boolean" -> Boolean::class.asClassName()
+            "Byte" -> Byte::class.asClassName()
+            "Short" -> Short::class.asClassName()
+            "UShort" -> UShort::class.asClassName()
+            "Long" -> Long::class.asClassName()
+            "Float" -> Float::class.asClassName()
+            "Double" -> Double::class.asClassName()
+            "Char" -> Char::class.asClassName()
+            else -> if ('.' in trimmed) projectionClassName(trimmed) else ClassName.bestGuess(trimmed)
+        }
+    }
+
+    private fun splitGenericArguments(arguments: String): List<String> {
+        if (arguments.isBlank()) {
+            return emptyList()
+        }
+        val result = mutableListOf<String>()
+        var depth = 0
+        var start = 0
+        arguments.forEachIndexed { index, character ->
+            when (character) {
+                '<' -> depth += 1
+                '>' -> depth -= 1
+                ',' -> if (depth == 0) {
+                    result += arguments.substring(start, index).trim()
+                    start = index + 1
+                }
+            }
+        }
+        result += arguments.substring(start).trim()
+        return result.filter(String::isNotEmpty)
     }
 
     private fun projectionClassName(qualifiedName: String?): ClassName {

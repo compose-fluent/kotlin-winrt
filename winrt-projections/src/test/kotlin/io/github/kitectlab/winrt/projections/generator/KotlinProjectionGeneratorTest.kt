@@ -86,6 +86,7 @@ class KotlinProjectionGeneratorTest {
         )
 
         val file = KotlinProjectionGenerator().generate(model).single()
+        println(file.contents)
 
         assertEquals("io/github/kitectlab/winrt/projections/windows/data/json/JsonObject.kt", file.relativePath)
         assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
@@ -483,6 +484,7 @@ class KotlinProjectionGeneratorTest {
         )
 
         val file = KotlinProjectionGenerator().generate(model).single()
+        println(file.contents)
 
         assertTrue(
             file.contents.contains("public sealed class WidgetAttribute : Annotation") ||
@@ -635,6 +637,115 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
+    }
+
+    @Test
+    fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetCollection",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("12345678-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IIterable<String>",
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "asReadOnly",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<String>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "asMap",
+                                    returnTypeName = "Windows.Foundation.Collections.IMap<String, Int>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "refreshAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncAction",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "fetchAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperation<String>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "SourceUri",
+                                    typeName = "Windows.Foundation.Uri",
+                                    getterMethodName = "get_SourceUri",
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "Selection",
+                                    typeName = "Windows.Foundation.IReference<Int>",
+                                    getterMethodName = "get_Selection",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val file = KotlinProjectionGenerator().generate(model).single()
+
+        assertTrue(file.contents, file.contents.contains("import java.net.URI"))
+        assertTrue(file.contents, file.contents.contains("import java.util.concurrent.CompletableFuture"))
+        assertTrue(file.contents, file.contents.contains("public interface IWidgetCollection : Iterable<String>"))
+        assertTrue(file.contents, file.contents.contains("public fun asReadOnly(): List<String>"))
+        assertTrue(file.contents, file.contents.contains("public fun asMap(): MutableMap<String, Int>"))
+        assertTrue(file.contents, file.contents.contains("public fun refreshAsync(): CompletableFuture<Unit>"))
+        assertTrue(file.contents, file.contents.contains("public fun fetchAsync(): CompletableFuture<String>"))
+        assertTrue(file.contents, file.contents.contains("public val sourceUri: URI"))
+        assertTrue(file.contents, file.contents.contains("public val selection: Int?"))
+    }
+
+    @Test
+    fun generator_applies_winui_bindable_collection_mappings() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IBindableItemsView",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("87654321-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Xaml.Interop.IBindableIterable",
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "snapshot",
+                                    returnTypeName = "Microsoft.UI.Xaml.Interop.IBindableVector",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Items",
+                                    typeName = "Microsoft.UI.Xaml.Interop.IBindableVector",
+                                    getterMethodName = "get_Items",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val file = KotlinProjectionGenerator().generate(model).single()
+
+        assertTrue(file.contents, file.contents.contains("public interface IBindableItemsView : Iterable<Any?>"))
+        assertTrue(file.contents, file.contents.contains("public fun snapshot(): MutableList<Any?>"))
+        assertTrue(file.contents, file.contents.contains("public val items: MutableList<Any?>"))
     }
 
     @Test
