@@ -1,4 +1,0 @@
-interface:
-  display_name: "CsWinRT Reference"
-  short_description: "Use CsWinRT for WinMD and projection behavior"
-  default_prompt: "Use $cswinrt-reference to align kotlin-winrt metadata ingestion, projection generation, and runtime behavior with Microsoft CsWinRT."
