@@ -415,7 +415,7 @@ open class WinRtVectorReference(
         invokeUnitMethodWithUInt32ObjectArg(slot, index, value)
     }
 
-    override fun invokeUnitMethodWithUInt32Arg(slot: Int, value: UInt) {
+    protected fun invokeUnitMethodWithUInt32Arg(slot: Int, value: UInt) {
         invokeUnitMethodWithUInt32(slot, value)
     }
 

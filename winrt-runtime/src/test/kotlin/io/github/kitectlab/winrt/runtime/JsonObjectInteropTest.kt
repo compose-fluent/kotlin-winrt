@@ -17,9 +17,9 @@ class JsonObjectInteropTest {
                 interfaceId = iidIJsonObjectStatics,
             ).getOrThrow()
             try {
-                val instance = statics.invokeObjectMethodWithStringArg(6, """{"name":"codex","kind":"winrt"}""")
+                val instance = WinRtAbiMarshalers.invokeObjectWithStringArg(statics, 6, """{"name":"codex","kind":"winrt"}""")
                 try {
-                    val parsedName = instance.invokeHStringMethodWithStringArg(10, "name").use { it.toKString() }
+                    val parsedName = WinRtAbiMarshalers.invokeStringWithStringArg(instance, 10, "name").use { it.toKString() }
                     val runtimeClass = instance.asInspectable().use { it.getRuntimeClassName() }
                     assertEquals("codex", parsedName)
                     assertEquals("Windows.Data.Json.JsonObject", runtimeClass)

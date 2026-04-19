@@ -28,7 +28,7 @@ class WinUiXamlMetadataProviderReference(
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
 ) : IUnknownReference(pointer, interfaceId) {
     fun getXamlTypeByFullName(fullName: String): WinUiXamlTypeReference =
-        invokeObjectMethodWithStringArg(WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName, fullName)
+        WinRtAbiMarshalers.invokeObjectWithStringArg(this, WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName, fullName)
             .let { reference ->
                 try {
                     WinUiXamlTypeReference(reference.getRef(), WinUiXamlInterfaceIds.IXamlType)

@@ -11,6 +11,7 @@ import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
+import io.github.kitectlab.winrt.runtime.WinRtAbiMarshalers
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -36,6 +37,7 @@ private val GUID_CLASS_NAME = Guid::class.asClassName()
 private val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
 private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 private val IINSPECTABLE_REFERENCE_CLASS_NAME = IInspectableReference::class.asClassName()
+private val ABI_MARSHALERS_CLASS_NAME = WinRtAbiMarshalers::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
 private val URI_CLASS_NAME = URI::class.asClassName()
@@ -955,17 +957,17 @@ class KotlinProjectionRenderer {
     ): CodeBlock? {
         return when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%L.invokeUnitMethod(%L)", ownerCachePropertyName, slotExpression)
+                CodeBlock.of("%T.invokeUnit(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
             KotlinProjectionAbiValueKind.String ->
-                CodeBlock.of("return %L.invokeHStringMethod(%L).toKString()", ownerCachePropertyName, slotExpression)
+                CodeBlock.of("return %T.invokeString(%L, %L).toKString()", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
             KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %L.invokeBooleanMethod(%L)", ownerCachePropertyName, slotExpression)
+                CodeBlock.of("return %T.invokeBoolean(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
             KotlinProjectionAbiValueKind.Int32 ->
-                CodeBlock.of("return %L.invokeInt32Method(%L)", ownerCachePropertyName, slotExpression)
+                CodeBlock.of("return %T.invokeInt32(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
             KotlinProjectionAbiValueKind.UInt32 ->
-                CodeBlock.of("return %L.invokeUInt32Method(%L)", ownerCachePropertyName, slotExpression)
+                CodeBlock.of("return %T.invokeUInt32(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
             KotlinProjectionAbiValueKind.Double ->
-                CodeBlock.of("return %L.invokeDoubleMethod(%L)", ownerCachePropertyName, slotExpression)
+                CodeBlock.of("return %T.invokeDouble(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression)
             else -> renderBoundObjectInvocation(ownerCachePropertyName, slotExpression, returnBinding)
         }
     }
@@ -1020,18 +1022,18 @@ class KotlinProjectionRenderer {
     ): CodeBlock? =
         when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%L.invokeUnitMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("%T.invokeUnitWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.String ->
-                CodeBlock.of("return %L.invokeHStringMethodWithStringArg(%L, %L).toKString()", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("return %T.invokeStringWithStringArg(%L, %L, %L).toKString()", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %L.invokeBooleanMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("return %T.invokeBooleanWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.Double ->
-                CodeBlock.of("return %L.invokeDoubleMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("return %T.invokeDoubleWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.ProjectedObject,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
                 returnBinding = returnBinding,
-                call = CodeBlock.of("%L.invokeObjectMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+                call = CodeBlock.of("%T.invokeObjectWithStringArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
             )
             else -> null
         }
@@ -1044,12 +1046,12 @@ class KotlinProjectionRenderer {
     ): CodeBlock? =
         when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%L.invokeUnitMethodWithBooleanArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("%T.invokeUnitWithBooleanArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.ProjectedObject,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
                 returnBinding = returnBinding,
-                call = CodeBlock.of("%L.invokeObjectMethodWithBooleanArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+                call = CodeBlock.of("%T.invokeObjectWithBooleanArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
             )
             else -> null
         }
@@ -1062,12 +1064,12 @@ class KotlinProjectionRenderer {
     ): CodeBlock? =
         when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%L.invokeUnitMethodWithDoubleArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("%T.invokeUnitWithDoubleArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.ProjectedObject,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
                 returnBinding = returnBinding,
-                call = CodeBlock.of("%L.invokeObjectMethodWithDoubleArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+                call = CodeBlock.of("%T.invokeObjectWithDoubleArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
             )
             else -> null
         }
@@ -1080,18 +1082,18 @@ class KotlinProjectionRenderer {
     ): CodeBlock? =
         when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%L.invokeUnitMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("%T.invokeUnitWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.String ->
-                CodeBlock.of("return %L.invokeHStringMethodWithUInt32Arg(%L, %L).toKString()", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("return %T.invokeStringWithUInt32Arg(%L, %L, %L).toKString()", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %L.invokeBooleanMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("return %T.invokeBooleanWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.Double ->
-                CodeBlock.of("return %L.invokeDoubleMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+                CodeBlock.of("return %T.invokeDoubleWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName)
             KotlinProjectionAbiValueKind.ProjectedObject,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
                 returnBinding = returnBinding,
-                call = CodeBlock.of("%L.invokeObjectMethodWithUInt32Arg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+                call = CodeBlock.of("%T.invokeObjectWithUInt32Arg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterName),
             )
             else -> null
         }
@@ -1104,14 +1106,14 @@ class KotlinProjectionRenderer {
     ): CodeBlock? {
         return when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit ->
-                CodeBlock.of("%L.invokeUnitMethodWithObjectArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterBinding.name)
+                CodeBlock.of("%T.invokeUnitWithObjectArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterBinding.name)
             KotlinProjectionAbiValueKind.Boolean ->
-                CodeBlock.of("return %L.invokeBooleanMethodWithObjectArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterBinding.name)
+                CodeBlock.of("return %T.invokeBooleanWithObjectArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterBinding.name)
             KotlinProjectionAbiValueKind.ProjectedObject,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
                 returnBinding = returnBinding,
-                call = CodeBlock.of("%L.invokeObjectMethodWithObjectArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterBinding.name),
+                call = CodeBlock.of("%T.invokeObjectWithObjectArg(%L, %L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression, parameterBinding.name),
             )
             else -> null
         }
@@ -1124,7 +1126,7 @@ class KotlinProjectionRenderer {
     ): CodeBlock? =
         renderBoundObjectInvocationWithCall(
             returnBinding = returnBinding,
-            call = CodeBlock.of("%L.invokeObjectMethod(%L)", ownerCachePropertyName, slotExpression),
+            call = CodeBlock.of("%T.invokeObject(%L, %L)", ABI_MARSHALERS_CLASS_NAME, ownerCachePropertyName, slotExpression),
         )
 
     private fun renderBoundObjectInvocationWithCall(
