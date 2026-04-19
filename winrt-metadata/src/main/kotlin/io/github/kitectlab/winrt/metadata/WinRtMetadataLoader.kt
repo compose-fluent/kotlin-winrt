@@ -215,12 +215,20 @@ private class MetadataTables private constructor(
 ) {
     fun toTypeDefinitions(): List<WinRtTypeDefinition> {
         val typeDefs = readRawTypeDefs()
+        val rawMethods = readRawMethodDefs()
+        val rawParams = readRawParams()
         val typeRefNames = readTypeRefQualifiedNames()
         val typeDefNames = typeDefs.map { raw -> raw.qualifiedName }.toTypedArray()
         val methodOwnerTypeNames = buildMethodOwnerTypeNames(typeDefs, typeDefNames)
         val memberRefOwnerTypeNames = readMemberRefOwnerTypeNames(typeDefNames, typeRefNames, methodOwnerTypeNames)
         val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefOwnerTypeNames)
         val interfaceImplsByOwner = readInterfaceImplementations(typeDefNames, typeRefNames, customAttributes)
+        val propertyRowIdsByOwner = readMemberMap(TABLE_PROPERTY_MAP, TABLE_PROPERTY)
+        val eventRowIdsByOwner = readMemberMap(TABLE_EVENT_MAP, TABLE_EVENT)
+        val rawProperties = readRawProperties()
+        val rawEvents = readRawEvents(typeDefNames, typeRefNames)
+        val methodSemantics = readMethodSemantics()
+        val parameterRowsByMethod = buildParameterRowsByMethod(rawMethods, rawParams)
 
         return typeDefs
             .mapIndexedNotNull { index, raw ->
@@ -241,6 +249,33 @@ private class MetadataTables private constructor(
                     implementedInterfaces = implementedInterfaces,
                     genericParameterCount = raw.genericParameterCount,
                     activation = extractActivationShape(typeAttributes),
+                    methods = readMethodDefinitions(
+                        typeIndex = index,
+                        typeDefs = typeDefs,
+                        rawMethods = rawMethods,
+                        parameterRowsByMethod = parameterRowsByMethod,
+                        typeDefNames = typeDefNames,
+                        typeRefNames = typeRefNames,
+                        semanticMethodRowIds = methodSemantics.semanticMethodRowIds,
+                    ),
+                    properties = propertyRowIdsByOwner[rowId].orEmpty().mapNotNull { propertyRowId ->
+                        buildPropertyDefinition(
+                            propertyRowId = propertyRowId,
+                            rawProperties = rawProperties,
+                            propertyAccessors = methodSemantics.propertyAccessorsByPropertyRowId,
+                            rawMethods = rawMethods,
+                            typeDefNames = typeDefNames,
+                            typeRefNames = typeRefNames,
+                        )
+                    },
+                    events = eventRowIdsByOwner[rowId].orEmpty().mapNotNull { eventRowId ->
+                        buildEventDefinition(
+                            eventRowId = eventRowId,
+                            rawEvents = rawEvents,
+                            eventAccessors = methodSemantics.eventAccessorsByEventRowId,
+                            rawMethods = rawMethods,
+                        )
+                    },
                 )
             }
     }
@@ -289,6 +324,231 @@ private class MetadataTables private constructor(
             rows += RawTypeDef(flags, namespace, name, genericParameterCount, extendsToken, fieldListStart, methodListStart)
         }
         return rows
+    }
+
+    private fun readRawMethodDefs(): List<RawMethodDef> {
+        val rowCount = rowCounts[TABLE_METHOD_DEF]
+        if (rowCount == 0) {
+            return emptyList()
+        }
+
+        val rows = ArrayList<RawMethodDef>(rowCount)
+        var cursor = tableOffsets[TABLE_METHOD_DEF]
+        repeat(rowCount) {
+            cursor += 4
+            cursor += 2
+            val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val name = readStringAt(cursor)
+            cursor += stringIndexSize
+            val signatureBlobIndex = readIndex(cursor, blobIndexSize)
+            cursor += blobIndexSize
+            val paramListStart = readIndex(cursor, simpleIndexSize(TABLE_PARAM))
+            cursor += simpleIndexSize(TABLE_PARAM)
+            rows += RawMethodDef(flags, name, signatureBlobIndex, paramListStart)
+        }
+        return rows
+    }
+
+    private fun readRawParams(): List<RawParam> {
+        val rowCount = rowCounts[TABLE_PARAM]
+        if (rowCount == 0) {
+            return emptyList()
+        }
+
+        val rows = ArrayList<RawParam>(rowCount)
+        var cursor = tableOffsets[TABLE_PARAM]
+        repeat(rowCount) {
+            val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val sequence = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val name = readStringAt(cursor)
+            cursor += stringIndexSize
+            rows += RawParam(flags, sequence, name)
+        }
+        return rows
+    }
+
+    private fun readRawProperties(): List<RawProperty> {
+        val rowCount = rowCounts[TABLE_PROPERTY]
+        if (rowCount == 0) {
+            return emptyList()
+        }
+
+        val rows = ArrayList<RawProperty>(rowCount)
+        var cursor = tableOffsets[TABLE_PROPERTY]
+        repeat(rowCount) {
+            cursor += 2
+            val name = readStringAt(cursor)
+            cursor += stringIndexSize
+            val signatureBlobIndex = readIndex(cursor, blobIndexSize)
+            cursor += blobIndexSize
+            rows += RawProperty(name, signatureBlobIndex)
+        }
+        return rows
+    }
+
+    private fun readRawEvents(
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+    ): List<RawEvent> {
+        val rowCount = rowCounts[TABLE_EVENT]
+        if (rowCount == 0) {
+            return emptyList()
+        }
+
+        val rows = ArrayList<RawEvent>(rowCount)
+        var cursor = tableOffsets[TABLE_EVENT]
+        repeat(rowCount) {
+            cursor += 2
+            val name = readStringAt(cursor)
+            cursor += stringIndexSize
+            val eventTypeToken = readIndex(cursor, codedIndexSize(CODED_TYPE_DEF_OR_REF))
+            cursor += codedIndexSize(CODED_TYPE_DEF_OR_REF)
+            rows += RawEvent(
+                name = name,
+                delegateTypeName = normalizeSignatureTypeName(
+                    decodeTypeDefOrRefQualifiedName(eventTypeToken, typeDefNames, typeRefNames),
+                ),
+            )
+        }
+        return rows
+    }
+
+    private fun readMemberMap(mapTableId: Int, memberTableId: Int): Map<Int, List<Int>> {
+        val rowCount = rowCounts[mapTableId]
+        val memberRowCount = rowCounts[memberTableId]
+        if (rowCount == 0 || memberRowCount == 0) {
+            return emptyMap()
+        }
+
+        val owners = ArrayList<Pair<Int, Int>>(rowCount)
+        var cursor = tableOffsets[mapTableId]
+        repeat(rowCount) {
+            val ownerRowId = readIndex(cursor, simpleIndexSize(TABLE_TYPE_DEF))
+            cursor += simpleIndexSize(TABLE_TYPE_DEF)
+            val memberListStart = readIndex(cursor, simpleIndexSize(memberTableId))
+            cursor += simpleIndexSize(memberTableId)
+            owners += ownerRowId to memberListStart
+        }
+
+        return owners.mapIndexedNotNull { index, (ownerRowId, start) ->
+            if (start <= 0) {
+                return@mapIndexedNotNull null
+            }
+            val endExclusive = owners.getOrNull(index + 1)?.second ?: (memberRowCount + 1)
+            ownerRowId to (start until endExclusive).toList()
+        }.toMap()
+    }
+
+    private fun readMethodDefinitions(
+        typeIndex: Int,
+        typeDefs: List<RawTypeDef>,
+        rawMethods: List<RawMethodDef>,
+        parameterRowsByMethod: Map<Int, List<RawParam>>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+        semanticMethodRowIds: Set<Int>,
+    ): List<WinRtMethodDefinition> {
+        if (rawMethods.isEmpty()) {
+            return emptyList()
+        }
+
+        val typeDef = typeDefs[typeIndex]
+        val start = typeDef.methodListStart.coerceAtLeast(1)
+        val endExclusive = (typeDefs.getOrNull(typeIndex + 1)?.methodListStart ?: (rawMethods.size + 1)).coerceAtMost(rawMethods.size + 1)
+        if (start >= endExclusive) {
+            return emptyList()
+        }
+
+        return (start until endExclusive)
+            .filterNot { it in semanticMethodRowIds }
+            .mapNotNull { methodRowId ->
+                val rawMethod = rawMethods.getOrNull(methodRowId - 1) ?: return@mapNotNull null
+                if (rawMethod.name == ".ctor" || rawMethod.name == ".cctor") {
+                    return@mapNotNull null
+                }
+                val signature = readMethodSignature(rawMethod.signatureBlobIndex, typeDefNames, typeRefNames)
+                WinRtMethodDefinition(
+                    name = rawMethod.name,
+                    returnTypeName = signature.returnType.typeName,
+                    parameters = signature.parameters.mapIndexed { parameterIndex, parameterType ->
+                        val parameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == parameterIndex + 1 }
+                        WinRtParameterDefinition(
+                            name = parameterRow?.name?.takeIf(String::isNotBlank) ?: "arg${parameterIndex + 1}",
+                            typeName = parameterType.typeName,
+                            direction = parameterDirectionFor(parameterRow, parameterType.isByRef),
+                        )
+                    },
+                    isStatic = rawMethod.flags and METHOD_ATTRIBUTE_STATIC != 0,
+                )
+            }
+    }
+
+    private fun buildPropertyDefinition(
+        propertyRowId: Int,
+        rawProperties: List<RawProperty>,
+        propertyAccessors: Map<Int, PropertyAccessorRows>,
+        rawMethods: List<RawMethodDef>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+    ): WinRtPropertyDefinition? {
+        val rawProperty = rawProperties.getOrNull(propertyRowId - 1) ?: return null
+        val accessors = propertyAccessors[propertyRowId] ?: PropertyAccessorRows()
+        val getter = accessors.getterMethodRowId?.let { rawMethods.getOrNull(it - 1) }
+        val setter = accessors.setterMethodRowId?.let { rawMethods.getOrNull(it - 1) }
+        val signature = readPropertySignature(rawProperty.signatureBlobIndex, typeDefNames, typeRefNames)
+        return WinRtPropertyDefinition(
+            name = rawProperty.name,
+            typeName = signature.type.typeName,
+            isStatic = listOfNotNull(getter, setter).any { it.flags and METHOD_ATTRIBUTE_STATIC != 0 },
+            getterMethodName = getter?.name,
+            setterMethodName = setter?.name,
+        )
+    }
+
+    private fun buildEventDefinition(
+        eventRowId: Int,
+        rawEvents: List<RawEvent>,
+        eventAccessors: Map<Int, EventAccessorRows>,
+        rawMethods: List<RawMethodDef>,
+    ): WinRtEventDefinition? {
+        val rawEvent = rawEvents.getOrNull(eventRowId - 1) ?: return null
+        val accessors = eventAccessors[eventRowId] ?: EventAccessorRows()
+        val addMethod = accessors.addMethodRowId?.let { rawMethods.getOrNull(it - 1) }
+        val removeMethod = accessors.removeMethodRowId?.let { rawMethods.getOrNull(it - 1) }
+        return WinRtEventDefinition(
+            name = rawEvent.name,
+            delegateTypeName = rawEvent.delegateTypeName,
+            isStatic = listOfNotNull(addMethod, removeMethod).any { it.flags and METHOD_ATTRIBUTE_STATIC != 0 },
+            addMethodName = addMethod?.name,
+            removeMethodName = removeMethod?.name,
+        )
+    }
+
+    private fun buildParameterRowsByMethod(
+        rawMethods: List<RawMethodDef>,
+        rawParams: List<RawParam>,
+    ): Map<Int, List<RawParam>> {
+        if (rawMethods.isEmpty() || rawParams.isEmpty()) {
+            return emptyMap()
+        }
+
+        return buildMap(rawMethods.size) {
+            rawMethods.forEachIndexed { index, rawMethod ->
+                val start = rawMethod.paramListStart.coerceAtLeast(1)
+                val endExclusive = (rawMethods.getOrNull(index + 1)?.paramListStart ?: (rawParams.size + 1)).coerceAtMost(rawParams.size + 1)
+                if (start >= endExclusive) {
+                    return@forEachIndexed
+                }
+                put(
+                    index + 1,
+                    rawParams.subList(start - 1, endExclusive - 1)
+                        .sortedBy(RawParam::sequence),
+                )
+            }
+        }
     }
 
     private fun readInterfaceImplementations(
@@ -408,6 +668,55 @@ private class MetadataTables private constructor(
         return owners
     }
 
+    private fun readMethodSemantics(): MethodSemanticsData {
+        val rowCount = rowCounts[TABLE_METHOD_SEMANTICS]
+        if (rowCount == 0) {
+            return MethodSemanticsData()
+        }
+
+        var cursor = tableOffsets[TABLE_METHOD_SEMANTICS]
+        val propertyAccessors = mutableMapOf<Int, PropertyAccessorRows>()
+        val eventAccessors = mutableMapOf<Int, EventAccessorRows>()
+        val semanticMethodRowIds = mutableSetOf<Int>()
+        repeat(rowCount) {
+            val semantics = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val methodRowId = readIndex(cursor, simpleIndexSize(TABLE_METHOD_DEF))
+            cursor += simpleIndexSize(TABLE_METHOD_DEF)
+            val associationToken = readIndex(cursor, codedIndexSize(CODED_HAS_SEMANTICS))
+            cursor += codedIndexSize(CODED_HAS_SEMANTICS)
+
+            val associationTag = associationToken and CODED_HAS_SEMANTICS_TAG_MASK
+            val associationRowId = associationToken ushr CODED_HAS_SEMANTICS_TAG_BITS
+            when {
+                associationTag == CODED_HAS_SEMANTICS_PROPERTY && semantics == METHOD_SEMANTICS_GETTER -> {
+                    propertyAccessors[associationRowId] = (propertyAccessors[associationRowId] ?: PropertyAccessorRows()).copy(getterMethodRowId = methodRowId)
+                    semanticMethodRowIds += methodRowId
+                }
+
+                associationTag == CODED_HAS_SEMANTICS_PROPERTY && semantics == METHOD_SEMANTICS_SETTER -> {
+                    propertyAccessors[associationRowId] = (propertyAccessors[associationRowId] ?: PropertyAccessorRows()).copy(setterMethodRowId = methodRowId)
+                    semanticMethodRowIds += methodRowId
+                }
+
+                associationTag == CODED_HAS_SEMANTICS_EVENT && semantics == METHOD_SEMANTICS_ADD_ON -> {
+                    eventAccessors[associationRowId] = (eventAccessors[associationRowId] ?: EventAccessorRows()).copy(addMethodRowId = methodRowId)
+                    semanticMethodRowIds += methodRowId
+                }
+
+                associationTag == CODED_HAS_SEMANTICS_EVENT && semantics == METHOD_SEMANTICS_REMOVE_ON -> {
+                    eventAccessors[associationRowId] = (eventAccessors[associationRowId] ?: EventAccessorRows()).copy(removeMethodRowId = methodRowId)
+                    semanticMethodRowIds += methodRowId
+                }
+            }
+        }
+        return MethodSemanticsData(
+            propertyAccessorsByPropertyRowId = propertyAccessors,
+            eventAccessorsByEventRowId = eventAccessors,
+            semanticMethodRowIds = semanticMethodRowIds,
+        )
+    }
+
     private fun RawTypeDef.classify(typeDefNames: Array<String>, typeRefNames: Array<String>): WinRtTypeKind {
         if (flags and TYPE_ATTRIBUTE_INTERFACE != 0) {
             return WinRtTypeKind.Interface
@@ -516,6 +825,58 @@ private class MetadataTables private constructor(
         )
     }
 
+    private fun readMethodSignature(
+        blobIndex: Int,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+    ): ParsedMethodSignature {
+        val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
+        if (bytes.isEmpty()) {
+            return ParsedMethodSignature(ParsedTypeSignature("Unit"), emptyList())
+        }
+
+        val reader = SignatureReader(bytes, typeDefNames, typeRefNames)
+        val callingConvention = reader.readByte()
+        if (callingConvention and CALL_CONV_GENERIC != 0) {
+            reader.readCompressedUnsignedInt()
+        }
+        val parameterCount = reader.readCompressedUnsignedInt()
+        val returnType = reader.readType()
+        val parameters = buildList(parameterCount) {
+            repeat(parameterCount) {
+                add(reader.readType())
+            }
+        }
+        return ParsedMethodSignature(returnType, parameters)
+    }
+
+    private fun readPropertySignature(
+        blobIndex: Int,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+    ): ParsedPropertySignature {
+        val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
+        if (bytes.isEmpty()) {
+            return ParsedPropertySignature(ParsedTypeSignature("Any"))
+        }
+
+        val reader = SignatureReader(bytes, typeDefNames, typeRefNames)
+        reader.readByte()
+        val parameterCount = reader.readCompressedUnsignedInt()
+        val type = reader.readType()
+        repeat(parameterCount) {
+            reader.readType()
+        }
+        return ParsedPropertySignature(type)
+    }
+
+    private fun parameterDirectionFor(rawParam: RawParam?, isByRef: Boolean): WinRtParameterDirection = when {
+        !isByRef -> WinRtParameterDirection.In
+        rawParam == null -> WinRtParameterDirection.Ref
+        rawParam.flags and PARAM_ATTRIBUTE_OUT != 0 && rawParam.flags and PARAM_ATTRIBUTE_IN == 0 -> WinRtParameterDirection.Out
+        else -> WinRtParameterDirection.Ref
+    }
+
     private fun readStringAt(indexOffset: Int): String =
         buffer.readHeapString(stringsHeap.offset, readIndex(indexOffset, stringIndexSize))
 
@@ -531,14 +892,25 @@ private class MetadataTables private constructor(
         private const val TABLE_MODULE = 0x00
         private const val TABLE_TYPE_REF = 0x01
         private const val TABLE_TYPE_DEF = 0x02
+        private const val TABLE_FIELD_PTR = 0x03
         private const val TABLE_FIELD = 0x04
+        private const val TABLE_METHOD_PTR = 0x05
         private const val TABLE_METHOD_DEF = 0x06
+        private const val TABLE_PARAM_PTR = 0x07
         private const val TABLE_PARAM = 0x08
         private const val TABLE_INTERFACE_IMPL = 0x09
         private const val TABLE_MEMBER_REF = 0x0A
         private const val TABLE_CONSTANT = 0x0B
         private const val TABLE_CUSTOM_ATTRIBUTE = 0x0C
         private const val TABLE_STANDALONE_SIG = 0x11
+        private const val TABLE_EVENT_MAP = 0x12
+        private const val TABLE_EVENT_PTR = 0x13
+        private const val TABLE_EVENT = 0x14
+        private const val TABLE_PROPERTY_MAP = 0x15
+        private const val TABLE_PROPERTY_PTR = 0x16
+        private const val TABLE_PROPERTY = 0x17
+        private const val TABLE_METHOD_SEMANTICS = 0x18
+        private const val TABLE_METHOD_IMPL = 0x19
         private const val TABLE_MODULE_REF = 0x1A
         private const val TABLE_TYPE_SPEC = 0x1B
         private const val TABLE_ASSEMBLY = 0x20
@@ -546,6 +918,16 @@ private class MetadataTables private constructor(
         private const val TABLE_GENERIC_PARAM = 0x2A
 
         private const val TYPE_ATTRIBUTE_INTERFACE = 0x20
+        private const val METHOD_ATTRIBUTE_STATIC = 0x0010
+        private const val PARAM_ATTRIBUTE_IN = 0x0001
+        private const val PARAM_ATTRIBUTE_OUT = 0x0002
+
+        private const val METHOD_SEMANTICS_SETTER = 0x0001
+        private const val METHOD_SEMANTICS_GETTER = 0x0002
+        private const val METHOD_SEMANTICS_ADD_ON = 0x0008
+        private const val METHOD_SEMANTICS_REMOVE_ON = 0x0010
+
+        private const val CALL_CONV_GENERIC = 0x10
 
         private const val CODED_MEMBER_REF_PARENT_TYPE_DEF = 0
         private const val CODED_MEMBER_REF_PARENT_TYPE_REF = 1
@@ -578,6 +960,11 @@ private class MetadataTables private constructor(
         private const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1
         private const val CODED_TYPE_DEF_OR_REF_TAG_BITS = 2
         private const val CODED_TYPE_DEF_OR_REF_TAG_MASK = (1 shl CODED_TYPE_DEF_OR_REF_TAG_BITS) - 1
+
+        private const val CODED_HAS_SEMANTICS_EVENT = 0
+        private const val CODED_HAS_SEMANTICS_PROPERTY = 1
+        private const val CODED_HAS_SEMANTICS_TAG_BITS = 1
+        private const val CODED_HAS_SEMANTICS_TAG_MASK = (1 shl CODED_HAS_SEMANTICS_TAG_BITS) - 1
 
         private val CODED_RESOLUTION_SCOPE = CodedIndex(
             tagBits = 2,
@@ -626,6 +1013,15 @@ private class MetadataTables private constructor(
             tagBits = 2,
             tables = intArrayOf(TABLE_FIELD, TABLE_PARAM, -1),
         )
+        private val CODED_HAS_SEMANTICS = CodedIndex(
+            tagBits = CODED_HAS_SEMANTICS_TAG_BITS,
+            tables = intArrayOf(TABLE_EVENT, TABLE_PROPERTY),
+        )
+        private val CODED_METHOD_DEF_OR_REF = CodedIndex(
+            tagBits = 1,
+            tables = intArrayOf(TABLE_METHOD_DEF, TABLE_MEMBER_REF),
+        )
+
         fun parse(buffer: ByteBuffer, offset: Int, stringsHeap: MetadataStream, blobHeap: MetadataStream): MetadataTables {
             val heapSizes = buffer.byteAt(offset + 6).toInt() and 0xFF
             val validMask = buffer.longAt(offset + 8)
@@ -650,7 +1046,7 @@ private class MetadataTables private constructor(
                 }
                 val currentRowSize = rowSize(tableId, rowCounts, stringIndexSize, guidIndexSize, blobIndexSize)
                 if (currentRowSize == null) {
-                    error("Metadata 2.3 parser does not yet support table 0x${tableId.toString(16)}")
+                    error("Metadata 2.4 parser does not yet support table 0x${tableId.toString(16)}")
                 }
                 tableOffsets[tableId] = tableCursor
                 tableCursor += rowCounts[tableId] * currentRowSize
@@ -677,14 +1073,25 @@ private class MetadataTables private constructor(
             TABLE_MODULE -> 2 + stringIndexSize + guidIndexSize * 3
             TABLE_TYPE_REF -> codedIndexSize(CODED_RESOLUTION_SCOPE, rowCounts) + stringIndexSize + stringIndexSize
             TABLE_TYPE_DEF -> 4 + stringIndexSize + stringIndexSize + codedIndexSize(CODED_TYPE_DEF_OR_REF, rowCounts) + simpleIndexSize(TABLE_FIELD, rowCounts) + simpleIndexSize(TABLE_METHOD_DEF, rowCounts)
+            TABLE_FIELD_PTR -> simpleIndexSize(TABLE_FIELD, rowCounts)
             TABLE_FIELD -> 2 + stringIndexSize + blobIndexSize
+            TABLE_METHOD_PTR -> simpleIndexSize(TABLE_METHOD_DEF, rowCounts)
             TABLE_METHOD_DEF -> 8 + stringIndexSize + blobIndexSize + simpleIndexSize(TABLE_PARAM, rowCounts)
+            TABLE_PARAM_PTR -> simpleIndexSize(TABLE_PARAM, rowCounts)
             TABLE_PARAM -> 4 + stringIndexSize
             TABLE_INTERFACE_IMPL -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) + codedIndexSize(CODED_TYPE_DEF_OR_REF, rowCounts)
             TABLE_MEMBER_REF -> codedIndexSize(CODED_MEMBER_REF_PARENT, rowCounts) + stringIndexSize + blobIndexSize
             TABLE_CONSTANT -> 2 + codedIndexSize(CODED_HAS_CONSTANT, rowCounts) + blobIndexSize
             TABLE_CUSTOM_ATTRIBUTE -> codedIndexSize(CODED_HAS_CUSTOM_ATTRIBUTE, rowCounts) + codedIndexSize(CODED_CUSTOM_ATTRIBUTE_TYPE, rowCounts) + blobIndexSize
             TABLE_STANDALONE_SIG -> blobIndexSize
+            TABLE_EVENT_MAP -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) + simpleIndexSize(TABLE_EVENT, rowCounts)
+            TABLE_EVENT_PTR -> simpleIndexSize(TABLE_EVENT, rowCounts)
+            TABLE_EVENT -> 2 + stringIndexSize + codedIndexSize(CODED_TYPE_DEF_OR_REF, rowCounts)
+            TABLE_PROPERTY_MAP -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) + simpleIndexSize(TABLE_PROPERTY, rowCounts)
+            TABLE_PROPERTY_PTR -> simpleIndexSize(TABLE_PROPERTY, rowCounts)
+            TABLE_PROPERTY -> 2 + stringIndexSize + blobIndexSize
+            TABLE_METHOD_SEMANTICS -> 2 + simpleIndexSize(TABLE_METHOD_DEF, rowCounts) + codedIndexSize(CODED_HAS_SEMANTICS, rowCounts)
+            TABLE_METHOD_IMPL -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) + codedIndexSize(CODED_METHOD_DEF_OR_REF, rowCounts) * 2
             TABLE_MODULE_REF -> stringIndexSize
             TABLE_TYPE_SPEC -> blobIndexSize
             TABLE_ASSEMBLY -> 16 + blobIndexSize + stringIndexSize * 2
@@ -714,6 +1121,29 @@ private data class RawTypeDef(
         get() = if (namespace.isEmpty()) name else "$namespace.$name"
 }
 
+private data class RawMethodDef(
+    val flags: Int,
+    val name: String,
+    val signatureBlobIndex: Int,
+    val paramListStart: Int,
+)
+
+private data class RawParam(
+    val flags: Int,
+    val sequence: Int,
+    val name: String,
+)
+
+private data class RawProperty(
+    val name: String,
+    val signatureBlobIndex: Int,
+)
+
+private data class RawEvent(
+    val name: String,
+    val delegateTypeName: String,
+)
+
 private data class CodedIndex(
     val tagBits: Int,
     val tables: IntArray,
@@ -730,6 +1160,207 @@ private data class DecodedCustomAttribute(
     val typeName: String,
     val stringArguments: List<String>,
 )
+
+private data class PropertyAccessorRows(
+    val getterMethodRowId: Int? = null,
+    val setterMethodRowId: Int? = null,
+) {
+    fun orEmpty(): PropertyAccessorRows = this
+}
+
+private data class EventAccessorRows(
+    val addMethodRowId: Int? = null,
+    val removeMethodRowId: Int? = null,
+) {
+    fun orEmpty(): EventAccessorRows = this
+}
+
+private data class MethodSemanticsData(
+    val propertyAccessorsByPropertyRowId: Map<Int, PropertyAccessorRows> = emptyMap(),
+    val eventAccessorsByEventRowId: Map<Int, EventAccessorRows> = emptyMap(),
+    val semanticMethodRowIds: Set<Int> = emptySet(),
+)
+
+private data class ParsedTypeSignature(
+    val typeName: String,
+    val isByRef: Boolean = false,
+)
+
+private data class ParsedMethodSignature(
+    val returnType: ParsedTypeSignature,
+    val parameters: List<ParsedTypeSignature>,
+)
+
+private data class ParsedPropertySignature(
+    val type: ParsedTypeSignature,
+)
+
+private class SignatureReader(
+    private val bytes: ByteArray,
+    private val typeDefNames: Array<String>,
+    private val typeRefNames: Array<String>,
+) {
+    private var cursor: Int = 0
+
+    fun readByte(): Int = bytes[cursor++].toInt() and 0xFF
+
+    fun readCompressedUnsignedInt(): Int {
+        val (value, nextCursor) = bytes.readCompressedUnsignedInt(cursor)
+        cursor = nextCursor
+        return value
+    }
+
+    fun readType(): ParsedTypeSignature {
+        while (cursor < bytes.size) {
+            when (peekByte()) {
+                ELEMENT_TYPE_CMOD_REQD, ELEMENT_TYPE_CMOD_OPT -> {
+                    readByte()
+                    readCompressedUnsignedInt()
+                }
+
+                ELEMENT_TYPE_SENTINEL, ELEMENT_TYPE_PINNED -> readByte()
+                else -> break
+            }
+        }
+        if (cursor >= bytes.size) {
+            return ParsedTypeSignature("Any")
+        }
+
+        return when (val elementType = readByte()) {
+            ELEMENT_TYPE_VOID -> ParsedTypeSignature("Unit")
+            ELEMENT_TYPE_BOOLEAN -> ParsedTypeSignature("Boolean")
+            ELEMENT_TYPE_CHAR -> ParsedTypeSignature("Char")
+            ELEMENT_TYPE_I1 -> ParsedTypeSignature("Byte")
+            ELEMENT_TYPE_U1 -> ParsedTypeSignature("UByte")
+            ELEMENT_TYPE_I2 -> ParsedTypeSignature("Short")
+            ELEMENT_TYPE_U2 -> ParsedTypeSignature("UShort")
+            ELEMENT_TYPE_I4 -> ParsedTypeSignature("Int")
+            ELEMENT_TYPE_U4 -> ParsedTypeSignature("UInt")
+            ELEMENT_TYPE_I8 -> ParsedTypeSignature("Long")
+            ELEMENT_TYPE_U8 -> ParsedTypeSignature("ULong")
+            ELEMENT_TYPE_R4 -> ParsedTypeSignature("Float")
+            ELEMENT_TYPE_R8 -> ParsedTypeSignature("Double")
+            ELEMENT_TYPE_STRING -> ParsedTypeSignature("String")
+            ELEMENT_TYPE_OBJECT -> ParsedTypeSignature("Any")
+            ELEMENT_TYPE_I -> ParsedTypeSignature("Long")
+            ELEMENT_TYPE_U -> ParsedTypeSignature("ULong")
+            ELEMENT_TYPE_BYREF -> readType().copy(isByRef = true)
+            ELEMENT_TYPE_PTR -> readType()
+            ELEMENT_TYPE_CLASS, ELEMENT_TYPE_VALUETYPE -> ParsedTypeSignature(
+                normalizeSignatureTypeName(decodeTypeToken(readCompressedUnsignedInt())),
+            )
+
+            ELEMENT_TYPE_VAR -> ParsedTypeSignature("T${readCompressedUnsignedInt()}")
+            ELEMENT_TYPE_MVAR -> ParsedTypeSignature("M${readCompressedUnsignedInt()}")
+            ELEMENT_TYPE_SZARRAY -> ParsedTypeSignature("Array<${readType().typeName}>")
+            ELEMENT_TYPE_ARRAY -> {
+                val element = readType()
+                val rank = readCompressedUnsignedInt()
+                val sizes = readCompressedUnsignedInt()
+                repeat(sizes) { readCompressedUnsignedInt() }
+                val lowerBounds = readCompressedUnsignedInt()
+                repeat(lowerBounds) { readCompressedUnsignedInt() }
+                ParsedTypeSignature(if (rank <= 1) "Array<${element.typeName}>" else "Array<${element.typeName}>")
+            }
+
+            ELEMENT_TYPE_GENERICINST -> {
+                val genericKind = readByte()
+                val genericTypeName = if (genericKind == ELEMENT_TYPE_CLASS || genericKind == ELEMENT_TYPE_VALUETYPE) {
+                    normalizeSignatureTypeName(decodeTypeToken(readCompressedUnsignedInt()))
+                } else {
+                    "Any"
+                }
+                val argumentCount = readCompressedUnsignedInt()
+                val arguments = buildList(argumentCount) {
+                    repeat(argumentCount) {
+                        add(readType().typeName)
+                    }
+                }
+                ParsedTypeSignature("$genericTypeName<${arguments.joinToString(", ")}>")
+            }
+
+            ELEMENT_TYPE_TYPEDBYREF, ELEMENT_TYPE_FNPTR, ELEMENT_TYPE_INTERNAL -> ParsedTypeSignature("Any")
+            else -> ParsedTypeSignature(if (elementType == ELEMENT_TYPE_END) "Any" else "Any")
+        }
+    }
+
+    private fun peekByte(): Int = bytes[cursor].toInt() and 0xFF
+
+    private fun decodeTypeToken(token: Int): String? {
+        val tag = token and TYPE_DEF_OR_REF_TAG_MASK
+        val rowId = token ushr TYPE_DEF_OR_REF_TAG_BITS
+        if (rowId == 0) {
+            return null
+        }
+        return when (tag) {
+            TYPE_DEF_OR_REF_TYPE_DEF -> typeDefNames.getOrNull(rowId - 1)
+            TYPE_DEF_OR_REF_TYPE_REF -> typeRefNames.getOrNull(rowId - 1)
+            else -> null
+        }
+    }
+
+    companion object {
+        private const val TYPE_DEF_OR_REF_TYPE_DEF = 0
+        private const val TYPE_DEF_OR_REF_TYPE_REF = 1
+        private const val TYPE_DEF_OR_REF_TAG_BITS = 2
+        private const val TYPE_DEF_OR_REF_TAG_MASK = (1 shl TYPE_DEF_OR_REF_TAG_BITS) - 1
+
+        private const val ELEMENT_TYPE_END = 0x00
+        private const val ELEMENT_TYPE_VOID = 0x01
+        private const val ELEMENT_TYPE_BOOLEAN = 0x02
+        private const val ELEMENT_TYPE_CHAR = 0x03
+        private const val ELEMENT_TYPE_I1 = 0x04
+        private const val ELEMENT_TYPE_U1 = 0x05
+        private const val ELEMENT_TYPE_I2 = 0x06
+        private const val ELEMENT_TYPE_U2 = 0x07
+        private const val ELEMENT_TYPE_I4 = 0x08
+        private const val ELEMENT_TYPE_U4 = 0x09
+        private const val ELEMENT_TYPE_I8 = 0x0A
+        private const val ELEMENT_TYPE_U8 = 0x0B
+        private const val ELEMENT_TYPE_R4 = 0x0C
+        private const val ELEMENT_TYPE_R8 = 0x0D
+        private const val ELEMENT_TYPE_STRING = 0x0E
+        private const val ELEMENT_TYPE_PTR = 0x0F
+        private const val ELEMENT_TYPE_BYREF = 0x10
+        private const val ELEMENT_TYPE_VALUETYPE = 0x11
+        private const val ELEMENT_TYPE_CLASS = 0x12
+        private const val ELEMENT_TYPE_VAR = 0x13
+        private const val ELEMENT_TYPE_ARRAY = 0x14
+        private const val ELEMENT_TYPE_GENERICINST = 0x15
+        private const val ELEMENT_TYPE_TYPEDBYREF = 0x16
+        private const val ELEMENT_TYPE_I = 0x18
+        private const val ELEMENT_TYPE_U = 0x19
+        private const val ELEMENT_TYPE_FNPTR = 0x1B
+        private const val ELEMENT_TYPE_OBJECT = 0x1C
+        private const val ELEMENT_TYPE_SZARRAY = 0x1D
+        private const val ELEMENT_TYPE_MVAR = 0x1E
+        private const val ELEMENT_TYPE_CMOD_REQD = 0x1F
+        private const val ELEMENT_TYPE_CMOD_OPT = 0x20
+        private const val ELEMENT_TYPE_INTERNAL = 0x21
+        private const val ELEMENT_TYPE_SENTINEL = 0x41
+        private const val ELEMENT_TYPE_PINNED = 0x45
+    }
+}
+
+private fun normalizeSignatureTypeName(typeName: String?): String = when (typeName) {
+    null -> "Any"
+    "System.Void" -> "Unit"
+    "System.Boolean" -> "Boolean"
+    "System.Char" -> "Char"
+    "System.SByte" -> "Byte"
+    "System.Byte" -> "UByte"
+    "System.Int16" -> "Short"
+    "System.UInt16" -> "UShort"
+    "System.Int32" -> "Int"
+    "System.UInt32" -> "UInt"
+    "System.Int64" -> "Long"
+    "System.UInt64" -> "ULong"
+    "System.Single" -> "Float"
+    "System.Double" -> "Double"
+    "System.String" -> "String"
+    "System.Object" -> "Any"
+    else -> typeName
+}
 
 private fun ByteBuffer.byteAt(offset: Int): Byte = get(offset)
 

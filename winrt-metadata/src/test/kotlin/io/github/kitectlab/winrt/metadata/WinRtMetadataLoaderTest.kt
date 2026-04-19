@@ -6,6 +6,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import io.github.kitectlab.winrt.runtime.Guid
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -53,9 +54,31 @@ class WinRtMetadataLoaderTest {
         val iWidget = sampleNamespace.types.first { it.name == "IWidget" }
         assertEquals(Guid("22222222-2222-2222-2222-222222222222"), iWidget.iid)
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })
+        assertEquals(listOf("Update"), iWidget.methods.map { it.name })
+        assertEquals("Unit", iWidget.methods.single().returnTypeName)
+        assertEquals(listOf("input", "written", "state"), iWidget.methods.single().parameters.map { it.name })
+        assertEquals(listOf("String", "Int", "Int"), iWidget.methods.single().parameters.map { it.typeName })
+        assertEquals(
+            listOf(WinRtParameterDirection.In, WinRtParameterDirection.Out, WinRtParameterDirection.Ref),
+            iWidget.methods.single().parameters.map { it.direction },
+        )
+        assertEquals(listOf("Name", "Value"), iWidget.properties.map { it.name })
+        assertEquals(listOf("String", "Int"), iWidget.properties.map { it.typeName })
+        assertEquals(listOf(true, false), iWidget.properties.map { it.isReadOnly })
+        assertEquals(listOf("get_Name", "get_Value"), iWidget.properties.map { it.getterMethodName })
+        assertEquals(listOf(null, "set_Value"), iWidget.properties.map { it.setterMethodName })
+        assertEquals(listOf("Changed"), iWidget.events.map { it.name })
+        assertEquals(listOf("Sample.Foundation.WidgetHandler"), iWidget.events.map { it.delegateTypeName })
+        assertEquals(listOf("add_Changed"), iWidget.events.map { it.addMethodName })
+        assertEquals(listOf("remove_Changed"), iWidget.events.map { it.removeMethodName })
 
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)
+
+        assertEquals(listOf("Update"), widget.methods.map { it.name })
+        assertEquals(listOf("Name", "Value"), widget.properties.map { it.name })
+        assertEquals(listOf("Changed"), widget.events.map { it.name })
+        assertFalse(widget.methods.any { it.name.startsWith("get_") || it.name.startsWith("set_") || it.name.startsWith("add_") || it.name.startsWith("remove_") })
     }
 
     @Test
@@ -153,7 +176,13 @@ class WinRtMetadataLoaderTest {
                 public interface IWidgetBase {}
 
                 [Windows.Foundation.Metadata.Guid("22222222-2222-2222-2222-222222222222")]
-                public interface IWidget : IWidgetBase {}
+                public interface IWidget : IWidgetBase
+                {
+                    string Name { get; }
+                    int Value { get; set; }
+                    event WidgetHandler Changed;
+                    void Update(string input, out int written, ref int state);
+                }
 
                 public interface IWidgetFactory {}
 
@@ -165,7 +194,19 @@ class WinRtMetadataLoaderTest {
                 [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
                 [Windows.Foundation.Metadata.Static("Sample.Foundation.IWidgetStatics")]
                 [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetFactory")]
-                public class Widget<T> : IWidget {}
+                public class Widget<T> : IWidget
+                {
+                    public string Name => "widget";
+                    public int Value { get; set; }
+                    public event WidgetHandler Changed;
+
+                    public void Update(string input, out int written, ref int state)
+                    {
+                        written = input.Length;
+                        state += 1;
+                        Changed?.Invoke();
+                    }
+                }
 
                 public enum Color { Red, Blue }
 

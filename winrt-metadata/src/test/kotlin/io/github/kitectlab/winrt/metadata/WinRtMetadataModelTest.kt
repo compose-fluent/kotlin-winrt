@@ -70,7 +70,21 @@ class WinRtMetadataModelTest {
                                 WinRtMethodDefinition(
                                     name = "zeta",
                                     returnTypeName = "Unit",
-                                    parameters = listOf(WinRtParameterDefinition(" value ", " String ")),
+                                    parameters = listOf(WinRtParameterDefinition(" value ", " String ", WinRtParameterDirection.Ref)),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = " Name ",
+                                    typeName = " String ",
+                                    getterMethodName = " get_Name ",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = " Changed ",
+                                    delegateTypeName = " Sample.Foundation.WidgetHandler ",
+                                    addMethodName = " add_Changed ",
                                 ),
                             ),
                         ),
@@ -100,7 +114,27 @@ class WinRtMetadataModelTest {
                                 WinRtMethodDefinition(
                                     name = "zeta",
                                     returnTypeName = "Unit",
-                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    parameters = listOf(WinRtParameterDefinition("value", "String", WinRtParameterDirection.Ref)),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Value",
+                                    setterMethodName = "set_Value",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    removeMethodName = "remove_Changed",
                                 ),
                             ),
                         ),
@@ -126,5 +160,14 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("alpha", "zeta"), widget.methods.map { it.name })
         assertEquals(listOf("value"), widget.methods.last().parameters.map { it.name })
         assertEquals(listOf("String"), widget.methods.last().parameters.map { it.typeName })
+        assertEquals(listOf(WinRtParameterDirection.Ref), widget.methods.last().parameters.map { it.direction })
+        assertEquals(listOf("Name", "Value"), widget.properties.map { it.name })
+        assertEquals(listOf(true, false), widget.properties.map { it.isReadOnly })
+        assertEquals(listOf("get_Name", "get_Value"), widget.properties.map { it.getterMethodName })
+        assertEquals(listOf(null, "set_Value"), widget.properties.map { it.setterMethodName })
+        assertEquals(listOf("Changed"), widget.events.map { it.name })
+        assertEquals(listOf("Sample.Foundation.WidgetHandler"), widget.events.map { it.delegateTypeName })
+        assertEquals(listOf("add_Changed"), widget.events.map { it.addMethodName })
+        assertEquals(listOf("remove_Changed"), widget.events.map { it.removeMethodName })
     }
 }

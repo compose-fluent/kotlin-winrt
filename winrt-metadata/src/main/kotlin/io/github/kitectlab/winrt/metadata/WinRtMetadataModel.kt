@@ -60,16 +60,23 @@ data class WinRtActivationShape(
     }
 }
 
+enum class WinRtParameterDirection {
+    In,
+    Ref,
+    Out,
+}
+
 data class WinRtParameterDefinition(
     val name: String,
     val typeName: String,
+    val direction: WinRtParameterDirection = WinRtParameterDirection.In,
 ) {
     fun normalized(): WinRtParameterDefinition = copy(
         name = name.trim(),
         typeName = typeName.trim(),
     )
 
-    internal fun signatureKey(): String = "$name:$typeName"
+    internal fun signatureKey(): String = "$name:$typeName:$direction"
 }
 
 data class WinRtMethodDefinition(
@@ -95,6 +102,85 @@ data class WinRtMethodDefinition(
     }
 }
 
+data class WinRtPropertyDefinition(
+    val name: String,
+    val typeName: String,
+    val isStatic: Boolean = false,
+    val getterMethodName: String? = null,
+    val setterMethodName: String? = null,
+) {
+    val isReadOnly: Boolean
+        get() = setterMethodName == null
+
+    fun normalized(): WinRtPropertyDefinition = copy(
+        name = name.trim(),
+        typeName = typeName.trim(),
+        getterMethodName = getterMethodName?.trim(),
+        setterMethodName = setterMethodName?.trim(),
+    )
+
+    internal fun signatureKey(): String = buildString {
+        append(if (isStatic) 'S' else 'I')
+        append('|')
+        append(name)
+        append('|')
+        append(typeName)
+    }
+
+    internal fun merge(other: WinRtPropertyDefinition): WinRtPropertyDefinition {
+        require(name == other.name && typeName == other.typeName) {
+            "Can only merge identical properties: $name:$typeName vs ${other.name}:${other.typeName}"
+        }
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtPropertyDefinition(
+            name = left.name,
+            typeName = left.typeName,
+            isStatic = left.isStatic || right.isStatic,
+            getterMethodName = left.getterMethodName ?: right.getterMethodName,
+            setterMethodName = left.setterMethodName ?: right.setterMethodName,
+        )
+    }
+}
+
+data class WinRtEventDefinition(
+    val name: String,
+    val delegateTypeName: String,
+    val isStatic: Boolean = false,
+    val addMethodName: String? = null,
+    val removeMethodName: String? = null,
+) {
+    fun normalized(): WinRtEventDefinition = copy(
+        name = name.trim(),
+        delegateTypeName = delegateTypeName.trim(),
+        addMethodName = addMethodName?.trim(),
+        removeMethodName = removeMethodName?.trim(),
+    )
+
+    internal fun signatureKey(): String = buildString {
+        append(if (isStatic) 'S' else 'I')
+        append('|')
+        append(name)
+        append('|')
+        append(delegateTypeName)
+    }
+
+    internal fun merge(other: WinRtEventDefinition): WinRtEventDefinition {
+        require(name == other.name && delegateTypeName == other.delegateTypeName) {
+            "Can only merge identical events: $name:$delegateTypeName vs ${other.name}:${other.delegateTypeName}"
+        }
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtEventDefinition(
+            name = left.name,
+            delegateTypeName = left.delegateTypeName,
+            isStatic = left.isStatic || right.isStatic,
+            addMethodName = left.addMethodName ?: right.addMethodName,
+            removeMethodName = left.removeMethodName ?: right.removeMethodName,
+        )
+    }
+}
+
 data class WinRtTypeDefinition(
     val namespace: String,
     val name: String,
@@ -106,6 +192,8 @@ data class WinRtTypeDefinition(
     val genericParameterCount: Int = 0,
     val activation: WinRtActivationShape = WinRtActivationShape(),
     val methods: List<WinRtMethodDefinition> = emptyList(),
+    val properties: List<WinRtPropertyDefinition> = emptyList(),
+    val events: List<WinRtEventDefinition> = emptyList(),
 ) {
     val qualifiedName: String
         get() = if (namespace.isBlank()) name else "$namespace.$name"
@@ -115,6 +203,14 @@ data class WinRtTypeDefinition(
             .map(WinRtMethodDefinition::normalized)
             .sortedWith(compareBy(WinRtMethodDefinition::signatureKey))
             .distinctBy(WinRtMethodDefinition::signatureKey)
+        val normalizedProperties = properties
+            .map(WinRtPropertyDefinition::normalized)
+            .sortedWith(compareBy(WinRtPropertyDefinition::signatureKey))
+            .distinctBy(WinRtPropertyDefinition::signatureKey)
+        val normalizedEvents = events
+            .map(WinRtEventDefinition::normalized)
+            .sortedWith(compareBy(WinRtEventDefinition::signatureKey))
+            .distinctBy(WinRtEventDefinition::signatureKey)
 
         return copy(
             namespace = namespace.trim(),
@@ -130,6 +226,8 @@ data class WinRtTypeDefinition(
             genericParameterCount = genericParameterCount.coerceAtLeast(0),
             activation = activation.normalized(),
             methods = normalizedMethods,
+            properties = normalizedProperties,
+            events = normalizedEvents,
         )
     }
 
@@ -157,6 +255,16 @@ data class WinRtTypeDefinition(
             methods = (left.methods + right.methods)
                 .sortedWith(compareBy(WinRtMethodDefinition::signatureKey))
                 .distinctBy(WinRtMethodDefinition::signatureKey),
+            properties = (left.properties + right.properties)
+                .groupBy(WinRtPropertyDefinition::signatureKey)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtPropertyDefinition::merge) }
+                .sortedWith(compareBy(WinRtPropertyDefinition::signatureKey)),
+            events = (left.events + right.events)
+                .groupBy(WinRtEventDefinition::signatureKey)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtEventDefinition::merge) }
+                .sortedWith(compareBy(WinRtEventDefinition::signatureKey)),
         )
     }
 }
