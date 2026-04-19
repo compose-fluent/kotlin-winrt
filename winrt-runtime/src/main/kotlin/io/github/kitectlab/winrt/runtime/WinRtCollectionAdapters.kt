@@ -101,12 +101,15 @@ class WinRtMapViewAdapter<K, V>(
 
     private fun buildEntries(): List<Map.Entry<K, V>> {
         return mapView.asIterable(iterableInterfaceId).useAndCollect(iteratorInterfaceId) { current ->
-            val pairReference = when (current) {
-                null -> null
-                is WinRtKeyValuePairReference -> current
-                else -> WinRtKeyValuePairReference(current.pointer, keyValuePairInterfaceId)
+            when (current) {
+                null -> error("IKeyValuePair reference cannot be null.")
+                is WinRtKeyValuePairReference -> current.projectPair(keyProjector, valueProjector)
+                else -> WinRtKeyValuePairReference(
+                    current.pointer,
+                    keyValuePairInterfaceId,
+                    preventReleaseOnDispose = true,
+                ).usePair(keyProjector, valueProjector)
             }
-            pairReference.usePair(keyProjector, valueProjector)
         }
     }
 }
@@ -216,11 +219,16 @@ private fun <K, V> WinRtKeyValuePairReference?.usePair(
     valueProjector: (IUnknownReference?) -> V,
 ): Map.Entry<K, V> {
     require(this != null) { "IKeyValuePair reference cannot be null." }
-    return use { pair ->
-        val key = projectAndClose(pair.key(), keyProjector)
-        val value = projectAndClose(pair.value(), valueProjector)
-        EntrySnapshot(key, value)
-    }
+    return use { pair -> pair.projectPair(keyProjector, valueProjector) }
+}
+
+private fun <K, V> WinRtKeyValuePairReference.projectPair(
+    keyProjector: (IUnknownReference?) -> K,
+    valueProjector: (IUnknownReference?) -> V,
+): Map.Entry<K, V> {
+    val key = projectAndClose(key(), keyProjector)
+    val value = projectAndClose(value(), valueProjector)
+    return EntrySnapshot(key, value)
 }
 
 private data class EntrySnapshot<K, V>(

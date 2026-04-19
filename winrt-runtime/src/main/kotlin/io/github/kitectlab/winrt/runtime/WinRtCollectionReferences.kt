@@ -9,7 +9,8 @@ import java.lang.foreign.ValueLayout
 open class WinRtCollectionReferenceBase(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : IUnknownReference(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
     protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? {
         Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
@@ -228,7 +229,8 @@ open class WinRtCollectionReferenceBase(
 open class WinRtKeyValuePairReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun key(): IUnknownReference? =
         invokeNullableObjectMethod(slot = 6)?.let { reference ->
             createUnknownReference(reference.pointer, reference.interfaceId)
@@ -248,7 +250,8 @@ open class WinRtKeyValuePairReference(
 open class WinRtIterableReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun first(iteratorInterfaceId: Guid): WinRtIteratorReference =
         invokeObjectMethod(slot = 6).let { reference -> createIteratorReference(reference.pointer, iteratorInterfaceId) }
 
@@ -261,7 +264,8 @@ open class WinRtIterableReference(
 open class WinRtIteratorReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun current(): IUnknownReference =
         currentOrNull() ?: throw WinRtIllegalStateException(
             "IIterator.Current returned a null COM reference.",
@@ -295,7 +299,8 @@ open class WinRtIteratorReference(
 open class WinRtVectorViewReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun getAt(index: UInt): IUnknownReference =
         getAtOrNull(index)
             ?: throw WinRtIllegalStateException(
@@ -338,7 +343,8 @@ open class WinRtVectorViewReference(
 open class WinRtVectorReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun getAt(index: UInt): IUnknownReference =
         getAtOrNull(index)
             ?: throw WinRtIllegalStateException(
@@ -433,7 +439,8 @@ open class WinRtVectorReference(
 open class WinRtMapViewReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun lookup(key: ComObjectReference): IUnknownReference =
         lookupOrNull(key)
             ?: throw WinRtIllegalStateException(
@@ -487,7 +494,8 @@ open class WinRtMapViewReference(
 open class WinRtMapReference(
     pointer: MemorySegment,
     interfaceId: Guid,
-) : WinRtCollectionReferenceBase(pointer, interfaceId) {
+    preventReleaseOnDispose: Boolean = false,
+) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun lookup(key: ComObjectReference): IUnknownReference =
         lookupOrNull(key)
             ?: throw WinRtIllegalStateException(
