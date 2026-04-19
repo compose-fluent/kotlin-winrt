@@ -51,7 +51,7 @@ open class ComObjectReference(
         return pointer
     }
 
-    fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? {
+    open fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? {
         val (hResult, resultPointer) = queryInterfacePointer(requestedInterfaceId)
         if (hResult == KnownHResults.E_NOINTERFACE || resultPointer == MemorySegment.NULL) {
             return null
@@ -531,7 +531,10 @@ class ActivationFactoryReference(
 class InspectableReference(
     pointer: MemorySegment,
     interfaceId: Guid = IID.IInspectable,
-) : ComObjectReference(pointer, interfaceId) {
+) : ComObjectReference(pointer, interfaceId), IWinRTObject {
+    override val nativeObject: ComObjectReference
+        get() = this
+
     fun tryGetRuntimeClassName(): String? = getRuntimeClassName(noThrow = true)
 
     fun getRuntimeClassName(noThrow: Boolean = false): String? {
