@@ -80,10 +80,27 @@ class IWinRTObjectTest {
             nativeReference.close()
         }
     }
+
+    @Test
+    fun primary_type_handle_short_circuits_query_interface_lookup() {
+        val primaryInterface = Guid("12345678-1234-1234-1234-1234567890AE")
+        val typeHandle = WinRtTypeHandle("test.IPrimary", primaryInterface)
+        val nativeReference = FakeComObjectReference(primaryInterface)
+        val instance = FakeWinRtObject(nativeReference, primaryTypeHandle = typeHandle)
+
+        try {
+            assertTrue(instance.isInterfaceImplemented(typeHandle, throwIfNotImplemented = true))
+            assertSame(nativeReference, instance.getObjectReferenceForType(typeHandle))
+            assertEquals(0, nativeReference.queryCount(primaryInterface))
+        } finally {
+            nativeReference.close()
+        }
+    }
 }
 
 private class FakeWinRtObject(
     override val nativeObject: ComObjectReference,
+    override val primaryTypeHandle: WinRtTypeHandle? = null,
     override val hasUnwrappableNativeObject: Boolean = true,
 ) : IWinRTObject
 

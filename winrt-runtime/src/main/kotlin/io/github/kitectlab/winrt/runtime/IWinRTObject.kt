@@ -20,6 +20,15 @@ data class WinRtTypeHandle(
 interface IWinRTObject {
     val nativeObject: ComObjectReference
 
+    /**
+     * Kotlin-side equivalent of the "typed RCW" fast-path in cswinrt's `SingleInterfaceOptimizedObject`.
+     *
+     * When a wrapper already represents a specific projected interface type, later runtime projection code
+     * must be able to retrieve that object reference directly instead of redundantly issuing `QueryInterface`.
+     */
+    val primaryTypeHandle: WinRtTypeHandle?
+        get() = null
+
     val hasUnwrappableNativeObject: Boolean
         get() = true
 
@@ -33,6 +42,10 @@ interface IWinRTObject {
         interfaceType: WinRtTypeHandle,
         throwIfNotImplemented: Boolean = false,
     ): Boolean {
+        if (primaryTypeHandle == interfaceType) {
+            return true
+        }
+
         if (queryInterfaceCache.containsKey(interfaceType)) {
             return true
         }
@@ -57,6 +70,10 @@ interface IWinRTObject {
     }
 
     fun getObjectReferenceForType(interfaceType: WinRtTypeHandle): ComObjectReference {
+        if (primaryTypeHandle == interfaceType) {
+            return nativeObject
+        }
+
         if (isInterfaceImplemented(interfaceType, throwIfNotImplemented = true)) {
             return queryInterfaceCache.getValue(interfaceType)
         }
