@@ -72,19 +72,21 @@ class JsonObject internal constructor(
         private val IID_IJSON_OBJECT_STATICS = Guid("2289F159-54DE-45D8-ABCC-22603FA066A0")
 
         fun parse(json: String): JsonObject =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_OBJECT_STATICS) {
-                JsonObject(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
-            }
+            WinRtProjectionSupport.invokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_OBJECT_STATICS,
+                slot = PARSE_SLOT,
+                value = json,
+                wrap = ::JsonObject,
+            )
 
-        fun tryParse(json: String): JsonObject? {
-            return WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_OBJECT_STATICS) {
-                val (reference, succeeded) = it.invokeTryParseObjectMethodWithStringArg(TRY_PARSE_SLOT, json)
-                if (!succeeded || reference == null) {
-                    reference?.close()
-                    return null
-                }
-                JsonObject(reference)
-            }
-        }
+        fun tryParse(json: String): JsonObject? =
+            WinRtProjectionSupport.tryInvokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_OBJECT_STATICS,
+                slot = TRY_PARSE_SLOT,
+                value = json,
+                wrap = ::JsonObject,
+            )
     }
 }

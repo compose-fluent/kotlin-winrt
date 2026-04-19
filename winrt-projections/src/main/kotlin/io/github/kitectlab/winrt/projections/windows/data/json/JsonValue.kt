@@ -45,34 +45,48 @@ class JsonValue internal constructor(
         private val IID_IJSON_VALUE_STATICS = Guid("5F6B544A-2F53-48E1-91A3-F78B50A6345C")
 
         fun parse(json: String): JsonValue =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
-                JsonValue(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
-            }
+            WinRtProjectionSupport.invokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_VALUE_STATICS,
+                slot = PARSE_SLOT,
+                value = json,
+                wrap = ::JsonValue,
+            )
 
-        fun tryParse(json: String): JsonValue? {
-            return WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
-                val (reference, succeeded) = it.invokeTryParseObjectMethodWithStringArg(TRY_PARSE_SLOT, json)
-                if (!succeeded || reference == null) {
-                    reference?.close()
-                    return null
-                }
-                JsonValue(reference)
-            }
-        }
+        fun tryParse(json: String): JsonValue? =
+            WinRtProjectionSupport.tryInvokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_VALUE_STATICS,
+                slot = TRY_PARSE_SLOT,
+                value = json,
+                wrap = ::JsonValue,
+            )
 
         fun createBooleanValue(value: Boolean): JsonValue =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
-                JsonValue(it.invokeObjectMethodWithBooleanArg(CREATE_BOOLEAN_VALUE_SLOT, value))
-            }
+            WinRtProjectionSupport.invokeStaticObjectMethodWithBooleanArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_VALUE_STATICS,
+                slot = CREATE_BOOLEAN_VALUE_SLOT,
+                value = value,
+                wrap = ::JsonValue,
+            )
 
         fun createNumberValue(value: Double): JsonValue =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
-                JsonValue(it.invokeObjectMethodWithDoubleArg(CREATE_NUMBER_VALUE_SLOT, value))
-            }
+            WinRtProjectionSupport.invokeStaticObjectMethodWithDoubleArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_VALUE_STATICS,
+                slot = CREATE_NUMBER_VALUE_SLOT,
+                value = value,
+                wrap = ::JsonValue,
+            )
 
         fun createStringValue(value: String): JsonValue =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_VALUE_STATICS) {
-                JsonValue(it.invokeObjectMethodWithStringArg(CREATE_STRING_VALUE_SLOT, value))
-            }
+            WinRtProjectionSupport.invokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_VALUE_STATICS,
+                slot = CREATE_STRING_VALUE_SLOT,
+                value = value,
+                wrap = ::JsonValue,
+            )
     }
 }

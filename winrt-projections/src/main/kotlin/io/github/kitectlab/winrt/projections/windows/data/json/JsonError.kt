@@ -10,8 +10,13 @@ class JsonError private constructor() {
         private val IID_IJSON_ERROR_STATICS = Guid("FE616766-BF27-4064-87B7-6563BB11CE2E")
 
         fun getJsonStatus(hResult: Int): JsonErrorStatus =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_ERROR_STATICS) {
-                JsonErrorStatus.fromAbiValue(it.invokeUInt32MethodWithInt32Arg(GET_STATUS_SLOT, hResult).toInt())
-            }
+            JsonErrorStatus.fromAbiValue(
+                WinRtProjectionSupport.invokeStaticUInt32MethodWithInt32Arg(
+                    runtimeClassName = RUNTIME_CLASS_NAME,
+                    interfaceId = IID_IJSON_ERROR_STATICS,
+                    slot = GET_STATUS_SLOT,
+                    value = hResult,
+                ).toInt(),
+            )
     }
 }

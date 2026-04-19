@@ -41,19 +41,21 @@ class JsonArray internal constructor(
             JsonArray(WinRtProjectionSupport.activateUnknown(RUNTIME_CLASS_NAME))
 
         fun parse(json: String): JsonArray =
-            WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_ARRAY_STATICS) {
-                JsonArray(it.invokeObjectMethodWithStringArg(PARSE_SLOT, json))
-            }
+            WinRtProjectionSupport.invokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_ARRAY_STATICS,
+                slot = PARSE_SLOT,
+                value = json,
+                wrap = ::JsonArray,
+            )
 
-        fun tryParse(json: String): JsonArray? {
-            return WinRtProjectionSupport.withStaticInterface(RUNTIME_CLASS_NAME, IID_IJSON_ARRAY_STATICS) {
-                val (reference, succeeded) = it.invokeTryParseObjectMethodWithStringArg(TRY_PARSE_SLOT, json)
-                if (!succeeded || reference == null) {
-                    reference?.close()
-                    return null
-                }
-                JsonArray(reference)
-            }
-        }
+        fun tryParse(json: String): JsonArray? =
+            WinRtProjectionSupport.tryInvokeStaticObjectMethodWithStringArg(
+                runtimeClassName = RUNTIME_CLASS_NAME,
+                interfaceId = IID_IJSON_ARRAY_STATICS,
+                slot = TRY_PARSE_SLOT,
+                value = json,
+                wrap = ::JsonArray,
+            )
     }
 }
