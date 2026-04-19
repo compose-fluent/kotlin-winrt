@@ -32,6 +32,7 @@ class WinRtMetadataLoaderTest {
                 "IWidgetOverrides",
                 "IWidgetStatics",
                 "Point",
+                "Priority",
                 "Widget",
                 "WidgetAttribute",
                 "WidgetContract",
@@ -51,6 +52,7 @@ class WinRtMetadataLoaderTest {
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Struct,
+                WinRtTypeKind.Enum,
                 WinRtTypeKind.RuntimeClass,
                 WinRtTypeKind.RuntimeClass,
                 WinRtTypeKind.Struct,
@@ -125,6 +127,24 @@ class WinRtMetadataLoaderTest {
 
         val color = sampleNamespace.types.first { it.name == "Color" }
         assertTrue(color.isSealedType)
+        assertEquals(WinRtIntegralType.UInt32, color.enumUnderlyingType)
+        assertEquals(
+            listOf(
+                WinRtEnumMemberDefinition("Red", 0u),
+                WinRtEnumMemberDefinition("Blue", 1u),
+            ),
+            color.enumMembers,
+        )
+
+        val priority = sampleNamespace.types.first { it.name == "Priority" }
+        assertEquals(WinRtIntegralType.Int32, priority.enumUnderlyingType)
+        assertEquals(
+            listOf(
+                WinRtEnumMemberDefinition("Low", 0u),
+                WinRtEnumMemberDefinition("High", 1u),
+            ),
+            priority.enumMembers,
+        )
 
         assertEquals(listOf("Update"), widget.methods.map { it.name })
         assertEquals(listOf("Name", "Value"), widget.properties.map { it.name })
@@ -166,6 +186,7 @@ class WinRtMetadataLoaderTest {
                 "IWidgetOverrides",
                 "IWidgetStatics",
                 "Point",
+                "Priority",
                 "Widget",
                 "WidgetAttribute",
                 "WidgetContract",
@@ -292,7 +313,9 @@ class WinRtMetadataLoaderTest {
                     }
                 }
 
-                public enum Color { Red, Blue }
+                public enum Color : uint { Red, Blue }
+
+                public enum Priority { Low, High }
 
                 public struct Point { public int X; public int Y; }
 

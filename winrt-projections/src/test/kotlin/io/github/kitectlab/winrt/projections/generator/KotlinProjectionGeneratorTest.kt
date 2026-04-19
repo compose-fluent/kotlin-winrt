@@ -1,6 +1,8 @@
 package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtActivationShape
+import io.github.kitectlab.winrt.metadata.WinRtEnumMemberDefinition
+import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
@@ -75,9 +77,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonValue, jsonValue.contains("public fun createStringValue(`value`: String): JsonValue"))
         assertTrue(jsonValue, jsonValue.contains("internal val STATIC_CREATESTRINGVALUE_SLOT: Int ="))
         assertTrue(jsonValue, jsonValue.contains("IJsonValueStatics.Metadata.CREATESTRINGVALUE_SLOT"))
+        assertTrue(jsonValue, jsonValue.contains("JsonValueType.Metadata.fromAbi"))
+        assertFalse(jsonValue, jsonValue.contains("JsonValueType.Metadata.wrap"))
 
         assertTrue(jsonError, jsonError.contains("public class JsonError internal constructor("))
         assertTrue(jsonError, jsonError.contains("public fun getJsonStatus(hResult: Int): JsonErrorStatus"))
+        assertTrue(jsonError, jsonError.contains("JsonErrorStatus.Metadata.fromAbi"))
 
         assertTrue(iJsonObject, iJsonObject.contains("public fun getNamedArray(name: String): JsonArray"))
         assertTrue(iJsonObject, iJsonObject.contains("public fun setNamedValue(name: String, `value`: JsonValue)"))
@@ -728,6 +733,67 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("(value as IWinRTObject).nativeObject.pointer"))
         assertTrue(widgetContents.contains("public fun setNamedValue(name: String, `value`: WidgetValue)"))
         assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
+    }
+
+    @Test
+    fun generator_rejects_struct_and_delegate_member_marshaling_until_cswinrt_parity_exists() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "location", returnTypeName = "Sample.Foundation.Point", methodRowId = 10),
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler")),
+                                    methodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "location", returnTypeName = "Sample.Foundation.Point"),
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error!!.message.orEmpty().contains("Struct(Sample.Foundation.Point)") || error.message.orEmpty().contains("Delegate(Sample.Foundation.WidgetHandler)"))
     }
 
     @Test
@@ -1734,8 +1800,30 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(name = "getJsonStatus", returnTypeName = "Windows.Data.Json.JsonErrorStatus", parameters = listOf(WinRtParameterDefinition("hResult", "Int")), isStatic = true),
                             ),
                         ),
-                        WinRtTypeDefinition(namespace = "Windows.Data.Json", name = "JsonErrorStatus", kind = WinRtTypeKind.Enum),
-                        WinRtTypeDefinition(namespace = "Windows.Data.Json", name = "JsonValueType", kind = WinRtTypeKind.Enum),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonErrorStatus",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Unknown", 0u),
+                                WinRtEnumMemberDefinition("InvalidJsonString", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonValueType",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Null", 0u),
+                                WinRtEnumMemberDefinition("Boolean", 1u),
+                                WinRtEnumMemberDefinition("Number", 2u),
+                                WinRtEnumMemberDefinition("String", 3u),
+                                WinRtEnumMemberDefinition("Array", 4u),
+                                WinRtEnumMemberDefinition("Object", 5u),
+                            ),
+                        ),
                     ),
                 ),
             ),

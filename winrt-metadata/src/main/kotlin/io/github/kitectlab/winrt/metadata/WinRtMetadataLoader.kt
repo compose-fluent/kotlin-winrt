@@ -215,6 +215,7 @@ private class MetadataTables private constructor(
 ) {
     fun toTypeDefinitions(): List<WinRtTypeDefinition> {
         val typeDefs = readRawTypeDefs()
+        val rawFields = readRawFields()
         val rawMethods = readRawMethodDefs()
         val rawParams = readRawParams()
         val typeRefNames = readTypeRefQualifiedNames()
@@ -222,6 +223,7 @@ private class MetadataTables private constructor(
         val methodOwnerTypeNames = buildMethodOwnerTypeNames(typeDefs, typeDefNames)
         val memberRefOwnerTypeNames = readMemberRefOwnerTypeNames(typeDefNames, typeRefNames, methodOwnerTypeNames)
         val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefOwnerTypeNames)
+        val fieldConstants = readFieldConstants()
         val interfaceImplsByOwner = readInterfaceImplementations(typeDefNames, typeRefNames, customAttributes)
         val propertyRowIdsByOwner = readMemberMap(TABLE_PROPERTY_MAP, TABLE_PROPERTY)
         val eventRowIdsByOwner = readMemberMap(TABLE_EVENT_MAP, TABLE_EVENT)
@@ -239,12 +241,27 @@ private class MetadataTables private constructor(
                 val typeAttributes = customAttributes[OwnerKey(TABLE_TYPE_DEF, rowId)].orEmpty()
                 val implementedInterfaces = interfaceImplsByOwner[rowId].orEmpty()
                 val defaultInterfaceName = implementedInterfaces.firstOrNull { it.isDefault }?.interfaceName
+                val kind = raw.classify(typeDefNames, typeRefNames)
                 WinRtTypeDefinition(
                     namespace = raw.namespace,
                     name = raw.name,
-                    kind = raw.classify(typeDefNames, typeRefNames),
+                    kind = kind,
                     iid = extractGuid(typeAttributes),
                     baseTypeName = decodeTypeDefOrRefQualifiedName(raw.extendsToken, typeDefNames, typeRefNames),
+                    enumUnderlyingType = readEnumUnderlyingType(
+                        typeIndex = index,
+                        typeDefs = typeDefs,
+                        rawFields = rawFields,
+                        typeDefNames = typeDefNames,
+                        typeRefNames = typeRefNames,
+                    ),
+                    enumMembers = readEnumMembers(
+                        kind = kind,
+                        typeIndex = index,
+                        typeDefs = typeDefs,
+                        rawFields = rawFields,
+                        fieldConstants = fieldConstants,
+                    ),
                     isProjectionInternal = typeAttributes.any { it.typeName == WINRT_INTEROP_PROJECTION_INTERNAL },
                     isExclusiveTo = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO },
                     isApiContract = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_API_CONTRACT },
@@ -329,6 +346,26 @@ private class MetadataTables private constructor(
             cursor += simpleIndexSize(TABLE_METHOD_DEF)
             val (name, genericParameterCount) = splitGenericArity(rawName)
             rows += RawTypeDef(flags, namespace, name, genericParameterCount, extendsToken, fieldListStart, methodListStart)
+        }
+        return rows
+    }
+
+    private fun readRawFields(): List<RawField> {
+        val rowCount = rowCounts[TABLE_FIELD]
+        if (rowCount == 0) {
+            return emptyList()
+        }
+
+        val rows = ArrayList<RawField>(rowCount)
+        var cursor = tableOffsets[TABLE_FIELD]
+        repeat(rowCount) {
+            val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val name = readStringAt(cursor)
+            cursor += stringIndexSize
+            val signatureBlobIndex = readIndex(cursor, blobIndexSize)
+            cursor += blobIndexSize
+            rows += RawField(flags, name, signatureBlobIndex)
         }
         return rows
     }
@@ -539,6 +576,64 @@ private class MetadataTables private constructor(
         )
     }
 
+    private fun readEnumUnderlyingType(
+        typeIndex: Int,
+        typeDefs: List<RawTypeDef>,
+        rawFields: List<RawField>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+    ): WinRtIntegralType? {
+        val valueField = enumFields(typeIndex, typeDefs, rawFields)
+            .firstOrNull { it.second.name == "value__" }
+            ?: return null
+        val signature = readFieldSignature(valueField.second.signatureBlobIndex, typeDefNames, typeRefNames)
+        return signature.typeName.toIntegralType()
+    }
+
+    private fun readEnumMembers(
+        kind: WinRtTypeKind,
+        typeIndex: Int,
+        typeDefs: List<RawTypeDef>,
+        rawFields: List<RawField>,
+        fieldConstants: Map<Int, DecodedFieldConstant>,
+    ): List<WinRtEnumMemberDefinition> {
+        if (kind != WinRtTypeKind.Enum) {
+            return emptyList()
+        }
+        return enumFields(typeIndex, typeDefs, rawFields)
+            .asSequence()
+            .filterNot { (_, field) -> field.name == "value__" }
+            .filter { (_, field) -> field.flags and FIELD_ATTRIBUTE_STATIC != 0 }
+            .mapNotNull { (rowId, field) ->
+                fieldConstants[rowId]?.let { constant ->
+                    WinRtEnumMemberDefinition(
+                        name = field.name,
+                        valueBits = constant.valueBits,
+                    )
+                }
+            }
+            .toList()
+    }
+
+    private fun enumFields(
+        typeIndex: Int,
+        typeDefs: List<RawTypeDef>,
+        rawFields: List<RawField>,
+    ): List<Pair<Int, RawField>> {
+        if (rawFields.isEmpty()) {
+            return emptyList()
+        }
+        val typeDef = typeDefs[typeIndex]
+        val start = typeDef.fieldListStart.coerceAtLeast(1)
+        val endExclusive = (typeDefs.getOrNull(typeIndex + 1)?.fieldListStart ?: (rawFields.size + 1)).coerceAtMost(rawFields.size + 1)
+        if (start >= endExclusive) {
+            return emptyList()
+        }
+        return (start until endExclusive).mapNotNull { fieldRowId ->
+            rawFields.getOrNull(fieldRowId - 1)?.let { fieldRowId to it }
+        }
+    }
+
     private fun buildParameterRowsByMethod(
         rawMethods: List<RawMethodDef>,
         rawParams: List<RawParam>,
@@ -559,6 +654,32 @@ private class MetadataTables private constructor(
                     rawParams.subList(start - 1, endExclusive - 1)
                         .sortedBy(RawParam::sequence),
                 )
+            }
+        }
+    }
+
+    private fun readFieldConstants(): Map<Int, DecodedFieldConstant> {
+        val rowCount = rowCounts[TABLE_CONSTANT]
+        if (rowCount == 0) {
+            return emptyMap()
+        }
+
+        var cursor = tableOffsets[TABLE_CONSTANT]
+        return buildMap {
+            repeat(rowCount) {
+                val type = buffer.byteAt(cursor).toInt() and 0xFF
+                cursor += 1
+                cursor += 1
+                val ownerToken = readIndex(cursor, codedIndexSize(CODED_HAS_CONSTANT))
+                cursor += codedIndexSize(CODED_HAS_CONSTANT)
+                val blobIndex = readIndex(cursor, blobIndexSize)
+                cursor += blobIndexSize
+
+                val ownerTag = ownerToken and CODED_HAS_CONSTANT_TAG_MASK
+                val ownerRowId = ownerToken ushr CODED_HAS_CONSTANT_TAG_BITS
+                if (ownerTag == CODED_HAS_CONSTANT_FIELD && ownerRowId > 0) {
+                    put(ownerRowId, decodeFieldConstant(type, blobIndex))
+                }
             }
         }
     }
@@ -817,6 +938,22 @@ private class MetadataTables private constructor(
         return values
     }
 
+    private fun decodeFieldConstant(type: Int, blobIndex: Int): DecodedFieldConstant {
+        val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
+        val valueBits = when (type) {
+            0x02 -> bytes.firstOrNull()?.toInt()?.let { if (it == 0) 0uL else 1uL } ?: 0uL
+            0x04 -> bytes.firstOrNull()?.toByte()?.toLong()?.toULong() ?: 0uL
+            0x05 -> bytes.firstOrNull()?.toUByte()?.toULong() ?: 0uL
+            0x06 -> bytes.toLittleEndianShort()?.toLong()?.toULong() ?: 0uL
+            0x07, 0x03 -> bytes.toLittleEndianShort()?.toUShort()?.toULong() ?: 0uL
+            0x08 -> bytes.toLittleEndianInt()?.toLong()?.toULong() ?: 0uL
+            0x09 -> bytes.toLittleEndianInt()?.toUInt()?.toULong() ?: 0uL
+            0x0A, 0x0B -> bytes.toLittleEndianLong()?.toULong() ?: 0uL
+            else -> 0uL
+        }
+        return DecodedFieldConstant(type = type, valueBits = valueBits)
+    }
+
     private fun extractGuid(attributes: List<DecodedCustomAttribute>): Guid? {
         val value = attributes.firstOrNull { it.typeName in GUID_ATTRIBUTE_NAMES }
             ?.stringArguments
@@ -882,6 +1019,20 @@ private class MetadataTables private constructor(
         return ParsedPropertySignature(type)
     }
 
+    private fun readFieldSignature(
+        blobIndex: Int,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+    ): ParsedTypeSignature {
+        val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
+        if (bytes.isEmpty()) {
+            return ParsedTypeSignature("Any")
+        }
+        val reader = SignatureReader(bytes, typeDefNames, typeRefNames)
+        reader.readByte()
+        return reader.readType()
+    }
+
     private fun parameterDirectionFor(rawParam: RawParam?, isByRef: Boolean): WinRtParameterDirection = when {
         !isByRef -> WinRtParameterDirection.In
         rawParam == null -> WinRtParameterDirection.Ref
@@ -930,6 +1081,7 @@ private class MetadataTables private constructor(
         private const val TABLE_GENERIC_PARAM = 0x2A
 
         private const val TYPE_ATTRIBUTE_INTERFACE = 0x20
+        private const val FIELD_ATTRIBUTE_STATIC = 0x0010
         private const val METHOD_ATTRIBUTE_STATIC = 0x0010
         private const val PARAM_ATTRIBUTE_IN = 0x0001
         private const val PARAM_ATTRIBUTE_OUT = 0x0002
@@ -956,6 +1108,10 @@ private class MetadataTables private constructor(
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL = 5
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS = 5
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_MASK = (1 shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) - 1
+
+        private const val CODED_HAS_CONSTANT_FIELD = 0
+        private const val CODED_HAS_CONSTANT_TAG_BITS = 2
+        private const val CODED_HAS_CONSTANT_TAG_MASK = (1 shl CODED_HAS_CONSTANT_TAG_BITS) - 1
 
         private val GUID_ATTRIBUTE_NAMES = setOf(
             "System.Runtime.InteropServices.GuidAttribute",
@@ -1139,6 +1295,12 @@ private data class RawTypeDef(
         get() = if (namespace.isEmpty()) name else "$namespace.$name"
 }
 
+private data class RawField(
+    val flags: Int,
+    val name: String,
+    val signatureBlobIndex: Int,
+)
+
 private data class RawMethodDef(
     val flags: Int,
     val name: String,
@@ -1177,6 +1339,11 @@ private data class OwnerKey(
 private data class DecodedCustomAttribute(
     val typeName: String,
     val stringArguments: List<String>,
+)
+
+private data class DecodedFieldConstant(
+    val type: Int,
+    val valueBits: ULong,
 )
 
 private data class PropertyAccessorRows(
@@ -1380,6 +1547,18 @@ private fun normalizeSignatureTypeName(typeName: String?): String = when (typeNa
     else -> typeName
 }
 
+private fun String.toIntegralType(): WinRtIntegralType? = when (this) {
+    "Byte" -> WinRtIntegralType.Int8
+    "UByte" -> WinRtIntegralType.UInt8
+    "Short" -> WinRtIntegralType.Int16
+    "UShort" -> WinRtIntegralType.UInt16
+    "Int" -> WinRtIntegralType.Int32
+    "UInt" -> WinRtIntegralType.UInt32
+    "Long" -> WinRtIntegralType.Int64
+    "ULong" -> WinRtIntegralType.UInt64
+    else -> null
+}
+
 private fun ByteBuffer.byteAt(offset: Int): Byte = get(offset)
 
 private fun ByteBuffer.shortAt(offset: Int): Short = getShort(offset)
@@ -1401,6 +1580,15 @@ private fun ByteBuffer.readPaddedString(offset: Int): String {
     }
     return bytes.toByteArray().decodeToString()
 }
+
+private fun ByteArray.toLittleEndianShort(): Short? =
+    if (size < 2) null else ByteBuffer.wrap(copyOfRange(0, 2)).order(ByteOrder.LITTLE_ENDIAN).short
+
+private fun ByteArray.toLittleEndianInt(): Int? =
+    if (size < 4) null else ByteBuffer.wrap(copyOfRange(0, 4)).order(ByteOrder.LITTLE_ENDIAN).int
+
+private fun ByteArray.toLittleEndianLong(): Long? =
+    if (size < 8) null else ByteBuffer.wrap(copyOfRange(0, 8)).order(ByteOrder.LITTLE_ENDIAN).long
 
 private fun ByteBuffer.readHeapString(heapOffset: Int, index: Int): String {
     if (index == 0) {

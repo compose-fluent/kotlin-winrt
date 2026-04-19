@@ -11,6 +11,34 @@ enum class WinRtTypeKind {
     Delegate,
 }
 
+enum class WinRtIntegralType {
+    Int8,
+    UInt8,
+    Int16,
+    UInt16,
+    Int32,
+    UInt32,
+    Int64,
+    UInt64,
+}
+
+data class WinRtEnumMemberDefinition(
+    val name: String,
+    val valueBits: ULong,
+) {
+    fun normalized(): WinRtEnumMemberDefinition = copy(name = name.trim())
+
+    internal fun merge(other: WinRtEnumMemberDefinition): WinRtEnumMemberDefinition {
+        require(name == other.name) {
+            "Can only merge identical enum members: $name vs ${other.name}"
+        }
+        require(valueBits == other.valueBits) {
+            "Can only merge enum members with identical values: $name=$valueBits vs ${other.name}=${other.valueBits}"
+        }
+        return normalized()
+    }
+}
+
 data class WinRtInterfaceImplementationDefinition(
     val interfaceName: String,
     val isDefault: Boolean = false,
@@ -224,6 +252,8 @@ data class WinRtTypeDefinition(
     val kind: WinRtTypeKind = WinRtTypeKind.Unknown,
     val iid: Guid? = null,
     val baseTypeName: String? = null,
+    val enumUnderlyingType: WinRtIntegralType? = null,
+    val enumMembers: List<WinRtEnumMemberDefinition> = emptyList(),
     val isProjectionInternal: Boolean = false,
     val isExclusiveTo: Boolean = false,
     val isApiContract: Boolean = false,
@@ -265,6 +295,15 @@ data class WinRtTypeDefinition(
             namespace = namespace.trim(),
             name = name.trim(),
             baseTypeName = baseTypeName?.trim(),
+            enumUnderlyingType = enumUnderlyingType,
+            enumMembers = enumMembers
+                .map(WinRtEnumMemberDefinition::normalized)
+                .fold(linkedMapOf<String, WinRtEnumMemberDefinition>()) { unique, member ->
+                    unique.putIfAbsent(member.name, member)
+                    unique
+                }
+                .values
+                .toList(),
             defaultInterfaceName = defaultInterfaceName?.trim(),
             implementedInterfaces = implementedInterfaces
                 .map(WinRtInterfaceImplementationDefinition::normalized)
@@ -287,12 +326,24 @@ data class WinRtTypeDefinition(
 
         val left = normalized()
         val right = other.normalized()
+        val mergedEnumUnderlyingType = when {
+            left.enumUnderlyingType == null -> right.enumUnderlyingType
+            right.enumUnderlyingType == null -> left.enumUnderlyingType
+            left.enumUnderlyingType == right.enumUnderlyingType -> left.enumUnderlyingType
+            else -> error("Can only merge identical enum underlying types: ${left.enumUnderlyingType} vs ${right.enumUnderlyingType}")
+        }
+        val mergedEnumMembers = linkedMapOf<String, WinRtEnumMemberDefinition>()
+        (left.enumMembers + right.enumMembers).forEach { member ->
+            mergedEnumMembers.merge(member.name, member, WinRtEnumMemberDefinition::merge)
+        }
         return WinRtTypeDefinition(
             namespace = left.namespace,
             name = left.name,
             kind = mergeKind(left.kind, right.kind),
             iid = left.iid ?: right.iid,
             baseTypeName = left.baseTypeName ?: right.baseTypeName,
+            enumUnderlyingType = mergedEnumUnderlyingType,
+            enumMembers = mergedEnumMembers.values.toList(),
             isProjectionInternal = left.isProjectionInternal || right.isProjectionInternal,
             isExclusiveTo = left.isExclusiveTo || right.isExclusiveTo,
             isApiContract = left.isApiContract || right.isApiContract,

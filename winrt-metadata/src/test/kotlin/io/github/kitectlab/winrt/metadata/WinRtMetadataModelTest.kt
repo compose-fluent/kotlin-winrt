@@ -192,4 +192,52 @@ class WinRtMetadataModelTest {
         assertEquals(listOf(40), widget.events.map { it.addMethodRowId })
         assertEquals(listOf(41), widget.events.map { it.removeMethodRowId })
     }
+
+    @Test
+    fun normalization_preserves_enum_underlying_type_and_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Status",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition(" Active ", 1u),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Status",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Active", 1u),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val status = model.normalized().namespaces.single().types.single()
+
+        assertEquals(WinRtIntegralType.Int32, status.enumUnderlyingType)
+        assertEquals(
+            listOf(
+                WinRtEnumMemberDefinition("Active", 1u),
+                WinRtEnumMemberDefinition("None", 0u),
+            ),
+            status.enumMembers,
+        )
+    }
 }
