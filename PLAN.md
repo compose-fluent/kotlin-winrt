@@ -30,7 +30,7 @@
 - [ ] Align COM/WinRT marshaling, HRESULT translation, and lifetime management (正在做: `winrt-runtime` now covers minimal `IUnknown` lifetime, `IInspectable.GetRuntimeClassName`, initialization scope management, reusable `string/object/unit/int64` vtable call shapes, and initial boolean/char/guid/HSTRING-reference marshalers, but marshaling breadth, ownership policies, and projected ABI coverage are still incomplete)
 - [ ] Align delegate bridges, delegate handles, and callback marshaling (正在做: `winrt-runtime` now has initial delegate descriptors, parameter-kind modeling, and unit-callback handles, but it still lacks ABI stub generation and native callback marshaling)
 - [ ] Align generic interface projection, parameterized IID, and type-signature behavior (正在做: `winrt-runtime` now has initial `WinRtTypeSignature` rendering and parameterized IID hashing, but coverage is still limited to the minimal shapes currently needed by runtime slices)
-- [ ] Align collection projection for iterable/list/map/view adapters
+- [ ] Align collection projection for iterable/list/map/view adapters (正在做: `winrt-runtime` now has initial collection interface signature/IID helpers for `IIterable`/`IVector`/`IVectorView`/`IMap`/`IMapView`/`IKeyValuePair`, but adapter/runtime call layers are still missing)
 - [ ] Align async projection, task bridging, and completion-callback semantics
 - [ ] Align authoring support, projected-object bridges, and hosting support
 - [ ] Align WinUI-specific type mappings, Xaml metadata, and bootstrap behavior
