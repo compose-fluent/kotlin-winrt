@@ -1,8 +1,10 @@
 package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
+import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
+import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.runtime.Guid
@@ -240,6 +242,10 @@ class KotlinProjectionRenderer {
             builder.addSuperinterface(projectionClassName(implemented.interfaceName))
         }
         plan.type.methods.forEach { builder.addFunction(renderInterfaceMethod(it)) }
+        plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderInterfaceProperty(it)) }
+        plan.type.events.filterNot { it.isStatic }.forEach { event ->
+            renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
+        }
         appendCompanionShells(builder, plan)
         return builder.build()
     }
@@ -256,10 +262,20 @@ class KotlinProjectionRenderer {
         plan.defaultInterfaceName?.substringAfterLast('.')?.let { defaultInterface ->
             builder.addSuperinterface(projectionClassName(plan.defaultInterfaceName))
         }
+        plan.type.implementedInterfaces
+            .filterNot { it.isDefault }
+            .forEach { implemented -> builder.addSuperinterface(projectionClassName(implemented.interfaceName)) }
         plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderStubMethod(it)) }
+        plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderStubProperty(it)) }
+        plan.type.events.filterNot { it.isStatic }.forEach { event ->
+            renderEventFunctions(event, abstract = false).forEach(builder::addFunction)
+        }
         val staticMethods = plan.type.methods.filter { it.isStatic }
-        if (staticMethods.isNotEmpty() || KotlinProjectionCompanionKind.Metadata in plan.companionKinds) {
-            builder.addType(buildMetadataCompanionShell(plan, staticMethods))
+        val staticProperties = plan.type.properties.filter { it.isStatic }
+        val staticEvents = plan.type.events.filter { it.isStatic }
+        if (staticMethods.isNotEmpty() || staticProperties.isNotEmpty() || staticEvents.isNotEmpty() ||
+            KotlinProjectionCompanionKind.Metadata in plan.companionKinds) {
+            builder.addType(buildMetadataCompanionShell(plan, staticMethods, staticProperties, staticEvents))
         }
         appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
         return builder.build()
@@ -352,11 +368,74 @@ class KotlinProjectionRenderer {
             .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
             .build()
 
-    private fun buildMetadataCompanionShell(plan: KotlinTypeProjectionPlan, staticMethods: List<WinRtMethodDefinition>): TypeSpec =
+    private fun renderInterfaceProperty(property: WinRtPropertyDefinition): PropertySpec =
+        PropertySpec.builder(property.name.replaceFirstChar(Char::lowercase), resolveTypeName(property.typeName))
+            .mutable(!property.isReadOnly)
+            .addModifiers(KModifier.ABSTRACT)
+            .build()
+
+    private fun renderStubProperty(property: WinRtPropertyDefinition): PropertySpec {
+        val builder = PropertySpec.builder(
+            property.name.replaceFirstChar(Char::lowercase),
+            resolveTypeName(property.typeName),
+        ).mutable(!property.isReadOnly)
+        builder.getter(
+            FunSpec.getterBuilder()
+                .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
+                .build(),
+        )
+        if (!property.isReadOnly) {
+            builder.setter(
+                FunSpec.setterBuilder()
+                    .addParameter("value", resolveTypeName(property.typeName))
+                    .addCode("error(%S)\n", "Not yet bound to winrt-runtime")
+                    .build(),
+            )
+        }
+        return builder.build()
+    }
+
+    private fun renderEventFunctions(event: WinRtEventDefinition, abstract: Boolean): List<FunSpec> {
+        val typeName = resolveTypeName(event.delegateTypeName)
+        return listOf(
+            FunSpec.builder("add${event.name}")
+                .addParameter("handler", typeName)
+                .apply {
+                    if (abstract) {
+                        addModifiers(KModifier.ABSTRACT)
+                    } else {
+                        addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
+                    }
+                }
+                .returns(Int::class.asClassName())
+                .build(),
+            FunSpec.builder("remove${event.name}")
+                .addParameter("token", Int::class.asClassName())
+                .apply {
+                    if (abstract) {
+                        addModifiers(KModifier.ABSTRACT)
+                    } else {
+                        addCode("error(%S)\n", "Not yet bound to winrt-runtime")
+                    }
+                }
+                .build(),
+        )
+    }
+
+    private fun buildMetadataCompanionShell(
+        plan: KotlinTypeProjectionPlan,
+        staticMethods: List<WinRtMethodDefinition>,
+        staticProperties: List<WinRtPropertyDefinition>,
+        staticEvents: List<WinRtEventDefinition>,
+    ): TypeSpec =
         TypeSpec.companionObjectBuilder("Metadata")
             .apply {
                 appendMetadataCompanionMembers(this, plan)
                 staticMethods.forEach { addFunction(renderStubMethod(it)) }
+                staticProperties.forEach { addProperty(renderStubProperty(it)) }
+                staticEvents.forEach { event ->
+                    renderEventFunctions(event, abstract = false).forEach(::addFunction)
+                }
             }
             .build()
 
@@ -389,6 +468,12 @@ class KotlinProjectionRenderer {
                         .initializer("%S", plan.type.qualifiedName)
                         .build(),
                 )
+                .addProperty(
+                    PropertySpec.builder("FACTORY_INTERFACE", String::class)
+                        .addModifiers(KModifier.CONST)
+                        .initializer("%S", plan.type.activation.activatableFactoryInterfaceName.orEmpty())
+                        .build(),
+                )
                 .build()
 
         KotlinProjectionCompanionKind.StaticInterfaces ->
@@ -411,6 +496,12 @@ class KotlinProjectionRenderer {
                     PropertySpec.builder("DEFAULT_INTERFACE", String::class)
                         .addModifiers(KModifier.CONST)
                         .initializer("%S", plan.defaultInterfaceName.orEmpty())
+                        .build(),
+                )
+                .addProperty(
+                    PropertySpec.builder("FACTORY_INTERFACE", String::class)
+                        .addModifiers(KModifier.CONST)
+                        .initializer("%S", plan.type.activation.composableFactoryInterfaceName.orEmpty())
                         .build(),
                 )
                 .build()

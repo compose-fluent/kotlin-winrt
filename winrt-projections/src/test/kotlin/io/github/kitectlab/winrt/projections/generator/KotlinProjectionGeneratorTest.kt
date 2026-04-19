@@ -5,8 +5,10 @@ import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
+import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
+import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.runtime.Guid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -327,6 +329,12 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555555"),
                             isProjectionInternal = true,
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name"),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -336,6 +344,7 @@ class KotlinProjectionGeneratorTest {
                             defaultInterfaceName = "Sample.Foundation.IWidget",
                             activation = WinRtActivationShape(
                                 isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                                 staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
                                 composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                             ),
@@ -345,6 +354,14 @@ class KotlinProjectionGeneratorTest {
                                     returnTypeName = "Widget",
                                     isStatic = true,
                                 ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name"),
+                                WinRtPropertyDefinition(name = "Count", typeName = "Int", isStatic = true, getterMethodName = "get_Count"),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                                WinRtEventDefinition(name = "Loaded", delegateTypeName = "Sample.Foundation.WidgetHandler", isStatic = true),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -369,14 +386,24 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal interface IInternalContract"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("companion object Metadata"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("IID: Guid = Guid(\"11111111-2222-3333-4444-555555555555\")"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public val name: String"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun addChanged(handler: WidgetHandler): Int"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun removeChanged(token: Int)"))
 
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public sealed class Widget : IWidget"))
+        assertTrue(widgetContents.contains("public val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
         assertTrue(widgetContents.contains("public fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("public val count: Int"))
+        assertTrue(widgetContents.contains("public fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("public fun removeChanged(token: Int)"))
+        assertTrue(widgetContents.contains("public fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
+        assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("public object StaticInterfaces"))
         assertTrue(widgetContents.contains("public object ComposableFactory"))
+        assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("public class WidgetStatics"))
@@ -538,6 +565,76 @@ class KotlinProjectionGeneratorTest {
 
         assertEquals(leftFiles.keys, rightFiles.keys)
         assertEquals(leftFiles.mapValues { it.value.contents }, rightFiles.mapValues { it.value.contents })
+    }
+
+    @Test
+    fun generator_emits_member_surfaces_for_runtime_class_and_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Title", typeName = "String", getterMethodName = "get_Title", setterMethodName = "set_Title"),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(name = "Updated", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetExtra",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetExtra"),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Title", typeName = "String", getterMethodName = "get_Title", setterMethodName = "set_Title"),
+                                WinRtPropertyDefinition(name = "MaxCount", typeName = "Int", isStatic = true, getterMethodName = "get_MaxCount"),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(name = "Updated", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                                WinRtEventDefinition(name = "Reset", delegateTypeName = "Sample.Foundation.WidgetHandler", isStatic = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = filesByName.getValue("Widget.kt").contents
+
+        assertTrue(widgetContents.contains("class Widget : IWidget, IWidgetExtra"))
+        assertTrue(widgetContents.contains("public var title: String"))
+        assertTrue(widgetContents.contains("public val maxCount: Int"))
+        assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("public fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
     }
 
     @Test
