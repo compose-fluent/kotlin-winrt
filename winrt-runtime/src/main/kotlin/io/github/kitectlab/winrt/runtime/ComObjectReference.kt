@@ -137,6 +137,40 @@ open class ComObjectReference(
         WindowsRuntimePlatform.checkSucceeded(hr)
     }
 
+    fun invokeInt64MethodWithObjectArg(slot: Int, value: ComObjectReference): Long {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.JAVA_LONG)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                value.pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return resultOut.get(ValueLayout.JAVA_LONG, 0)
+        }
+    }
+
+    fun invokeUnitMethodWithInt64Arg(slot: Int, value: Long) {
+        val hr = invokeIntMethod(
+            slot = slot,
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_LONG,
+            ),
+            pointer,
+            value,
+        )
+        WindowsRuntimePlatform.checkSucceeded(hr)
+    }
+
     fun asInspectable(): IInspectableReference =
         queryInterface(IID.IInspectable).getOrThrow().let { IInspectableReference(it.pointer) }
 

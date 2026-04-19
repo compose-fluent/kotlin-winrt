@@ -250,4 +250,7 @@ internal object WindowsRuntimePlatform {
             "Windows runtime interop is only supported on Windows hosts."
         }
     }
+
+    fun resolveModulePath(fileName: String): String =
+        java.nio.file.Path.of(System.getProperty("user.dir"), fileName).toString()
 }

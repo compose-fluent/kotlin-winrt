@@ -34,4 +34,16 @@ class ActivationFactoryTest {
     fun activation_factory_iid_is_stable() {
         assertTrue(ActivationFactory.iActivationFactoryIid.toString().isNotBlank())
     }
+
+    @Test
+    fun manifest_free_loader_does_not_cache_missing_modules() {
+        if (PlatformRuntime.isWindows) {
+            DllModule.clearCacheForTests()
+            DllModule.tryLoad("Definitely.Missing.Module.dll")
+            assertEquals(0, DllModule.cachedModuleCount())
+            return
+        }
+
+        assertEquals(0, DllModule.cachedModuleCount())
+    }
 }

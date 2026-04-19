@@ -11,9 +11,7 @@ class JsonObjectInteropTest {
     fun can_parse_json_via_static_interface_and_read_property() {
         assumeTrue(PlatformRuntime.isWindows)
 
-        val comResult = JvmComRuntime.initializeMultithreaded()
-        val roResult = JvmWinRtRuntime.initializeMultithreaded()
-        try {
+        RuntimeScope.initializeMultithreaded().use {
             val statics = JvmWinRtRuntime.getActivationFactory(
                 runtimeClassName = "Windows.Data.Json.JsonObject",
                 interfaceId = iidIJsonObjectStatics,
@@ -30,13 +28,6 @@ class JsonObjectInteropTest {
                 }
             } finally {
                 statics.close()
-            }
-        } finally {
-            if (roResult.isSuccess) {
-                JvmWinRtRuntime.uninitialize()
-            }
-            if (comResult.isSuccess && roResult != KnownHResults.RPC_E_CHANGED_MODE) {
-                JvmComRuntime.uninitialize()
             }
         }
     }
