@@ -44,4 +44,61 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("JsonArray", "JsonValue"), normalized.namespaces[0].types.map { it.name })
         assertEquals(listOf("IStringable", "Uri"), normalized.namespaces[1].types.map { it.name })
     }
+
+    @Test
+    fun normalization_merges_duplicate_namespaces_types_and_methods_deterministically() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.Unknown,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "zeta",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition(" value ", " String ")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = " Sample.Foundation.IWidget ",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "alpha",
+                                    returnTypeName = "Unit",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "zeta",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val normalized = model.normalized()
+
+        assertEquals(listOf("Sample.Foundation"), normalized.namespaces.map { it.name })
+        val widget = normalized.namespaces.single().types.single()
+        assertEquals(WinRtTypeKind.RuntimeClass, widget.kind)
+        assertEquals("Sample.Foundation.IWidget", widget.defaultInterfaceName)
+        assertEquals(listOf("alpha", "zeta"), widget.methods.map { it.name })
+        assertEquals(listOf("value"), widget.methods.last().parameters.map { it.name })
+        assertEquals(listOf("String"), widget.methods.last().parameters.map { it.typeName })
+    }
 }
