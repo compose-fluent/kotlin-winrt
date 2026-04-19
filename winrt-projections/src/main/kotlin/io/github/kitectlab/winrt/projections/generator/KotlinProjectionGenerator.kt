@@ -118,6 +118,7 @@ data class KotlinTypeProjectionPlan(
     val defaultInterfaceIid: Guid? = null,
     val staticInterfaceNames: List<String> = emptyList(),
     val staticInterfaceBindings: List<KotlinProjectionInterfaceBinding> = emptyList(),
+    val implementedInterfaceBindings: List<KotlinProjectionInterfaceBinding> = emptyList(),
     val activatableFactoryInterfaceName: String? = null,
     val activatableFactoryInterfaceIid: Guid? = null,
     val composableFactoryInterfaceName: String? = null,
@@ -236,6 +237,14 @@ class KotlinProjectionPlanner(
                     iid = interfaceIidsByName[interfaceName],
                 )
             },
+            implementedInterfaceBindings = type.implementedInterfaces
+                .filterNot { it.isDefault }
+                .map { implemented ->
+                    KotlinProjectionInterfaceBinding(
+                        qualifiedName = implemented.interfaceName,
+                        iid = interfaceIidsByName[implemented.interfaceName],
+                    )
+                },
             activatableFactoryInterfaceName = type.activation.activatableFactoryInterfaceName,
             activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(interfaceIidsByName::get),
             composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
@@ -451,6 +460,25 @@ class KotlinProjectionRenderer {
                     .build(),
             )
         }
+        plan.implementedInterfaceBindings
+            .filter { it.iid != null }
+            .forEach { binding ->
+                builder.addProperty(
+                    PropertySpec.builder(
+                        "_${binding.qualifiedName.substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
+                        IUNKNOWN_REFERENCE_CLASS_NAME,
+                    )
+                        .addModifiers(KModifier.PRIVATE)
+                        .delegate(
+                            CodeBlock.of(
+                                "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %T.Metadata.IID) }",
+                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                                resolveTypeName(binding.qualifiedName),
+                            ),
+                        )
+                        .build(),
+                )
+            }
         plan.defaultInterfaceName?.let { defaultInterfaceName ->
             builder.addSuperinterface(resolveTypeName(defaultInterfaceName))
         }
@@ -814,6 +842,22 @@ class KotlinProjectionRenderer {
                     .build(),
             )
         }
+        if (plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
+            KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
+            KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds) {
+            builder.addFunction(
+                FunSpec.builder("acquireInterface")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .addParameter("iid", GUID_CLASS_NAME)
+                    .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
+                    .addCode(
+                        "return instance.queryInterface(iid).getOrThrow().use { %T(it.getRef(), iid) }\n",
+                        IUNKNOWN_REFERENCE_CLASS_NAME,
+                    )
+                    .build(),
+            )
+        }
         plan.defaultInterfaceName?.let { interfaceName ->
             builder.addProperty(
                 PropertySpec.builder("DEFAULT_INTERFACE", String::class)
@@ -833,10 +877,7 @@ class KotlinProjectionRenderer {
                     .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                     .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
                     .addCode(
-                        CodeBlock.of(
-                            "return instance.queryInterface(DEFAULT_INTERFACE_IID).getOrThrow().use { %T(it.getRef(), DEFAULT_INTERFACE_IID) }\n",
-                            IUNKNOWN_REFERENCE_CLASS_NAME,
-                        ),
+                        CodeBlock.of("return acquireInterface(instance, DEFAULT_INTERFACE_IID)\n"),
                     )
                     .build(),
             )
