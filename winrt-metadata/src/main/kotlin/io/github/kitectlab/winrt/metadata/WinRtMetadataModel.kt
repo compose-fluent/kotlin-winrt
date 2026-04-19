@@ -11,6 +11,55 @@ enum class WinRtTypeKind {
     Delegate,
 }
 
+data class WinRtInterfaceImplementationDefinition(
+    val interfaceName: String,
+    val isDefault: Boolean = false,
+    val isOverridable: Boolean = false,
+    val isProtected: Boolean = false,
+) {
+    fun normalized(): WinRtInterfaceImplementationDefinition = copy(interfaceName = interfaceName.trim())
+
+    internal fun merge(other: WinRtInterfaceImplementationDefinition): WinRtInterfaceImplementationDefinition {
+        require(interfaceName == other.interfaceName) {
+            "Can only merge identical interface implementations: $interfaceName vs ${other.interfaceName}"
+        }
+        return WinRtInterfaceImplementationDefinition(
+            interfaceName = interfaceName,
+            isDefault = isDefault || other.isDefault,
+            isOverridable = isOverridable || other.isOverridable,
+            isProtected = isProtected || other.isProtected,
+        )
+    }
+}
+
+data class WinRtActivationShape(
+    val isActivatable: Boolean = false,
+    val activatableFactoryInterfaceName: String? = null,
+    val staticInterfaceNames: List<String> = emptyList(),
+    val composableFactoryInterfaceName: String? = null,
+) {
+    fun normalized(): WinRtActivationShape = copy(
+        activatableFactoryInterfaceName = activatableFactoryInterfaceName?.trim(),
+        staticInterfaceNames = staticInterfaceNames
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+            .sorted(),
+        composableFactoryInterfaceName = composableFactoryInterfaceName?.trim(),
+    )
+
+    internal fun merge(other: WinRtActivationShape): WinRtActivationShape {
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtActivationShape(
+            isActivatable = left.isActivatable || right.isActivatable,
+            activatableFactoryInterfaceName = left.activatableFactoryInterfaceName ?: right.activatableFactoryInterfaceName,
+            staticInterfaceNames = (left.staticInterfaceNames + right.staticInterfaceNames).distinct().sorted(),
+            composableFactoryInterfaceName = left.composableFactoryInterfaceName ?: right.composableFactoryInterfaceName,
+        )
+    }
+}
+
 data class WinRtParameterDefinition(
     val name: String,
     val typeName: String,
@@ -51,7 +100,11 @@ data class WinRtTypeDefinition(
     val name: String,
     val kind: WinRtTypeKind = WinRtTypeKind.Unknown,
     val iid: Guid? = null,
+    val baseTypeName: String? = null,
     val defaultInterfaceName: String? = null,
+    val implementedInterfaces: List<WinRtInterfaceImplementationDefinition> = emptyList(),
+    val genericParameterCount: Int = 0,
+    val activation: WinRtActivationShape = WinRtActivationShape(),
     val methods: List<WinRtMethodDefinition> = emptyList(),
 ) {
     val qualifiedName: String
@@ -66,7 +119,16 @@ data class WinRtTypeDefinition(
         return copy(
             namespace = namespace.trim(),
             name = name.trim(),
+            baseTypeName = baseTypeName?.trim(),
             defaultInterfaceName = defaultInterfaceName?.trim(),
+            implementedInterfaces = implementedInterfaces
+                .map(WinRtInterfaceImplementationDefinition::normalized)
+                .groupBy(WinRtInterfaceImplementationDefinition::interfaceName)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtInterfaceImplementationDefinition::merge) }
+                .sortedBy(WinRtInterfaceImplementationDefinition::interfaceName),
+            genericParameterCount = genericParameterCount.coerceAtLeast(0),
+            activation = activation.normalized(),
             methods = normalizedMethods,
         )
     }
@@ -83,7 +145,15 @@ data class WinRtTypeDefinition(
             name = left.name,
             kind = mergeKind(left.kind, right.kind),
             iid = left.iid ?: right.iid,
+            baseTypeName = left.baseTypeName ?: right.baseTypeName,
             defaultInterfaceName = left.defaultInterfaceName ?: right.defaultInterfaceName,
+            implementedInterfaces = (left.implementedInterfaces + right.implementedInterfaces)
+                .groupBy(WinRtInterfaceImplementationDefinition::interfaceName)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtInterfaceImplementationDefinition::merge) }
+                .sortedBy(WinRtInterfaceImplementationDefinition::interfaceName),
+            genericParameterCount = maxOf(left.genericParameterCount, right.genericParameterCount),
+            activation = left.activation.merge(right.activation),
             methods = (left.methods + right.methods)
                 .sortedWith(compareBy(WinRtMethodDefinition::signatureKey))
                 .distinctBy(WinRtMethodDefinition::signatureKey),

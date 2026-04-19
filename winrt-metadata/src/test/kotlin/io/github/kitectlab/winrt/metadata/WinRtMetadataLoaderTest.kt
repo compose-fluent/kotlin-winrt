@@ -4,7 +4,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
+import io.github.kitectlab.winrt.runtime.Guid
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -16,21 +18,44 @@ class WinRtMetadataLoaderTest {
 
         val model = WinRtMetadataLoader.load(assembly).normalized()
 
-        assertEquals(listOf("Sample.Foundation"), model.namespaces.map { it.name })
+        assertEquals(listOf("Sample.Foundation", "Windows.Foundation.Metadata"), model.namespaces.map { it.name })
+        val sampleNamespace = model.namespaces.first { it.name == "Sample.Foundation" }
         assertEquals(
-            listOf("Color", "IWidget", "Point", "Widget", "WidgetHandler"),
-            model.namespaces.single().types.map { it.name },
+            listOf("Color", "IBox", "IWidget", "IWidgetBase", "IWidgetFactory", "IWidgetStatics", "Point", "Widget", "WidgetHandler"),
+            sampleNamespace.types.map { it.name },
         )
         assertEquals(
             listOf(
                 WinRtTypeKind.Enum,
                 WinRtTypeKind.Interface,
+                WinRtTypeKind.Interface,
+                WinRtTypeKind.Interface,
+                WinRtTypeKind.Interface,
+                WinRtTypeKind.Interface,
                 WinRtTypeKind.Struct,
                 WinRtTypeKind.RuntimeClass,
                 WinRtTypeKind.Delegate,
             ),
-            model.namespaces.single().types.map { it.kind },
+            sampleNamespace.types.map { it.kind },
         )
+
+        val widget = sampleNamespace.types.first { it.name == "Widget" }
+        assertEquals(Guid("33333333-3333-3333-3333-333333333333"), widget.iid)
+        assertEquals("System.Object", widget.baseTypeName)
+        assertNull(widget.defaultInterfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetBase"), widget.implementedInterfaces.map { it.interfaceName })
+        assertEquals(1, widget.genericParameterCount)
+        assertEquals(true, widget.activation.isActivatable)
+        assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.activatableFactoryInterfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidgetStatics"), widget.activation.staticInterfaceNames)
+        assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.composableFactoryInterfaceName)
+
+        val iWidget = sampleNamespace.types.first { it.name == "IWidget" }
+        assertEquals(Guid("22222222-2222-2222-2222-222222222222"), iWidget.iid)
+        assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })
+
+        val iBox = sampleNamespace.types.first { it.name == "IBox" }
+        assertEquals(1, iBox.genericParameterCount)
     }
 
     @Test
@@ -52,10 +77,14 @@ class WinRtMetadataLoaderTest {
         )
         val firstLoad = WinRtMetadataLoader.load(assembly, duplicatePathForm)
         val secondLoad = WinRtMetadataLoader.load(duplicatePathForm, assembly)
+        val sampleNamespace = firstLoad.namespaces.first { it.name == "Sample.Foundation" }
 
         assertEquals(1, discovered.count { it.fileName == assembly.fileName })
         assertEquals(firstLoad, secondLoad)
-        assertEquals(listOf("Color", "IWidget", "Point", "Widget", "WidgetHandler"), firstLoad.namespaces.single().types.map { it.name })
+        assertEquals(
+            listOf("Color", "IBox", "IWidget", "IWidgetBase", "IWidgetFactory", "IWidgetStatics", "Point", "Widget", "WidgetHandler"),
+            sampleNamespace.types.map { it.name },
+        )
     }
 
     private fun buildManagedMetadataSample(): Path {
@@ -72,18 +101,76 @@ class WinRtMetadataLoaderTest {
                 <TargetFramework>net8.0</TargetFramework>
                 <ImplicitUsings>disable</ImplicitUsings>
                 <Nullable>disable</Nullable>
+                <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+                <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
               </PropertyGroup>
             </Project>
             """.trimIndent(),
         )
         projectDir.resolve("MetadataTypes.cs").writeText(
             """
+            namespace Windows.Foundation.Metadata
+            {
+                using System;
+
+                [AttributeUsage(AttributeTargets.Class | AttributeTargets.Interface, AllowMultiple = false)]
+                public sealed class GuidAttribute : Attribute
+                {
+                    public GuidAttribute(string value) {}
+                }
+
+                [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+                public sealed class ActivatableAttribute : Attribute
+                {
+                    public ActivatableAttribute(string factoryInterfaceName) {}
+                }
+
+                [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+                public sealed class StaticAttribute : Attribute
+                {
+                    public StaticAttribute(string interfaceName) {}
+                }
+
+                [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+                public sealed class ComposableAttribute : Attribute
+                {
+                    public ComposableAttribute(string factoryInterfaceName) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class DefaultAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class OverridableAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class ProtectedAttribute : Attribute {}
+            }
+
             namespace Sample.Foundation
             {
-                public interface IWidget {}
-                public class Widget {}
+                [Windows.Foundation.Metadata.Guid("11111111-1111-1111-1111-111111111111")]
+                public interface IWidgetBase {}
+
+                [Windows.Foundation.Metadata.Guid("22222222-2222-2222-2222-222222222222")]
+                public interface IWidget : IWidgetBase {}
+
+                public interface IWidgetFactory {}
+
+                public interface IWidgetStatics {}
+
+                public interface IBox<T> {}
+
+                [Windows.Foundation.Metadata.Guid("33333333-3333-3333-3333-333333333333")]
+                [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
+                [Windows.Foundation.Metadata.Static("Sample.Foundation.IWidgetStatics")]
+                [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetFactory")]
+                public class Widget<T> : IWidget {}
+
                 public enum Color { Red, Blue }
+
                 public struct Point { public int X; public int Y; }
+
                 public delegate void WidgetHandler();
             }
             """.trimIndent(),

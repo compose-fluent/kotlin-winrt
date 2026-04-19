@@ -56,6 +56,16 @@ class WinRtMetadataModelTest {
                             namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.Unknown,
+                            baseTypeName = " System.Object ",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(" Sample.Foundation.IWidget ", isProtected = true),
+                            ),
+                            genericParameterCount = 1,
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = " Sample.Foundation.IWidgetFactory ",
+                                staticInterfaceNames = listOf(" Sample.Foundation.IWidgetStatics "),
+                            ),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "zeta",
@@ -74,6 +84,14 @@ class WinRtMetadataModelTest {
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = " Sample.Foundation.IWidget ",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            genericParameterCount = 1,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                                composableFactoryInterfaceName = " Sample.Foundation.IWidgetFactory ",
+                            ),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "alpha",
@@ -96,7 +114,15 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("Sample.Foundation"), normalized.namespaces.map { it.name })
         val widget = normalized.namespaces.single().types.single()
         assertEquals(WinRtTypeKind.RuntimeClass, widget.kind)
+        assertEquals("System.Object", widget.baseTypeName)
         assertEquals("Sample.Foundation.IWidget", widget.defaultInterfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidget"), widget.implementedInterfaces.map { it.interfaceName })
+        assertEquals(listOf(true), widget.implementedInterfaces.map { it.isDefault })
+        assertEquals(1, widget.genericParameterCount)
+        assertEquals(true, widget.activation.isActivatable)
+        assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.activatableFactoryInterfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidgetStatics"), widget.activation.staticInterfaceNames)
+        assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.composableFactoryInterfaceName)
         assertEquals(listOf("alpha", "zeta"), widget.methods.map { it.name })
         assertEquals(listOf("value"), widget.methods.last().parameters.map { it.name })
         assertEquals(listOf("String"), widget.methods.last().parameters.map { it.typeName })
