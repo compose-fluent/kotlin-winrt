@@ -209,6 +209,12 @@ internal class WinRtDelegateComObject(
         private fun invokeBridge(thisPointer: MemorySegment, rawArguments: Array<Any?>): Int =
             registry[pointerKey(thisPointer)]?.invoke(rawArguments) ?: KnownHResults.RO_E_CLOSED.value
 
+        internal fun releaseLocalReference(pointer: MemorySegment): Boolean {
+            val delegate = registry[pointerKey(pointer)] ?: return false
+            delegate.releaseManagedReference()
+            return true
+        }
+
         private fun pointerKey(pointer: MemorySegment): Long = pointer.address()
     }
 }
