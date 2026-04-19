@@ -263,7 +263,21 @@ class KotlinProjectionGeneratorTest {
                     types = listOf(
                         WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Status", kind = WinRtTypeKind.Enum),
                         WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct),
-                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("title", "String"),
+                                        WinRtParameterDefinition("count", "Int"),
+                                    ),
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -405,7 +419,21 @@ class KotlinProjectionGeneratorTest {
                     types = listOf(
                         WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Status", kind = WinRtTypeKind.Enum),
                         WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct),
-                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("title", "String"),
+                                        WinRtParameterDefinition("count", "Int"),
+                                    ),
+                                ),
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -416,6 +444,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("Status.kt").contents.contains("enum class Status"))
         assertTrue(filesByName.getValue("Point.kt").contents.contains("data class Point"))
         assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("fun interface WidgetHandler"))
+        assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("public operator fun invoke(title: String, count: Int): Boolean"))
     }
 
     @Test
@@ -751,6 +780,13 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -797,6 +833,30 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_delegates_without_a_single_invoke_method() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error!!.message.orEmpty().contains("must expose exactly one Invoke method"))
+    }
+
+    @Test
     fun generator_emits_interface_abi_slots_after_inherited_interface_segments() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -831,6 +891,13 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
                         ),
                     ),
                 ),
@@ -1057,6 +1124,13 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "WidgetHandler",
                             kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
                         ),
                     ),
                 ),

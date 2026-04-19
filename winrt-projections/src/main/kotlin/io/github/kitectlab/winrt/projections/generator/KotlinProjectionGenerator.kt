@@ -1096,15 +1096,29 @@ class KotlinProjectionRenderer {
             .build()
 
     private fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val invokeMethod = delegateInvokeMethod(plan.type)
         val builder = TypeSpec.funInterfaceBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
         builder.addFunction(
             FunSpec.builder("invoke")
                 .addModifiers(KModifier.ABSTRACT, KModifier.OPERATOR)
-                .returns(UNIT)
+                .addParameters(
+                    invokeMethod.parameters.map { parameter ->
+                        ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+                    },
+                )
+                .returns(resolveTypeName(invokeMethod.returnTypeName))
                 .build(),
         )
         return builder.build()
+    }
+
+    private fun delegateInvokeMethod(type: WinRtTypeDefinition): WinRtMethodDefinition {
+        val invokeMethods = type.methods.filter { it.name == "Invoke" }
+        require(invokeMethods.size == 1 && type.methods.size == 1) {
+            "Delegate(${type.qualifiedName}) must expose exactly one Invoke method in metadata before projection planning."
+        }
+        return invokeMethods.single()
     }
 
     private fun applyCommonTypeShape(
