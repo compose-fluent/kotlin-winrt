@@ -3,10 +3,11 @@ package io.github.kitectlab.winrt.runtime
 data class WinRtDelegateDescriptor(
     val interfaceId: Guid,
     val parameterKinds: List<WinRtDelegateValueKind>,
+    val returnKind: WinRtDelegateValueKind = WinRtDelegateValueKind.UNIT,
 ) {
     init {
-        require(parameterKinds.isNotEmpty()) {
-            "Delegate descriptors must declare at least one parameter kind."
+        require(returnKind.isSupportedDelegateReturnKind()) {
+            "Unsupported delegate return kind: $returnKind."
         }
     }
 
@@ -20,3 +21,19 @@ data class WinRtDelegateDescriptor(
         return WinRtTypeSignature.parameterizedInterface(genericDelegateIid, *argumentSignatures)
     }
 }
+
+private fun WinRtDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =
+    when (this) {
+        WinRtDelegateValueKind.UNIT,
+        WinRtDelegateValueKind.BOOLEAN,
+        WinRtDelegateValueKind.INT32,
+        WinRtDelegateValueKind.UINT32,
+        WinRtDelegateValueKind.DOUBLE,
+        WinRtDelegateValueKind.HSTRING,
+        WinRtDelegateValueKind.OBJECT,
+        WinRtDelegateValueKind.IUNKNOWN,
+        WinRtDelegateValueKind.IINSPECTABLE,
+        -> true
+
+        WinRtDelegateValueKind.INT64 -> false
+    }

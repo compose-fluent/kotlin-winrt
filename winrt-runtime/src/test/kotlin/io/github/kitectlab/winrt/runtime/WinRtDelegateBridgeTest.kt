@@ -162,4 +162,50 @@ class WinRtDelegateBridgeTest {
         handle.close()
         handle.invokeForTesting(listOf("sender"))
     }
+
+    @Test
+    fun delegate_reference_decodes_string_return_value_from_native_delegate() {
+        val handle = WinRtDelegateBridge.createDelegate(
+            iid = Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            parameterKinds = listOf(WinRtDelegateValueKind.INT32),
+            returnKind = WinRtDelegateValueKind.HSTRING,
+        ) { args ->
+            "value-${args.single() as Int}"
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertEquals("value-42", reference.invoke(listOf(42)))
+            }
+        }
+    }
+
+    @Test
+    fun delegate_reference_decodes_boolean_and_uint32_return_values_from_native_delegate() {
+        val boolHandle = WinRtDelegateBridge.createDelegate(
+            iid = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            parameterKinds = listOf(WinRtDelegateValueKind.INT32),
+            returnKind = WinRtDelegateValueKind.BOOLEAN,
+        ) { args ->
+            (args.single() as Int) > 0
+        }
+        val uintHandle = WinRtDelegateBridge.createDelegate(
+            iid = Guid("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+            parameterKinds = listOf(WinRtDelegateValueKind.INT32),
+            returnKind = WinRtDelegateValueKind.UINT32,
+        ) { args ->
+            ((args.single() as Int) + 10).toUInt()
+        }
+
+        boolHandle.use {
+            it.createReference().use { reference ->
+                assertEquals(true, reference.invoke(listOf(1)))
+            }
+        }
+        uintHandle.use {
+            it.createReference().use { reference ->
+                assertEquals(15u, reference.invoke(listOf(5)))
+            }
+        }
+    }
 }

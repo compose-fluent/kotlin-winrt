@@ -17,6 +17,8 @@ import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
+import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
+import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
 import io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
@@ -48,6 +50,8 @@ private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName
 private val IINSPECTABLE_REFERENCE_CLASS_NAME = IInspectableReference::class.asClassName()
 private val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
 private val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClassName()
+private val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::class.asClassName()
+private val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
 private val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
@@ -60,6 +64,7 @@ private val MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "MutableLi
 private val MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "MutableMap")
 private val ARENA_CLASS_NAME = ClassName("java.lang.foreign", "Arena")
 private val FUNCTION_DESCRIPTOR_CLASS_NAME = ClassName("java.lang.foreign", "FunctionDescriptor")
+private val MEMORY_SEGMENT_CLASS_NAME = ClassName("java.lang.foreign", "MemorySegment")
 private val VALUE_LAYOUT_CLASS_NAME = ClassName("java.lang.foreign", "ValueLayout")
 
 private typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
@@ -142,6 +147,7 @@ data class KotlinTypeProjectionPlan(
     val abiSlotBindings: List<KotlinProjectionAbiSlotBinding> = emptyList(),
     val instanceMemberBindings: List<KotlinProjectionInstanceMemberBinding> = emptyList(),
     val staticMemberBindings: List<KotlinProjectionStaticMemberBinding> = emptyList(),
+    val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
@@ -345,6 +351,12 @@ class KotlinProjectionPlanner(
             abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName),
             instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName),
             staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName),
+            delegateInvokeShape =
+                if (type.kind == WinRtTypeKind.Delegate) {
+                    classifyAbiTypeBinding(type.qualifiedName, type.namespace, typesByQualifiedName).delegateInvokeShape
+                } else {
+                    null
+                },
             companionKinds = planCompanions(type),
         )
     }
@@ -860,6 +872,11 @@ private fun KotlinProjectionDelegateInvokeShape.isSupportedOutboundDelegateShape
         returnBinding.kind == KotlinProjectionAbiValueKind.Unit &&
         parameterBindings.all { it.typeBinding.isSupportedDelegateCallbackBinding() }
 
+private fun KotlinProjectionDelegateInvokeShape.isSupportedProjectedDelegateShape(): Boolean =
+    interfaceId != null &&
+        parameterBindings.all { it.typeBinding.isSupportedProjectedDelegateBinding() } &&
+        returnBinding.isSupportedProjectedDelegateReturnBinding()
+
 private fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding(): Boolean = when (kind) {
     KotlinProjectionAbiValueKind.String,
     KotlinProjectionAbiValueKind.Int32,
@@ -870,6 +887,22 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding():
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType == WinRtIntegralType.Int32 || enumUnderlyingType == WinRtIntegralType.UInt32
     else -> false
 }
+
+private fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateBinding(): Boolean = when (kind) {
+    KotlinProjectionAbiValueKind.String,
+    KotlinProjectionAbiValueKind.Boolean,
+    KotlinProjectionAbiValueKind.Int32,
+    KotlinProjectionAbiValueKind.UInt32,
+    KotlinProjectionAbiValueKind.Double,
+    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.UnknownReference,
+    KotlinProjectionAbiValueKind.InspectableReference -> true
+    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType == WinRtIntegralType.Int32 || enumUnderlyingType == WinRtIntegralType.UInt32
+    else -> false
+}
+
+private fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateReturnBinding(): Boolean =
+    isSupportedProjectedDelegateBinding() || kind == KotlinProjectionAbiValueKind.Unit
 
 private data class AbiMemberOrder(
     val rowId: Int,
@@ -1177,6 +1210,49 @@ class KotlinProjectionRenderer {
                 .returns(resolveTypeName(invokeMethod.returnTypeName))
                 .build(),
         )
+        val invokeShape = plan.delegateInvokeShape
+        if (invokeShape != null && invokeShape.isSupportedProjectedDelegateShape()) {
+            val projectedType = resolveTypeName(plan.type.qualifiedName)
+            builder.addType(
+                TypeSpec.companionObjectBuilder("Metadata")
+                    .addProperty(
+                        PropertySpec.builder("DESCRIPTOR", WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME)
+                            .addModifiers(KModifier.INTERNAL)
+                            .initializer("%L", delegateDescriptorCode(invokeShape))
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("fromAbi")
+                            .addModifiers(KModifier.INTERNAL)
+                            .addParameter("pointer", MEMORY_SEGMENT_CLASS_NAME)
+                            .returns(projectedType.copy(nullable = true))
+                            .addCode(
+                                CodeBlock.of(
+                                    """
+                                    val __native = %T.fromAbi(pointer, DESCRIPTOR) ?: return null
+                                    return object : %T, %T {
+                                        override val nativeObject: %T
+                                            get() = __native
+
+                                        override fun invoke(%L): %T {
+                                            %L
+                                        }
+                                    }
+                                    """.trimIndent() + "\n",
+                                    WINRT_DELEGATE_REFERENCE_CLASS_NAME,
+                                    projectedType,
+                                    IWINRT_OBJECT_CLASS_NAME,
+                                    COM_OBJECT_REFERENCE_CLASS_NAME,
+                                    invokeMethod.parameters.joinToString(", ") { "${it.name}: ${resolveTypeName(it.typeName)}" },
+                                    resolveTypeName(invokeMethod.returnTypeName),
+                                    delegateInvokeBodyCode(invokeShape),
+                                ),
+                            )
+                            .build(),
+                    )
+                    .build(),
+            )
+        }
         return builder.build()
     }
 
@@ -1452,9 +1528,9 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.Unit,
             KotlinProjectionAbiValueKind.ProjectedInterface,
             KotlinProjectionAbiValueKind.Struct,
-            KotlinProjectionAbiValueKind.Delegate,
             KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.Unsupported -> return null
+            KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
         }
         val readbackStatement = when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.String ->
@@ -1504,10 +1580,20 @@ class KotlinProjectionRenderer {
                 } else {
                     return null
                 }
+            KotlinProjectionAbiValueKind.Delegate ->
+                if (returnType != null) {
+                    CodeBlock.of(
+                        "return %T.Metadata.fromAbi(__resultOut.get(%T.ADDRESS, 0)) ?: error(%S)\n",
+                        returnType,
+                        VALUE_LAYOUT_CLASS_NAME,
+                        "Expected non-null delegate instance from ABI return for ${returnBinding.resolvedTypeName}.",
+                    )
+                } else {
+                    return null
+                }
             KotlinProjectionAbiValueKind.Unit,
             KotlinProjectionAbiValueKind.ProjectedInterface,
             KotlinProjectionAbiValueKind.Struct,
-            KotlinProjectionAbiValueKind.Delegate,
             KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.Unsupported -> return null
         }
@@ -1628,6 +1714,38 @@ class KotlinProjectionRenderer {
             .add(")")
             .build()
 
+    private fun delegateDescriptorCode(
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ): CodeBlock =
+        CodeBlock.of(
+            "%T(interfaceId = %T(%S), parameterKinds = %L, returnKind = %L)",
+            WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME,
+            GUID_CLASS_NAME,
+            invokeShape.interfaceId.toString(),
+            delegateInvokeParameterKindsCode(invokeShape.parameterBindings),
+            delegateInvokeReturnKindCode(invokeShape.returnBinding),
+        )
+
+    private fun delegateInvokeParameterKindsCode(
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    ): CodeBlock =
+        CodeBlock.builder()
+            .add("listOf(")
+            .apply {
+                parameterBindings.forEachIndexed { index, parameterBinding ->
+                    if (index > 0) {
+                        add(", ")
+                    }
+                    add("%L", delegateInvokeValueKindCode(parameterBinding.typeBinding))
+                }
+            }
+            .add(")")
+            .build()
+
+    private fun delegateInvokeReturnKindCode(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock = delegateInvokeValueKindCode(returnBinding)
+
     private fun delegateValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.HSTRING", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int32,
@@ -1637,6 +1755,90 @@ class KotlinProjectionRenderer {
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
+    }
+
+    private fun delegateInvokeValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock = when (typeBinding.kind) {
+        KotlinProjectionAbiValueKind.Unit -> CodeBlock.of("%T.UNIT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.HSTRING", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.BOOLEAN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.DOUBLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Enum -> when (typeBinding.enumUnderlyingType) {
+            WinRtIntegralType.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            else -> error("Unsupported enum delegate ABI kind: ${typeBinding.describeAbiKind()}")
+        }
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        else -> error("Unsupported projected delegate ABI kind: ${typeBinding.describeAbiKind()}")
+    }
+
+    private fun delegateInvokeBodyCode(
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ): CodeBlock {
+        val argumentList = CodeBlock.builder()
+            .add("listOf(")
+            .apply {
+                invokeShape.parameterBindings.forEachIndexed { index, parameterBinding ->
+                    if (index > 0) {
+                        add(", ")
+                    }
+                    add("%L", delegateInvokeArgumentCode(parameterBinding))
+                }
+            }
+            .add(")")
+            .build()
+        val nativeInvokeExpression = CodeBlock.of("__native.invoke(%L)", argumentList)
+        return delegateInvokeReturnCode(invokeShape.returnBinding, nativeInvokeExpression)
+    }
+
+    private fun delegateInvokeArgumentCode(
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+    ): CodeBlock = when (parameterBinding.typeBinding.kind) {
+        KotlinProjectionAbiValueKind.String,
+        KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32,
+        KotlinProjectionAbiValueKind.Double,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%L", parameterBinding.name)
+        KotlinProjectionAbiValueKind.Enum -> {
+            val enumType = resolveTypeName(parameterBinding.typeBinding.resolvedTypeName)
+            CodeBlock.of("%T.Metadata.toAbi(%L)", enumType, parameterBinding.name)
+        }
+        else -> error("Unsupported projected delegate parameter ABI kind: ${parameterBinding.typeBinding.describeAbiKind()}")
+    }
+
+    private fun delegateInvokeReturnCode(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        nativeInvokeExpression: CodeBlock,
+    ): CodeBlock = when (returnBinding.kind) {
+        KotlinProjectionAbiValueKind.Unit -> CodeBlock.of("%L\nreturn\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.String -> CodeBlock.of("return %L as String\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("return %L as Boolean\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("return %L as Int\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("return %L as UInt\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("return %L as Double\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Enum -> {
+            val enumType = resolveTypeName(returnBinding.resolvedTypeName)
+            when (returnBinding.enumUnderlyingType) {
+                WinRtIntegralType.Int32 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Int)\n", enumType, nativeInvokeExpression)
+                WinRtIntegralType.UInt32 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UInt)\n", enumType, nativeInvokeExpression)
+                else -> error("Unsupported projected delegate enum return ABI kind: ${returnBinding.describeAbiKind()}")
+            }
+        }
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> {
+            val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
+            CodeBlock.of("return %T.Metadata.wrap(%L as %T)\n", projectedType, nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
+        }
+        KotlinProjectionAbiValueKind.UnknownReference ->
+            CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.InspectableReference ->
+            CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
+        else -> error("Unsupported projected delegate return ABI kind: ${returnBinding.describeAbiKind()}")
     }
 
     private fun delegateCallbackArgumentCodeList(

@@ -944,6 +944,74 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_delegate_from_abi_wrappers_and_delegate_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getHandler",
+                                    returnTypeName = "Sample.Foundation.WidgetHandler",
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getHandler",
+                                    returnTypeName = "Sample.Foundation.WidgetHandler",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = filesByName.getValue("Widget.kt").contents
+        val delegateContents = filesByName.getValue("WidgetHandler.kt").contents
+
+        assertTrue(delegateContents.contains("internal val DESCRIPTOR: WinRtDelegateDescriptor"))
+        assertTrue(delegateContents.contains("WinRtDelegateReference.fromAbi(pointer, DESCRIPTOR)"))
+        assertTrue(delegateContents.contains("override val nativeObject: ComObjectReference"))
+        assertTrue(delegateContents.contains("override fun invoke("))
+        assertTrue(delegateContents.contains("): Boolean"))
+        assertTrue(delegateContents.contains("__native.invoke(listOf("))
+        assertTrue(delegateContents.contains("as Boolean"))
+        assertTrue(widgetContents.contains("return WidgetHandler.Metadata.fromAbi(__resultOut.get(ValueLayout.ADDRESS, 0))"))
+        assertFalse(widgetContents.contains("public fun getHandler(): WidgetHandler = error(\"Not yet bound to winrt-runtime\")"))
+    }
+
+    @Test
     fun generator_rejects_delegates_without_a_single_invoke_method() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
