@@ -2,6 +2,7 @@ package io.github.kitectlab.winrt.runtime
 
 import java.lang.ref.WeakReference
 import java.lang.foreign.MemorySegment
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -36,6 +37,7 @@ object ComWrappersSupport {
     private val helperTypeRegistry = ConcurrentHashMap<WinRtTypeHandle, WinRtTypeHandle>()
     private val ccwFactories = ConcurrentHashMap<Class<*>, (Any) -> WinRtCcwDefinition>()
     private val rcwCache = ConcurrentHashMap<Long, WeakReference<Any>>()
+    private val runtimeClassNameLookups = CopyOnWriteArrayList<(Class<*>) -> String?>()
 
     fun registerTypedRcwFactory(
         typeHandle: WinRtTypeHandle,
@@ -56,6 +58,31 @@ object ComWrappersSupport {
         implementationType: Class<*>,
         factory: (Any) -> WinRtCcwDefinition,
     ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
+
+    fun registerProjectionType(
+        type: Class<*>,
+        runtimeClassName: String? = null,
+    ) {
+        TypeNameSupport.registerProjectionType(type, runtimeClassName)
+    }
+
+    fun registerProjectionAssembly(
+        vararg projectionTypes: Class<*>,
+    ) {
+        TypeNameSupport.registerProjectionAssembly(*projectionTypes)
+    }
+
+    fun registerProjectionTypeBaseTypeMapping(
+        typeNameToBaseTypeNameMapping: Map<String, String>,
+    ) {
+        TypeNameSupport.registerProjectionTypeBaseTypeMapping(typeNameToBaseTypeNameMapping)
+    }
+
+    fun registerTypeRuntimeClassNameLookup(
+        lookup: (Class<*>) -> String?,
+    ) {
+        runtimeClassNameLookups += lookup
+    }
 
     fun getInspectableInfo(pointer: MemorySegment): WinRtInspectableInfo? =
         WinRtInspectableComObject.findInspectableInfo(pointer)?.let {
@@ -145,6 +172,16 @@ object ComWrappersSupport {
         helperTypeRegistry.clear()
         ccwFactories.clear()
         rcwCache.clear()
+        runtimeClassNameLookups.clear()
+        Projections.clearRegistriesForTests()
+        TypeNameSupport.clearRegistriesForTests()
+        TypeExtensions.clearRegistriesForTests()
+    }
+
+    internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
+        type: Class<*>,
+    ): String? = runtimeClassNameLookups.firstNotNullOfOrNull { lookup ->
+        lookup(type)?.takeIf { it.isNotBlank() }
     }
 
     private fun createRcwCore(
