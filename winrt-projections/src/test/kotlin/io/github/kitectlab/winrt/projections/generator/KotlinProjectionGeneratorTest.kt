@@ -1,13 +1,16 @@
 package io.github.kitectlab.winrt.projections.generator
 
+import io.github.kitectlab.winrt.metadata.WinRtActivationShape
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
+import io.github.kitectlab.winrt.runtime.Guid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -53,6 +56,9 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Windows.Data.Json",
                             name = "JsonObject",
                             kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Windows.Data.Json.IJsonObjectStatics"),
+                            ),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "getNamedString",
@@ -81,5 +87,101 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents.contains("companion object"))
         assertTrue(file.contents.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertFalse(file.contents.contains("JsonValueType"))
+    }
+
+    @Test
+    fun planner_carries_metadata_contract_fields_for_later_generator_passes() {
+        val interfaceIid = Guid("11111111-2222-3333-4444-555555555555")
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = interfaceIid,
+                            methods = listOf(WinRtMethodDefinition(name = "ping", returnTypeName = "Unit")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics")),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "create", returnTypeName = "Widget", isStatic = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val plans = KotlinProjectionPlanner().plan(model)
+        val interfacePlan = plans.first { it.type.name == "IWidget" }
+        val classPlan = plans.first { it.type.name == "Widget" }
+
+        assertEquals(interfaceIid, interfacePlan.interfaceIid)
+        assertEquals("Sample.Foundation.IWidget", classPlan.defaultInterfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidgetStatics"), classPlan.staticInterfaceNames)
+    }
+
+    @Test
+    fun planner_rejects_interface_surface_without_iid() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(WinRtMethodDefinition(name = "ping", returnTypeName = "Unit")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionPlanner().plan(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error!!.message.orEmpty().contains("requires interface Sample.Foundation.IWidget to carry metadata IID"))
+    }
+
+    @Test
+    fun generator_rejects_static_runtime_surface_without_static_interface_metadata() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "create",
+                                    returnTypeName = "Widget",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                    isStatic = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error!!.message.orEmpty().contains("requires runtime class Sample.Foundation.Widget to carry static interface metadata"))
     }
 }
