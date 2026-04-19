@@ -823,11 +823,83 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("IWidgetExtra"))
         assertTrue(widgetContents.contains("private val _inner: InspectableReference"))
         assertTrue(widgetContents.contains("private val _iWidgetExtra: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
+        assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
+        assertTrue(widgetContents.contains("internal val TITLE_GETTER_SLOT: Int = IWidget.Metadata.TITLE_GETTER_SLOT"))
         assertTrue(widgetContents.contains("public var title: String"))
         assertTrue(widgetContents.contains("public val maxCount: Int"))
         assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
+    }
+
+    @Test
+    fun generator_emits_runtime_member_binding_descriptors_from_default_and_extra_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetBase",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name", getterMethodRowId = 10),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetExtra",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "refresh", returnTypeName = "Unit", methodRowId = 20),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetExtra"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "refresh", returnTypeName = "Unit"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("internal const val NAME_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
+        assertTrue(widgetContents.contains("internal const val NAME_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
+        assertTrue(widgetContents.contains("internal val NAME_GETTER_SLOT: Int = IWidgetBase.Metadata.NAME_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("internal const val REFRESH_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidgetExtra\""))
+        assertTrue(widgetContents.contains("internal const val REFRESH_SLOT_OWNER_CACHE: String = \"_iWidgetExtra\""))
+        assertTrue(widgetContents.contains("internal val REFRESH_SLOT: Int = IWidgetExtra.Metadata.REFRESH_SLOT"))
     }
 
     @Test

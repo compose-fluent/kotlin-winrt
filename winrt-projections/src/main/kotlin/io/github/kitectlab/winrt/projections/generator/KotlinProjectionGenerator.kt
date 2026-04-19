@@ -124,6 +124,7 @@ data class KotlinTypeProjectionPlan(
     val composableFactoryInterfaceName: String? = null,
     val composableFactoryInterfaceIid: Guid? = null,
     val abiSlotBindings: List<KotlinProjectionAbiSlotBinding> = emptyList(),
+    val instanceMemberBindings: List<KotlinProjectionInstanceMemberBinding> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
@@ -135,6 +136,14 @@ data class KotlinProjectionInterfaceBinding(
 data class KotlinProjectionAbiSlotBinding(
     val constantName: String,
     val slot: Int,
+)
+
+data class KotlinProjectionInstanceMemberBinding(
+    val bindingName: String,
+    val ownerInterfaceQualifiedName: String,
+    val ownerCachePropertyName: String,
+    val slotInterfaceQualifiedName: String,
+    val slotConstantName: String,
 )
 
 data class KotlinProjectionFile(
@@ -250,6 +259,7 @@ class KotlinProjectionPlanner(
             composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
             composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(interfaceIidsByName::get),
             abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName),
+            instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName),
             companionKinds = planCompanions(type),
         )
     }
@@ -290,6 +300,142 @@ class KotlinProjectionPlanner(
             visiting.remove(interfaceName)
         }
     }
+
+    private fun planInstanceMemberBindings(
+        type: WinRtTypeDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): List<KotlinProjectionInstanceMemberBinding> {
+        if (type.kind != WinRtTypeKind.RuntimeClass) {
+            return emptyList()
+        }
+        val candidateInterfaces = buildList {
+            type.defaultInterfaceName?.let(::add)
+            type.implementedInterfaces
+                .filterNot { it.isDefault }
+                .mapTo(this) { it.interfaceName }
+        }.distinct()
+
+        return buildList {
+            type.methods.filterNot(WinRtMethodDefinition::isStatic).forEach { method ->
+                resolveInstanceMemberBinding(
+                    candidateInterfaces = candidateInterfaces,
+                    typesByQualifiedName = typesByQualifiedName,
+                    slotConstantName = "${method.name.uppercase()}_SLOT",
+                    signatureMatcher = { interfaceType ->
+                        interfaceType.methods.any { it.projectionSignatureKey() == method.projectionSignatureKey() }
+                    },
+                )?.let(::add)
+            }
+            type.properties.filterNot { it.isStatic }.forEach { property ->
+                if (property.getterMethodName != null) {
+                    resolveInstanceMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.properties.any {
+                                it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null
+                            }
+                        },
+                    )?.let(::add)
+                }
+                if (property.setterMethodName != null) {
+                    resolveInstanceMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        slotConstantName = "${property.name.uppercase()}_SETTER_SLOT",
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.properties.any {
+                                it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null
+                            }
+                        },
+                    )?.let(::add)
+                }
+            }
+            type.events.filterNot { it.isStatic }.forEach { event ->
+                if (event.addMethodName != null || event.addMethodRowId != null) {
+                    resolveInstanceMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.events.any {
+                                it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                    (it.addMethodName != null || it.addMethodRowId != null)
+                            }
+                        },
+                    )?.let(::add)
+                }
+                if (event.removeMethodName != null || event.removeMethodRowId != null) {
+                    resolveInstanceMemberBinding(
+                        candidateInterfaces = candidateInterfaces,
+                        typesByQualifiedName = typesByQualifiedName,
+                        slotConstantName = "${event.name.uppercase()}_REMOVE_SLOT",
+                        signatureMatcher = { interfaceType ->
+                            interfaceType.events.any {
+                                it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                    (it.removeMethodName != null || it.removeMethodRowId != null)
+                            }
+                        },
+                    )?.let(::add)
+                }
+            }
+        }.distinctBy(KotlinProjectionInstanceMemberBinding::bindingName)
+    }
+
+    private fun resolveInstanceMemberBinding(
+        candidateInterfaces: List<String>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        slotConstantName: String,
+        signatureMatcher: (WinRtTypeDefinition) -> Boolean,
+    ): KotlinProjectionInstanceMemberBinding? {
+        candidateInterfaces.forEach { candidateInterface ->
+            val slotInterfaceQualifiedName = findDeclaringInterface(
+                interfaceName = candidateInterface,
+                typesByQualifiedName = typesByQualifiedName,
+                visiting = mutableSetOf(),
+                signatureMatcher = signatureMatcher,
+            ) ?: return@forEach
+            return KotlinProjectionInstanceMemberBinding(
+                bindingName = slotConstantName,
+                ownerInterfaceQualifiedName = candidateInterface,
+                ownerCachePropertyName = ownerCachePropertyName(candidateInterface, candidateInterfaces.firstOrNull()),
+                slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+                slotConstantName = slotConstantName,
+            )
+        }
+        return null
+    }
+
+    private fun findDeclaringInterface(
+        interfaceName: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        visiting: MutableSet<String>,
+        signatureMatcher: (WinRtTypeDefinition) -> Boolean,
+    ): String? {
+        val type = typesByQualifiedName[interfaceName] ?: return null
+        if (type.kind != WinRtTypeKind.Interface || !visiting.add(interfaceName)) {
+            return null
+        }
+        return try {
+            if (signatureMatcher(type)) {
+                interfaceName
+            } else {
+                type.implementedInterfaces.firstNotNullOfOrNull { implemented ->
+                    findDeclaringInterface(implemented.interfaceName, typesByQualifiedName, visiting, signatureMatcher)
+                }
+            }
+        } finally {
+            visiting.remove(interfaceName)
+        }
+    }
+
+    private fun ownerCachePropertyName(interfaceName: String, defaultInterfaceName: String?): String =
+        if (interfaceName == defaultInterfaceName) {
+            "_defaultInterface"
+        } else {
+            "_${interfaceName.substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
+        }
 
     private fun planCompanions(type: WinRtTypeDefinition): List<KotlinProjectionCompanionKind> = buildList {
         if (shouldEmitMetadataCompanion(type)) {
@@ -359,6 +505,32 @@ private data class AbiMemberOrder(
     val rowId: Int,
     val constantName: String,
 )
+
+private fun WinRtMethodDefinition.projectionSignatureKey(): String = buildString {
+    append(if (isStatic) 'S' else 'I')
+    append('|')
+    append(name)
+    append('|')
+    append(returnTypeName)
+    append('|')
+    append(parameters.joinToString(",") { "${it.name}:${it.typeName}:${it.direction}" })
+}
+
+private fun WinRtPropertyDefinition.projectionSignatureKey(): String = buildString {
+    append(if (isStatic) 'S' else 'I')
+    append('|')
+    append(name)
+    append('|')
+    append(typeName)
+}
+
+private fun WinRtEventDefinition.projectionSignatureKey(): String = buildString {
+    append(if (isStatic) 'S' else 'I')
+    append('|')
+    append(name)
+    append('|')
+    append(delegateTypeName)
+}
 
 private fun WinRtTypeDefinition.localAbiMembers(): List<String> =
     buildList<AbiMemberOrder> {
@@ -945,6 +1117,26 @@ class KotlinProjectionRenderer {
                 PropertySpec.builder(binding.constantName, Int::class)
                     .addModifiers(KModifier.INTERNAL, KModifier.CONST)
                     .initializer("%L", binding.slot)
+                    .build(),
+            )
+        }
+        plan.instanceMemberBindings.forEach { binding ->
+            builder.addProperty(
+                PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", binding.ownerInterfaceQualifiedName)
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder("${binding.bindingName}_OWNER_CACHE", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", binding.ownerCachePropertyName)
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder(binding.bindingName, Int::class)
+                    .addModifiers(KModifier.INTERNAL)
+                    .initializer("%T.Metadata.%L", resolveTypeName(binding.slotInterfaceQualifiedName), binding.slotConstantName)
                     .build(),
             )
         }
