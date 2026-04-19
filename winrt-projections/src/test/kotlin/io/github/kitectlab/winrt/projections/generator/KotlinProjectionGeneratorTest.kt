@@ -1930,6 +1930,132 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_mutable_vector_runtime_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IVector<String>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NameVector",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameVector",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INameVector",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("NameVector.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("MutableList<String> by __iNameVectorVectorCollection"))
+        assertTrue(contents, contents.contains("AbstractMutableList<String>()"))
+        assertFalse(contents, contents.contains("Iterable<String> by __iNameVectorIterableCollection"))
+        assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+    }
+
+    @Test
+    fun generator_projects_mapped_vector_method_and_property_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IVectorProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "items",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<String>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "MutableItems",
+                                    typeName = "Windows.Foundation.Collections.IVector<String>",
+                                    getterMethodName = "get_MutableItems",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "VectorProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IVectorProvider",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "items",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<String>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "MutableItems",
+                                    typeName = "Windows.Foundation.Collections.IVector<String>",
+                                    getterMethodName = "get_MutableItems",
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IVectorProvider",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("VectorProvider.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("public fun items(): MutableList<String>"))
+        assertTrue(contents, contents.contains("public val mutableItems: MutableList<String>"))
+        assertTrue(contents, contents.contains("return object : AbstractMutableList<String>(), MutableList<String>, IWinRTObject"))
+        assertTrue(contents, contents.contains("val __collectionRef = IUnknownReference(__resultOut.get(ValueLayout.ADDRESS, 0))"))
+        assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
+        assertTrue(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+    }
+
+    @Test
     fun generator_projects_mapped_collection_method_and_property_returns() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
