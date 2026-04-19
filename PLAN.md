@@ -27,7 +27,7 @@
 ## .cswinrt Alignment Slices
 
 - [ ] Align activation factory lookup and runtime-class activation semantics (正在做: `winrt-runtime` now has JVM-side `RoGetActivationFactory`/`DllGetActivationFactory` scaffolding plus instance activation, but full manifest-free probing and factory caching still need parity work)
-- [ ] Align COM/WinRT marshaling, HRESULT translation, and lifetime management (正在做: `winrt-runtime` now covers minimal `IUnknown` lifetime, `IInspectable.GetRuntimeClassName`, initialization scope management, and reusable `string/object/unit/int64` vtable call shapes, but marshaling breadth, ownership policies, and projected ABI coverage are still incomplete)
+- [ ] Align COM/WinRT marshaling, HRESULT translation, and lifetime management (正在做: `winrt-runtime` now covers minimal `IUnknown` lifetime, `IInspectable.GetRuntimeClassName`, initialization scope management, reusable `string/object/unit/int64` vtable call shapes, and initial boolean/char/guid/HSTRING-reference marshalers, but marshaling breadth, ownership policies, and projected ABI coverage are still incomplete)
 - [ ] Align delegate bridges, delegate handles, and callback marshaling (正在做: `winrt-runtime` now has initial delegate descriptors, parameter-kind modeling, and unit-callback handles, but it still lacks ABI stub generation and native callback marshaling)
 - [ ] Align generic interface projection, parameterized IID, and type-signature behavior (正在做: `winrt-runtime` now has initial `WinRtTypeSignature` rendering and parameterized IID hashing, but coverage is still limited to the minimal shapes currently needed by runtime slices)
 - [ ] Align collection projection for iterable/list/map/view adapters

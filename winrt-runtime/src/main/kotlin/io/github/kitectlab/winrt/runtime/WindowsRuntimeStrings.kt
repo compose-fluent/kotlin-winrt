@@ -43,6 +43,29 @@ class HString private constructor(
             }
         }
 
+        fun createReference(value: String): ReferencedHString {
+            // Narrow temporary deviation from CsWinRT:
+            // on the JVM we don't yet have a stable zero-copy HSTRING-reference path,
+            // so this currently falls back to an owned HSTRING wrapper until the
+            // WindowsCreateStringReference header handling is implemented correctly.
+            return ReferencedHString(
+                backing = create(value),
+            )
+        }
+
         fun fromHandle(handle: MemorySegment, owner: Boolean): HString = HString(handle, owner)
+    }
+}
+
+class ReferencedHString internal constructor(
+    private val backing: HString,
+) : AutoCloseable {
+    val handle: MemorySegment
+        get() = backing.handle
+
+    fun toKString(): String = HString.fromHandle(handle, owner = false).toKString()
+
+    override fun close() {
+        backing.close()
     }
 }

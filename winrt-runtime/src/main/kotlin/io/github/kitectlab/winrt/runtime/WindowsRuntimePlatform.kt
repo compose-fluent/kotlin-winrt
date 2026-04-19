@@ -85,6 +85,20 @@ internal object WindowsRuntimePlatform {
         )
     }
 
+    private val windowsCreateStringReferenceHandle: MethodHandle by lazy {
+        downcall(
+            combaseLookup,
+            "WindowsCreateStringReference",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
     private val windowsDeleteStringHandle: MethodHandle by lazy {
         downcall(
             combaseLookup,
@@ -189,6 +203,21 @@ internal object WindowsRuntimePlatform {
         return windowsCreateStringHandle.invokeWithArguments(
             utf16Chars,
             length,
+            outHandle,
+        ) as Int
+    }
+
+    fun windowsCreateStringReference(
+        utf16Chars: MemorySegment,
+        length: Int,
+        header: MemorySegment,
+        outHandle: MemorySegment,
+    ): Int {
+        ensureWindows()
+        return windowsCreateStringReferenceHandle.invokeWithArguments(
+            utf16Chars,
+            length,
+            header,
             outHandle,
         ) as Int
     }

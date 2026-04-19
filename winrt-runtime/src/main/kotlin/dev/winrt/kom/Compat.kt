@@ -10,3 +10,4 @@ typealias ComPtr = io.github.kitectlab.winrt.runtime.IUnknownReference
 typealias WinRtDelegateBridge = io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
 typealias WinRtDelegateHandle = io.github.kitectlab.winrt.runtime.WinRtDelegateHandle
 typealias WinRtDelegateValueKind = io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
+typealias ReferencedHString = io.github.kitectlab.winrt.runtime.ReferencedHString
