@@ -719,6 +719,52 @@ class KotlinProjectionRenderer {
                     .build(),
             )
         }
+        plan.type.methods.forEach { method ->
+            method.methodRowId?.let { rowId ->
+                builder.addProperty(
+                    PropertySpec.builder("${method.name.uppercase()}_METHOD_ROW_ID", Int::class)
+                        .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                        .initializer("%L", rowId)
+                        .build(),
+                )
+            }
+        }
+        plan.type.properties.forEach { property ->
+            property.getterMethodRowId?.let { rowId ->
+                builder.addProperty(
+                    PropertySpec.builder("${property.name.uppercase()}_GETTER_METHOD_ROW_ID", Int::class)
+                        .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                        .initializer("%L", rowId)
+                        .build(),
+                )
+            }
+            property.setterMethodRowId?.let { rowId ->
+                builder.addProperty(
+                    PropertySpec.builder("${property.name.uppercase()}_SETTER_METHOD_ROW_ID", Int::class)
+                        .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                        .initializer("%L", rowId)
+                        .build(),
+                )
+            }
+        }
+        plan.type.events.forEach { event ->
+            event.addMethodRowId?.let { rowId ->
+                builder.addProperty(
+                    PropertySpec.builder("${event.name.uppercase()}_ADD_METHOD_ROW_ID", Int::class)
+                        .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                        .initializer("%L", rowId)
+                        .build(),
+                )
+            }
+            event.removeMethodRowId?.let { rowId ->
+                builder.addProperty(
+                    PropertySpec.builder("${event.name.uppercase()}_REMOVE_METHOD_ROW_ID", Int::class)
+                        .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                        .initializer("%L", rowId)
+                        .build(),
+                )
+            }
+        }
     }
 
     private fun resolveTypeName(typeName: String): TypeName {

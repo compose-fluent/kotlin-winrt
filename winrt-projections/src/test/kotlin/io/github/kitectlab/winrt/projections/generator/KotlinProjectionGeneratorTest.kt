@@ -413,10 +413,10 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("11111111-2222-3333-4444-555555555555"),
                             isProjectionInternal = true,
                             properties = listOf(
-                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name"),
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name", getterMethodRowId = 5),
                             ),
                             events = listOf(
-                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler", addMethodRowId = 9, removeMethodRowId = 10),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -454,15 +454,16 @@ class KotlinProjectionGeneratorTest {
                                     name = "create",
                                     returnTypeName = "Widget",
                                     isStatic = true,
+                                    methodRowId = 20,
                                 ),
                             ),
                             properties = listOf(
-                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name"),
-                                WinRtPropertyDefinition(name = "Count", typeName = "Int", isStatic = true, getterMethodName = "get_Count"),
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name", getterMethodRowId = 21),
+                                WinRtPropertyDefinition(name = "Count", typeName = "Int", isStatic = true, getterMethodName = "get_Count", getterMethodRowId = 22),
                             ),
                             events = listOf(
-                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler"),
-                                WinRtEventDefinition(name = "Loaded", delegateTypeName = "Sample.Foundation.WidgetHandler", isStatic = true),
+                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler", addMethodRowId = 23, removeMethodRowId = 24),
+                                WinRtEventDefinition(name = "Loaded", delegateTypeName = "Sample.Foundation.WidgetHandler", isStatic = true, addMethodRowId = 25, removeMethodRowId = 26),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -487,6 +488,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal interface IInternalContract"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("companion object Metadata"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("IID: Guid = Guid(\"11111111-2222-3333-4444-555555555555\")"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 5"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_ADD_METHOD_ROW_ID: Int = 9"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 10"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public val name: String"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun addChanged(handler: WidgetHandler): Int"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun removeChanged(token: Int)"))
@@ -495,6 +499,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public sealed class Widget : IWidget"))
         assertTrue(widgetContents.contains("public val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
+        assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
+        assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
+        assertTrue(widgetContents.contains("internal const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
+        assertTrue(widgetContents.contains("internal const val CHANGED_ADD_METHOD_ROW_ID: Int = 23"))
+        assertTrue(widgetContents.contains("internal const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 24"))
+        assertTrue(widgetContents.contains("internal const val LOADED_ADD_METHOD_ROW_ID: Int = 25"))
+        assertTrue(widgetContents.contains("internal const val LOADED_REMOVE_METHOD_ROW_ID: Int = 26"))
         assertTrue(widgetContents.contains("public fun acquireDefaultInterface(instance: InspectableReference): IUnknownReference"))
         assertTrue(widgetContents.contains("instance.queryInterface(DEFAULT_INTERFACE_IID).getOrThrow().use"))
         assertTrue(widgetContents.contains("public fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
