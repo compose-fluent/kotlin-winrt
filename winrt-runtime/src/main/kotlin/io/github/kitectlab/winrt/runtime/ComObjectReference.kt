@@ -352,6 +352,34 @@ open class ComObjectReference(
         WindowsRuntimePlatform.checkSucceeded(hr)
     }
 
+    open fun invokeUnitMethodWithBooleanArg(slot: Int, value: Boolean) {
+        val hr = invokeIntMethod(
+            slot = slot,
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_BYTE,
+            ),
+            pointer,
+            if (value) 1.toByte() else 0.toByte(),
+        )
+        WindowsRuntimePlatform.checkSucceeded(hr)
+    }
+
+    open fun invokeUnitMethodWithDoubleArg(slot: Int, value: Double) {
+        val hr = invokeIntMethod(
+            slot = slot,
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_DOUBLE,
+            ),
+            pointer,
+            value,
+        )
+        WindowsRuntimePlatform.checkSucceeded(hr)
+    }
+
     fun invokeDoubleMethod(slot: Int): Double {
         Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.JAVA_DOUBLE)

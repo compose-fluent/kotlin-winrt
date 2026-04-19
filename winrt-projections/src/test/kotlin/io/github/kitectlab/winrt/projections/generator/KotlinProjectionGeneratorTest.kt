@@ -1079,6 +1079,108 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_single_parameter_boolean_and_double_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setReady",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("ready", "Boolean")),
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "createNumberValue",
+                                    returnTypeName = "Sample.Foundation.WidgetValue",
+                                    parameters = listOf(WinRtParameterDefinition("value", "Double")),
+                                    methodRowId = 11,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Ready",
+                                    typeName = "Boolean",
+                                    getterMethodName = "get_Ready",
+                                    getterMethodRowId = 12,
+                                    setterMethodName = "put_Ready",
+                                    setterMethodRowId = 13,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetValue",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetValue",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetValue", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetValue",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setReady",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("ready", "Boolean")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "createNumberValue",
+                                    returnTypeName = "Sample.Foundation.WidgetValue",
+                                    parameters = listOf(WinRtParameterDefinition("value", "Double")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Ready",
+                                    typeName = "Boolean",
+                                    getterMethodName = "get_Ready",
+                                    setterMethodName = "put_Ready",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("public fun setReady(ready: Boolean)"))
+        assertTrue(widgetContents.contains("invokeUnitMethodWithBooleanArg(Metadata.SETREADY_SLOT"))
+        assertTrue(widgetContents.contains("public fun createNumberValue("))
+        assertTrue(widgetContents.contains("Double): WidgetValue"))
+        assertTrue(widgetContents.contains("invokeObjectMethodWithDoubleArg(Metadata.CREATENUMBERVALUE_SLOT"))
+        assertTrue(widgetContents.contains("WidgetValue.Metadata.wrap"))
+        assertTrue(widgetContents.contains("public var ready: Boolean"))
+        assertTrue(widgetContents.contains("invokeUnitMethodWithBooleanArg(Metadata.READY_SETTER_SLOT"))
+    }
+
+    @Test
     fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

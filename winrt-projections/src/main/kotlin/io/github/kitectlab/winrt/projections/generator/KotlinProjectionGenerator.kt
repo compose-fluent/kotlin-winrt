@@ -989,6 +989,18 @@ class KotlinProjectionRenderer {
                 returnBinding,
                 parameterBinding.name,
             )
+            KotlinProjectionAbiValueKind.Boolean -> renderBooleanParameterInvocation(
+                ownerCachePropertyName,
+                slotExpression,
+                returnBinding,
+                parameterBinding.name,
+            )
+            KotlinProjectionAbiValueKind.Double -> renderDoubleParameterInvocation(
+                ownerCachePropertyName,
+                slotExpression,
+                returnBinding,
+                parameterBinding.name,
+            )
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> renderObjectParameterInvocation(
                 ownerCachePropertyName,
@@ -1020,6 +1032,42 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
                 returnBinding = returnBinding,
                 call = CodeBlock.of("%L.invokeObjectMethodWithStringArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+            )
+            else -> null
+        }
+
+    private fun renderBooleanParameterInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterName: String,
+    ): CodeBlock? =
+        when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit ->
+                CodeBlock.of("%L.invokeUnitMethodWithBooleanArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.ProjectedObject,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
+                returnBinding = returnBinding,
+                call = CodeBlock.of("%L.invokeObjectMethodWithBooleanArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
+            )
+            else -> null
+        }
+
+    private fun renderDoubleParameterInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterName: String,
+    ): CodeBlock? =
+        when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit ->
+                CodeBlock.of("%L.invokeUnitMethodWithDoubleArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName)
+            KotlinProjectionAbiValueKind.ProjectedObject,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> renderBoundObjectInvocationWithCall(
+                returnBinding = returnBinding,
+                call = CodeBlock.of("%L.invokeObjectMethodWithDoubleArg(%L, %L)", ownerCachePropertyName, slotExpression, parameterName),
             )
             else -> null
         }
