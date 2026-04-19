@@ -12,14 +12,19 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-internal data class WinRtInspectableMethodDefinition(
+data class WinRtInspectableMethodDefinition(
     val descriptor: FunctionDescriptor,
     val handler: (Array<Any?>) -> Int,
 )
 
-internal data class WinRtInspectableInterfaceDefinition(
+data class WinRtInspectableInterfaceDefinition(
     val interfaceId: Guid,
     val methods: List<WinRtInspectableMethodDefinition>,
+)
+
+internal data class WinRtInspectableInfoSnapshot(
+    val runtimeClassName: String?,
+    val interfaceIds: List<Guid>,
 )
 
 internal class WinRtInspectableComObject(
@@ -215,6 +220,14 @@ internal class WinRtInspectableComObject(
 
         internal fun findManagedValue(pointer: MemorySegment): Any? =
             registry[pointerKey(pointer)]?.managedValue
+
+        internal fun findInspectableInfo(pointer: MemorySegment): WinRtInspectableInfoSnapshot? =
+            registry[pointerKey(pointer)]?.let { host ->
+                WinRtInspectableInfoSnapshot(
+                    runtimeClassName = host.runtimeClassName,
+                    interfaceIds = host.interfaces.keys.toList(),
+                )
+            }
 
         internal fun inspectableBox(
             value: Any?,
