@@ -495,6 +495,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public sealed class Widget : IWidget"))
         assertTrue(widgetContents.contains("public val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
+        assertTrue(widgetContents.contains("public fun acquireDefaultInterface(instance: InspectableReference): IUnknownReference"))
+        assertTrue(widgetContents.contains("instance.queryInterface(DEFAULT_INTERFACE_IID).getOrThrow().use"))
         assertTrue(widgetContents.contains("public fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public val count: Int"))
         assertTrue(widgetContents.contains("public fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))

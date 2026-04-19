@@ -706,6 +706,18 @@ class KotlinProjectionRenderer {
                     .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                     .build(),
             )
+            builder.addFunction(
+                FunSpec.builder("acquireDefaultInterface")
+                    .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
+                    .addCode(
+                        CodeBlock.of(
+                            "return instance.queryInterface(DEFAULT_INTERFACE_IID).getOrThrow().use { %T(it.getRef(), DEFAULT_INTERFACE_IID) }\n",
+                            IUNKNOWN_REFERENCE_CLASS_NAME,
+                        ),
+                    )
+                    .build(),
+            )
         }
     }
 
