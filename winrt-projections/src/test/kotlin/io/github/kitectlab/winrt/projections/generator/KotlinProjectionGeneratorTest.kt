@@ -2056,6 +2056,134 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_mutable_map_runtime_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IMap<String, Int>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NameMap",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameMap",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INameMap",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("NameMap.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("MutableMap<String, Int> by __iNameMapMapCollection"))
+        assertTrue(contents, contents.contains("AbstractMutableMap<String, Int>()"))
+        assertFalse(contents, contents.contains("Iterable<Map.Entry<String, Int>>"))
+        assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.LOOKUP_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.INSERT_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.REMOVE_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.CLEAR_SLOT"))
+        assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
+        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
+    }
+
+    @Test
+    fun generator_projects_mapped_map_method_and_property_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IMapProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555560"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "items",
+                                    returnTypeName = "Windows.Foundation.Collections.IMap<String, Int>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "MutableItems",
+                                    typeName = "Windows.Foundation.Collections.IMap<String, Int>",
+                                    getterMethodName = "get_MutableItems",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "MapProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IMapProvider",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "items",
+                                    returnTypeName = "Windows.Foundation.Collections.IMap<String, Int>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "MutableItems",
+                                    typeName = "Windows.Foundation.Collections.IMap<String, Int>",
+                                    getterMethodName = "get_MutableItems",
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IMapProvider",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("MapProvider.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("public fun items(): MutableMap<String, Int>"))
+        assertTrue(contents, contents.contains("public val mutableItems: MutableMap<String, Int>"))
+        assertTrue(contents, contents.contains("return object : AbstractMutableMap<String, Int>(), MutableMap<String, Int>, IWinRTObject"))
+        assertTrue(contents, contents.contains("AbstractMutableSet<MutableMap.MutableEntry<String, Int>>()"))
+        assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.LOOKUP_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.INSERT_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.REMOVE_SLOT"))
+        assertTrue(contents, contents.contains("IMap.Metadata.CLEAR_SLOT"))
+        assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
+        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+    }
+
+    @Test
     fun generator_projects_mapped_collection_method_and_property_returns() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

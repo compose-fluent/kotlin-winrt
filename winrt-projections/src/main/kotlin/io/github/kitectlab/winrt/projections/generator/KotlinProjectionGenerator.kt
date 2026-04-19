@@ -60,10 +60,13 @@ private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName
 private val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 private val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
 private val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableList")
+private val ABSTRACT_MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableMap")
+private val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableSet")
 private val URI_CLASS_NAME = URI::class.asClassName()
 private val OFFSET_DATE_TIME_CLASS_NAME = OffsetDateTime::class.asClassName()
 private val DURATION_CLASS_NAME = Duration::class.asClassName()
 private val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
+private val ILLEGAL_STATE_EXCEPTION_CLASS_NAME = IllegalStateException::class.asClassName()
 private val NO_SUCH_ELEMENT_EXCEPTION_CLASS_NAME = NoSuchElementException::class.asClassName()
 private val LAZY_THREAD_SAFETY_MODE_CLASS_NAME = LazyThreadSafetyMode::class.asClassName()
 private val MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "MutableList")
@@ -121,6 +124,7 @@ enum class KotlinProjectionReadOnlyCollectionKind {
 
 enum class KotlinProjectionMutableCollectionKind {
     Vector,
+    Map,
 }
 
 enum class KotlinProjectionVisibility {
@@ -217,7 +221,9 @@ data class KotlinProjectionMutableCollectionBinding(
     val ownerCachePropertyName: String,
     val slotInterfaceQualifiedName: String,
     val delegatePropertyName: String,
-    val elementBinding: KotlinProjectionAbiTypeBinding,
+    val elementBinding: KotlinProjectionAbiTypeBinding? = null,
+    val keyBinding: KotlinProjectionAbiTypeBinding? = null,
+    val valueBinding: KotlinProjectionAbiTypeBinding? = null,
 )
 
 enum class KotlinProjectionAbiValueKind {
@@ -230,6 +236,7 @@ enum class KotlinProjectionAbiValueKind {
     Enum,
     MappedIterable,
     MappedVector,
+    MappedMap,
     MappedVectorView,
     MappedMapView,
     MappedKeyValuePair,
@@ -721,7 +728,11 @@ class KotlinProjectionPlanner(
                 append('|')
                 append(binding.slotInterfaceQualifiedName)
                 append('|')
-                append(binding.elementBinding.resolvedTypeName)
+                append(binding.elementBinding?.resolvedTypeName)
+                append('|')
+                append(binding.keyBinding?.resolvedTypeName)
+                append('|')
+                append(binding.valueBinding?.resolvedTypeName)
             }
         }
     }
@@ -796,6 +807,22 @@ class KotlinProjectionPlanner(
                     slotInterfaceQualifiedName = resolvedInterfaceName,
                     delegatePropertyName = "__${ownerSuffix}VectorCollection",
                     elementBinding = elementBinding,
+                )
+            }
+            "Windows.Foundation.Collections.IMap" -> {
+                val keyBinding = genericArguments.firstOrNull() ?: return null
+                val valueBinding = genericArguments.getOrNull(1) ?: return null
+                if (!keyBinding.isSupportedReadOnlyCollectionKeyBinding() || !valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                    return null
+                }
+                KotlinProjectionMutableCollectionBinding(
+                    kind = KotlinProjectionMutableCollectionKind.Map,
+                    ownerInterfaceQualifiedName = ownerInterface,
+                    ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
+                    slotInterfaceQualifiedName = resolvedInterfaceName,
+                    delegatePropertyName = "__${ownerSuffix}MapCollection",
+                    keyBinding = keyBinding,
+                    valueBinding = valueBinding,
                 )
             }
             else -> null
@@ -1008,6 +1035,7 @@ class KotlinProjectionPlanner(
                 rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
                 rawTypeName == "Windows.Foundation.Collections.IIterable" -> KotlinProjectionAbiValueKind.MappedIterable
                 rawTypeName == "Windows.Foundation.Collections.IVector" -> KotlinProjectionAbiValueKind.MappedVector
+                rawTypeName == "Windows.Foundation.Collections.IMap" -> KotlinProjectionAbiValueKind.MappedMap
                 rawTypeName == "Windows.Foundation.Collections.IVectorView" -> KotlinProjectionAbiValueKind.MappedVectorView
                 rawTypeName == "Windows.Foundation.Collections.IMapView" -> KotlinProjectionAbiValueKind.MappedMapView
                 rawTypeName == "Windows.Foundation.Collections.IKeyValuePair" -> KotlinProjectionAbiValueKind.MappedKeyValuePair
@@ -1186,6 +1214,7 @@ class KotlinProjectionPlanner(
 private fun KotlinProjectionAbiTypeBinding.describeAbiKind(): String = when (kind) {
     KotlinProjectionAbiValueKind.MappedIterable -> "Iterable(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
     KotlinProjectionAbiValueKind.MappedVector -> "Vector(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
+    KotlinProjectionAbiValueKind.MappedMap -> "Map(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
     KotlinProjectionAbiValueKind.MappedVectorView -> "VectorView(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
     KotlinProjectionAbiValueKind.MappedMapView -> "MapView(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
     KotlinProjectionAbiValueKind.MappedKeyValuePair -> "KeyValuePair(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
@@ -1203,10 +1232,33 @@ private fun KotlinProjectionReadOnlyCollectionBinding.isRedundantReadOnlyCollect
 ): Boolean = when (kind) {
     KotlinProjectionReadOnlyCollectionKind.Iterable ->
         mutableBindings.any { binding ->
-            binding.kind == KotlinProjectionMutableCollectionKind.Vector &&
-                binding.elementBinding.resolvedTypeName == elementBinding?.resolvedTypeName
+            when (binding.kind) {
+                KotlinProjectionMutableCollectionKind.Vector ->
+                    binding.elementBinding?.resolvedTypeName == elementBinding?.resolvedTypeName
+                KotlinProjectionMutableCollectionKind.Map ->
+                    elementBinding?.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair &&
+                        (
+                            elementBinding.typeArguments.firstOrNull()?.resolvedTypeName to
+                                elementBinding.typeArguments.getOrNull(1)?.resolvedTypeName
+                            ) == (binding.keyBinding?.resolvedTypeName to binding.valueBinding?.resolvedTypeName)
+            }
         }
     else -> false
+}
+
+private fun KotlinProjectionMutableCollectionBinding.asReadOnlyEntryBinding(): KotlinProjectionReadOnlyCollectionBinding {
+    require(kind == KotlinProjectionMutableCollectionKind.Map) {
+        "Entry iterator projection requires a mutable map binding."
+    }
+    return KotlinProjectionReadOnlyCollectionBinding(
+        kind = KotlinProjectionReadOnlyCollectionKind.MapView,
+        ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+        ownerCachePropertyName = ownerCachePropertyName,
+        slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+        delegatePropertyName = delegatePropertyName,
+        keyBinding = keyBinding,
+        valueBinding = valueBinding,
+    )
 }
 
 private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementBinding(): Boolean = when (kind) {
@@ -1673,7 +1725,12 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionMutableCollectionBinding,
     ): TypeName = when (binding.kind) {
         KotlinProjectionMutableCollectionKind.Vector ->
-            MUTABLE_LIST_CLASS_NAME.parameterizedBy(resolveTypeName(binding.elementBinding.resolvedTypeName))
+            MUTABLE_LIST_CLASS_NAME.parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).resolvedTypeName))
+        KotlinProjectionMutableCollectionKind.Map ->
+            MUTABLE_MAP_CLASS_NAME.parameterizedBy(
+                resolveTypeName(requireNotNull(binding.keyBinding).resolvedTypeName),
+                resolveTypeName(requireNotNull(binding.valueBinding).resolvedTypeName),
+            )
     }
 
     private fun renderMutableCollectionDelegateProperty(
@@ -1694,12 +1751,13 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionMutableCollectionBinding,
     ): CodeBlock = when (binding.kind) {
         KotlinProjectionMutableCollectionKind.Vector -> renderVectorCollectionDelegateInitializer(binding)
+        KotlinProjectionMutableCollectionKind.Map -> renderMapCollectionDelegateInitializer(binding)
     }
 
     private fun renderVectorCollectionDelegateInitializer(
         binding: KotlinProjectionMutableCollectionBinding,
     ): CodeBlock {
-        val elementBinding = binding.elementBinding
+        val elementBinding = requireNotNull(binding.elementBinding)
         val elementType = resolveTypeName(elementBinding.resolvedTypeName)
         val projectedType = mutableCollectionProjectedType(binding)
         val abstractMutableListType = ABSTRACT_MUTABLE_LIST_CLASS_NAME.parameterizedBy(elementType)
@@ -1828,6 +1886,192 @@ class KotlinProjectionRenderer {
                 slotConstantName = "CLEAR_SLOT",
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
             ).toString(),
+            UInt::class.asClassName(),
+            renderCollectionInvocation(
+                invokeTargetExpression = binding.ownerCachePropertyName,
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                slotConstantName = "SIZE_GETTER_SLOT",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.UInt32, "UInt"),
+            ).toString(),
+        )
+    }
+
+    private fun renderMapCollectionDelegateInitializer(
+        binding: KotlinProjectionMutableCollectionBinding,
+    ): CodeBlock {
+        val keyBinding = requireNotNull(binding.keyBinding)
+        val valueBinding = requireNotNull(binding.valueBinding)
+        val keyType = resolveTypeName(keyBinding.resolvedTypeName)
+        val valueType = resolveTypeName(valueBinding.resolvedTypeName)
+        val projectedType = mutableCollectionProjectedType(binding)
+        val abstractMutableMapType = ABSTRACT_MUTABLE_MAP_CLASS_NAME.parameterizedBy(keyType, valueType)
+        val entryType = MUTABLE_MAP_CLASS_NAME.nestedClass("MutableEntry").parameterizedBy(keyType, valueType)
+        return CodeBlock.of(
+            """
+            object : %T(), %T, %T {
+                override val nativeObject: %T
+                    get() = %L
+
+                override val entries: MutableSet<%T>
+                    get() = object : %T<%T>() {
+                        override val size: Int
+                            get() = this@object.size
+
+                        override fun add(element: %T): Boolean {
+                            val __replaced = containsKey(element.key)
+                            put(element.key, element.value)
+                            return !__replaced
+                        }
+
+                        override fun iterator(): MutableIterator<%T> {
+                            val __iterator = __createEntryIterator()
+                            return object : MutableIterator<%T> {
+                                private var __lastReturned: %T? = null
+
+                                override fun hasNext(): Boolean = __iterator.hasNext()
+
+                                override fun next(): %T {
+                                    val __entry = __iterator.next()
+                                    val __mutableEntry = object : %T {
+                                        override val key: %T = __entry.key
+                                        private var __currentValue: %T = __entry.value
+                                        override val value: %T
+                                            get() = __currentValue
+
+                                        override fun setValue(newValue: %T): %T {
+                                            val __previous = __currentValue
+                                            put(key, newValue)
+                                            __currentValue = newValue
+                                            return __previous
+                                        }
+                                    }
+                                    __lastReturned = __mutableEntry
+                                    return __mutableEntry
+                                }
+
+                                override fun remove() {
+                                    val __entry = __lastReturned ?: throw %T(%S)
+                                    this@object.remove(__entry.key)
+                                    __lastReturned = null
+                                }
+                            }
+                        }
+                    }
+
+                override val size: Int
+                    get() = __readSize().toInt()
+
+                override fun containsKey(key: %T): Boolean {
+                    %L
+                }
+
+                override fun get(key: %T): %T? {
+                    return if (containsKey(key)) {
+                        %L
+                    } else {
+                        null
+                    }
+                }
+
+                override fun put(key: %T, value: %T): %T? {
+                    val __previous = get(key)
+                    %L
+                    return __previous
+                }
+
+                override fun remove(key: %T): %T? {
+                    val __previous = get(key) ?: return null
+                    %L
+                    return __previous
+                }
+
+                override fun clear() {
+                    %L
+                }
+
+                private fun __createEntryIterator(): Iterator<Map.Entry<%T, %T>> {
+                    %L
+                }
+
+                private fun __readSize(): %T {
+                    %L
+                }
+            }
+            """.trimIndent() + "\n",
+            abstractMutableMapType,
+            projectedType,
+            IWINRT_OBJECT_CLASS_NAME,
+            COM_OBJECT_REFERENCE_CLASS_NAME,
+            binding.ownerCachePropertyName,
+            entryType,
+            ABSTRACT_MUTABLE_SET_CLASS_NAME,
+            entryType,
+            entryType,
+            entryType,
+            entryType,
+            entryType,
+            entryType,
+            MUTABLE_MAP_CLASS_NAME.nestedClass("MutableEntry").parameterizedBy(keyType, valueType),
+            keyType,
+            valueType,
+            valueType,
+            valueType,
+            valueType,
+            ILLEGAL_STATE_EXCEPTION_CLASS_NAME,
+            "remove() before next() is not allowed for mutable map entry iteration.",
+            keyType,
+            renderCollectionInvocation(
+                invokeTargetExpression = binding.ownerCachePropertyName,
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                slotConstantName = "HASKEY_SLOT",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Boolean, "Boolean"),
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("key", keyBinding)),
+            ).toString(),
+            keyType,
+            valueType,
+            renderCollectionInvocation(
+                invokeTargetExpression = binding.ownerCachePropertyName,
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                slotConstantName = "LOOKUP_SLOT",
+                returnBinding = valueBinding,
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("key", keyBinding)),
+            ).toString(),
+            keyType,
+            valueType,
+            valueType,
+            renderCollectionInvocation(
+                invokeTargetExpression = binding.ownerCachePropertyName,
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                slotConstantName = "INSERT_SLOT",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Boolean, "Boolean"),
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding("key", keyBinding),
+                    KotlinProjectionAbiParameterBinding("value", valueBinding),
+                ),
+            ).toString(),
+            keyType,
+            valueType,
+            renderCollectionInvocation(
+                invokeTargetExpression = binding.ownerCachePropertyName,
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                slotConstantName = "REMOVE_SLOT",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("key", keyBinding)),
+            ).toString(),
+            renderCollectionInvocation(
+                invokeTargetExpression = binding.ownerCachePropertyName,
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                slotConstantName = "CLEAR_SLOT",
+                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+            ).toString(),
+            keyType,
+            valueType,
+            renderMappedIteratorCreationCode(
+                ownerExpression = binding.ownerCachePropertyName,
+                iterableSlotInterfaceQualifiedName = "Windows.Foundation.Collections.IIterable",
+                elementBinding = null,
+                entryBinding = binding.asReadOnlyEntryBinding(),
+            ),
             UInt::class.asClassName(),
             renderCollectionInvocation(
                 invokeTargetExpression = binding.ownerCachePropertyName,
@@ -2457,6 +2701,7 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.InspectableReference,
             KotlinProjectionAbiValueKind.MappedIterable,
             KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedMap,
             KotlinProjectionAbiValueKind.MappedVectorView,
             KotlinProjectionAbiValueKind.MappedMapView -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
@@ -2492,6 +2737,7 @@ class KotlinProjectionRenderer {
                 enumReturnReadback(returnBinding, resolvedReturnClassName(returnBinding))
             KotlinProjectionAbiValueKind.MappedIterable,
             KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedMap,
             KotlinProjectionAbiValueKind.MappedVectorView,
             KotlinProjectionAbiValueKind.MappedMapView ->
                 mappedCollectionReturnReadback(returnBinding)
@@ -2647,6 +2893,25 @@ class KotlinProjectionRenderer {
                 slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
                 delegatePropertyName = "__mappedVectorReturn",
                 elementBinding = elementBinding,
+            )
+        }
+        KotlinProjectionAbiValueKind.MappedMap -> {
+            val keyBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
+            val valueBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
+            require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
+                "Generator mutable collection parity does not yet support IMap return key ${keyBinding.describeAbiKind()} on ${returnBinding.typeName}."
+            }
+            require(valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                "Generator mutable collection parity does not yet support IMap return value ${valueBinding.describeAbiKind()} on ${returnBinding.typeName}."
+            }
+            KotlinProjectionMutableCollectionBinding(
+                kind = KotlinProjectionMutableCollectionKind.Map,
+                ownerInterfaceQualifiedName = returnBinding.typeName,
+                ownerCachePropertyName = "__collectionRef",
+                slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
+                delegatePropertyName = "__mappedMapReturn",
+                keyBinding = keyBinding,
+                valueBinding = valueBinding,
             )
         }
         else -> null
