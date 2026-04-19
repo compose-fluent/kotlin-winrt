@@ -18,6 +18,64 @@ import org.junit.Test
 
 class KotlinProjectionGeneratorTest {
     @Test
+    fun generator_reproduces_windows_data_json_smoke_slice_declaration_set() {
+        val filesByName = KotlinProjectionGenerator()
+            .generate(windowsDataJsonProjectionModel())
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertEquals(
+            listOf(
+                "IJsonArray.kt",
+                "IJsonArrayStatics.kt",
+                "IJsonErrorStatics.kt",
+                "IJsonObject.kt",
+                "IJsonObjectStatics.kt",
+                "IJsonValue.kt",
+                "IJsonValueStatics.kt",
+                "JsonArray.kt",
+                "JsonError.kt",
+                "JsonErrorStatus.kt",
+                "JsonObject.kt",
+                "JsonValue.kt",
+                "JsonValueType.kt",
+            ),
+            filesByName.keys.sorted(),
+        )
+
+        val jsonObject = filesByName.getValue("JsonObject.kt").contents
+        val jsonArray = filesByName.getValue("JsonArray.kt").contents
+        val jsonValue = filesByName.getValue("JsonValue.kt").contents
+        val jsonError = filesByName.getValue("JsonError.kt").contents
+        val iJsonObject = filesByName.getValue("IJsonObject.kt").contents
+        val iJsonValueStatics = filesByName.getValue("IJsonValueStatics.kt").contents
+
+        assertTrue(jsonObject, jsonObject.contains("public sealed class JsonObject : IJsonObject"))
+        assertTrue(jsonObject, jsonObject.contains("public fun getNamedString(name: String): String"))
+        assertTrue(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonObject, jsonObject.contains("public fun tryParse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
+        assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
+
+        assertTrue(jsonArray, jsonArray.contains("public sealed class JsonArray : IJsonArray"))
+        assertTrue(jsonArray, jsonArray.contains("public fun getStringAt(index: UInt): String"))
+        assertTrue(jsonArray, jsonArray.contains("public fun create(): JsonArray = error(\"Not yet bound to winrt-runtime\")"))
+
+        assertTrue(jsonValue, jsonValue.contains("public sealed class JsonValue : IJsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("public fun stringify(): String"))
+        assertTrue(jsonValue, jsonValue.contains("public fun createStringValue(`value`: String): JsonValue"))
+
+        assertTrue(jsonError, jsonError.contains("public sealed class JsonError"))
+        assertTrue(jsonError, jsonError.contains("public fun getJsonStatus(hResult: Int): JsonErrorStatus"))
+
+        assertTrue(iJsonObject, iJsonObject.contains("public fun getNamedArray(name: String): JsonArray"))
+        assertTrue(iJsonObject, iJsonObject.contains("public fun setNamedValue(name: String, `value`: JsonValue)"))
+
+        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("public fun createBooleanValue(`value`: Boolean): JsonValue"))
+        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("public fun createNumberValue(`value`: Double): JsonValue"))
+        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("public fun createStringValue(`value`: String): JsonValue"))
+    }
+
+    @Test
     fun plans_deterministic_projection_paths_from_metadata_model() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -804,4 +862,207 @@ class KotlinProjectionGeneratorTest {
         assertTrue(error is IllegalArgumentException)
         assertTrue(error!!.message.orEmpty().contains("requires runtime class Sample.Foundation.Widget to carry static interface metadata"))
     }
+
+    private fun windowsDataJsonProjectionModel(): WinRtMetadataModel =
+        WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Data.Json",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonValue",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("A3219FD4-B4C3-42C6-9EE6-8DCD1C3FBE9A"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "stringify", returnTypeName = "String"),
+                                WinRtMethodDefinition(name = "getString", returnTypeName = "String"),
+                                WinRtMethodDefinition(name = "getNumber", returnTypeName = "Double"),
+                                WinRtMethodDefinition(name = "getBoolean", returnTypeName = "Boolean"),
+                                WinRtMethodDefinition(name = "getArray", returnTypeName = "Windows.Data.Json.JsonArray"),
+                                WinRtMethodDefinition(name = "getObject", returnTypeName = "Windows.Data.Json.JsonObject"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "ValueType",
+                                    typeName = "Windows.Data.Json.JsonValueType",
+                                    getterMethodName = "get_ValueType",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonValueStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("5F6B544A-2F53-48E1-91A3-F78B50A6345C"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "parse", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("json", "String"))),
+                                WinRtMethodDefinition(name = "tryParse", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("json", "String"))),
+                                WinRtMethodDefinition(name = "createBooleanValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("value", "Boolean"))),
+                                WinRtMethodDefinition(name = "createNumberValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("value", "Double"))),
+                                WinRtMethodDefinition(name = "createStringValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("value", "String"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonValue",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Windows.Data.Json.IJsonValue",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Windows.Data.Json.IJsonValue", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Windows.Data.Json.IJsonValueStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "stringify", returnTypeName = "String"),
+                                WinRtMethodDefinition(name = "getString", returnTypeName = "String"),
+                                WinRtMethodDefinition(name = "getNumber", returnTypeName = "Double"),
+                                WinRtMethodDefinition(name = "getBoolean", returnTypeName = "Boolean"),
+                                WinRtMethodDefinition(name = "getArray", returnTypeName = "Windows.Data.Json.JsonArray"),
+                                WinRtMethodDefinition(name = "getObject", returnTypeName = "Windows.Data.Json.JsonObject"),
+                                WinRtMethodDefinition(name = "parse", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("json", "String")), isStatic = true),
+                                WinRtMethodDefinition(name = "tryParse", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("json", "String")), isStatic = true),
+                                WinRtMethodDefinition(name = "createBooleanValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("value", "Boolean")), isStatic = true),
+                                WinRtMethodDefinition(name = "createNumberValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("value", "Double")), isStatic = true),
+                                WinRtMethodDefinition(name = "createStringValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("value", "String")), isStatic = true),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "ValueType", typeName = "Windows.Data.Json.JsonValueType", getterMethodName = "get_ValueType"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonObject",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("064E24DD-29C2-4F83-9AC1-9EE11578BEB3"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IMap<String, Windows.Data.Json.IJsonValue>"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "setNamedValue", returnTypeName = "Unit", parameters = listOf(WinRtParameterDefinition("name", "String"), WinRtParameterDefinition("value", "Windows.Data.Json.JsonValue"))),
+                                WinRtMethodDefinition(name = "getNamedObject", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedArray", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedString", returnTypeName = "String", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedString", returnTypeName = "String", parameters = listOf(WinRtParameterDefinition("name", "String"), WinRtParameterDefinition("defaultValue", "String"))),
+                                WinRtMethodDefinition(name = "getNamedNumber", returnTypeName = "Double", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedBoolean", returnTypeName = "Boolean", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedBoolean", returnTypeName = "Boolean", parameters = listOf(WinRtParameterDefinition("name", "String"), WinRtParameterDefinition("defaultValue", "Boolean"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonObjectStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("2289F159-54DE-45D8-ABCC-22603FA066A0"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "parse", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("json", "String"))),
+                                WinRtMethodDefinition(name = "tryParse", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("json", "String"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Windows.Data.Json.IJsonObject",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Windows.Data.Json.IJsonObject", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Windows.Data.Json.IJsonObjectStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "setNamedValue", returnTypeName = "Unit", parameters = listOf(WinRtParameterDefinition("name", "String"), WinRtParameterDefinition("value", "Windows.Data.Json.JsonValue"))),
+                                WinRtMethodDefinition(name = "getNamedObject", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedArray", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedValue", returnTypeName = "Windows.Data.Json.JsonValue", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedString", returnTypeName = "String", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedString", returnTypeName = "String", parameters = listOf(WinRtParameterDefinition("name", "String"), WinRtParameterDefinition("defaultValue", "String"))),
+                                WinRtMethodDefinition(name = "getNamedNumber", returnTypeName = "Double", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedBoolean", returnTypeName = "Boolean", parameters = listOf(WinRtParameterDefinition("name", "String"))),
+                                WinRtMethodDefinition(name = "getNamedBoolean", returnTypeName = "Boolean", parameters = listOf(WinRtParameterDefinition("name", "String"), WinRtParameterDefinition("defaultValue", "Boolean"))),
+                                WinRtMethodDefinition(name = "parse", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("json", "String")), isStatic = true),
+                                WinRtMethodDefinition(name = "tryParse", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("json", "String")), isStatic = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonArray",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("08C1D4F8-B5C6-46F7-9D5A-0CC4C8FA1BBA"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<Windows.Data.Json.IJsonValue>"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "getObjectAt", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getArrayAt", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getStringAt", returnTypeName = "String", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getNumberAt", returnTypeName = "Double", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getBooleanAt", returnTypeName = "Boolean", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonArrayStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("DB1434A9-E164-499F-93E2-8A8F49BB90BA"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "parse", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("json", "String"))),
+                                WinRtMethodDefinition(name = "tryParse", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("json", "String"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonArray",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Windows.Data.Json.IJsonArray",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Windows.Data.Json.IJsonArray", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                staticInterfaceNames = listOf("Windows.Data.Json.IJsonArrayStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "getObjectAt", returnTypeName = "Windows.Data.Json.JsonObject", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getArrayAt", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getStringAt", returnTypeName = "String", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getNumberAt", returnTypeName = "Double", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "getBooleanAt", returnTypeName = "Boolean", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition(name = "create", returnTypeName = "Windows.Data.Json.JsonArray", isStatic = true),
+                                WinRtMethodDefinition(name = "parse", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("json", "String")), isStatic = true),
+                                WinRtMethodDefinition(name = "tryParse", returnTypeName = "Windows.Data.Json.JsonArray", parameters = listOf(WinRtParameterDefinition("json", "String")), isStatic = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonErrorStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("FE616766-BF27-4064-87B7-6563BB11CE2E"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "getJsonStatus", returnTypeName = "Windows.Data.Json.JsonErrorStatus", parameters = listOf(WinRtParameterDefinition("hResult", "Int"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonError",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Windows.Data.Json.IJsonErrorStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "getJsonStatus", returnTypeName = "Windows.Data.Json.JsonErrorStatus", parameters = listOf(WinRtParameterDefinition("hResult", "Int")), isStatic = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(namespace = "Windows.Data.Json", name = "JsonErrorStatus", kind = WinRtTypeKind.Enum),
+                        WinRtTypeDefinition(namespace = "Windows.Data.Json", name = "JsonValueType", kind = WinRtTypeKind.Enum),
+                    ),
+                ),
+            ),
+        )
 }
