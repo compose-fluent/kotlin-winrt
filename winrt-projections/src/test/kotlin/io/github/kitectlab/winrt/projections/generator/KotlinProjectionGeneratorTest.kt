@@ -903,6 +903,71 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_simple_runtime_getters_and_no_arg_methods() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "refresh", returnTypeName = "Unit", methodRowId = 10),
+                                WinRtMethodDefinition(name = "version", returnTypeName = "Int", methodRowId = 11),
+                                WinRtMethodDefinition(name = "isReady", returnTypeName = "Boolean", methodRowId = 12),
+                                WinRtMethodDefinition(name = "label", returnTypeName = "String", methodRowId = 13),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name", getterMethodRowId = 14),
+                                WinRtPropertyDefinition(name = "Count", typeName = "Int", getterMethodName = "get_Count", getterMethodRowId = 15),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "refresh", returnTypeName = "Unit"),
+                                WinRtMethodDefinition(name = "version", returnTypeName = "Int"),
+                                WinRtMethodDefinition(name = "isReady", returnTypeName = "Boolean"),
+                                WinRtMethodDefinition(name = "label", returnTypeName = "String"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name"),
+                                WinRtPropertyDefinition(name = "Count", typeName = "Int", getterMethodName = "get_Count"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("public fun refresh()"))
+        assertTrue(widgetContents.contains("_defaultInterface.invokeUnitMethod(Metadata.REFRESH_SLOT)"))
+        assertTrue(widgetContents.contains("public fun version(): Int"))
+        assertTrue(widgetContents.contains("_defaultInterface.invokeInt32Method(Metadata.VERSION_SLOT)"))
+        assertTrue(widgetContents.contains("public fun isReady(): Boolean"))
+        assertTrue(widgetContents.contains("_defaultInterface.invokeBooleanMethod(Metadata.ISREADY_SLOT)"))
+        assertTrue(widgetContents.contains("public fun label(): String"))
+        assertTrue(widgetContents.contains("_defaultInterface.invokeHStringMethod(Metadata.LABEL_SLOT).toKString()"))
+        assertTrue(widgetContents.contains("_defaultInterface.invokeHStringMethod(Metadata.NAME_GETTER_SLOT).toKString()"))
+        assertTrue(widgetContents.contains("_defaultInterface.invokeInt32Method(Metadata.COUNT_GETTER_SLOT)"))
+    }
+
+    @Test
     fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

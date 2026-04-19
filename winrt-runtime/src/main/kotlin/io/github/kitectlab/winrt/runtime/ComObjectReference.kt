@@ -444,6 +444,24 @@ open class ComObjectReference(
         }
     }
 
+    open fun invokeInt32Method(slot: Int): Int {
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
+            val hr = invokeIntMethod(
+                slot = slot,
+                descriptor = FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+                pointer,
+                resultOut,
+            )
+            WindowsRuntimePlatform.checkSucceeded(hr)
+            return resultOut.get(ValueLayout.JAVA_INT, 0)
+        }
+    }
+
     fun invokeTryParseObjectMethodWithStringArg(slot: Int, value: String): Pair<IUnknownReference?, Boolean> {
         HString.create(value).use { hString ->
             Arena.ofConfined().use { arena ->

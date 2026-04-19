@@ -11,7 +11,7 @@ open class WinRtAsyncReferenceBase(
     pointer: MemorySegment,
     interfaceId: Guid,
 ) : ComObjectReference(pointer, interfaceId) {
-    protected fun invokeInt32Method(slot: Int): Int {
+    override fun invokeInt32Method(slot: Int): Int {
         Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.JAVA_INT)
             val hr = invokeIntMethod(

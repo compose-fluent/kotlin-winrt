@@ -664,8 +664,8 @@ class KotlinProjectionRenderer {
                     .build(),
             )
         }
-        plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderStubMethod(it)) }
-        plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderStubProperty(it)) }
+        plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderRuntimeMethod(plan, it)) }
+        plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderRuntimeProperty(plan, it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
             renderEventFunctions(event, abstract = false).forEach(builder::addFunction)
         }
@@ -768,6 +768,12 @@ class KotlinProjectionRenderer {
             .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
             .build()
 
+    private fun renderRuntimeMethod(
+        plan: KotlinTypeProjectionPlan,
+        method: WinRtMethodDefinition,
+    ): FunSpec =
+        renderBoundMethod(plan, method) ?: renderStubMethod(method)
+
     private fun renderInterfaceProperty(property: WinRtPropertyDefinition): PropertySpec =
         PropertySpec.builder(property.name.replaceFirstChar(Char::lowercase), resolveTypeName(property.typeName))
             .mutable(!property.isReadOnly)
@@ -793,6 +799,110 @@ class KotlinProjectionRenderer {
             )
         }
         return builder.build()
+    }
+
+    private fun renderRuntimeProperty(
+        plan: KotlinTypeProjectionPlan,
+        property: WinRtPropertyDefinition,
+    ): PropertySpec =
+        renderBoundProperty(plan, property) ?: renderStubProperty(property)
+
+    private fun renderBoundMethod(
+        plan: KotlinTypeProjectionPlan,
+        method: WinRtMethodDefinition,
+    ): FunSpec? {
+        if (method.parameters.isNotEmpty()) {
+            return null
+        }
+        val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${method.name.uppercase()}_SLOT" } ?: return null
+        val invocation = renderBoundInvocation(
+            ownerCachePropertyName = binding.ownerCachePropertyName,
+            slotExpression = "Metadata.${binding.bindingName}",
+            returnTypeName = method.returnTypeName,
+        ) ?: return null
+        return FunSpec.builder(method.name)
+            .returns(resolveTypeName(method.returnTypeName))
+            .addCode("%L\n", invocation)
+            .build()
+    }
+
+    private fun renderBoundProperty(
+        plan: KotlinTypeProjectionPlan,
+        property: WinRtPropertyDefinition,
+    ): PropertySpec? {
+        val builder = PropertySpec.builder(
+            property.name.replaceFirstChar(Char::lowercase),
+            resolveTypeName(property.typeName),
+        ).mutable(!property.isReadOnly)
+        val getterBinding = plan.instanceMemberBindings.firstOrNull {
+            it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
+        } ?: return null
+        val getterInvocation = renderBoundInvocation(
+            ownerCachePropertyName = getterBinding.ownerCachePropertyName,
+            slotExpression = "Metadata.${getterBinding.bindingName}",
+            returnTypeName = property.typeName,
+        ) ?: return null
+        builder.getter(
+            FunSpec.getterBuilder()
+                .addCode("%L\n", getterInvocation)
+                .build(),
+        )
+        if (!property.isReadOnly) {
+            builder.setter(
+                FunSpec.setterBuilder()
+                    .addParameter("value", resolveTypeName(property.typeName))
+                    .addCode("error(%S)\n", "Not yet bound to winrt-runtime")
+                    .build(),
+            )
+        }
+        return builder.build()
+    }
+
+    private fun renderBoundInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnTypeName: String,
+    ): CodeBlock? {
+        val trimmedTypeName = returnTypeName.trim()
+        return when (trimmedTypeName) {
+            "Unit" -> CodeBlock.of("%L.invokeUnitMethod(%L)", ownerCachePropertyName, slotExpression)
+            "String" -> CodeBlock.of("return %L.invokeHStringMethod(%L).toKString()", ownerCachePropertyName, slotExpression)
+            "Boolean" -> CodeBlock.of("return %L.invokeBooleanMethod(%L)", ownerCachePropertyName, slotExpression)
+            "Int" -> CodeBlock.of("return %L.invokeInt32Method(%L)", ownerCachePropertyName, slotExpression)
+            "UInt" -> CodeBlock.of("return %L.invokeUInt32Method(%L)", ownerCachePropertyName, slotExpression)
+            "Double" -> CodeBlock.of("return %L.invokeDoubleMethod(%L)", ownerCachePropertyName, slotExpression)
+            else -> renderBoundObjectInvocation(ownerCachePropertyName, slotExpression, trimmedTypeName)
+        }
+    }
+
+    private fun renderBoundObjectInvocation(
+        ownerCachePropertyName: String,
+        slotExpression: String,
+        returnTypeName: String,
+    ): CodeBlock? {
+        val returnType = resolveTypeName(returnTypeName)
+        val rawReturnType = when (returnType) {
+            is ClassName -> returnType
+            else -> return null
+        }
+        return if (rawReturnType.packageName.startsWith(ROOT_PACKAGE_SEGMENTS.joinToString("."))) {
+            CodeBlock.of(
+                "return %L.invokeObjectMethod(%L).use { %T.Metadata.wrap(it.asInspectable()) }",
+                ownerCachePropertyName,
+                slotExpression,
+                rawReturnType,
+            )
+        } else if (rawReturnType == IINSPECTABLE_REFERENCE_CLASS_NAME) {
+            CodeBlock.of(
+                "return %L.invokeObjectMethod(%L).use { it.asInspectable() }",
+                ownerCachePropertyName,
+                slotExpression,
+            )
+        } else if (rawReturnType == IUNKNOWN_REFERENCE_CLASS_NAME) {
+            CodeBlock.of("return %L.invokeObjectMethod(%L)", ownerCachePropertyName, slotExpression)
+        } else {
+            null
+        }
     }
 
     private fun renderEventFunctions(event: WinRtEventDefinition, abstract: Boolean): List<FunSpec> {
