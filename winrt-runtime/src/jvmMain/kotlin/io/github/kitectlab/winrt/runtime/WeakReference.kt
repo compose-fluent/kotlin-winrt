@@ -67,43 +67,45 @@ internal class WeakReferenceReference(
     }
 }
 
-class WeakReference<T : Any>(
-    target: T? = null,
-) {
-    private val lock = Any()
-    private var managedWeakReference = java.lang.ref.WeakReference(target)
-    private var nativeWeakReference: WeakReferenceReference? = createNativeWeakReference(target)
+internal actual class PlatformManagedWeakReference<T : Any> actual constructor(target: T?) {
+    private var delegate = java.lang.ref.WeakReference(target)
 
-    fun setTarget(target: T?) {
-        synchronized(lock) {
-            managedWeakReference = java.lang.ref.WeakReference(target)
-            nativeWeakReference?.close()
-            nativeWeakReference = createNativeWeakReference(target)
-        }
+    actual fun get(): T? = delegate.get()
+
+    actual fun set(target: T?) {
+        delegate = java.lang.ref.WeakReference(target)
     }
+}
 
-    @Suppress("UNCHECKED_CAST")
-    fun tryGetTarget(): T? {
-        synchronized(lock) {
-            managedWeakReference.get()?.let { return it }
-            val resolved = nativeWeakReference
-                ?.resolve(IID.IUnknown)
-                ?.use { ComWrappersSupport.createRcwForComObject(it.pointer) as? T }
-            if (resolved != null) {
-                managedWeakReference = java.lang.ref.WeakReference(resolved)
-            }
-            return resolved
-        }
+internal actual class PlatformLock actual constructor() {
+    private val monitor = Any()
+
+    actual fun <R> withLock(block: () -> R): R = synchronized(monitor) { block() }
+}
+
+internal actual class NativeWeakReferenceHandle internal constructor(
+    val reference: WeakReferenceReference,
+) : AutoCloseable {
+    actual override fun close() {
+        reference.close()
     }
+}
 
-    private fun createNativeWeakReference(target: T?): WeakReferenceReference? {
-        if (target == null) {
-            return null
-        }
+internal actual object WeakReferenceInterop {
+    actual fun tryCreateNativeWeakReference(target: Any): NativeWeakReferenceHandle? {
         val unwrapped = ComWrappersSupport.tryUnwrapObject(target) ?: return null
         return unwrapped.use {
             val weakReferenceSource = unwrapped.queryInterface(IID.IWeakReferenceSource).getOrNull() ?: return null
-            weakReferenceSource.use { WeakReferenceSourceReference(it.pointer, IID.IWeakReferenceSource).getWeakReference() }
+            weakReferenceSource.use {
+                WeakReferenceSourceReference(it.pointer, IID.IWeakReferenceSource)
+                    .getWeakReference()
+                    ?.let(::NativeWeakReferenceHandle)
+            }
         }
     }
+
+    actual fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
+        reference.reference.resolve(IID.IUnknown)?.use { resolved ->
+            ComWrappersSupport.createRcwForComObject(resolved.pointer)
+        }
 }
