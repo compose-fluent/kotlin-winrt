@@ -523,25 +523,6 @@ actual object WinRtPlatformApi {
     actual fun resolveModulePathRaw(fileName: String): String =
         resolveModulePath(fileName)
 
-    internal fun roGetActivationFactory(
-        runtimeClassId: HString,
-        interfaceId: Guid,
-    ): ActivationResult {
-        ensureWindows()
-        Arena.ofConfined().use { arena ->
-            val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            interfaceId.writeTo(iidMemory)
-            val factoryOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = roGetActivationFactoryHandle.invokeWithArguments(
-                runtimeClassId.handle.asMemorySegment(),
-                iidMemory,
-                factoryOut,
-            ) as Int
-            val pointer = factoryOut.get(ValueLayout.ADDRESS, 0)
-            return ActivationResult(HResult(hr), pointer)
-        }
-    }
-
     internal fun coCreateInstance(
         classId: Guid,
         interfaceId: Guid,
@@ -909,9 +890,6 @@ internal data class PointerResult(
     val hResult: HResult,
     val pointer: MemorySegment,
 )
-
-private fun ActivationResult.toNativePointerResult(): NativePointerResult =
-    NativePointerResult(hResult.value, pointer.asNativePointer())
 
 private fun PointerResult.toNativePointerResult(): NativePointerResult =
     NativePointerResult(hResult.value, pointer.asNativePointer())

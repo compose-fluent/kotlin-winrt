@@ -1,14 +1,11 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
-import java.lang.foreign.MemorySegment
-
 data class ActivationResult(
     val hResult: HResult,
-    val pointer: MemorySegment,
+    val pointer: NativePointer,
 ) {
     val isSuccess: Boolean
-        get() = hResult.isSuccess && pointer != MemorySegment.NULL
+        get() = hResult.isSuccess && !NativeInterop.isNull(pointer)
 }
 
 object ActivationFactory {
@@ -51,12 +48,12 @@ object ActivationFactory {
 
     fun tryGet(runtimeClassName: String, interfaceId: Guid = iActivationFactoryIid): ActivationResult {
         if (!PlatformRuntime.isWindows) {
-            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, MemorySegment.NULL)
+            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
         }
 
         WinRtModule.ensureInitialized()
         HString.create(runtimeClassName).use { classId ->
-            val activationResult = WindowsRuntimePlatform.roGetActivationFactory(classId, interfaceId)
+            val activationResult = WinRtPlatformApi.roGetActivationFactoryRaw(classId.handle, interfaceId).toActivationResult()
             if (activationResult.isSuccess || activationResult.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
                 return activationResult
             }
@@ -80,20 +77,20 @@ object ActivationFactory {
     }
 
     private fun cloneCachedReference(reference: IUnknownReference): IUnknownReference =
-        wrapFactory(reference.getRef(), reference.interfaceId)
+        wrapFactory(reference.getRef().asNativePointer(), reference.interfaceId)
 
-    private fun wrapFactory(pointer: MemorySegment, interfaceId: Guid): IUnknownReference =
+    private fun wrapFactory(pointer: NativePointer, interfaceId: Guid): IUnknownReference =
         if (interfaceId == IID.IActivationFactory) {
-            ActivationFactoryReference(pointer, interfaceId)
+            ActivationFactoryReference(pointer.asMemorySegment(), interfaceId)
         } else {
-            IUnknownReference(pointer, interfaceId)
+            IUnknownReference(pointer.asMemorySegment(), interfaceId)
         }
 }
 
 internal object ManifestFreeActivation {
     fun tryGet(runtimeClassName: String, interfaceId: Guid): ActivationResult {
         if (!PlatformRuntime.isWindows) {
-            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, MemorySegment.NULL)
+            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
         }
 
         for (dllName in candidateDllNames(runtimeClassName)) {
@@ -110,18 +107,18 @@ internal object ManifestFreeActivation {
                 return activationFactoryResult
             }
 
-            val queried = ActivationFactoryReference(activationFactoryResult.pointer, IID.IActivationFactory).use { factory ->
+            val queried = ActivationFactoryReference(activationFactoryResult.pointer.asMemorySegment(), IID.IActivationFactory).use { factory ->
                 factory.queryInterface(interfaceId)
             }
             if (queried.isSuccess) {
                 return queried.getOrThrow().use {
-                    ActivationResult(KnownHResults.S_OK, it.getRef())
+                    ActivationResult(KnownHResults.S_OK, it.getRef().asNativePointer())
                 }
             }
 
             val error = queried.exceptionOrNull() as? WinRtRuntimeException
             if (error?.hResult != null) {
-                return ActivationResult(error.hResult, MemorySegment.NULL)
+                return ActivationResult(error.hResult, NativeInterop.nullPointer)
             }
         }
 
@@ -142,5 +139,8 @@ internal object ManifestFreeActivation {
     }
 
     private fun failure(): ActivationResult =
-        ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, MemorySegment.NULL)
+        ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
 }
+
+private fun NativePointerResult.toActivationResult(): ActivationResult =
+    ActivationResult(HResult(hResultValue), pointer)
