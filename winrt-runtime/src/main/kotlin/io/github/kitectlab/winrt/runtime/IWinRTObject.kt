@@ -1,17 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-/**
- * JVM-side equivalent of `.cswinrt/src/WinRT.Runtime/IWinRTObject`.
- *
- * `.cswinrt` stores `QueryInterfaceCache` and `AdditionalTypeData` directly on each wrapper
- * instance. Kotlin interfaces cannot carry backing fields, so the JVM path keeps the same
- * responsibility split via a weak side-table keyed by the wrapper instance itself.
- */
-data class WinRtTypeHandle(
-    val projectedTypeName: String,
-    val interfaceId: Guid,
-)
-
 interface IWinRTObject {
     val nativeObject: ComObjectReference
 

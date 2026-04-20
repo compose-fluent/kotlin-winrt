@@ -2,18 +2,6 @@ package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.MemorySegment
 
-/**
- * Kotlin runtime ownership layer corresponding to `.cswinrt/src/WinRT.Runtime/ComWrappersSupport*`.
- *
- * This slice owns typed RCW factory registration, runtime-class-name-based wrapper lookup, managed CCW
- * factory registration, unwrap helpers, and the Kotlin equivalent of `SingleInterfaceOptimizedObject`.
- * Universal marshaling policy still belongs to Runtime 1.14+.
- */
-data class WinRtInspectableInfo(
-    val runtimeClassName: String?,
-    val interfaceIds: List<Guid>,
-)
-
 data class WinRtCcwDefinition(
     val interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
     val defaultInterfaceId: Guid,
@@ -28,6 +16,13 @@ class SingleInterfaceOptimizedObject(
         get() = false
 }
 
+/**
+ * Kotlin runtime ownership layer corresponding to `.cswinrt/src/WinRT.Runtime/ComWrappersSupport*`.
+ *
+ * This slice owns typed RCW factory registration, runtime-class-name-based wrapper lookup, managed CCW
+ * factory registration, unwrap helpers, and the Kotlin equivalent of `SingleInterfaceOptimizedObject`.
+ * Universal marshaling policy still belongs to Runtime 1.14+.
+ */
 object ComWrappersSupport {
     private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
