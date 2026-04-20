@@ -9,7 +9,13 @@ import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 import java.nio.charset.StandardCharsets
 
-internal object WindowsRuntimePlatform {
+/**
+ * JVM actual for the WinRT platform boundary.
+ *
+ * This owner keeps FFM carriers (`MemorySegment`, `Arena`, `SymbolLookup`, `MethodHandle`) on the hot path
+ * instead of routing them through wrapper types.
+ */
+actual object WinRtPlatformApi {
     private const val coinitApartmentThreaded = 0x2
     private const val coinitMultithreaded = 0x0
     private const val roInitSingleThreaded = 0
@@ -376,7 +382,7 @@ internal object WindowsRuntimePlatform {
         )
     }
 
-    fun roGetActivationFactory(
+    internal fun roGetActivationFactory(
         runtimeClassId: HString,
         interfaceId: Guid,
     ): ActivationResult {
@@ -395,7 +401,7 @@ internal object WindowsRuntimePlatform {
         }
     }
 
-    fun coCreateInstance(
+    internal fun coCreateInstance(
         classId: Guid,
         interfaceId: Guid,
         classContext: Int = 1,
@@ -446,7 +452,7 @@ internal object WindowsRuntimePlatform {
         roUninitializeHandle.invokeWithArguments()
     }
 
-    fun coIncrementMtaUsage(): PointerResult {
+    internal fun coIncrementMtaUsage(): PointerResult {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val cookieOut = arena.allocate(ValueLayout.ADDRESS)
@@ -460,7 +466,7 @@ internal object WindowsRuntimePlatform {
         return HResult(coDecrementMtaUsageHandle.invokeWithArguments(cookie) as Int)
     }
 
-    fun roGetAgileReference(
+    internal fun roGetAgileReference(
         unknown: MemorySegment,
         interfaceId: Guid = IID.IUnknown,
     ): PointerResult {
@@ -480,7 +486,7 @@ internal object WindowsRuntimePlatform {
         }
     }
 
-    fun coGetContextToken(): PointerResult {
+    internal fun coGetContextToken(): PointerResult {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val tokenOut = arena.allocate(ValueLayout.ADDRESS)
@@ -489,7 +495,7 @@ internal object WindowsRuntimePlatform {
         }
     }
 
-    fun coGetObjectContext(interfaceId: Guid): PointerResult {
+    internal fun coGetObjectContext(interfaceId: Guid): PointerResult {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
@@ -561,7 +567,7 @@ internal object WindowsRuntimePlatform {
         }
     }
 
-    fun coCreateFreeThreadedMarshaler(outer: MemorySegment = MemorySegment.NULL): PointerResult {
+    internal fun coCreateFreeThreadedMarshaler(outer: MemorySegment = MemorySegment.NULL): PointerResult {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
@@ -755,6 +761,8 @@ internal object WindowsRuntimePlatform {
         return String(chars)
     }
 }
+
+internal val WindowsRuntimePlatform = WinRtPlatformApi
 
 internal data class PointerResult(
     val hResult: HResult,

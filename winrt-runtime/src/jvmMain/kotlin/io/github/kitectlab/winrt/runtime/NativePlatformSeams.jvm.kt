@@ -7,5 +7,3 @@ actual class NativeScope actual constructor() : AutoCloseable {
 }
 
 actual object NativeInterop
-
-actual object WinRtPlatformApi
