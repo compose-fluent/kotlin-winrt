@@ -14,6 +14,7 @@ internal object WindowsRuntimePlatform {
     private const val coinitMultithreaded = 0x0
     private const val roInitSingleThreaded = 0
     private const val roInitMultithreaded = 1
+    private const val loadLibrarySearchSystem32 = 0x00000800
 
     private val linker: Linker by lazy { Linker.nativeLinker() }
     private val kernel32Lookup: SymbolLookup by lazy { SymbolLookup.libraryLookup("kernel32", Arena.global()) }
@@ -73,8 +74,8 @@ internal object WindowsRuntimePlatform {
         )
     }
 
-    private val roGetAgileReferenceHandle: MethodHandle by lazy {
-        downcall(
+    private val roGetAgileReferenceHandle: MethodHandle? by lazy {
+        optionalDowncall(
             combaseLookup,
             "RoGetAgileReference",
             FunctionDescriptor.of(
@@ -209,6 +210,39 @@ internal object WindowsRuntimePlatform {
         )
     }
 
+    private val sysAllocStringLenHandle: MethodHandle by lazy {
+        downcall(
+            oleaut32Lookup,
+            "SysAllocStringLen",
+            FunctionDescriptor.of(
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT,
+            ),
+        )
+    }
+
+    private val sysFreeStringHandle: MethodHandle by lazy {
+        downcall(
+            oleaut32Lookup,
+            "SysFreeString",
+            FunctionDescriptor.ofVoid(
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val sysStringLenHandle: MethodHandle by lazy {
+        downcall(
+            oleaut32Lookup,
+            "SysStringLen",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
     private val coCreateFreeThreadedMarshalerHandle: MethodHandle by lazy {
         downcall(
             ole32Lookup,
@@ -291,6 +325,53 @@ internal object WindowsRuntimePlatform {
             "GetLastError",
             FunctionDescriptor.of(
                 ValueLayout.JAVA_INT,
+            ),
+        )
+    }
+
+    private val winRtErrorModuleHandle: MemorySegment? by lazy {
+        if (!PlatformRuntime.isWindows) {
+            null
+        } else {
+            sequenceOf(
+                "api-ms-win-core-winrt-error-l1-1-1.dll",
+                "api-ms-win-core-winrt-error-l1-1-0.dll",
+            ).firstNotNullOfOrNull { moduleName ->
+                val handle = tryLoadLibraryExW(moduleName, loadLibrarySearchSystem32)
+                handle.takeIf { it != MemorySegment.NULL }
+            }
+        }
+    }
+
+    private val getRestrictedErrorInfoHandle: MethodHandle? by lazy {
+        optionalDowncall(
+            moduleHandle = winRtErrorModuleHandle,
+            symbolName = "GetRestrictedErrorInfo",
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val setRestrictedErrorInfoHandle: MethodHandle? by lazy {
+        optionalDowncall(
+            moduleHandle = winRtErrorModuleHandle,
+            symbolName = "SetRestrictedErrorInfo",
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val roReportUnhandledErrorHandle: MethodHandle? by lazy {
+        optionalDowncall(
+            moduleHandle = winRtErrorModuleHandle,
+            symbolName = "RoReportUnhandledError",
+            descriptor = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
             ),
         )
     }
@@ -384,11 +465,12 @@ internal object WindowsRuntimePlatform {
         interfaceId: Guid = IID.IUnknown,
     ): PointerResult {
         ensureWindows()
+        val handle = roGetAgileReferenceHandle ?: return PointerResult(KnownHResults.E_NOTIMPL, MemorySegment.NULL)
         Arena.ofConfined().use { arena ->
             val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
             interfaceId.writeTo(interfaceIdMemory)
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = roGetAgileReferenceHandle.invokeWithArguments(
+            val hr = handle.invokeWithArguments(
                 0,
                 interfaceIdMemory,
                 unknown,
@@ -424,6 +506,59 @@ internal object WindowsRuntimePlatform {
     fun setErrorInfo(errorInfo: MemorySegment): HResult {
         ensureWindows()
         return HResult(setErrorInfoHandle.invokeWithArguments(0, errorInfo) as Int)
+    }
+
+    fun borrowRestrictedErrorInfo(): MemorySegment? {
+        ensureWindows()
+        val handle = getRestrictedErrorInfoHandle ?: return null
+        Arena.ofConfined().use { arena ->
+            val errorInfoOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = handle.invokeWithArguments(errorInfoOut) as Int
+            checkSucceeded(hr)
+            val errorInfo = errorInfoOut.get(ValueLayout.ADDRESS, 0)
+            if (errorInfo == MemorySegment.NULL) {
+                return null
+            }
+            setRestrictedErrorInfoHandle?.invokeWithArguments(errorInfo)
+            return errorInfo
+        }
+    }
+
+    fun reportUnhandledError(errorInfo: MemorySegment): HResult? {
+        ensureWindows()
+        val handle = roReportUnhandledErrorHandle ?: return null
+        return HResult(handle.invokeWithArguments(errorInfo) as Int)
+    }
+
+    fun sysAllocString(value: String?): MemorySegment {
+        ensureWindows()
+        if (value.isNullOrEmpty()) {
+            return sysAllocStringLenHandle.invokeWithArguments(MemorySegment.NULL, 0) as MemorySegment
+        }
+        Arena.ofConfined().use { arena ->
+            val utf16 = arena.allocateFrom("$value\u0000", StandardCharsets.UTF_16LE)
+            return sysAllocStringLenHandle.invokeWithArguments(utf16, value.length) as MemorySegment
+        }
+    }
+
+    fun sysFreeString(value: MemorySegment) {
+        ensureWindows()
+        if (value != MemorySegment.NULL) {
+            sysFreeStringHandle.invokeWithArguments(value)
+        }
+    }
+
+    fun readAndFreeBstr(value: MemorySegment): String {
+        ensureWindows()
+        if (value == MemorySegment.NULL) {
+            return ""
+        }
+        try {
+            val charCount = sysStringLenHandle.invokeWithArguments(value) as Int
+            return readUtf16Message(value, charCount)
+        } finally {
+            sysFreeString(value)
+        }
     }
 
     fun coCreateFreeThreadedMarshaler(outer: MemorySegment = MemorySegment.NULL): PointerResult {
@@ -572,6 +707,30 @@ internal object WindowsRuntimePlatform {
         ensureWindows()
         val symbol = lookup.find(symbolName).orElseThrow {
             IllegalStateException("Missing Win32 symbol: $symbolName")
+        }
+        return linker.downcallHandle(symbol, descriptor)
+    }
+
+    private fun optionalDowncall(
+        lookup: SymbolLookup,
+        symbolName: String,
+        descriptor: FunctionDescriptor,
+    ): MethodHandle? =
+        lookup.find(symbolName)
+            .map { linker.downcallHandle(it, descriptor) }
+            .orElse(null)
+
+    private fun optionalDowncall(
+        moduleHandle: MemorySegment?,
+        symbolName: String,
+        descriptor: FunctionDescriptor,
+    ): MethodHandle? {
+        if (moduleHandle == null || moduleHandle == MemorySegment.NULL) {
+            return null
+        }
+        val symbol = tryGetProcAddress(moduleHandle, symbolName)
+        if (symbol == MemorySegment.NULL) {
+            return null
         }
         return linker.downcallHandle(symbol, descriptor)
     }

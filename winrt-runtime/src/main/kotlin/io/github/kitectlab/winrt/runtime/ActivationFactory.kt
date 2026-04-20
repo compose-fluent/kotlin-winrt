@@ -55,6 +55,7 @@ object ActivationFactory {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, MemorySegment.NULL)
         }
 
+        WinRtModule.ensureInitialized()
         HString.create(runtimeClassName).use { classId ->
             val activationResult = WindowsRuntimePlatform.roGetActivationFactory(classId, interfaceId)
             if (activationResult.isSuccess || activationResult.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {

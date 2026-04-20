@@ -88,6 +88,7 @@ internal class WinRtDelegateComObject(
             }
             KnownHResults.S_OK.value
         } catch (error: Throwable) {
+            ExceptionHelpers.setErrorInfo(error)
             WinRtExceptionTranslator.hResultFromException(error).value
         }
     }
