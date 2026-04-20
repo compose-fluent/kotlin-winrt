@@ -1,13 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-data class ActivationResult(
-    val hResult: HResult,
-    val pointer: NativePointer,
-) {
-    val isSuccess: Boolean
-        get() = hResult.isSuccess && !NativeInterop.isNull(pointer)
-}
-
 object ActivationFactory {
     val iActivationFactoryIid: Guid = IID.IActivationFactory
 
@@ -93,7 +85,7 @@ internal object ManifestFreeActivation {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
         }
 
-        for (dllName in candidateDllNames(runtimeClassName)) {
+        for (dllName in manifestFreeActivationCandidateDllNames(runtimeClassName)) {
             val module = DllModule.tryLoad(dllName) ?: continue
             val activationFactoryResult = module.getActivationFactory(runtimeClassName)
             if (!activationFactoryResult.isSuccess) {
@@ -126,21 +118,9 @@ internal object ManifestFreeActivation {
     }
 
     internal fun candidateDllNames(runtimeClassName: String): List<String> {
-        val parts = runtimeClassName.split('.')
-        if (parts.size < 2) {
-            return emptyList()
-        }
-
-        return buildList {
-            for (i in parts.lastIndex downTo 1) {
-                add(parts.take(i).joinToString(".") + ".dll")
-            }
-        }.distinct()
+        return manifestFreeActivationCandidateDllNames(runtimeClassName)
     }
 
     private fun failure(): ActivationResult =
         ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
 }
-
-private fun NativePointerResult.toActivationResult(): ActivationResult =
-    ActivationResult(HResult(hResultValue), pointer)
