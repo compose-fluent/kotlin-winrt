@@ -78,29 +78,6 @@ private val VALUE_LAYOUT_CLASS_NAME = ClassName("java.lang.foreign", "ValueLayou
 
 private typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
 
-private val SPECIAL_TYPE_MAPPINGS: Map<String, SpecialTypeResolver> = mapOf(
-    "System.Object" to { ANY },
-    "WinRT.Interop.HWND" to { Long::class.asClassName() },
-    "Windows.Foundation.DateTime" to { OFFSET_DATE_TIME_CLASS_NAME },
-    "Windows.Foundation.TimeSpan" to { DURATION_CLASS_NAME },
-    "Windows.Foundation.Uri" to { URI_CLASS_NAME },
-    "Windows.Foundation.IClosable" to { AUTO_CLOSEABLE_CLASS_NAME },
-    "Windows.Foundation.IReference" to { arguments -> arguments.single().copy(nullable = true) },
-    "Windows.Foundation.Collections.IIterable" to { arguments -> Iterable::class.asClassName().parameterizedBy(arguments) },
-    "Windows.Foundation.Collections.IIterator" to { arguments -> Iterator::class.asClassName().parameterizedBy(arguments) },
-    "Windows.Foundation.Collections.IVectorView" to { arguments -> List::class.asClassName().parameterizedBy(arguments) },
-    "Windows.Foundation.Collections.IVector" to { arguments -> MUTABLE_LIST_CLASS_NAME.parameterizedBy(arguments) },
-    "Windows.Foundation.Collections.IMapView" to { arguments -> Map::class.asClassName().parameterizedBy(arguments) },
-    "Windows.Foundation.Collections.IMap" to { arguments -> MUTABLE_MAP_CLASS_NAME.parameterizedBy(arguments) },
-    "Windows.Foundation.Collections.IKeyValuePair" to { arguments -> Map.Entry::class.asClassName().parameterizedBy(arguments) },
-    "Windows.Foundation.IAsyncAction" to { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) },
-    "Windows.Foundation.IAsyncActionWithProgress" to { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) },
-    "Windows.Foundation.IAsyncOperation" to { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.single()) },
-    "Windows.Foundation.IAsyncOperationWithProgress" to { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.first()) },
-    "Microsoft.UI.Xaml.Interop.IBindableIterable" to { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
-    "Microsoft.UI.Xaml.Interop.IBindableVector" to { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
-)
-
 enum class KotlinProjectionDeclarationKind {
     Interface,
     Class,
@@ -249,6 +226,176 @@ enum class KotlinProjectionAbiValueKind {
     InspectableReference,
     Unsupported,
 }
+
+private data class KotlinProjectionMappedType(
+    val abiQualifiedName: String,
+    val projectedTypeResolver: SpecialTypeResolver,
+    val abiValueKind: KotlinProjectionAbiValueKind? = null,
+    val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
+    val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
+    val descriptionName: String = abiQualifiedName.substringAfterLast('.'),
+) {
+    init {
+        require(readOnlyCollectionKind == null || mutableCollectionKind == null) {
+            "Mapped type '$abiQualifiedName' cannot be both read-only and mutable."
+        }
+    }
+}
+
+private data class KotlinProjectionIntegralAbiDescriptor(
+    val kotlinTypeName: TypeName,
+    val abiLayout: CodeBlock,
+    val argumentConversionSuffix: String = "",
+    val readbackExpression: CodeBlock,
+    val literalRenderer: (ULong) -> CodeBlock,
+)
+
+/**
+ * `.cswinrt/src/cswinrt/helpers.h` converges mapped WinRT type decisions through `mapped_type` plus
+ * `get_mapped_type(...)`. Keep Kotlin projection planning on the same ownership model instead of
+ * repeating the same collection/async/custom-type tables across unrelated helpers.
+ */
+private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
+    KotlinProjectionMappedType("System.Object", { ANY }, descriptionName = "Object"),
+    KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
+    KotlinProjectionMappedType("Windows.Foundation.DateTime", { OFFSET_DATE_TIME_CLASS_NAME }, descriptionName = "DateTime"),
+    KotlinProjectionMappedType("Windows.Foundation.TimeSpan", { DURATION_CLASS_NAME }, descriptionName = "TimeSpan"),
+    KotlinProjectionMappedType("Windows.Foundation.Uri", { URI_CLASS_NAME }, descriptionName = "Uri"),
+    KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
+    KotlinProjectionMappedType("Windows.Foundation.IReference", { arguments -> arguments.single().copy(nullable = true) }, descriptionName = "IReference"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IIterable",
+        projectedTypeResolver = { arguments -> Iterable::class.asClassName().parameterizedBy(arguments) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedIterable,
+        readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.Iterable,
+        descriptionName = "Iterable",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IIterator",
+        projectedTypeResolver = { arguments -> Iterator::class.asClassName().parameterizedBy(arguments) },
+        descriptionName = "Iterator",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IVectorView",
+        projectedTypeResolver = { arguments -> List::class.asClassName().parameterizedBy(arguments) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedVectorView,
+        readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+        descriptionName = "VectorView",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IVector",
+        projectedTypeResolver = { arguments -> MUTABLE_LIST_CLASS_NAME.parameterizedBy(arguments) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedVector,
+        mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        descriptionName = "Vector",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IMapView",
+        projectedTypeResolver = { arguments -> Map::class.asClassName().parameterizedBy(arguments) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedMapView,
+        readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.MapView,
+        descriptionName = "MapView",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IMap",
+        projectedTypeResolver = { arguments -> MUTABLE_MAP_CLASS_NAME.parameterizedBy(arguments) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedMap,
+        mutableCollectionKind = KotlinProjectionMutableCollectionKind.Map,
+        descriptionName = "Map",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Collections.IKeyValuePair",
+        projectedTypeResolver = { arguments -> Map.Entry::class.asClassName().parameterizedBy(arguments) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedKeyValuePair,
+        descriptionName = "KeyValuePair",
+    ),
+    KotlinProjectionMappedType("Windows.Foundation.IAsyncAction", { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) }, descriptionName = "IAsyncAction"),
+    KotlinProjectionMappedType("Windows.Foundation.IAsyncActionWithProgress", { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) }, descriptionName = "IAsyncActionWithProgress"),
+    KotlinProjectionMappedType("Windows.Foundation.IAsyncOperation", { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.single()) }, descriptionName = "IAsyncOperation"),
+    KotlinProjectionMappedType("Windows.Foundation.IAsyncOperationWithProgress", { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.first()) }, descriptionName = "IAsyncOperationWithProgress"),
+    KotlinProjectionMappedType(
+        "Microsoft.UI.Xaml.Interop.IBindableIterable",
+        { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
+        descriptionName = "IBindableIterable",
+    ),
+    KotlinProjectionMappedType(
+        "Microsoft.UI.Xaml.Interop.IBindableVector",
+        { MUTABLE_LIST_CLASS_NAME.parameterizedBy(ANY.copy(nullable = true)) },
+        descriptionName = "IBindableVector",
+    ),
+)
+
+private val MAPPED_TYPES_BY_ABI_NAME: Map<String, KotlinProjectionMappedType> =
+    MAPPED_TYPES.associateBy(KotlinProjectionMappedType::abiQualifiedName)
+
+private val MAPPED_TYPES_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, KotlinProjectionMappedType> =
+    MAPPED_TYPES.mapNotNull { mappedType ->
+        mappedType.abiValueKind?.let { abiValueKind -> abiValueKind to mappedType }
+    }.toMap()
+
+private val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(
+    WinRtIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = Byte::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_BYTE", VALUE_LAYOUT_CLASS_NAME),
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_BYTE, 0)", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L.toByte()", valueBits.toByte()) },
+    ),
+    WinRtIntegralType.UInt8 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = UByte::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_BYTE", VALUE_LAYOUT_CLASS_NAME),
+        argumentConversionSuffix = ".toByte()",
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_BYTE, 0).toUByte()", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L.toUByte()", valueBits.toUByte()) },
+    ),
+    WinRtIntegralType.Int16 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = Short::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_SHORT", VALUE_LAYOUT_CLASS_NAME),
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_SHORT, 0)", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L.toShort()", valueBits.toShort()) },
+    ),
+    WinRtIntegralType.UInt16 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = UShort::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_SHORT", VALUE_LAYOUT_CLASS_NAME),
+        argumentConversionSuffix = ".toShort()",
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_SHORT, 0).toUShort()", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L.toUShort()", valueBits.toUShort()) },
+    ),
+    WinRtIntegralType.Int32 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = Int::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_INT, 0)", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L", valueBits.toInt()) },
+    ),
+    WinRtIntegralType.UInt32 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = UInt::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME),
+        argumentConversionSuffix = ".toInt()",
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_INT, 0).toUInt()", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L.toUInt()", valueBits.toUInt()) },
+    ),
+    WinRtIntegralType.Int64 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = Long::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_LONG", VALUE_LAYOUT_CLASS_NAME),
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_LONG, 0)", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits.toLong()}L") },
+    ),
+    WinRtIntegralType.UInt64 to KotlinProjectionIntegralAbiDescriptor(
+        kotlinTypeName = ULong::class.asClassName(),
+        abiLayout = CodeBlock.of("%T.JAVA_LONG", VALUE_LAYOUT_CLASS_NAME),
+        argumentConversionSuffix = ".toLong()",
+        readbackExpression = CodeBlock.of("__resultOut.get(%T.JAVA_LONG, 0).toULong()", VALUE_LAYOUT_CLASS_NAME),
+        literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits}uL") },
+    ),
+)
+
+private fun mappedTypeByAbiName(abiQualifiedName: String): KotlinProjectionMappedType? =
+    MAPPED_TYPES_BY_ABI_NAME[abiQualifiedName]
+
+private fun mappedTypeByAbiKind(kind: KotlinProjectionAbiValueKind): KotlinProjectionMappedType? =
+    MAPPED_TYPES_BY_ABI_KIND[kind]
+
+private fun integralAbiDescriptor(type: WinRtIntegralType): KotlinProjectionIntegralAbiDescriptor =
+    INTEGRAL_ABI_DESCRIPTORS.getValue(type)
 
 data class KotlinProjectionAbiTypeBinding(
     val kind: KotlinProjectionAbiValueKind,
@@ -793,40 +940,18 @@ class KotlinProjectionPlanner(
         } else {
             emptyList()
         }
-        val ownerSuffix = ownerInterface.substringAfterLast('.').replaceFirstChar(Char::lowercase)
-        return when (resolvedInterfaceName) {
-            "Windows.Foundation.Collections.IVector" -> {
-                val elementBinding = genericArguments.singleOrNull() ?: return null
-                if (!elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                    return null
-                }
-                KotlinProjectionMutableCollectionBinding(
-                    kind = KotlinProjectionMutableCollectionKind.Vector,
-                    ownerInterfaceQualifiedName = ownerInterface,
-                    ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
-                    slotInterfaceQualifiedName = resolvedInterfaceName,
-                    delegatePropertyName = "__${ownerSuffix}VectorCollection",
-                    elementBinding = elementBinding,
-                )
-            }
-            "Windows.Foundation.Collections.IMap" -> {
-                val keyBinding = genericArguments.firstOrNull() ?: return null
-                val valueBinding = genericArguments.getOrNull(1) ?: return null
-                if (!keyBinding.isSupportedReadOnlyCollectionKeyBinding() || !valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                    return null
-                }
-                KotlinProjectionMutableCollectionBinding(
-                    kind = KotlinProjectionMutableCollectionKind.Map,
-                    ownerInterfaceQualifiedName = ownerInterface,
-                    ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
-                    slotInterfaceQualifiedName = resolvedInterfaceName,
-                    delegatePropertyName = "__${ownerSuffix}MapCollection",
-                    keyBinding = keyBinding,
-                    valueBinding = valueBinding,
-                )
-            }
-            else -> null
-        }
+        val mappedType = mappedTypeByAbiName(resolvedInterfaceName) ?: return null
+        val collectionKind = mappedType.mutableCollectionKind ?: return null
+        return buildMutableCollectionBinding(
+            collectionKind = collectionKind,
+            ownerInterfaceQualifiedName = ownerInterface,
+            ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
+            slotInterfaceQualifiedName = resolvedInterfaceName,
+            delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
+            typeArguments = genericArguments,
+            errorContext = ownerInterface,
+            requireSupportedBinding = false,
+        )
     }
 
     private fun collectReadOnlyCollectionBindings(
@@ -886,58 +1011,65 @@ class KotlinProjectionPlanner(
         } else {
             emptyList()
         }
-        val ownerSuffix = ownerInterface.substringAfterLast('.').replaceFirstChar(Char::lowercase)
-        return when (resolvedInterfaceName) {
-            "Windows.Foundation.Collections.IIterable" -> {
-                val elementBinding = genericArguments.singleOrNull() ?: return null
-                require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                    "Generator read-only collection parity does not yet support IIterable element ${elementBinding.describeAbiKind()} on $ownerInterface."
-                }
-                KotlinProjectionReadOnlyCollectionBinding(
-                    kind = KotlinProjectionReadOnlyCollectionKind.Iterable,
-                    ownerInterfaceQualifiedName = ownerInterface,
-                    ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
-                    slotInterfaceQualifiedName = resolvedInterfaceName,
-                    delegatePropertyName = "__${ownerSuffix}IterableCollection",
-                    elementBinding = elementBinding,
-                )
-            }
-            "Windows.Foundation.Collections.IVectorView" -> {
-                val elementBinding = genericArguments.singleOrNull() ?: return null
-                require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                    "Generator read-only collection parity does not yet support IVectorView element ${elementBinding.describeAbiKind()} on $ownerInterface."
-                }
-                KotlinProjectionReadOnlyCollectionBinding(
-                    kind = KotlinProjectionReadOnlyCollectionKind.VectorView,
-                    ownerInterfaceQualifiedName = ownerInterface,
-                    ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
-                    slotInterfaceQualifiedName = resolvedInterfaceName,
-                    delegatePropertyName = "__${ownerSuffix}VectorViewCollection",
-                    elementBinding = elementBinding,
-                )
-            }
-            "Windows.Foundation.Collections.IMapView" -> {
-                val keyBinding = genericArguments.firstOrNull() ?: return null
-                val valueBinding = genericArguments.getOrNull(1) ?: return null
-                require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
-                    "Generator read-only collection parity does not yet support IMapView key ${keyBinding.describeAbiKind()} on $ownerInterface."
-                }
-                require(valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                    "Generator read-only collection parity does not yet support IMapView value ${valueBinding.describeAbiKind()} on $ownerInterface."
-                }
-                KotlinProjectionReadOnlyCollectionBinding(
-                    kind = KotlinProjectionReadOnlyCollectionKind.MapView,
-                    ownerInterfaceQualifiedName = ownerInterface,
-                    ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
-                    slotInterfaceQualifiedName = resolvedInterfaceName,
-                    delegatePropertyName = "__${ownerSuffix}MapViewCollection",
-                    keyBinding = keyBinding,
-                    valueBinding = valueBinding,
-                )
-            }
-            else -> null
-        }
+        val mappedType = mappedTypeByAbiName(resolvedInterfaceName) ?: return null
+        val collectionKind = mappedType.readOnlyCollectionKind ?: return null
+        return buildReadOnlyCollectionBinding(
+            collectionKind = collectionKind,
+            ownerInterfaceQualifiedName = ownerInterface,
+            ownerCachePropertyName = ownerCachePropertyName(ownerInterface, defaultInterfaceName),
+            slotInterfaceQualifiedName = resolvedInterfaceName,
+            delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
+            typeArguments = genericArguments,
+            errorContext = ownerInterface,
+            requireSupportedBinding = true,
+        )
     }
+
+    private fun buildReadOnlyCollectionBinding(
+        collectionKind: KotlinProjectionReadOnlyCollectionKind,
+        ownerInterfaceQualifiedName: String,
+        ownerCachePropertyName: String,
+        slotInterfaceQualifiedName: String,
+        delegatePropertyName: String,
+        typeArguments: List<KotlinProjectionAbiTypeBinding>,
+        errorContext: String,
+        requireSupportedBinding: Boolean,
+        bindingLocationLabel: String = "",
+    ): KotlinProjectionReadOnlyCollectionBinding? =
+        createReadOnlyCollectionBindingPlan(
+            collectionKind = collectionKind,
+            ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+            delegatePropertyName = delegatePropertyName,
+            typeArguments = typeArguments,
+            errorContext = errorContext,
+            requireSupportedBinding = requireSupportedBinding,
+            bindingLocationLabel = bindingLocationLabel,
+        )
+
+    private fun buildMutableCollectionBinding(
+        collectionKind: KotlinProjectionMutableCollectionKind,
+        ownerInterfaceQualifiedName: String,
+        ownerCachePropertyName: String,
+        slotInterfaceQualifiedName: String,
+        delegatePropertyName: String,
+        typeArguments: List<KotlinProjectionAbiTypeBinding>,
+        errorContext: String,
+        requireSupportedBinding: Boolean,
+        bindingLocationLabel: String = "",
+    ): KotlinProjectionMutableCollectionBinding? =
+        createMutableCollectionBindingPlan(
+            collectionKind = collectionKind,
+            ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+            ownerCachePropertyName = ownerCachePropertyName,
+            slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+            delegatePropertyName = delegatePropertyName,
+            typeArguments = typeArguments,
+            errorContext = errorContext,
+            requireSupportedBinding = requireSupportedBinding,
+            bindingLocationLabel = bindingLocationLabel,
+        )
 
     private fun resolveInstanceMemberBinding(
         candidateInterfaces: List<String>,
@@ -1020,6 +1152,7 @@ class KotlinProjectionPlanner(
         }
         val resolvedTypeName = qualifyTypeName(rawTypeName, currentNamespace, typesByQualifiedName) ?: rawTypeName
         val resolvedType = typesByQualifiedName[resolvedTypeName]
+        val mappedType = mappedTypeByAbiName(rawTypeName)
         val kind = when (trimmedTypeName) {
             "Unit" -> KotlinProjectionAbiValueKind.Unit
             "String" -> KotlinProjectionAbiValueKind.String
@@ -1033,12 +1166,7 @@ class KotlinProjectionPlanner(
             "io.github.kitectlab.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
             else -> when {
                 rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
-                rawTypeName == "Windows.Foundation.Collections.IIterable" -> KotlinProjectionAbiValueKind.MappedIterable
-                rawTypeName == "Windows.Foundation.Collections.IVector" -> KotlinProjectionAbiValueKind.MappedVector
-                rawTypeName == "Windows.Foundation.Collections.IMap" -> KotlinProjectionAbiValueKind.MappedMap
-                rawTypeName == "Windows.Foundation.Collections.IVectorView" -> KotlinProjectionAbiValueKind.MappedVectorView
-                rawTypeName == "Windows.Foundation.Collections.IMapView" -> KotlinProjectionAbiValueKind.MappedMapView
-                rawTypeName == "Windows.Foundation.Collections.IKeyValuePair" -> KotlinProjectionAbiValueKind.MappedKeyValuePair
+                mappedType?.abiValueKind != null -> mappedType.abiValueKind
                 resolvedType != null -> when (resolvedType.kind) {
                     WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
                     WinRtTypeKind.RuntimeClass -> KotlinProjectionAbiValueKind.ProjectedRuntimeClass
@@ -1047,7 +1175,7 @@ class KotlinProjectionPlanner(
                     WinRtTypeKind.Delegate -> KotlinProjectionAbiValueKind.Delegate
                     WinRtTypeKind.Unknown -> KotlinProjectionAbiValueKind.Unsupported
                 }
-                rawTypeName in SPECIAL_TYPE_MAPPINGS -> KotlinProjectionAbiValueKind.Unsupported
+                mappedType != null -> KotlinProjectionAbiValueKind.Unsupported
                 else -> KotlinProjectionAbiValueKind.Unsupported
             }
         }
@@ -1211,20 +1339,19 @@ class KotlinProjectionPlanner(
             .map { it.lowercase() }
 }
 
-private fun KotlinProjectionAbiTypeBinding.describeAbiKind(): String = when (kind) {
-    KotlinProjectionAbiValueKind.MappedIterable -> "Iterable(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
-    KotlinProjectionAbiValueKind.MappedVector -> "Vector(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
-    KotlinProjectionAbiValueKind.MappedMap -> "Map(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
-    KotlinProjectionAbiValueKind.MappedVectorView -> "VectorView(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
-    KotlinProjectionAbiValueKind.MappedMapView -> "MapView(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
-    KotlinProjectionAbiValueKind.MappedKeyValuePair -> "KeyValuePair(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
-    KotlinProjectionAbiValueKind.Enum -> "Enum(${resolvedTypeName})"
-    KotlinProjectionAbiValueKind.ProjectedInterface -> "Interface(${resolvedTypeName})"
-    KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "RuntimeClass(${resolvedTypeName})"
-    KotlinProjectionAbiValueKind.Struct -> "Struct(${resolvedTypeName})"
-    KotlinProjectionAbiValueKind.Delegate -> "Delegate(${resolvedTypeName})"
-    KotlinProjectionAbiValueKind.Object -> "Object(${resolvedTypeName})"
-    else -> kind.name
+private fun KotlinProjectionAbiTypeBinding.describeAbiKind(): String {
+    mappedTypeByAbiKind(kind)?.let { mappedType ->
+        return "${mappedType.descriptionName}(${typeArguments.joinToString(",") { it.resolvedTypeName }})"
+    }
+    return when (kind) {
+        KotlinProjectionAbiValueKind.Enum -> "Enum(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.ProjectedInterface -> "Interface(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "RuntimeClass(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.Struct -> "Struct(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.Delegate -> "Delegate(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.Object -> "Object(${resolvedTypeName})"
+        else -> kind.name
+    }
 }
 
 private fun KotlinProjectionReadOnlyCollectionBinding.isRedundantReadOnlyCollectionBinding(
@@ -1261,6 +1388,165 @@ private fun KotlinProjectionMutableCollectionBinding.asReadOnlyEntryBinding(): K
     )
 }
 
+private fun KotlinProjectionReadOnlyCollectionKind.abiName(): String = when (this) {
+    KotlinProjectionReadOnlyCollectionKind.Iterable -> "IIterable"
+    KotlinProjectionReadOnlyCollectionKind.VectorView -> "IVectorView"
+    KotlinProjectionReadOnlyCollectionKind.MapView -> "IMapView"
+}
+
+private fun KotlinProjectionReadOnlyCollectionKind.ownerDelegatePropertyName(ownerInterface: String): String {
+    val ownerSuffix = ownerInterface.substringAfterLast('.').replaceFirstChar(Char::lowercase)
+    return when (this) {
+        KotlinProjectionReadOnlyCollectionKind.Iterable -> "__${ownerSuffix}IterableCollection"
+        KotlinProjectionReadOnlyCollectionKind.VectorView -> "__${ownerSuffix}VectorViewCollection"
+        KotlinProjectionReadOnlyCollectionKind.MapView -> "__${ownerSuffix}MapViewCollection"
+    }
+}
+
+private fun KotlinProjectionReadOnlyCollectionKind.returnDelegatePropertyName(): String = when (this) {
+    KotlinProjectionReadOnlyCollectionKind.Iterable -> "__mappedIterableReturn"
+    KotlinProjectionReadOnlyCollectionKind.VectorView -> "__mappedVectorViewReturn"
+    KotlinProjectionReadOnlyCollectionKind.MapView -> "__mappedMapViewReturn"
+}
+
+private fun KotlinProjectionMutableCollectionKind.abiName(): String = when (this) {
+    KotlinProjectionMutableCollectionKind.Vector -> "IVector"
+    KotlinProjectionMutableCollectionKind.Map -> "IMap"
+}
+
+private fun KotlinProjectionMutableCollectionKind.ownerDelegatePropertyName(ownerInterface: String): String {
+    val ownerSuffix = ownerInterface.substringAfterLast('.').replaceFirstChar(Char::lowercase)
+    return when (this) {
+        KotlinProjectionMutableCollectionKind.Vector -> "__${ownerSuffix}VectorCollection"
+        KotlinProjectionMutableCollectionKind.Map -> "__${ownerSuffix}MapCollection"
+    }
+}
+
+private fun KotlinProjectionMutableCollectionKind.returnDelegatePropertyName(): String = when (this) {
+    KotlinProjectionMutableCollectionKind.Vector -> "__mappedVectorReturn"
+    KotlinProjectionMutableCollectionKind.Map -> "__mappedMapReturn"
+}
+
+private fun createReadOnlyCollectionBindingPlan(
+    collectionKind: KotlinProjectionReadOnlyCollectionKind,
+    ownerInterfaceQualifiedName: String,
+    ownerCachePropertyName: String,
+    slotInterfaceQualifiedName: String,
+    delegatePropertyName: String,
+    typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    errorContext: String,
+    requireSupportedBinding: Boolean,
+    bindingLocationLabel: String = "",
+): KotlinProjectionReadOnlyCollectionBinding? =
+    when (collectionKind) {
+        KotlinProjectionReadOnlyCollectionKind.Iterable,
+        KotlinProjectionReadOnlyCollectionKind.VectorView -> {
+            val elementBinding = typeArguments.singleOrNull() ?: return null
+            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                    "Generator read-only collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}element ${elementBinding.describeAbiKind()} on $errorContext."
+                }
+            } else if (!elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                return null
+            }
+            KotlinProjectionReadOnlyCollectionBinding(
+                kind = collectionKind,
+                ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+                ownerCachePropertyName = ownerCachePropertyName,
+                slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+                delegatePropertyName = delegatePropertyName,
+                elementBinding = elementBinding,
+            )
+        }
+
+        KotlinProjectionReadOnlyCollectionKind.MapView -> {
+            val keyBinding = typeArguments.getOrNull(0) ?: return null
+            val valueBinding = typeArguments.getOrNull(1) ?: return null
+            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
+                    "Generator read-only collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}key ${keyBinding.describeAbiKind()} on $errorContext."
+                }
+                require(valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                    "Generator read-only collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}value ${valueBinding.describeAbiKind()} on $errorContext."
+                }
+            } else if (!keyBinding.isSupportedReadOnlyCollectionKeyBinding() || !valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                return null
+            }
+            KotlinProjectionReadOnlyCollectionBinding(
+                kind = collectionKind,
+                ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+                ownerCachePropertyName = ownerCachePropertyName,
+                slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+                delegatePropertyName = delegatePropertyName,
+                keyBinding = keyBinding,
+                valueBinding = valueBinding,
+            )
+        }
+    }
+
+private fun createMutableCollectionBindingPlan(
+    collectionKind: KotlinProjectionMutableCollectionKind,
+    ownerInterfaceQualifiedName: String,
+    ownerCachePropertyName: String,
+    slotInterfaceQualifiedName: String,
+    delegatePropertyName: String,
+    typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    errorContext: String,
+    requireSupportedBinding: Boolean,
+    bindingLocationLabel: String = "",
+): KotlinProjectionMutableCollectionBinding? =
+    when (collectionKind) {
+        KotlinProjectionMutableCollectionKind.Vector -> {
+            val elementBinding = typeArguments.singleOrNull() ?: return null
+            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                    "Generator mutable collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}element ${elementBinding.describeAbiKind()} on $errorContext."
+                }
+            } else if (!elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                return null
+            }
+            KotlinProjectionMutableCollectionBinding(
+                kind = collectionKind,
+                ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+                ownerCachePropertyName = ownerCachePropertyName,
+                slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+                delegatePropertyName = delegatePropertyName,
+                elementBinding = elementBinding,
+            )
+        }
+
+        KotlinProjectionMutableCollectionKind.Map -> {
+            val keyBinding = typeArguments.getOrNull(0) ?: return null
+            val valueBinding = typeArguments.getOrNull(1) ?: return null
+            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
+                    "Generator mutable collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}key ${keyBinding.describeAbiKind()} on $errorContext."
+                }
+                require(valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                    "Generator mutable collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}value ${valueBinding.describeAbiKind()} on $errorContext."
+                }
+            } else if (!keyBinding.isSupportedReadOnlyCollectionKeyBinding() || !valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
+                return null
+            }
+            KotlinProjectionMutableCollectionBinding(
+                kind = collectionKind,
+                ownerInterfaceQualifiedName = ownerInterfaceQualifiedName,
+                ownerCachePropertyName = ownerCachePropertyName,
+                slotInterfaceQualifiedName = slotInterfaceQualifiedName,
+                delegatePropertyName = delegatePropertyName,
+                keyBinding = keyBinding,
+                valueBinding = valueBinding,
+            )
+        }
+    }
+
+private fun WinRtIntegralType.isSupportedProjectedEnumAbi(): Boolean =
+    this == WinRtIntegralType.Int32 || this == WinRtIntegralType.UInt32
+
 private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementBinding(): Boolean = when (kind) {
     KotlinProjectionAbiValueKind.String,
     KotlinProjectionAbiValueKind.Boolean,
@@ -1270,7 +1556,7 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementB
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
-    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType == WinRtIntegralType.Int32 || enumUnderlyingType == WinRtIntegralType.UInt32
+    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
 }
 
@@ -1302,7 +1588,7 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding():
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
-    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType == WinRtIntegralType.Int32 || enumUnderlyingType == WinRtIntegralType.UInt32
+    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
 }
 
@@ -1315,12 +1601,17 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateBinding()
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
-    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType == WinRtIntegralType.Int32 || enumUnderlyingType == WinRtIntegralType.UInt32
+    KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
 }
 
 private fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateReturnBinding(): Boolean =
     isSupportedProjectedDelegateBinding() || kind == KotlinProjectionAbiValueKind.Unit
+
+private fun KotlinProjectionAbiTypeBinding.isMappedCollectionBinding(): Boolean =
+    mappedTypeByAbiKind(kind)?.let { mappedType ->
+        mappedType.readOnlyCollectionKind != null || mappedType.mutableCollectionKind != null
+    } == true
 
 private data class AbiMemberOrder(
     val rowId: Int,
@@ -2695,15 +2986,12 @@ class KotlinProjectionRenderer {
     private fun buildAbiReturnMarshaler(
         returnBinding: KotlinProjectionAbiTypeBinding,
     ): KotlinProjectionAbiMarshalerPlan? {
-        val resultOutLayout = when (returnBinding.kind) {
+        val resultOutLayout = when {
+            returnBinding.isMappedCollectionBinding() -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
+            else -> when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.String,
             KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference,
-            KotlinProjectionAbiValueKind.MappedIterable,
-            KotlinProjectionAbiValueKind.MappedVector,
-            KotlinProjectionAbiValueKind.MappedMap,
-            KotlinProjectionAbiValueKind.MappedVectorView,
-            KotlinProjectionAbiValueKind.MappedMapView -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
+            KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
             KotlinProjectionAbiValueKind.Enum -> abiLayoutForIntegralType(returnBinding.enumUnderlyingType ?: return null)
             KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.JAVA_BYTE", VALUE_LAYOUT_CLASS_NAME)
@@ -2711,14 +2999,22 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME)
             KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.JAVA_DOUBLE", VALUE_LAYOUT_CLASS_NAME)
             KotlinProjectionAbiValueKind.Unit,
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedVectorView,
+            KotlinProjectionAbiValueKind.MappedMapView,
             KotlinProjectionAbiValueKind.MappedKeyValuePair,
             KotlinProjectionAbiValueKind.ProjectedInterface,
             KotlinProjectionAbiValueKind.Struct,
             KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.Unsupported -> return null
             KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of("%T.ADDRESS", VALUE_LAYOUT_CLASS_NAME)
+            }
         }
-        val readbackStatement = when (returnBinding.kind) {
+        val readbackStatement = when {
+            returnBinding.isMappedCollectionBinding() -> mappedCollectionReturnReadback(returnBinding)
+            else -> when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.String ->
                 CodeBlock.of(
                     "return %T.fromHandle(__resultOut.get(%T.ADDRESS, 0), owner = true).use { it.toKString() }\n",
@@ -2735,12 +3031,6 @@ class KotlinProjectionRenderer {
                 CodeBlock.of("return __resultOut.get(%T.JAVA_DOUBLE, 0)\n", VALUE_LAYOUT_CLASS_NAME)
             KotlinProjectionAbiValueKind.Enum ->
                 enumReturnReadback(returnBinding, resolvedReturnClassName(returnBinding))
-            KotlinProjectionAbiValueKind.MappedIterable,
-            KotlinProjectionAbiValueKind.MappedVector,
-            KotlinProjectionAbiValueKind.MappedMap,
-            KotlinProjectionAbiValueKind.MappedVectorView,
-            KotlinProjectionAbiValueKind.MappedMapView ->
-                mappedCollectionReturnReadback(returnBinding)
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
                 resolvedReturnClassName(returnBinding)?.let { returnType ->
                     CodeBlock.of(
@@ -2780,11 +3070,17 @@ class KotlinProjectionRenderer {
                     )
                 }
             KotlinProjectionAbiValueKind.Unit,
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedVectorView,
+            KotlinProjectionAbiValueKind.MappedMapView,
             KotlinProjectionAbiValueKind.MappedKeyValuePair,
             KotlinProjectionAbiValueKind.ProjectedInterface,
             KotlinProjectionAbiValueKind.Struct,
             KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.Unsupported -> return null
+            }
         }
         return KotlinProjectionAbiMarshalerPlan(
             name = "retval",
@@ -2827,94 +3123,38 @@ class KotlinProjectionRenderer {
 
     private fun readOnlyCollectionBindingForReturn(
         returnBinding: KotlinProjectionAbiTypeBinding,
-    ): KotlinProjectionReadOnlyCollectionBinding? = when (returnBinding.kind) {
-        KotlinProjectionAbiValueKind.MappedIterable -> {
-            val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-            require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                "Generator read-only collection parity does not yet support IIterable return element ${elementBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            KotlinProjectionReadOnlyCollectionBinding(
-                kind = KotlinProjectionReadOnlyCollectionKind.Iterable,
-                ownerInterfaceQualifiedName = returnBinding.typeName,
-                ownerCachePropertyName = "__collectionRef",
-                slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
-                delegatePropertyName = "__mappedIterableReturn",
-                elementBinding = elementBinding,
-            )
-        }
-        KotlinProjectionAbiValueKind.MappedVectorView -> {
-            val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-            require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                "Generator read-only collection parity does not yet support IVectorView return element ${elementBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            KotlinProjectionReadOnlyCollectionBinding(
-                kind = KotlinProjectionReadOnlyCollectionKind.VectorView,
-                ownerInterfaceQualifiedName = returnBinding.typeName,
-                ownerCachePropertyName = "__collectionRef",
-                slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
-                delegatePropertyName = "__mappedVectorViewReturn",
-                elementBinding = elementBinding,
-            )
-        }
-        KotlinProjectionAbiValueKind.MappedMapView -> {
-            val keyBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
-            val valueBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
-            require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
-                "Generator read-only collection parity does not yet support IMapView return key ${keyBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            require(valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                "Generator read-only collection parity does not yet support IMapView return value ${valueBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            KotlinProjectionReadOnlyCollectionBinding(
-                kind = KotlinProjectionReadOnlyCollectionKind.MapView,
-                ownerInterfaceQualifiedName = returnBinding.typeName,
-                ownerCachePropertyName = "__collectionRef",
-                slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
-                delegatePropertyName = "__mappedMapViewReturn",
-                keyBinding = keyBinding,
-                valueBinding = valueBinding,
-            )
-        }
-        else -> null
+    ): KotlinProjectionReadOnlyCollectionBinding? {
+        val mappedType = mappedTypeByAbiKind(returnBinding.kind) ?: return null
+        val collectionKind = mappedType.readOnlyCollectionKind ?: return null
+        return createReadOnlyCollectionBindingPlan(
+            collectionKind = collectionKind,
+            ownerInterfaceQualifiedName = returnBinding.typeName,
+            ownerCachePropertyName = "__collectionRef",
+            slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
+            delegatePropertyName = collectionKind.returnDelegatePropertyName(),
+            typeArguments = returnBinding.typeArguments,
+            errorContext = returnBinding.typeName,
+            requireSupportedBinding = true,
+            bindingLocationLabel = "return",
+        )
     }
 
     private fun mutableCollectionBindingForReturn(
         returnBinding: KotlinProjectionAbiTypeBinding,
-    ): KotlinProjectionMutableCollectionBinding? = when (returnBinding.kind) {
-        KotlinProjectionAbiValueKind.MappedVector -> {
-            val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-            require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                "Generator mutable collection parity does not yet support IVector return element ${elementBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            KotlinProjectionMutableCollectionBinding(
-                kind = KotlinProjectionMutableCollectionKind.Vector,
-                ownerInterfaceQualifiedName = returnBinding.typeName,
-                ownerCachePropertyName = "__collectionRef",
-                slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
-                delegatePropertyName = "__mappedVectorReturn",
-                elementBinding = elementBinding,
-            )
-        }
-        KotlinProjectionAbiValueKind.MappedMap -> {
-            val keyBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
-            val valueBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
-            require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
-                "Generator mutable collection parity does not yet support IMap return key ${keyBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            require(valueBinding.isSupportedReadOnlyCollectionElementBinding()) {
-                "Generator mutable collection parity does not yet support IMap return value ${valueBinding.describeAbiKind()} on ${returnBinding.typeName}."
-            }
-            KotlinProjectionMutableCollectionBinding(
-                kind = KotlinProjectionMutableCollectionKind.Map,
-                ownerInterfaceQualifiedName = returnBinding.typeName,
-                ownerCachePropertyName = "__collectionRef",
-                slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
-                delegatePropertyName = "__mappedMapReturn",
-                keyBinding = keyBinding,
-                valueBinding = valueBinding,
-            )
-        }
-        else -> null
+    ): KotlinProjectionMutableCollectionBinding? {
+        val mappedType = mappedTypeByAbiKind(returnBinding.kind) ?: return null
+        val collectionKind = mappedType.mutableCollectionKind ?: return null
+        return createMutableCollectionBindingPlan(
+            collectionKind = collectionKind,
+            ownerInterfaceQualifiedName = returnBinding.typeName,
+            ownerCachePropertyName = "__collectionRef",
+            slotInterfaceQualifiedName = returnBinding.resolvedTypeName,
+            delegatePropertyName = collectionKind.returnDelegatePropertyName(),
+            typeArguments = returnBinding.typeArguments,
+            errorContext = returnBinding.typeName,
+            requireSupportedBinding = true,
+            bindingLocationLabel = "return",
+        )
     }
 
     private fun enumParameterMarshaler(
@@ -2977,35 +3217,14 @@ class KotlinProjectionRenderer {
         )
     }
 
-    private fun abiLayoutForIntegralType(type: WinRtIntegralType): CodeBlock = when (type) {
-        WinRtIntegralType.Int8,
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.JAVA_BYTE", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.Int16,
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.JAVA_SHORT", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.Int32,
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.JAVA_INT", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.Int64,
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.JAVA_LONG", VALUE_LAYOUT_CLASS_NAME)
-    }
+    private fun abiLayoutForIntegralType(type: WinRtIntegralType): CodeBlock =
+        integralAbiDescriptor(type).abiLayout
 
-    private fun abiIntegralArgumentConversionSuffix(type: WinRtIntegralType): String = when (type) {
-        WinRtIntegralType.UInt8 -> ".toByte()"
-        WinRtIntegralType.UInt16 -> ".toShort()"
-        WinRtIntegralType.UInt32 -> ".toInt()"
-        WinRtIntegralType.UInt64 -> ".toLong()"
-        else -> ""
-    }
+    private fun abiIntegralArgumentConversionSuffix(type: WinRtIntegralType): String =
+        integralAbiDescriptor(type).argumentConversionSuffix
 
-    private fun abiIntegralReadbackExpression(type: WinRtIntegralType): CodeBlock = when (type) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("__resultOut.get(%T.JAVA_BYTE, 0)", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("__resultOut.get(%T.JAVA_BYTE, 0).toUByte()", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.Int16 -> CodeBlock.of("__resultOut.get(%T.JAVA_SHORT, 0)", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("__resultOut.get(%T.JAVA_SHORT, 0).toUShort()", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.Int32 -> CodeBlock.of("__resultOut.get(%T.JAVA_INT, 0)", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("__resultOut.get(%T.JAVA_INT, 0).toUInt()", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.Int64 -> CodeBlock.of("__resultOut.get(%T.JAVA_LONG, 0)", VALUE_LAYOUT_CLASS_NAME)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("__resultOut.get(%T.JAVA_LONG, 0).toULong()", VALUE_LAYOUT_CLASS_NAME)
-    }
+    private fun abiIntegralReadbackExpression(type: WinRtIntegralType): CodeBlock =
+        integralAbiDescriptor(type).readbackExpression
 
     private fun delegateParameterKindsCode(
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
@@ -3758,15 +3977,15 @@ class KotlinProjectionRenderer {
             val rawType = trimmed.substring(0, genericStart)
             val arguments = splitGenericArguments(trimmed.substring(genericStart + 1, trimmed.length - 1))
                 .map(::resolveTypeName)
-            SPECIAL_TYPE_MAPPINGS[rawType]?.let { resolver ->
-                return resolver(arguments)
+            mappedTypeByAbiName(rawType)?.let { mappedType ->
+                return mappedType.projectedTypeResolver(arguments)
             }
             val rawClassName = if ('.' in rawType) projectionClassName(rawType) else ClassName.bestGuess(rawType)
             return rawClassName.parameterizedBy(arguments)
         }
 
-        SPECIAL_TYPE_MAPPINGS[trimmed]?.let { resolver ->
-            return resolver(emptyList())
+        mappedTypeByAbiName(trimmed)?.let { mappedType ->
+            return mappedType.projectedTypeResolver(emptyList())
         }
 
         return when (trimmed) {
@@ -3792,27 +4011,11 @@ class KotlinProjectionRenderer {
         }
     }
 
-    private fun resolveIntegralTypeName(type: WinRtIntegralType): TypeName = when (type) {
-        WinRtIntegralType.Int8 -> Byte::class.asClassName()
-        WinRtIntegralType.UInt8 -> UByte::class.asClassName()
-        WinRtIntegralType.Int16 -> Short::class.asClassName()
-        WinRtIntegralType.UInt16 -> UShort::class.asClassName()
-        WinRtIntegralType.Int32 -> Int::class.asClassName()
-        WinRtIntegralType.UInt32 -> UInt::class.asClassName()
-        WinRtIntegralType.Int64 -> Long::class.asClassName()
-        WinRtIntegralType.UInt64 -> ULong::class.asClassName()
-    }
+    private fun resolveIntegralTypeName(type: WinRtIntegralType): TypeName =
+        integralAbiDescriptor(type).kotlinTypeName
 
-    private fun integralLiteral(valueBits: ULong, type: WinRtIntegralType): CodeBlock = when (type) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%L.toByte()", valueBits.toByte())
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%L.toUByte()", valueBits.toUByte())
-        WinRtIntegralType.Int16 -> CodeBlock.of("%L.toShort()", valueBits.toShort())
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%L.toUShort()", valueBits.toUShort())
-        WinRtIntegralType.Int32 -> CodeBlock.of("%L", valueBits.toInt())
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%L.toUInt()", valueBits.toUInt())
-        WinRtIntegralType.Int64 -> CodeBlock.of("%L", "${valueBits.toLong()}L")
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%L", "${valueBits}uL")
-    }
+    private fun integralLiteral(valueBits: ULong, type: WinRtIntegralType): CodeBlock =
+        integralAbiDescriptor(type).literalRenderer(valueBits)
 
     private fun splitGenericArguments(arguments: String): List<String> {
         if (arguments.isBlank()) {
