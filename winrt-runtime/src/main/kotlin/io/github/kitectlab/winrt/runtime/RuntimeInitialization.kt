@@ -9,7 +9,7 @@ object JvmComRuntime {
 
     fun uninitialize() {
         if (PlatformRuntime.isWindows) {
-            WindowsRuntimePlatform.coUninitialize()
+            WinRtPlatformApi.coUninitializeRaw()
         }
     }
 
@@ -17,7 +17,7 @@ object JvmComRuntime {
         if (!PlatformRuntime.isWindows) {
             return KnownHResults.S_OK
         }
-        return WindowsRuntimePlatform.coInitializeEx(apartmentType)
+        return HResult(WinRtPlatformApi.coInitializeExRaw(apartmentType))
     }
 }
 
@@ -41,7 +41,7 @@ object JvmWinRtRuntime {
     fun uninitialize() {
         if (PlatformRuntime.isWindows) {
             ActivationFactory.clearRuntimeCache()
-            WindowsRuntimePlatform.roUninitialize()
+            WinRtPlatformApi.roUninitializeRaw()
         }
     }
 
@@ -49,6 +49,6 @@ object JvmWinRtRuntime {
         if (!PlatformRuntime.isWindows) {
             return KnownHResults.S_OK
         }
-        return WindowsRuntimePlatform.roInitialize(apartmentType)
+        return HResult(WinRtPlatformApi.roInitializeRaw(apartmentType))
     }
 }

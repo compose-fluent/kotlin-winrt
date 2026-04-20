@@ -1,7 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.MemorySegment
-
 /**
  * JVM-side equivalent of the `.cswinrt/src/WinRT.Runtime/Module.cs` WinRT module owner.
  *
@@ -9,17 +7,17 @@ import java.lang.foreign.MemorySegment
  * each invent their own initialization lifetime.
  */
 internal object WinRtModule {
-    private val mtaCookie: MemorySegment by lazy {
+    private val mtaCookie: NativePointer by lazy {
         if (!PlatformRuntime.isWindows) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            val result = WindowsRuntimePlatform.coIncrementMtaUsage()
-            result.hResult.requireSuccess("CoIncrementMTAUsage")
-            if (result.pointer != MemorySegment.NULL) {
+            val result = WinRtPlatformApi.coIncrementMtaUsageRaw()
+            HResult(result.hResultValue).requireSuccess("CoIncrementMTAUsage")
+            if (!NativeInterop.isNull(result.pointer)) {
                 Runtime.getRuntime().addShutdownHook(
                     Thread {
                         runCatching {
-                            WindowsRuntimePlatform.coDecrementMtaUsage(result.pointer)
+                            WinRtPlatformApi.coDecrementMtaUsageRaw(result.pointer)
                         }
                     },
                 )
