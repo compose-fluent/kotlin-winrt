@@ -109,15 +109,7 @@ object Projections {
     }
 
     private fun isTypeWindowsRuntimeTypeNoArray(type: Class<*>): Boolean {
-        if (type == java.lang.Boolean.TYPE || type == java.lang.Boolean::class.java) return true
-        if (type == java.lang.Byte.TYPE || type == java.lang.Byte::class.java) return true
-        if (type == java.lang.Short.TYPE || type == java.lang.Short::class.java) return true
-        if (type == java.lang.Integer.TYPE || type == java.lang.Integer::class.java) return true
-        if (type == java.lang.Long.TYPE || type == java.lang.Long::class.java) return true
-        if (type == java.lang.Float.TYPE || type == java.lang.Float::class.java) return true
-        if (type == java.lang.Double.TYPE || type == java.lang.Double::class.java) return true
-        if (type == java.lang.Character.TYPE || type == java.lang.Character::class.java) return true
-        if (type == String::class.java || type == Guid::class.java || type == Any::class.java) return true
+        if (WinRtTypeClassifier.isIntrinsicWindowsRuntimeType(type)) return true
 
         return customTypeToAbiTypeNameMappings.containsKey(type) ||
             type.isAnnotationPresent(WindowsRuntimeType::class.java) ||

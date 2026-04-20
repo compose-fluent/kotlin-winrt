@@ -116,10 +116,7 @@ object TypeNameSupport {
             return ""
         }
 
-        primitiveTypeName(type)?.let { return it }
-        if (type == Any::class.java) {
-            return "Object"
-        }
+        WinRtTypeClassifier.classify(type)?.let { return it.canonicalRuntimeName }
 
         Projections.findCustomAbiTypeNameForType(type)?.let { return it }
 
@@ -161,13 +158,13 @@ object TypeNameSupport {
     ): Class<*>? {
         Projections.findCustomTypeForAbiTypeName(runtimeClassName)?.let { return it }
         registeredProjectionTypes[runtimeClassName]?.let { return it }
-        primitiveType(runtimeClassName)?.let { return it }
+        WinRtTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeClass }
 
         val genericBaseName = runtimeClassName.substringBefore('<')
         if (genericBaseName != runtimeClassName) {
             Projections.findCustomTypeForAbiTypeName(genericBaseName)?.let { return it }
             registeredProjectionTypes[genericBaseName]?.let { return it }
-            primitiveType(genericBaseName)?.let { return it }
+            WinRtTypeClassifier.resolve(genericBaseName)?.let { return it.representativeClass }
         }
 
         return runCatching { Class.forName(runtimeClassName) }.getOrNull()
@@ -177,43 +174,4 @@ object TypeNameSupport {
                 null
             }
     }
-
-    private fun primitiveType(
-        primitiveTypeName: String,
-    ): Class<*>? =
-        when (primitiveTypeName) {
-            "UInt8" -> java.lang.Byte::class.java
-            "Int8" -> java.lang.Byte::class.java
-            "UInt16" -> java.lang.Short::class.java
-            "Int16" -> java.lang.Short::class.java
-            "UInt32" -> java.lang.Integer::class.java
-            "Int32" -> java.lang.Integer::class.java
-            "UInt64" -> java.lang.Long::class.java
-            "Int64" -> java.lang.Long::class.java
-            "Boolean" -> java.lang.Boolean::class.java
-            "String" -> String::class.java
-            "Char", "Char16" -> java.lang.Character::class.java
-            "Single" -> java.lang.Float::class.java
-            "Double" -> java.lang.Double::class.java
-            "Guid" -> Guid::class.java
-            "Object" -> Any::class.java
-            else -> null
-        }
-
-    private fun primitiveTypeName(
-        type: Class<*>,
-    ): String? =
-        when (type) {
-            java.lang.Byte.TYPE, java.lang.Byte::class.java -> "UInt8"
-            java.lang.Short.TYPE, java.lang.Short::class.java -> "Int16"
-            java.lang.Integer.TYPE, java.lang.Integer::class.java -> "Int32"
-            java.lang.Long.TYPE, java.lang.Long::class.java -> "Int64"
-            java.lang.Boolean.TYPE, java.lang.Boolean::class.java -> "Boolean"
-            java.lang.Character.TYPE, java.lang.Character::class.java -> "Char16"
-            java.lang.Float.TYPE, java.lang.Float::class.java -> "Single"
-            java.lang.Double.TYPE, java.lang.Double::class.java -> "Double"
-            String::class.java -> "String"
-            Guid::class.java -> "Guid"
-            else -> null
-        }
 }

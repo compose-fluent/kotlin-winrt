@@ -823,5 +823,3 @@ private fun abiPointer(value: Any?): MemorySegment =
         is ComObjectReference -> value.pointer
         else -> error("Expected pointer-backed ABI value, got '${value.javaClass.name}'.")
     }
-
-private fun <T : ComObjectReference> T.useAndGetRef(): MemorySegment = use { it.getRef() }

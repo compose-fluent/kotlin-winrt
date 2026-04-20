@@ -106,6 +106,19 @@ class ProjectionRegistryTest {
         )
     }
 
+    @Test
+    fun intrinsic_type_classification_is_shared_across_runtime_helpers() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertEquals("UInt8", TypeNameSupport.getNameForType(java.lang.Byte::class.java))
+        assertEquals(java.lang.Byte::class.java, TypeNameSupport.findTypeByNameCached("UInt8"))
+        assertEquals(java.lang.Byte::class.java, TypeNameSupport.findTypeByNameCached("Int8"))
+        assertEquals(Any::class.java, TypeNameSupport.findTypeByNameCached("Object"))
+        assertTrue(Projections.isTypeWindowsRuntimeType(java.lang.Character.TYPE))
+        assertEquals("u1", GuidGenerator.getSignature(java.lang.Byte::class.java))
+        assertEquals("cinterface(IInspectable)", GuidGenerator.getSignature(Any::class.java))
+    }
+
     @WinRtGuid("11111111-1111-1111-1111-111111111111")
     private interface SampleDefaultInterface
 

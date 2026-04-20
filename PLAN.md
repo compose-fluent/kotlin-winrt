@@ -11,6 +11,8 @@
 - [x] Exclude legacy `sample-jvm-winui3` from the active refactor scope unless explicitly requested
 - [x] Clarify in AGENTS.md that implementation is `.cswinrt`-reference-first and design-first rather than test-driven reverse engineering
 - [x] Write a hard repository-level constraint that `.cswinrt` responsibility convergence must be preserved: repeated Kotlin enumeration of the same runtime type/category/shape decisions is not acceptable when `.cswinrt` already centralizes that logic
+- [x] Collapse the duplicated JVM runtime primitive/object/string/guid classifiers into one shared `.cswinrt`-aligned owner so `GuidGenerator`, `TypeNameSupport`, and `Projections` stop carrying parallel branch tables
+- [x] Collapse the duplicated collection/bindable projection marshaler container and borrowed-reference helpers into one shared runtime owner so those helper layers stop maintaining parallel wrappers for the same projection-hosting behavior
 
 ## Direction
 

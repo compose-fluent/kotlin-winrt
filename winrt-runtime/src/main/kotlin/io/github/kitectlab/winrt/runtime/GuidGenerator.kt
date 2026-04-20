@@ -29,21 +29,7 @@ object GuidGenerator {
     fun getSignature(
         type: Class<*>,
     ): String {
-        if (type == Any::class.java) {
-            return WinRtTypeSignature.object_().render()
-        }
-        if (type == String::class.java) {
-            return WinRtTypeSignature.string().render()
-        }
-        if (type == java.lang.Byte.TYPE || type == java.lang.Byte::class.java) return WinRtTypeSignature.uint8().render()
-        if (type == java.lang.Short.TYPE || type == java.lang.Short::class.java) return WinRtTypeSignature.int16().render()
-        if (type == java.lang.Integer.TYPE || type == java.lang.Integer::class.java) return WinRtTypeSignature.int32().render()
-        if (type == java.lang.Long.TYPE || type == java.lang.Long::class.java) return WinRtTypeSignature.int64().render()
-        if (type == java.lang.Boolean.TYPE || type == java.lang.Boolean::class.java) return WinRtTypeSignature.boolean().render()
-        if (type == java.lang.Character.TYPE || type == java.lang.Character::class.java) return WinRtTypeSignature.char16().render()
-        if (type == java.lang.Float.TYPE || type == java.lang.Float::class.java) return WinRtTypeSignature.float32().render()
-        if (type == java.lang.Double.TYPE || type == java.lang.Double::class.java) return WinRtTypeSignature.float64().render()
-        if (type == Guid::class.java) return WinRtTypeSignature.guidValue().render()
+        WinRtTypeClassifier.classify(type)?.let { return it.signature.render() }
 
         type.getAnnotation(WindowsRuntimeType::class.java)?.guidSignature?.takeIf { it.isNotBlank() }?.let { return it }
 

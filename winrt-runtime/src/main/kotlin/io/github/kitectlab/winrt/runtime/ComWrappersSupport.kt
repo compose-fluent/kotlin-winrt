@@ -103,9 +103,9 @@ object ComWrappersSupport {
             return null
         }
         return when {
-            interfaceType == null -> cloneReference(winrtObject.nativeObject)
+            interfaceType == null -> cloneComReference(winrtObject.nativeObject)
             winrtObject.isInterfaceImplemented(interfaceType, false) ->
-                cloneReference(winrtObject.getObjectReferenceForType(interfaceType))
+                cloneComReference(winrtObject.getObjectReferenceForType(interfaceType))
 
             else -> null
         }
@@ -150,9 +150,9 @@ object ComWrappersSupport {
     ): ComObjectReference {
         tryUnwrapObject(value)?.use { unwrapped ->
             return if (interfaceId == null || interfaceId == unwrapped.interfaceId) {
-                cloneReference(unwrapped)
+                cloneComReference(unwrapped)
             } else {
-                unwrapped.queryInterface(interfaceId).getOrThrow().use(::cloneReference)
+                unwrapped.queryInterface(interfaceId).getOrThrow().use(::cloneComReference)
             }
         }
 
@@ -281,13 +281,6 @@ object ComWrappersSupport {
             cleanup = host::releaseManagedReference,
         )
     }
-
-    private fun cloneReference(reference: ComObjectReference): ComObjectReference =
-        when (reference) {
-            is ActivationFactoryReference -> ActivationFactoryReference(reference.getRef(), reference.interfaceId)
-            is IInspectableReference -> IInspectableReference(reference.getRef(), reference.interfaceId)
-            else -> IUnknownReference(reference.getRef(), reference.interfaceId)
-        }
 
     private class OwnedCcwReference(
         private val inner: ComObjectReference,

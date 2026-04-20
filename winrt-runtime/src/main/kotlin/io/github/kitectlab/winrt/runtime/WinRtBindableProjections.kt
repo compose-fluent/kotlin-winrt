@@ -14,33 +14,7 @@ import kotlin.collections.AbstractMutableList
  * This slice owns IBindable* RCW/CCW helpers plus the non-generic inspectable/object marshalling needed by
  * bindable collections. Full value-boxing and `IPropertyValue` parity remain in Runtime 1.17.
  */
-class WinRtBindableProjectionMarshaler internal constructor(
-    val abi: MemorySegment,
-    private val ownedReference: ComObjectReference? = null,
-    private val cleanup: (() -> Unit)? = null,
-) : AutoCloseable {
-    override fun close() {
-        ownedReference?.close()
-        cleanup?.invoke()
-    }
-
-    companion object {
-        internal fun borrowed(reference: ComObjectReference): WinRtBindableProjectionMarshaler =
-            WinRtBindableProjectionMarshaler(reference.pointer, ownedReference = reference)
-
-        internal fun hosted(
-            host: WinRtInspectableComObject,
-            interfaceId: Guid,
-        ): WinRtBindableProjectionMarshaler {
-            val reference = host.createReference(interfaceId)
-            return WinRtBindableProjectionMarshaler(
-                abi = reference.pointer,
-                ownedReference = reference,
-                cleanup = host::releaseManagedReference,
-            )
-        }
-    }
-}
+typealias WinRtBindableProjectionMarshaler = WinRtProjectionMarshaler
 
 internal class WinRtBindableInspectableValue private constructor(
     private val inspectable: IInspectableReference,
@@ -197,7 +171,7 @@ object WinRtBindableIterableProjection {
         )
 
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
-            WinRtBindableProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterable)
+            WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterable)
 
         fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterable)
     }
@@ -206,7 +180,7 @@ object WinRtBindableIterableProjection {
         if (value == null) {
             return null
         }
-        borrowedMarshaler(value, bindableIterableTypeHandle)?.let { return it }
+        borrowedProjectionMarshaler(value, bindableIterableTypeHandle)?.let { return it }
         return ToAbiHelper(value).createMarshaler()
     }
 
@@ -214,7 +188,7 @@ object WinRtBindableIterableProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedAbi(value, bindableIterableTypeHandle) ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableIterableTypeHandle) ?: ToAbiHelper(value).detachReference()
         }
 
     fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
@@ -307,7 +281,7 @@ object WinRtBindableIteratorProjection {
         )
 
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
-            WinRtBindableProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterator)
+            WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterator)
 
         fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterator)
     }
@@ -440,7 +414,7 @@ object WinRtBindableVectorViewProjection {
         )
 
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
-            WinRtBindableProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVectorView)
+            WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVectorView)
 
         fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVectorView)
     }
@@ -449,7 +423,7 @@ object WinRtBindableVectorViewProjection {
         if (value == null) {
             return null
         }
-        borrowedMarshaler(value, bindableVectorViewTypeHandle)?.let { return it }
+        borrowedProjectionMarshaler(value, bindableVectorViewTypeHandle)?.let { return it }
         return ToAbiHelper(value).createMarshaler()
     }
 
@@ -457,7 +431,7 @@ object WinRtBindableVectorViewProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedAbi(value, bindableVectorViewTypeHandle) ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableVectorViewTypeHandle) ?: ToAbiHelper(value).detachReference()
         }
 
     fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
@@ -666,7 +640,7 @@ object WinRtBindableVectorProjection {
         )
 
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
-            WinRtBindableProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVector)
+            WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVector)
 
         fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVector)
     }
@@ -675,7 +649,7 @@ object WinRtBindableVectorProjection {
         if (value == null) {
             return null
         }
-        borrowedMarshaler(value, bindableVectorTypeHandle)?.let { return it }
+        borrowedProjectionMarshaler(value, bindableVectorTypeHandle)?.let { return it }
         return ToAbiHelper(value).createMarshaler()
     }
 
@@ -683,7 +657,7 @@ object WinRtBindableVectorProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedAbi(value, bindableVectorTypeHandle) ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableVectorTypeHandle) ?: ToAbiHelper(value).detachReference()
         }
 
     fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
@@ -708,33 +682,6 @@ private val bindableVectorViewTypeHandle =
 
 private val bindableVectorTypeHandle =
     WinRtTypeHandle("kotlin.collections.MutableList<kotlin.Any?>", WinRtBindableInterfaceIds.IBindableVector)
-
-private fun borrowedAbi(
-    value: Any,
-    typeHandle: WinRtTypeHandle,
-): MemorySegment? {
-    val winrtObject = value as? IWinRTObject ?: return null
-    if (!winrtObject.hasUnwrappableNativeObject || !winrtObject.isInterfaceImplemented(typeHandle, false)) {
-        return null
-    }
-    return winrtObject.getObjectReferenceForType(typeHandle).getRef()
-}
-
-private fun borrowedMarshaler(
-    value: Any,
-    typeHandle: WinRtTypeHandle,
-): WinRtBindableProjectionMarshaler? {
-    val winrtObject = value as? IWinRTObject ?: return null
-    if (!winrtObject.hasUnwrappableNativeObject || !winrtObject.isInterfaceImplemented(typeHandle, false)) {
-        return null
-    }
-    return WinRtBindableProjectionMarshaler.borrowed(
-        ComObjectReference(
-            pointer = winrtObject.getObjectReferenceForType(typeHandle).getRef(),
-            interfaceId = typeHandle.interfaceId,
-        ),
-    )
-}
 
 private fun bindableIterableDefinition(
     iteratorFactory: () -> Iterator<Any?>,
