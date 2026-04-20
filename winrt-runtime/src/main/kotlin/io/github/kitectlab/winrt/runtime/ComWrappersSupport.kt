@@ -93,19 +93,13 @@ object ComWrappersSupport {
     fun tryUnwrapObject(
         value: Any?,
         interfaceType: WinRtTypeHandle? = null,
-    ): ComObjectReference? {
-        val winrtObject = value as? IWinRTObject ?: return null
-        if (!winrtObject.hasUnwrappableNativeObject) {
-            return null
-        }
-        return when {
-            interfaceType == null -> cloneComReference(winrtObject.nativeObject)
-            winrtObject.isInterfaceImplemented(interfaceType, false) ->
-                cloneComReference(winrtObject.getObjectReferenceForType(interfaceType))
-
-            else -> null
-        }
-    }
+    ): ComObjectReference? =
+        WinRtBorrowedReferenceSupport.tryBorrowReference(
+            value = value,
+            interfaceType = interfaceType,
+            unwrapWinRtObject = ::borrowableWinRtObject,
+            cloneReference = ::cloneComReference,
+        )
 
     fun createRcwForComObject(
         pointer: MemorySegment,

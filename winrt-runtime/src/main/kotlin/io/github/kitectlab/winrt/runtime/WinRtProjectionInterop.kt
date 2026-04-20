@@ -74,10 +74,22 @@ internal fun <T : ComObjectReference> T.useAndGetRef(): MemorySegment = use { it
 private fun borrowedProjectionReference(
     value: Any,
     typeHandle: WinRtTypeHandle,
-): ComObjectReference? {
+): ComObjectReference? =
+    WinRtBorrowedReferenceSupport.tryBorrowReference(
+        value = value,
+        interfaceType = typeHandle,
+        unwrapWinRtObject = ::borrowableWinRtObject,
+        cloneReference = ::cloneComReference,
+    )
+
+internal fun borrowableWinRtObject(value: Any): BorrowableWinRtObject<ComObjectReference>? {
     val winrtObject = value as? IWinRTObject ?: return null
-    if (!winrtObject.hasUnwrappableNativeObject || !winrtObject.isInterfaceImplemented(typeHandle, false)) {
-        return null
-    }
-    return cloneComReference(winrtObject.getObjectReferenceForType(typeHandle))
+    return BorrowableWinRtObject(
+        hasUnwrappableNativeObject = winrtObject.hasUnwrappableNativeObject,
+        nativeObject = winrtObject.nativeObject,
+        isInterfaceImplemented = { interfaceType ->
+            winrtObject.isInterfaceImplemented(interfaceType, false)
+        },
+        getObjectReferenceForType = winrtObject::getObjectReferenceForType,
+    )
 }
