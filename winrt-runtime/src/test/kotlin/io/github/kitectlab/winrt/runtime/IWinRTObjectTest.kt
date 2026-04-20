@@ -6,7 +6,6 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.lang.foreign.Arena
-import java.lang.foreign.MemorySegment
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -119,5 +118,5 @@ private class FakeComObjectReference(
         queryCounts[requestedInterfaceId]?.get() ?: 0
 }
 
-private fun allocatePointer(): MemorySegment =
-    Arena.ofAuto().allocate(8)
+private fun allocatePointer(): NativePointer =
+    Arena.ofAuto().allocate(8).asNativePointer()

@@ -1275,7 +1275,7 @@ internal object WinRtValueBoxing {
 }
 
 internal class WinRtReferenceReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
@@ -1300,8 +1300,15 @@ internal class WinRtReferenceReference(
         }
 }
 
-internal class WinRtReferenceArrayReference(
+internal fun WinRtReferenceReference(
     pointer: MemorySegment,
+    interfaceId: Guid,
+    preventReleaseOnDispose: Boolean = false,
+): WinRtReferenceReference =
+    WinRtReferenceReference(pointer.asNativePointer(), interfaceId, preventReleaseOnDispose)
+
+internal class WinRtReferenceArrayReference(
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
@@ -1331,8 +1338,15 @@ internal class WinRtReferenceArrayReference(
         }
 }
 
-internal class WinRtPropertyValueReference(
+internal fun WinRtReferenceArrayReference(
     pointer: MemorySegment,
+    interfaceId: Guid,
+    preventReleaseOnDispose: Boolean = false,
+): WinRtReferenceArrayReference =
+    WinRtReferenceArrayReference(pointer.asNativePointer(), interfaceId, preventReleaseOnDispose)
+
+internal class WinRtPropertyValueReference(
+    pointer: NativePointer,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun type(): PropertyType =
@@ -1464,6 +1478,12 @@ internal object WinRtReferenceProjection {
             }
         }
 }
+
+internal fun WinRtPropertyValueReference(
+    pointer: MemorySegment,
+    preventReleaseOnDispose: Boolean = false,
+): WinRtPropertyValueReference =
+    WinRtPropertyValueReference(pointer.asNativePointer(), preventReleaseOnDispose)
 
 internal object WinRtReferenceArrayProjection {
     fun createMarshaler(

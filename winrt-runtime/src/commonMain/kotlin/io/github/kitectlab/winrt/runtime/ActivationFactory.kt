@@ -10,10 +10,7 @@ object ActivationFactory {
     fun get(runtimeClassName: String, interfaceId: Guid): IUnknownReference {
         val result = CachedActivationFactoryPointers.get(runtimeClassName, interfaceId)
         if (!result.isSuccess) {
-            throw WinRtExceptionTranslator.exceptionFor(
-                result.hResult,
-                "Activation factory lookup for $runtimeClassName",
-            )
+            throwHResultFailure(result.hResult, "Activation factory lookup for $runtimeClassName")
         }
 
         return wrapFactory(result.pointer, interfaceId)

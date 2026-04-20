@@ -1,62 +1,8 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemoryLayout
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-
 private fun hResultDescriptor(
     vararg argumentLayouts: NativeValueLayout,
 ): NativeFunctionDescriptor = NativeFunctionDescriptor.of(NativeValueLayout.JAVA_INT, *argumentLayouts)
-
-private fun FunctionDescriptor.toNativeDescriptor(): NativeFunctionDescriptor {
-    val arguments = argumentLayouts().map(MemoryLayout::toNativeValueLayout).toTypedArray()
-    val returnLayout = returnLayout()
-    return if (returnLayout.isPresent) {
-        NativeFunctionDescriptor.of(returnLayout.get().toNativeValueLayout(), *arguments)
-    } else {
-        NativeFunctionDescriptor.ofVoid(*arguments)
-    }
-}
-
-private fun MemoryLayout.toNativeValueLayout(): NativeValueLayout =
-    when (this) {
-        ValueLayout.ADDRESS -> NativeValueLayout.ADDRESS
-        ValueLayout.JAVA_BYTE -> NativeValueLayout.JAVA_BYTE
-        ValueLayout.JAVA_INT -> NativeValueLayout.JAVA_INT
-        ValueLayout.JAVA_LONG -> NativeValueLayout.JAVA_LONG
-        ValueLayout.JAVA_DOUBLE -> NativeValueLayout.JAVA_DOUBLE
-        else -> error("Unsupported JVM FFM layout '$this' in runtime compatibility bridge.")
-    }
-
-private fun Array<out Any?>.toNativeInvokeArguments(): Array<out Any?> =
-    map { argument ->
-        if (argument is MemorySegment) {
-            argument.asNativePointer()
-        } else {
-            argument
-        }
-    }.toTypedArray()
-
-private fun trimExplicitThisArgument(
-    ownerPointer: NativePointer,
-    descriptor: FunctionDescriptor,
-    args: Array<out Any?>,
-): Array<out Any?> {
-    if (descriptor.argumentLayouts().isEmpty() || descriptor.argumentLayouts().first() != ValueLayout.ADDRESS || args.isEmpty()) {
-        return args
-    }
-    val firstPointer = when (val first = args.first()) {
-        is MemorySegment -> first.asNativePointer()
-        is NativePointer -> first
-        else -> null
-    } ?: return args
-    return if (NativeInterop.samePointer(ownerPointer, firstPointer)) {
-        args.copyOfRange(1, args.size)
-    } else {
-        args
-    }
-}
 
 open class ComObjectReference(
     val pointer: NativePointer,
@@ -64,18 +10,6 @@ open class ComObjectReference(
     referenceTrackerPointer: NativePointer = NativeInterop.nullPointer,
     private val preventReleaseOnDispose: Boolean = false,
 ) : AutoCloseable {
-    constructor(
-        pointer: MemorySegment,
-        interfaceId: Guid,
-        referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
-        preventReleaseOnDispose: Boolean = false,
-    ) : this(
-        pointer = pointer.asNativePointer(),
-        interfaceId = interfaceId,
-        referenceTrackerPointer = referenceTrackerPointer.asNativePointer(),
-        preventReleaseOnDispose = preventReleaseOnDispose,
-    )
-
     private val support = RawComObjectReferenceSupport(
         pointer = pointer,
         interfaceId = interfaceId,
@@ -113,8 +47,6 @@ open class ComObjectReference(
 
     fun release(): UInt =
         support.release { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.ReleaseFromTrackerSource) }
-
-    fun getRef(): MemorySegment = getRefPointer().asMemorySegment()
 
     fun getRefPointer(): NativePointer =
         support.getRef { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) }
@@ -328,15 +260,6 @@ open class ComObjectReference(
         vararg args: Any?,
     ): Int = invokeIntMethod(slot, descriptor, *args)
 
-    fun invokeAbi(
-        slot: Int,
-        descriptor: FunctionDescriptor,
-        vararg args: Any?,
-    ): Int {
-        val adjustedArgs = trimExplicitThisArgument(pointer, descriptor, args)
-        return invokeAbi(slot, descriptor.toNativeDescriptor(), *adjustedArgs.toNativeInvokeArguments())
-    }
-
     private fun invokeUIntMethodUncheckedOnPointer(
         targetPointer: NativePointer,
         slot: Int,
@@ -354,15 +277,6 @@ open class ComObjectReference(
     ): Int {
         throwIfDisposed()
         return NativeInterop.invokeVtableInt32(pointer, slot, descriptor, *args)
-    }
-
-    protected fun invokeIntMethod(
-        slot: Int,
-        descriptor: FunctionDescriptor,
-        vararg args: Any?,
-    ): Int {
-        val adjustedArgs = trimExplicitThisArgument(pointer, descriptor, args)
-        return invokeIntMethod(slot, descriptor.toNativeDescriptor(), *adjustedArgs.toNativeInvokeArguments())
     }
 
     protected fun throwIfDisposed() {
@@ -398,29 +312,12 @@ open class IUnknownReference(
     interfaceId: Guid = IID.IUnknown,
     referenceTrackerPointer: NativePointer = NativeInterop.nullPointer,
     preventReleaseOnDispose: Boolean = false,
-) : ComObjectReference(pointer, interfaceId, referenceTrackerPointer, preventReleaseOnDispose) {
-    constructor(
-        pointer: MemorySegment,
-        interfaceId: Guid = IID.IUnknown,
-        referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
-        preventReleaseOnDispose: Boolean = false,
-    ) : this(
-        pointer = pointer.asNativePointer(),
-        interfaceId = interfaceId,
-        referenceTrackerPointer = referenceTrackerPointer.asNativePointer(),
-        preventReleaseOnDispose = preventReleaseOnDispose,
-    )
-}
+) : ComObjectReference(pointer, interfaceId, referenceTrackerPointer, preventReleaseOnDispose)
 
 class ActivationFactoryReference(
     pointer: NativePointer,
     interfaceId: Guid = IID.IActivationFactory,
 ) : IUnknownReference(pointer, interfaceId) {
-    constructor(
-        pointer: MemorySegment,
-        interfaceId: Guid = IID.IActivationFactory,
-    ) : this(pointer.asNativePointer(), interfaceId)
-
     internal override val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.ActivationFactory
 
@@ -445,11 +342,6 @@ class InspectableReference(
     pointer: NativePointer,
     interfaceId: Guid = IID.IInspectable,
 ) : ComObjectReference(pointer, interfaceId), IWinRTObject {
-    constructor(
-        pointer: MemorySegment,
-        interfaceId: Guid = IID.IInspectable,
-    ) : this(pointer.asNativePointer(), interfaceId)
-
     internal override val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.Inspectable
 

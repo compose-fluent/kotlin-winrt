@@ -208,7 +208,7 @@ internal class WinRtDelegateComObject(
 }
 
 class WinRtDelegateReference internal constructor(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     val descriptor: WinRtDelegateDescriptor,
 ) : ComObjectReference(pointer, descriptor.interfaceId) {
     companion object {
@@ -216,7 +216,7 @@ class WinRtDelegateReference internal constructor(
             if (pointer == MemorySegment.NULL) {
                 null
             } else {
-                WinRtDelegateReference(pointer, descriptor)
+                WinRtDelegateReference(pointer.asNativePointer(), descriptor)
             }
     }
 
@@ -253,3 +253,8 @@ class WinRtDelegateReference internal constructor(
         }
     }
 }
+
+internal fun WinRtDelegateReference(
+    pointer: MemorySegment,
+    descriptor: WinRtDelegateDescriptor,
+): WinRtDelegateReference = WinRtDelegateReference(pointer.asNativePointer(), descriptor)
