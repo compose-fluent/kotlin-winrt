@@ -7,8 +7,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 internal class WinRtDelegateComObject(
     private val descriptor: WinRtDelegateDescriptor,
@@ -19,8 +17,7 @@ internal class WinRtDelegateComObject(
     private val vtableMemory = arena.allocate(
         MemoryLayout.sequenceLayout((WinRtDelegateVftblSlots.Invoke + 1).toLong(), ValueLayout.ADDRESS),
     )
-    private val cleanedUp = AtomicBoolean(false)
-    private val referenceCount = AtomicInteger(1)
+    private val state = ManagedComHostState(::cleanup)
 
     init {
         registry[pointerKey(objectMemory)] = this
@@ -45,26 +42,25 @@ internal class WinRtDelegateComObject(
 
     private fun queryInterface(requestedInterfaceId: Guid, resultPointer: MemorySegment): Int {
         val outPointer = resultPointer.reinterpret(ValueLayout.ADDRESS.byteSize())
-        return if (requestedInterfaceId == IID.IUnknown || requestedInterfaceId == descriptor.interfaceId) {
-            addReference()
+        val queryResult = state.queryInterface(requestedInterfaceId) { requested ->
+            if (requested == IID.IUnknown || requested == descriptor.interfaceId) {
+                Unit
+            } else {
+                null
+            }
+        }
+        return if (queryResult.target != null) {
             outPointer.set(ValueLayout.ADDRESS, 0, objectMemory)
-            KnownHResults.S_OK.value
+            queryResult.hResult.value
         } else {
             outPointer.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL)
-            KnownHResults.E_NOINTERFACE.value
+            queryResult.hResult.value
         }
     }
 
-    private fun addReference(): Int = referenceCount.incrementAndGet()
+    private fun addReference(): Int = state.addReference()
 
-    private fun releaseReference(): Int {
-        val updated = referenceCount.decrementAndGet()
-        check(updated >= 0) { "Delegate reference count cannot become negative." }
-        if (updated == 0) {
-            cleanup()
-        }
-        return updated
-    }
+    private fun releaseReference(): Int = state.releaseReference()
 
     private fun invoke(rawArguments: Array<Any?>): Int {
         return try {
@@ -89,10 +85,8 @@ internal class WinRtDelegateComObject(
     }
 
     private fun cleanup() {
-        if (cleanedUp.compareAndSet(false, true)) {
-            registry.remove(pointerKey(objectMemory))
-            arena.close()
-        }
+        registry.remove(pointerKey(objectMemory))
+        arena.close()
     }
 
     private fun createInvokeStub(): MemorySegment {

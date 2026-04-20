@@ -8,8 +8,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 data class WinRtInspectableMethodDefinition(
     val descriptor: FunctionDescriptor,
@@ -40,8 +38,7 @@ internal class WinRtInspectableComObject(
      * later Runtime 1.13 / Inventory B work take ownership of precise CCW allocation reclamation.
      */
     private val arena = Arena.global()
-    private val cleanedUp = AtomicBoolean(false)
-    private val referenceCount = AtomicInteger(1)
+    private val state = ManagedComHostState(::cleanup)
     private val interfaces = interfaceDefinitions.associateBy { it.interfaceId }
     private val interfaceEntries = interfaceDefinitions.associate { definition ->
         definition.interfaceId to createInterfaceEntry(definition)
@@ -120,26 +117,19 @@ internal class WinRtInspectableComObject(
             else -> interfaceEntries[requestedInterfaceId]?.objectMemory
         }
         val outPointer = resultPointer.reinterpret(ValueLayout.ADDRESS.byteSize())
-        return if (targetPointer != null) {
-            addReference()
-            outPointer.set(ValueLayout.ADDRESS, 0, targetPointer)
-            KnownHResults.S_OK.value
+        val queryResult = state.queryInterface(requestedInterfaceId) { _ -> targetPointer }
+        return if (queryResult.target != null) {
+            outPointer.set(ValueLayout.ADDRESS, 0, queryResult.target)
+            queryResult.hResult.value
         } else {
             outPointer.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL)
-            KnownHResults.E_NOINTERFACE.value
+            queryResult.hResult.value
         }
     }
 
-    private fun addReference(): Int = referenceCount.incrementAndGet()
+    private fun addReference(): Int = state.addReference()
 
-    private fun releaseReference(): Int {
-        val updated = referenceCount.decrementAndGet()
-        check(updated >= 0) { "Inspectable COM object reference count cannot become negative." }
-        if (updated == 0) {
-            cleanup()
-        }
-        return updated
-    }
+    private fun releaseReference(): Int = state.releaseReference()
 
     private fun getIids(countOut: MemorySegment, idsOut: MemorySegment): Int {
         countOut.reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, interfaces.size)
@@ -173,10 +163,8 @@ internal class WinRtInspectableComObject(
         }
 
     private fun cleanup() {
-        if (cleanedUp.compareAndSet(false, true)) {
-            interfaceEntries.values.forEach { entry ->
-                registry.remove(pointerKey(entry.objectMemory))
-            }
+        interfaceEntries.values.forEach { entry ->
+            registry.remove(pointerKey(entry.objectMemory))
         }
     }
 

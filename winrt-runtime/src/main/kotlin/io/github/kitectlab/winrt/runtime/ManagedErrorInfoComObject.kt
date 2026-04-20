@@ -8,8 +8,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * JVM-side fallback for the `.cswinrt/src/WinRT.Runtime/Interop/ExceptionErrorInfo*` owner.
@@ -29,8 +27,7 @@ internal class ManagedErrorInfoComObject(
      * existing inspectable CCW helper does for the same reason.
      */
     private val arena = Arena.global()
-    private val cleanedUp = AtomicBoolean(false)
-    private val referenceCount = AtomicInteger(1)
+    private val state = ManagedComHostState(::cleanup)
     private val interfaceEntries = mapOf(
         IID.IErrorInfo to createInterfaceEntry(
             slotCount = 8,
@@ -104,34 +101,28 @@ internal class ManagedErrorInfoComObject(
 
     private fun queryInterface(requestedInterfaceId: Guid, resultPointer: MemorySegment): Int {
         val result = resultPointer.reinterpret(ValueLayout.ADDRESS.byteSize())
-        val targetPointer = when (requestedInterfaceId) {
-            IID.IUnknown,
-            IID.IErrorInfo,
-            IID.ISupportErrorInfo,
-            -> interfaceEntries[requestedInterfaceId]?.objectMemory ?: interfaceEntries.getValue(IID.IErrorInfo).objectMemory
+        val queryResult = state.queryInterface(requestedInterfaceId) { requested ->
+            when (requested) {
+                IID.IUnknown,
+                IID.IErrorInfo,
+                IID.ISupportErrorInfo,
+                -> interfaceEntries[requested]?.objectMemory ?: interfaceEntries.getValue(IID.IErrorInfo).objectMemory
 
-            else -> null
+                else -> null
+            }
         }
-        return if (targetPointer != null) {
-            addReference()
-            result.set(ValueLayout.ADDRESS, 0, targetPointer)
-            KnownHResults.S_OK.value
+        return if (queryResult.target != null) {
+            result.set(ValueLayout.ADDRESS, 0, queryResult.target)
+            queryResult.hResult.value
         } else {
             result.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL)
-            KnownHResults.E_NOINTERFACE.value
+            queryResult.hResult.value
         }
     }
 
-    private fun addReference(): Int = referenceCount.incrementAndGet()
+    private fun addReference(): Int = state.addReference()
 
-    private fun releaseReference(): Int {
-        val updated = referenceCount.decrementAndGet()
-        check(updated >= 0) { "Managed error info reference count cannot become negative." }
-        if (updated == 0) {
-            cleanup()
-        }
-        return updated
-    }
+    private fun releaseReference(): Int = state.releaseReference()
 
     private fun getGuid(resultPointer: MemorySegment): Int {
         guidOf("00000000-0000-0000-0000-000000000000").writeTo(
@@ -170,10 +161,8 @@ internal class ManagedErrorInfoComObject(
     }
 
     private fun cleanup() {
-        if (cleanedUp.compareAndSet(false, true)) {
-            interfaceEntries.values.forEach { entry ->
-                registry.remove(pointerKey(entry.objectMemory))
-            }
+        interfaceEntries.values.forEach { entry ->
+            registry.remove(pointerKey(entry.objectMemory))
         }
     }
 
