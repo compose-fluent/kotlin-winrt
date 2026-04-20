@@ -144,6 +144,7 @@ class ValueBoxingTest {
     @Test
     fun boxed_reference_runtime_names_round_trip_type_exception_and_enum_values() {
         ComWrappersSupport.clearRegistriesForTests()
+        registerEnumDescriptors()
         ComWrappersSupport.registerProjectionAssembly(TestPriority::class.java, TestVisibility::class.java)
 
         roundTripInspectable(Marshaler.inspectableAny(), String::class.java) { expected, actual ->
@@ -211,7 +212,6 @@ class ValueBoxingTest {
         }
     }
 
-    @WindowsRuntimeType("enum(Contoso.Priority;i4)")
     private enum class TestPriority(
         val abiValue: Int,
     ) {
@@ -219,13 +219,25 @@ class ValueBoxingTest {
         High(2),
     }
 
-    @WindowsRuntimeType("enum(Contoso.Visibility;u4)")
     private enum class TestVisibility(
         val abiValue: UInt,
     ) {
         Hidden(0u),
         Visible(1u),
         Archived(2u),
+    }
+
+    private fun registerEnumDescriptors() {
+        WinRtTypeRegistry.register<TestPriority>(
+            projectedTypeName = "Contoso.Priority",
+            signature = "enum(Contoso.Priority;i4)",
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<TestVisibility>(
+            projectedTypeName = "Contoso.Visibility",
+            signature = "enum(Contoso.Visibility;u4)",
+            isWindowsRuntimeType = true,
+        )
     }
 
     private fun priorityNullableIid(): Guid =

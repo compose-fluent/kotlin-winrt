@@ -26,6 +26,15 @@ object Projections {
         helperType: Class<*>,
     ): Boolean {
         clearDerivedCaches()
+        registerTypeDescriptor(
+            type = publicType,
+            projectedTypeName = customTypeToAbiTypeNameMappings[publicType] ?: (publicType.registeredWinRtType()?.projectedTypeName ?: publicType.name),
+            helperType = helperType,
+            runtimeClassName = publicType.registeredWinRtType()?.runtimeClassName,
+            defaultInterface = tryGetDefaultInterfaceTypeForRuntimeClassType(publicType),
+            isRuntimeClass = projectedCustomTypeRuntimeClasses.contains(publicType),
+            isWindowsRuntimeType = true,
+        )
         return customTypeToHelperTypeMappings.putIfAbsent(publicType, helperType) == null
     }
 
@@ -44,13 +53,33 @@ object Projections {
             projectedRuntimeClassNames.add(abiTypeName)
             projectedCustomTypeRuntimeClasses.add(publicType)
         }
+        registerTypeDescriptor(
+            type = publicType,
+            projectedTypeName = abiTypeName,
+            helperType = helperType,
+            runtimeClassName = if (isRuntimeClass) abiTypeName else publicType.registeredWinRtType()?.runtimeClassName,
+            defaultInterface = tryGetDefaultInterfaceTypeForRuntimeClassType(publicType),
+            isRuntimeClass = isRuntimeClass,
+            isWindowsRuntimeType = true,
+        )
         return helperAdded && publicAdded && abiNameAdded && typeNameAdded
     }
 
     fun registerDefaultInterfaceType(
         runtimeClass: Class<*>,
         defaultInterface: Class<*>,
-    ): Boolean = runtimeClassToDefaultInterfaceMappings.putIfAbsent(runtimeClass, defaultInterface) == null
+    ): Boolean {
+        registerTypeDescriptor(
+            type = runtimeClass,
+            projectedTypeName = customTypeToAbiTypeNameMappings[runtimeClass] ?: (runtimeClass.registeredWinRtType()?.projectedTypeName ?: runtimeClass.name),
+            helperType = findCustomHelperTypeMapping(runtimeClass),
+            runtimeClassName = inferRuntimeClassName(runtimeClass) ?: runtimeClass.registeredWinRtType()?.runtimeClassName,
+            defaultInterface = defaultInterface,
+            isRuntimeClass = projectedCustomTypeRuntimeClasses.contains(runtimeClass),
+            isWindowsRuntimeType = true,
+        )
+        return runtimeClassToDefaultInterfaceMappings.putIfAbsent(runtimeClass, defaultInterface) == null
+    }
 
     fun findCustomHelperTypeMapping(
         publicType: Class<*>,
@@ -60,8 +89,9 @@ object Projections {
             return null
         }
 
+        publicType.registeredWinRtType()?.helperType?.registeredClass()?.let { return it }
         customTypeToHelperTypeMappings[publicType]?.let { return it }
-        return publicType.getAnnotation(WindowsRuntimeHelperType::class.java)?.helperType?.java
+        return null
     }
 
     fun findCustomPublicTypeForAbiType(
@@ -91,8 +121,9 @@ object Projections {
     fun tryGetDefaultInterfaceTypeForRuntimeClassType(
         runtimeClass: Class<*>,
     ): Class<*>? {
+        runtimeClass.registeredWinRtType()?.defaultInterface?.registeredClass()?.let { return it }
         runtimeClassToDefaultInterfaceMappings[runtimeClass]?.let { return it }
-        return runtimeClass.getAnnotation(WinRtDefaultInterface::class.java)?.type?.java
+        return null
     }
 
     internal fun isProjectedRuntimeClassName(
@@ -108,6 +139,7 @@ object Projections {
         projectedCustomTypeRuntimeClasses.clear()
         runtimeClassToDefaultInterfaceMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()
+        WinRtTypeRegistry.clearForTests()
         WinRtBuiltInProjectionMappings.register()
     }
 
@@ -115,11 +147,43 @@ object Projections {
         if (WinRtTypeClassifier.isIntrinsicWindowsRuntimeType(type)) return true
 
         return customTypeToAbiTypeNameMappings.containsKey(type) ||
-            type.isAnnotationPresent(WindowsRuntimeType::class.java) ||
-            type.isAnnotationPresent(WinRtRuntimeClassName::class.java)
+            type.registeredWinRtType()?.isWindowsRuntimeType == true ||
+            type.registeredWinRtType()?.isRuntimeClass == true
     }
 
     private fun clearDerivedCaches() {
         isTypeWindowsRuntimeTypeCache.clear()
     }
+
+    private fun registerTypeDescriptor(
+        type: Class<*>,
+        projectedTypeName: String,
+        helperType: Class<*>?,
+        runtimeClassName: String?,
+        defaultInterface: Class<*>?,
+        isRuntimeClass: Boolean,
+        isWindowsRuntimeType: Boolean,
+    ) {
+        val kClass = type.registeredKClass()
+        WinRtTypeRegistry.update(kClass) { existing ->
+            WinRtTypeId(
+                kClass = kClass,
+                projectedTypeName = projectedTypeName,
+                guid = existing?.guid,
+                iid = existing?.iid,
+                signature = existing?.signature,
+                helperType = helperType?.registeredKClass() ?: existing?.helperType,
+                defaultInterface = defaultInterface?.registeredKClass() ?: existing?.defaultInterface,
+                boxedName = existing?.boxedName,
+                runtimeClassName = runtimeClassName ?: existing?.runtimeClassName,
+                vftblType = existing?.vftblType,
+                isDelegate = existing?.isDelegate == true,
+                isRuntimeClass = isRuntimeClass || existing?.isRuntimeClass == true,
+                isWindowsRuntimeType = isWindowsRuntimeType || existing?.isWindowsRuntimeType == true,
+                aliases = existing?.aliases.orEmpty(),
+            )
+        }
+    }
+
+    private fun inferRuntimeClassName(type: Class<*>): String? = TypeNameSupport.inferRuntimeClassName(type)
 }

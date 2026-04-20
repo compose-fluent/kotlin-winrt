@@ -11,7 +11,8 @@ class WinRtTypeIdTest {
         val registered =
             WinRtTypeRegistry.register<SampleRuntimeClass>(
                 projectedTypeName = "Contoso.SampleRuntimeClass",
-                interfaceId = Guid("11111111-1111-1111-1111-111111111111"),
+                guid = Guid("11111111-1111-1111-1111-111111111111"),
+                iid = Guid("11111111-1111-1111-1111-111111111111"),
                 boxedName = "Windows.Foundation.IReference`1<Contoso.SampleRuntimeClass>",
                 runtimeClassName = "Contoso.SampleRuntimeClass",
             )

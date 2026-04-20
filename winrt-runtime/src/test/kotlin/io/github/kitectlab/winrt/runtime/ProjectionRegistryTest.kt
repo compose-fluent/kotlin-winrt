@@ -13,6 +13,7 @@ class ProjectionRegistryTest {
     @Test
     fun projections_registry_round_trips_custom_mappings_and_runtime_class_defaults() {
         ComWrappersSupport.clearRegistriesForTests()
+        registerTestTypeDescriptors()
 
         assertTrue(
             Projections.registerCustomAbiTypeMapping(
@@ -48,6 +49,7 @@ class ProjectionRegistryTest {
     @Test
     fun type_name_support_resolves_registered_projection_types_and_base_type_fallbacks() {
         ComWrappersSupport.clearRegistriesForTests()
+        registerTestTypeDescriptors()
 
         ComWrappersSupport.registerProjectionAssembly(SampleRuntimeClass::class.java)
         TypeNameSupport.registerProjectionTypeBaseTypeMapping(
@@ -83,6 +85,7 @@ class ProjectionRegistryTest {
     @Test
     fun type_extensions_and_guid_generator_follow_runtime_registry_contracts() {
         ComWrappersSupport.clearRegistriesForTests()
+        registerTestTypeDescriptors()
 
         Projections.registerCustomAbiTypeMapping(
             publicType = SampleMappedType::class.java,
@@ -149,6 +152,7 @@ class ProjectionRegistryTest {
     @Test
     fun type_name_support_resolves_boxed_reference_runtime_names_like_cswinrt() {
         ComWrappersSupport.clearRegistriesForTests()
+        registerTestTypeDescriptors()
         ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class.java)
 
         assertEquals(String::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<String>"))
@@ -159,40 +163,77 @@ class ProjectionRegistryTest {
         assertEquals("Contoso.Priority", TypeNameSupport.getNameForType(TestProjectedEnum::class.java))
     }
 
-    @WinRtGuid("11111111-1111-1111-1111-111111111111")
     private interface SampleDefaultInterface
 
-    @WinRtRuntimeClassName("Contoso.SampleRuntimeClass")
     private class SampleRuntimeClass
 
-    @WinRtGuid("22222222-2222-2222-2222-222222222222")
-    private class SampleMappedTypeHelper {
-        companion object {
-            @JvmField
-            val PIID: Guid = Guid("22222222-2222-2222-2222-222222222222")
-        }
-    }
+    private class SampleMappedTypeHelper
 
     private class SampleRuntimeClassHelper
 
     private class SampleMappedType
 
-    @WindowsRuntimeHelperType(SampleAnnotatedHelper::class)
     private class SampleAnnotatedPublicType
 
-    @WinRtGuid("33333333-3333-3333-3333-333333333333")
     private class SampleAnnotatedHelper
 
-    @WindowsRuntimeType("struct(Contoso.SampleStruct;i4;string)")
     private class SampleStruct
 
     private class PlainManagedType
 
-    @WindowsRuntimeType("enum(Contoso.Priority;i4)")
     private enum class TestProjectedEnum(
         val abiValue: Int,
     ) {
         Low(0),
         High(2),
+    }
+
+    private fun registerTestTypeDescriptors() {
+        WinRtTypeRegistry.register<SampleDefaultInterface>(
+            projectedTypeName = SampleDefaultInterface::class.java.name,
+            guid = Guid("11111111-1111-1111-1111-111111111111"),
+            iid = Guid("11111111-1111-1111-1111-111111111111"),
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<SampleRuntimeClass>(
+            projectedTypeName = "Contoso.SampleRuntimeClass",
+            helperType = SampleRuntimeClassHelper::class,
+            defaultInterface = SampleDefaultInterface::class,
+            runtimeClassName = "Contoso.SampleRuntimeClass",
+            isRuntimeClass = true,
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<SampleMappedType>(
+            projectedTypeName = "Contoso.IMappedType",
+            helperType = SampleMappedTypeHelper::class,
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<SampleMappedTypeHelper>(
+            projectedTypeName = SampleMappedTypeHelper::class.java.name,
+            guid = Guid("22222222-2222-2222-2222-222222222222"),
+            iid = Guid("22222222-2222-2222-2222-222222222222"),
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<SampleAnnotatedPublicType>(
+            projectedTypeName = SampleAnnotatedPublicType::class.java.name,
+            helperType = SampleAnnotatedHelper::class,
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<SampleAnnotatedHelper>(
+            projectedTypeName = SampleAnnotatedHelper::class.java.name,
+            guid = Guid("33333333-3333-3333-3333-333333333333"),
+            iid = Guid("33333333-3333-3333-3333-333333333333"),
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<SampleStruct>(
+            projectedTypeName = "Contoso.SampleStruct",
+            signature = "struct(Contoso.SampleStruct;i4;string)",
+            isWindowsRuntimeType = true,
+        )
+        WinRtTypeRegistry.register<TestProjectedEnum>(
+            projectedTypeName = "Contoso.Priority",
+            signature = "enum(Contoso.Priority;i4)",
+            isWindowsRuntimeType = true,
+        )
     }
 }

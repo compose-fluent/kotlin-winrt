@@ -188,11 +188,7 @@ internal object TypeProjection {
         if (name.isBlank()) {
             return null
         }
-        return if (value.kind == WinRtTypeKind.Custom.ordinal) {
-            runCatching { Class.forName(name) }.getOrNull()
-        } else {
-            TypeNameSupport.findTypeByNameCached(name)
-        }
+        return TypeNameSupport.findTypeByNameCached(name)
     }
 
     fun fromManaged(value: Class<*>?): TypeAbi {
@@ -252,15 +248,36 @@ internal object WinRtBuiltInProjectionMappings {
             helperType = DateTimeProjection::class.java,
             abiTypeName = "Windows.Foundation.DateTime",
         )
+        registerMetadata(
+            type = Instant::class.java,
+            projectedTypeName = "Windows.Foundation.DateTime",
+            helperType = DateTimeProjection::class.java,
+            signature = "struct(Windows.Foundation.DateTime;i8)",
+            isWindowsRuntimeType = true,
+        )
         Projections.registerCustomAbiTypeMapping(
             publicType = Duration::class.java,
             helperType = TimeSpanProjection::class.java,
             abiTypeName = "Windows.Foundation.TimeSpan",
         )
+        registerMetadata(
+            type = Duration::class.java,
+            projectedTypeName = "Windows.Foundation.TimeSpan",
+            helperType = TimeSpanProjection::class.java,
+            signature = "struct(Windows.Foundation.TimeSpan;i8)",
+            isWindowsRuntimeType = true,
+        )
         Projections.registerCustomAbiTypeMapping(
             publicType = Exception::class.java,
             helperType = ExceptionProjection::class.java,
             abiTypeName = "Windows.Foundation.HResult",
+        )
+        registerMetadata(
+            type = Exception::class.java,
+            projectedTypeName = "Windows.Foundation.HResult",
+            helperType = ExceptionProjection::class.java,
+            signature = "struct(Windows.Foundation.HResult;i4)",
+            isWindowsRuntimeType = true,
         )
         Projections.registerCustomAbiTypeMapping(
             publicType = URI::class.java,
@@ -268,41 +285,165 @@ internal object WinRtBuiltInProjectionMappings {
             abiTypeName = "Windows.Foundation.Uri",
             isRuntimeClass = true,
         )
+        registerMetadata(
+            type = URI::class.java,
+            projectedTypeName = "Windows.Foundation.Uri",
+            helperType = UriProjection::class.java,
+            signature = "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
+            runtimeClassName = "Windows.Foundation.Uri",
+            defaultInterface = IUriRuntimeClassProjection::class.java,
+            isRuntimeClass = true,
+            isWindowsRuntimeType = true,
+        )
         Projections.registerDefaultInterfaceType(
             runtimeClass = URI::class.java,
             defaultInterface = IUriRuntimeClassProjection::class.java,
+        )
+        registerMetadata(
+            type = IUriRuntimeClassProjection::class.java,
+            projectedTypeName = IUriRuntimeClassProjection::class.java.name,
+            guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
+            iid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
+            isWindowsRuntimeType = true,
         )
         Projections.registerCustomAbiTypeMapping(
             publicType = AutoCloseable::class.java,
             helperType = IClosableProjection::class.java,
             abiTypeName = "Windows.Foundation.IClosable",
         )
+        registerMetadata(
+            type = AutoCloseable::class.java,
+            projectedTypeName = "Windows.Foundation.IClosable",
+            helperType = IClosableProjection::class.java,
+            isWindowsRuntimeType = true,
+        )
+        registerMetadata(
+            type = IClosableProjection::class.java,
+            projectedTypeName = IClosableProjection::class.java.name,
+            guid = IID.IDisposable,
+            iid = IID.IDisposable,
+            isWindowsRuntimeType = true,
+        )
         Projections.registerCustomAbiTypeMapping(
             publicType = Class::class.java,
             helperType = TypeProjection::class.java,
             abiTypeName = "Windows.UI.Xaml.Interop.TypeName",
         )
-        registerStruct(Point::class.java, "Windows.Foundation.Point")
-        registerStruct(Size::class.java, "Windows.Foundation.Size")
-        registerStruct(Rect::class.java, "Windows.Foundation.Rect")
-        registerStruct(Matrix3x2::class.java, "Windows.Foundation.Numerics.Matrix3x2")
-        registerStruct(Matrix4x4::class.java, "Windows.Foundation.Numerics.Matrix4x4")
-        registerStruct(Plane::class.java, "Windows.Foundation.Numerics.Plane")
-        registerStruct(Quaternion::class.java, "Windows.Foundation.Numerics.Quaternion")
-        registerStruct(Vector2::class.java, "Windows.Foundation.Numerics.Vector2")
-        registerStruct(Vector3::class.java, "Windows.Foundation.Numerics.Vector3")
-        registerStruct(Vector4::class.java, "Windows.Foundation.Numerics.Vector4")
+        registerMetadata(
+            type = Class::class.java,
+            projectedTypeName = "Windows.UI.Xaml.Interop.TypeName",
+            helperType = TypeProjection::class.java,
+            signature = "struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))",
+            boxedName = "Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>",
+            isWindowsRuntimeType = true,
+        )
+        registerStruct(Point::class.java, "Windows.Foundation.Point", "struct(Windows.Foundation.Point;f4;f4)")
+        registerStruct(Size::class.java, "Windows.Foundation.Size", "struct(Windows.Foundation.Size;f4;f4)")
+        registerStruct(Rect::class.java, "Windows.Foundation.Rect", "struct(Windows.Foundation.Rect;f4;f4;f4;f4)")
+        registerStruct(
+            Matrix3x2::class.java,
+            "Windows.Foundation.Numerics.Matrix3x2",
+            "struct(Windows.Foundation.Numerics.Matrix3x2;f4;f4;f4;f4;f4;f4)",
+        )
+        registerStruct(
+            Matrix4x4::class.java,
+            "Windows.Foundation.Numerics.Matrix4x4",
+            "struct(Windows.Foundation.Numerics.Matrix4x4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4)",
+        )
+        registerStruct(
+            Plane::class.java,
+            "Windows.Foundation.Numerics.Plane",
+            "struct(Windows.Foundation.Numerics.Plane;struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4);f4)",
+        )
+        registerStruct(
+            Quaternion::class.java,
+            "Windows.Foundation.Numerics.Quaternion",
+            "struct(Windows.Foundation.Numerics.Quaternion;f4;f4;f4;f4)",
+        )
+        registerStruct(Vector2::class.java, "Windows.Foundation.Numerics.Vector2", "struct(Windows.Foundation.Numerics.Vector2;f4;f4)")
+        registerStruct(Vector3::class.java, "Windows.Foundation.Numerics.Vector3", "struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4)")
+        registerStruct(
+            Vector4::class.java,
+            "Windows.Foundation.Numerics.Vector4",
+            "struct(Windows.Foundation.Numerics.Vector4;f4;f4;f4;f4)",
+        )
+
+        registerReferenceArrayType(String::class.java, Array<String>::class.java)
+        registerReferenceArrayType(Guid::class.java, Array<Guid>::class.java)
+        registerReferenceArrayType(Instant::class.java, Array<Instant>::class.java)
+        registerReferenceArrayType(Duration::class.java, Array<Duration>::class.java)
+        registerReferenceArrayType(Exception::class.java, Array<Exception>::class.java)
+        registerReferenceArrayType(Class::class.java, emptyArray<Class<*>>()::class.java)
+        registerReferenceArrayType(Point::class.java, Array<Point>::class.java)
+        registerReferenceArrayType(Size::class.java, Array<Size>::class.java)
+        registerReferenceArrayType(Rect::class.java, Array<Rect>::class.java)
+        registerReferenceArrayType(Matrix3x2::class.java, Array<Matrix3x2>::class.java)
+        registerReferenceArrayType(Matrix4x4::class.java, Array<Matrix4x4>::class.java)
+        registerReferenceArrayType(Plane::class.java, Array<Plane>::class.java)
+        registerReferenceArrayType(Quaternion::class.java, Array<Quaternion>::class.java)
+        registerReferenceArrayType(Vector2::class.java, Array<Vector2>::class.java)
+        registerReferenceArrayType(Vector3::class.java, Array<Vector3>::class.java)
+        registerReferenceArrayType(Vector4::class.java, Array<Vector4>::class.java)
     }
 
     private fun registerStruct(
         publicType: Class<*>,
         abiTypeName: String,
+        signature: String,
     ) {
         Projections.registerCustomAbiTypeMapping(
             publicType = publicType,
             helperType = publicType,
             abiTypeName = abiTypeName,
         )
+        registerMetadata(
+            type = publicType,
+            projectedTypeName = abiTypeName,
+            helperType = publicType,
+            signature = signature,
+            isWindowsRuntimeType = true,
+        )
+    }
+
+    private fun registerMetadata(
+        type: Class<*>,
+        projectedTypeName: String,
+        helperType: Class<*>? = null,
+        guid: Guid? = null,
+        iid: Guid? = null,
+        signature: String? = null,
+        boxedName: String? = null,
+        runtimeClassName: String? = null,
+        defaultInterface: Class<*>? = null,
+        isRuntimeClass: Boolean = false,
+        isWindowsRuntimeType: Boolean = false,
+    ) {
+        val kClass = type.registeredKClass()
+        WinRtTypeRegistry.update(kClass) { existing ->
+            WinRtTypeId(
+                kClass = kClass,
+                projectedTypeName = projectedTypeName,
+                guid = guid ?: existing?.guid,
+                iid = iid ?: existing?.iid,
+                signature = signature ?: existing?.signature,
+                helperType = helperType?.registeredKClass() ?: existing?.helperType,
+                defaultInterface = defaultInterface?.registeredKClass() ?: existing?.defaultInterface,
+                boxedName = boxedName ?: existing?.boxedName,
+                runtimeClassName = runtimeClassName ?: existing?.runtimeClassName,
+                vftblType = existing?.vftblType,
+                isDelegate = existing?.isDelegate == true,
+                isRuntimeClass = isRuntimeClass || existing?.isRuntimeClass == true,
+                isWindowsRuntimeType = isWindowsRuntimeType || existing?.isWindowsRuntimeType == true,
+                aliases = existing?.aliases.orEmpty(),
+            )
+        }
+    }
+
+    private fun registerReferenceArrayType(
+        elementType: Class<*>,
+        arrayType: Class<*>,
+    ) {
+        TypeNameSupport.registerReferenceArrayType(elementType, arrayType)
     }
 }
 

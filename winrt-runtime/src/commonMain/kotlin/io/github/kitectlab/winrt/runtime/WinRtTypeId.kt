@@ -4,56 +4,112 @@ import kotlin.reflect.KClass
 
 data class WinRtTypeId<T : Any>(
     val kClass: KClass<T>,
-    val projectedTypeName: String,
-    val interfaceId: Guid? = null,
-    val signature: WinRtTypeSignature? = null,
+    val projectedTypeName: String = kClass.qualifiedName ?: kClass.simpleName ?: "<anonymous>",
+    val guid: Guid? = null,
+    val iid: Guid? = null,
+    val signature: String? = null,
     val helperType: KClass<*>? = null,
     val defaultInterface: KClass<*>? = null,
     val boxedName: String? = null,
     val runtimeClassName: String? = null,
+    val vftblType: KClass<*>? = null,
     val isDelegate: Boolean = false,
+    val isRuntimeClass: Boolean = false,
+    val isWindowsRuntimeType: Boolean = false,
+    val aliases: Set<String> = emptySet(),
 )
 
 object WinRtTypeRegistry {
     private val byClass = mutableMapOf<KClass<*>, WinRtTypeId<*>>()
-    private val byProjectedName = mutableMapOf<String, WinRtTypeId<*>>()
+    private val byName = mutableMapOf<String, WinRtTypeId<*>>()
 
     fun register(typeId: WinRtTypeId<*>) {
         byClass[typeId.kClass] = typeId
-        byProjectedName[typeId.projectedTypeName] = typeId
+        index(typeId.projectedTypeName, typeId)
+        index(typeId.runtimeClassName, typeId)
+        index(typeId.boxedName, typeId)
+        index(typeId.kClass.qualifiedName, typeId)
+        index(typeId.kClass.simpleName, typeId)
+        typeId.aliases.forEach { alias ->
+            index(alias, typeId)
+        }
     }
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> findByClass(type: KClass<T>): WinRtTypeId<T>? = byClass[type] as? WinRtTypeId<T>
 
-    fun findByProjectedName(projectedTypeName: String): WinRtTypeId<*>? = byProjectedName[projectedTypeName]
+    fun findByName(name: String): WinRtTypeId<*>? = byName[name]
+
+    fun findByProjectedName(projectedTypeName: String): WinRtTypeId<*>? = findByName(projectedTypeName)
+
+    fun registerAlias(
+        type: KClass<*>,
+        alias: String,
+    ) {
+        val existing = byClass[type] ?: return
+        @Suppress("UNCHECKED_CAST")
+        register(
+            (existing as WinRtTypeId<Any>).copy(
+                aliases = existing.aliases + alias,
+            ),
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> update(
+        type: KClass<T>,
+        transform: (WinRtTypeId<T>?) -> WinRtTypeId<T>,
+    ): WinRtTypeId<T> {
+        val updated = transform(findByClass(type))
+        register(updated)
+        return updated
+    }
 
     inline fun <reified T : Any> register(
         projectedTypeName: String,
-        interfaceId: Guid? = null,
-        signature: WinRtTypeSignature? = null,
+        guid: Guid? = null,
+        iid: Guid? = null,
+        signature: String? = null,
         helperType: KClass<*>? = null,
         defaultInterface: KClass<*>? = null,
         boxedName: String? = null,
         runtimeClassName: String? = null,
+        vftblType: KClass<*>? = null,
         isDelegate: Boolean = false,
+        isRuntimeClass: Boolean = false,
+        isWindowsRuntimeType: Boolean = false,
+        aliases: Set<String> = emptySet(),
     ): WinRtTypeId<T> =
         WinRtTypeId(
             kClass = T::class,
             projectedTypeName = projectedTypeName,
-            interfaceId = interfaceId,
+            guid = guid,
+            iid = iid,
             signature = signature,
             helperType = helperType,
             defaultInterface = defaultInterface,
             boxedName = boxedName,
             runtimeClassName = runtimeClassName,
+            vftblType = vftblType,
             isDelegate = isDelegate,
+            isRuntimeClass = isRuntimeClass,
+            isWindowsRuntimeType = isWindowsRuntimeType,
+            aliases = aliases,
         ).also(::register)
 
     inline fun <reified T : Any> find(): WinRtTypeId<T>? = findByClass(T::class)
 
     internal fun clearForTests() {
         byClass.clear()
-        byProjectedName.clear()
+        byName.clear()
+    }
+
+    private fun index(
+        name: String?,
+        typeId: WinRtTypeId<*>,
+    ) {
+        if (!name.isNullOrBlank()) {
+            byName[name] = typeId
+        }
     }
 }

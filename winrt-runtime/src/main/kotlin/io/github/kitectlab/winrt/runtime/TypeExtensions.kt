@@ -5,6 +5,7 @@ package io.github.kitectlab.winrt.runtime
  */
 object TypeExtensions {
     private val helperTypeCache = ConcurrentCacheMap<Class<*>, Class<*>?>()
+    private val vftblTypeCache = ConcurrentCacheMap<Class<*>, Class<*>?>()
 
     fun findHelperType(
         type: Class<*>,
@@ -15,9 +16,7 @@ object TypeExtensions {
                 return@computeIfAbsent findHelperType(Exception::class.java, throwIfMissing = false)
             }
 
-            Projections.findCustomHelperTypeMapping(candidate)?.let { return@computeIfAbsent it }
-            candidate.getAnnotation(WindowsRuntimeHelperType::class.java)?.helperType?.java?.let { return@computeIfAbsent it }
-            null
+            Projections.findCustomHelperTypeMapping(candidate)
         }
 
         if (helper == null && throwIfMissing) {
@@ -38,13 +37,16 @@ object TypeExtensions {
 
     fun findVftblType(
         helperType: Class<*>,
-    ): Class<*>? = helperType.declaredClasses.firstOrNull { it.simpleName == "Vftbl" }
+    ): Class<*>? = vftblTypeCache.computeIfAbsent(helperType) { candidate ->
+        candidate.registeredWinRtType()?.vftblType?.registeredClass()
+    }
 
     fun isDelegate(
         type: Class<*>,
-    ): Boolean = type.isAnnotationPresent(WinRtDelegateType::class.java)
+    ): Boolean = type.registeredWinRtType()?.isDelegate == true
 
     internal fun clearRegistriesForTests() {
         helperTypeCache.clear()
+        vftblTypeCache.clear()
     }
 }

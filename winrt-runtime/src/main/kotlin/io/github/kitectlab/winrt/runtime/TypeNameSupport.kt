@@ -22,6 +22,7 @@ object TypeNameSupport {
     }
 
     private val registeredProjectionTypes = ConcurrentCacheMap<String, Class<*>>()
+    private val registeredReferenceArrayTypes = ConcurrentCacheMap<Class<*>, Class<*>>()
     private val projectionTypeNameToBaseTypeNameMappings = mutableListOf<Map<String, String>>()
     private val typeNameCache = ConcurrentCacheMap<String, TypeLookupResult>()
     private val baseRcwTypeCache = ConcurrentCacheMap<String, TypeLookupResult>()
@@ -40,8 +41,13 @@ object TypeNameSupport {
         baseRcwTypeCache.clear()
         if (runtimeClassName != null) {
             registeredProjectionTypes[runtimeClassName] = type
+            WinRtTypeRegistry.registerAlias(type.kotlin, runtimeClassName)
         }
         registeredProjectionTypes[type.name] = type
+        WinRtTypeRegistry.registerAlias(type.kotlin, type.name)
+        type.canonicalName?.let { alias ->
+            WinRtTypeRegistry.registerAlias(type.kotlin, alias)
+        }
     }
 
     fun registerProjectionTypes(
@@ -75,6 +81,14 @@ object TypeNameSupport {
                 else -> TypeLookupResult.Found(baseType)
             }
         }
+    }
+
+    fun registerReferenceArrayType(
+        elementType: Class<*>,
+        arrayType: Class<*>,
+    ) {
+        typeNameCache.clear()
+        registeredReferenceArrayTypes[elementType] = arrayType
     }
 
     fun findRcwTypeByNameCached(
@@ -123,6 +137,10 @@ object TypeNameSupport {
 
         WinRtTypeClassifier.classify(type)?.let { return it.canonicalRuntimeName }
 
+        type.registeredWinRtType()?.projectedTypeName
+            ?.takeIf { type.registeredWinRtType()?.isWindowsRuntimeType == true || type.registeredWinRtType()?.isRuntimeClass == true }
+            ?.let { return it }
+
         Projections.findCustomAbiTypeNameForType(type)?.let { return it }
 
         val runtimeClassName = inferRuntimeClassName(type)
@@ -139,19 +157,14 @@ object TypeNameSupport {
 
     internal fun inferRuntimeClassName(
         type: Class<*>,
-    ): String? {
-        type.getAnnotation(WinRtRuntimeClassName::class.java)?.runtimeClassName?.let { return it }
-        Projections.findCustomAbiTypeNameForType(type)?.let { abiTypeName ->
-            if (Projections.isProjectedRuntimeClassName(abiTypeName)) {
-                return abiTypeName
-            }
-        }
-        type.getAnnotation(WindowsRuntimeType::class.java)?.guidSignature?.let(::projectedTypeNameFromSignature)?.let { return it }
-        return null
-    }
+    ): String? =
+        type.registeredWinRtType()?.runtimeClassName
+            ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
+            ?: type.registeredWinRtType()?.takeIf { it.isRuntimeClass }?.projectedTypeName
 
     internal fun clearRegistriesForTests() {
         registeredProjectionTypes.clear()
+        registeredReferenceArrayTypes.clear()
         synchronized(projectionTypeNameToBaseTypeNameMappings) {
             projectionTypeNameToBaseTypeNameMappings.clear()
         }
@@ -170,33 +183,20 @@ object TypeNameSupport {
         }
 
         Projections.findCustomTypeForAbiTypeName(runtimeClassName)?.let { return it }
+        WinRtTypeRegistry.findByName(runtimeClassName)?.let { return it.registeredClass() }
         registeredProjectionTypes[runtimeClassName]?.let { return it }
         WinRtTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeClass }
 
         val genericBaseName = runtimeClassName.substringBefore('<')
         if (genericBaseName != runtimeClassName) {
             Projections.findCustomTypeForAbiTypeName(genericBaseName)?.let { return it }
+            WinRtTypeRegistry.findByName(genericBaseName)?.let { return it.registeredClass() }
             registeredProjectionTypes[genericBaseName]?.let { return it }
             WinRtTypeClassifier.resolve(genericBaseName)?.let { return it.representativeClass }
         }
 
-        return runCatching { Class.forName(runtimeClassName) }.getOrNull()
-            ?: if (genericBaseName != runtimeClassName) {
-                runCatching { Class.forName(genericBaseName) }.getOrNull()
-            } else {
-                null
-            }
+        return null
     }
-
-    private fun projectedTypeNameFromSignature(
-        signature: String,
-    ): String? =
-        when {
-            signature.startsWith("struct(") || signature.startsWith("enum(") || signature.startsWith("rc(") ->
-                signature.substringAfter('(').substringBefore(';')
-
-            else -> null
-        }
 
     private fun parseSingleGenericArgument(
         runtimeClassName: String,
@@ -208,9 +208,10 @@ object TypeNameSupport {
             null
         }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun arrayClassForElementType(
         elementType: Class<*>,
-    ): Class<*> =
+    ): Class<*>? =
         when (elementType) {
             java.lang.Byte.TYPE,
             java.lang.Byte::class.java,
@@ -252,6 +253,6 @@ object TypeNameSupport {
             java.lang.Character::class.java,
             -> CharArray::class.java
 
-            else -> java.lang.reflect.Array.newInstance(elementType, 0).javaClass
+            else -> registeredReferenceArrayTypes[elementType]
         }
 }

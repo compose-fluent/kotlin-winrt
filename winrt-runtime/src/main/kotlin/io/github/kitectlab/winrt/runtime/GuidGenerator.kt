@@ -1,7 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.reflect.Modifier
-
 /**
  * JVM-side signature/GUID lookup corresponding to `.cswinrt/src/WinRT.Runtime/GuidGenerator.cs`.
  *
@@ -12,28 +10,29 @@ object GuidGenerator {
     fun getGuid(
         type: Class<*>,
     ): Guid {
+        type.registeredWinRtType()?.guid?.let { return it }
+        type.registeredWinRtType()?.iid?.let { return it }
         val guidType = TypeExtensions.getGuidType(type)
-        tryExtractGuid(guidType, "IID")?.let { return it }
-        tryExtractGuid(guidType, "PIID")?.let { return it }
-        guidType.getAnnotation(WinRtGuid::class.java)?.let { return Guid(it.value) }
+        guidType.registeredWinRtType()?.guid?.let { return it }
+        guidType.registeredWinRtType()?.iid?.let { return it }
         throw IllegalStateException("Unable to determine WinRT GUID for '${type.name}'.")
     }
 
     fun getIID(
         type: Class<*>,
     ): Guid {
-        tryExtractGuid(type, "PIID")?.let { return it }
+        type.registeredWinRtType()?.iid?.let { return it }
         return getGuid(type)
     }
 
     fun getSignature(
         type: Class<*>,
     ): String {
-        val guidType = TypeExtensions.getGuidType(type)
-
         WinRtTypeClassifier.classify(type)?.let { return it.signature.render() }
+        type.registeredWinRtType()?.signature?.let { return it }
 
-        guidType.getAnnotation(WindowsRuntimeType::class.java)?.guidSignature?.takeIf { it.isNotBlank() }?.let { return it }
+        val guidType = TypeExtensions.getGuidType(type)
+        guidType.registeredWinRtType()?.signature?.let { return it }
 
         if (TypeExtensions.isDelegate(type)) {
             return WinRtTypeSignature.delegate(getGuid(type)).render()
@@ -59,23 +58,6 @@ object GuidGenerator {
             Guid(signature.removePrefix("{").removeSuffix("}"))
         } else {
             ParameterizedInterfaceId.createFromSignature(signature)
-        }
-    }
-
-    private fun tryExtractGuid(
-        type: Class<*>,
-        fieldName: String,
-    ): Guid? {
-        val field = runCatching { type.getDeclaredField(fieldName) }.getOrNull() ?: return null
-        if (!Modifier.isStatic(field.modifiers)) {
-            return null
-        }
-        field.isAccessible = true
-        val value = field.get(null) ?: return null
-        return when (value) {
-            is Guid -> value
-            is String -> Guid(value)
-            else -> null
         }
     }
 }
