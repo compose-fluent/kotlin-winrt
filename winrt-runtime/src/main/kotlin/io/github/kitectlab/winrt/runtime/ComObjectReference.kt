@@ -38,6 +38,9 @@ open class ComObjectReference(
     val hasReferenceTracker: Boolean
         get() = support.hasReferenceTracker
 
+    internal open val wrapperKind: ComReferenceWrapperKind
+        get() = ComReferenceWrapperKind.Unknown
+
     internal val referenceTrackerHandle: MemorySegment
         get() = support.referenceTrackerHandle.asMemorySegment()
 
@@ -377,6 +380,9 @@ class ActivationFactoryReference(
     pointer: MemorySegment,
     interfaceId: Guid = IID.IActivationFactory,
 ) : IUnknownReference(pointer, interfaceId) {
+    internal override val wrapperKind: ComReferenceWrapperKind
+        get() = ComReferenceWrapperKind.ActivationFactory
+
     fun activateInstance(): IInspectableReference =
         ActivationFactoryReferenceSupport.activateInstance(
             invokeActivate = { instanceOut ->
@@ -400,6 +406,9 @@ class InspectableReference(
     pointer: MemorySegment,
     interfaceId: Guid = IID.IInspectable,
 ) : ComObjectReference(pointer, interfaceId), IWinRTObject {
+    internal override val wrapperKind: ComReferenceWrapperKind
+        get() = ComReferenceWrapperKind.Inspectable
+
     override val nativeObject: ComObjectReference
         get() = this
 

@@ -36,9 +36,18 @@ object ActivationFactory {
     }
 
     private fun wrapFactory(pointer: NativePointer, interfaceId: Guid): IUnknownReference =
-        if (interfaceId == IID.IActivationFactory) {
-            ActivationFactoryReference(pointer.asMemorySegment(), interfaceId)
-        } else {
-            IUnknownReference(pointer.asMemorySegment(), interfaceId)
-        }
+        ComReferenceWrapperSupport.wrap(
+            kind = ComReferenceWrapperSupport.kindForInterfaceId(interfaceId),
+            pointer = pointer,
+            interfaceId = interfaceId,
+            wrapUnknown = { wrappedPointer, wrappedInterfaceId ->
+                IUnknownReference(wrappedPointer.asMemorySegment(), wrappedInterfaceId)
+            },
+            wrapInspectable = { wrappedPointer, wrappedInterfaceId ->
+                IUnknownReference(wrappedPointer.asMemorySegment(), wrappedInterfaceId)
+            },
+            wrapActivationFactory = { wrappedPointer, wrappedInterfaceId ->
+                ActivationFactoryReference(wrappedPointer.asMemorySegment(), wrappedInterfaceId)
+            },
+        )
 }

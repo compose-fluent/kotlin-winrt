@@ -54,11 +54,20 @@ internal fun borrowedProjectionMarshaler(
     }
 
 internal fun cloneComReference(reference: ComObjectReference): ComObjectReference =
-    when (reference) {
-        is ActivationFactoryReference -> ActivationFactoryReference(reference.getRef(), reference.interfaceId)
-        is IInspectableReference -> IInspectableReference(reference.getRef(), reference.interfaceId)
-        else -> IUnknownReference(reference.getRef(), reference.interfaceId)
-    }
+    ComReferenceWrapperSupport.wrap(
+        kind = reference.wrapperKind,
+        pointer = reference.getRef().asNativePointer(),
+        interfaceId = reference.interfaceId,
+        wrapUnknown = { pointer, interfaceId ->
+            IUnknownReference(pointer.asMemorySegment(), interfaceId)
+        },
+        wrapInspectable = { pointer, interfaceId ->
+            IInspectableReference(pointer.asMemorySegment(), interfaceId)
+        },
+        wrapActivationFactory = { pointer, interfaceId ->
+            ActivationFactoryReference(pointer.asMemorySegment(), interfaceId)
+        },
+    )
 
 internal fun <T : ComObjectReference> T.useAndGetRef(): MemorySegment = use { it.getRef() }
 
