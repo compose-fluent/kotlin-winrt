@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class CommonRuntimeModelsTest {
     @Test
@@ -45,5 +46,14 @@ class CommonRuntimeModelsTest {
 
         assertEquals(KnownHResults.E_ACCESSDENIED, error.hResult)
         assertEquals(restrictedInfo, error.restrictedErrorInfo)
+    }
+
+    @Test
+    fun async_status_rejects_unknown_abi_values() {
+        val error = assertFailsWith<WinRtIllegalArgumentException> {
+            WinRtAsyncStatus.fromAbi(99)
+        }
+
+        assertEquals(KnownHResults.E_INVALIDARG, error.hResult)
     }
 }

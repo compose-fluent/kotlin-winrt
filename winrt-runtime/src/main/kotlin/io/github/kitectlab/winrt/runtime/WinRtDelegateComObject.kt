@@ -10,10 +10,6 @@ import java.lang.invoke.MethodType
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-internal object WinRtDelegateVftblSlots {
-    const val Invoke = 3
-}
-
 internal class WinRtDelegateComObject(
     private val descriptor: WinRtDelegateDescriptor,
     private val callback: (List<Any?>) -> Any?,

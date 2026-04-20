@@ -1,5 +1,9 @@
 package io.github.kitectlab.winrt.runtime
 
+/**
+ * Runtime-side async interface IDs and slot layouts corresponding to the async owner set in
+ * `.cswinrt/src/WinRT.Runtime`.
+ */
 object WinRtAsyncInterfaceIds {
     val IAsyncInfo: Guid = Guid("00000036-0000-0000-C000-000000000046")
     val IAsyncAction: Guid = Guid("5A648006-843A-4DA9-865B-9D26E5DFAD7B")
