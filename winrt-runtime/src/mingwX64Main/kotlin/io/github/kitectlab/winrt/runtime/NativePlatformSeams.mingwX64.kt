@@ -9,9 +9,25 @@ actual class NativeScope : AutoCloseable {
 actual object NativeInterop {
     actual val nullPointer: NativePointer = NativePointer()
 
+    actual val hStringHeaderSizeBytes: Long = TODO()
+
     actual fun confinedScope(): NativeScope = NativeScope()
 
     actual fun isNull(pointer: NativePointer): Boolean = pointer === nullPointer
+
+    actual fun allocatePointerSlot(scope: NativeScope): NativePointer = TODO()
+
+    actual fun allocateInt32Slot(scope: NativeScope): NativePointer = TODO()
+
+    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer = TODO()
+
+    actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): NativePointer = TODO()
+
+    actual fun readPointer(slot: NativePointer): NativePointer = TODO()
+
+    actual fun readInt32(slot: NativePointer): Int = TODO()
+
+    actual fun readUtf16(pointer: NativePointer, length: Int): String = TODO()
 }
 
 actual object WinRtPlatformApi {

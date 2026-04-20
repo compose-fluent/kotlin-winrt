@@ -9,9 +9,25 @@ expect class NativeScope : AutoCloseable {
 expect object NativeInterop {
     val nullPointer: NativePointer
 
+    val hStringHeaderSizeBytes: Long
+
     fun confinedScope(): NativeScope
 
     fun isNull(pointer: NativePointer): Boolean
+
+    fun allocatePointerSlot(scope: NativeScope): NativePointer
+
+    fun allocateInt32Slot(scope: NativeScope): NativePointer
+
+    fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer
+
+    fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean = false): NativePointer
+
+    fun readPointer(slot: NativePointer): NativePointer
+
+    fun readInt32(slot: NativePointer): Int
+
+    fun readUtf16(pointer: NativePointer, length: Int): String
 }
 
 expect object WinRtPlatformApi {
