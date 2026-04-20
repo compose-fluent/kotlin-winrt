@@ -1,37 +1,34 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
+private val getXamlTypeByFullNameDescriptor = NativeFunctionDescriptor.of(
+    NativeValueLayout.JAVA_INT,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+)
 
 class WinUiXamlTypeReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlType,
 ) : IUnknownReference(pointer, interfaceId)
 
 class WinUiXamlMetadataProviderReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
 ) : IUnknownReference(pointer, interfaceId) {
     fun getXamlTypeByFullName(fullName: String): WinUiXamlTypeReference =
         HString.create(fullName).use { hString ->
-            Arena.ofConfined().use { arena ->
-                val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            NativeInterop.confinedScope().use { scope ->
+                val resultOut = NativeInterop.allocatePointerSlot(scope)
                 val hr = invokeAbi(
                     slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                    ),
-                    hString.handle.asMemorySegment(),
+                    descriptor = getXamlTypeByFullNameDescriptor,
+                    hString.handle,
                     resultOut,
                 )
                 HResult(hr).requireSuccess()
-                IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0)).use { reference ->
-                    WinUiXamlTypeReference(reference.getRef(), WinUiXamlInterfaceIds.IXamlType)
+                IUnknownReference(NativeInterop.readPointer(resultOut)).use { reference ->
+                    WinUiXamlTypeReference(reference.getRefPointer(), WinUiXamlInterfaceIds.IXamlType)
                 }
             }
         }
@@ -53,7 +50,7 @@ object WinUiXamlMetadataProvider {
                     .getOrThrow()
                     .let { reference ->
                         try {
-                            WinUiXamlMetadataProviderReference(reference.getRef(), WinUiXamlInterfaceIds.IXamlMetadataProvider)
+                            WinUiXamlMetadataProviderReference(reference.getRefPointer(), WinUiXamlInterfaceIds.IXamlMetadataProvider)
                         } finally {
                             reference.close()
                         }

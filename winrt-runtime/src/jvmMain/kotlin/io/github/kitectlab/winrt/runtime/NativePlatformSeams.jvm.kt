@@ -1,9 +1,14 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
+import java.lang.foreign.FunctionDescriptor
+import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import java.lang.invoke.MethodHandles
+import java.lang.invoke.MethodType
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.atomic.AtomicLong
 
 actual class NativePointer internal constructor(
     internal val segment: MemorySegment,
@@ -17,7 +22,22 @@ actual class NativeScope internal constructor(
     }
 }
 
+actual class NativeCallbackHandle internal constructor(
+    actual val pointer: NativePointer,
+    private val onClose: () -> Unit,
+) : AutoCloseable {
+    actual override fun close() {
+        onClose()
+    }
+}
+
 actual object NativeInterop {
+    private val linker = Linker.nativeLinker()
+    private val lookup = MethodHandles.lookup()
+    private val sharedArena = Arena.global()
+    private val callbacks = ConcurrentCacheMap<Long, RegisteredCallback>()
+    private val nextCallbackId = AtomicLong(1)
+
     actual val nullPointer: NativePointer
         get() = NativePointer(MemorySegment.NULL)
 
@@ -39,6 +59,9 @@ actual object NativeInterop {
 
     actual fun allocateInt32Slot(scope: NativeScope): NativePointer =
         scope.arena.allocate(ValueLayout.JAVA_INT).asNativePointer()
+
+    actual fun allocateInt64Slot(scope: NativeScope): NativePointer =
+        scope.arena.allocate(ValueLayout.JAVA_LONG).asNativePointer()
 
     actual fun allocateDoubleSlot(scope: NativeScope): NativePointer =
         scope.arena.allocate(ValueLayout.JAVA_DOUBLE).asNativePointer()
@@ -68,6 +91,9 @@ actual object NativeInterop {
     actual fun readInt32(slot: NativePointer): Int =
         slot.segment.get(ValueLayout.JAVA_INT, 0)
 
+    actual fun readInt64(slot: NativePointer): Long =
+        slot.segment.get(ValueLayout.JAVA_LONG, 0)
+
     actual fun readDouble(slot: NativePointer): Double =
         slot.segment.get(ValueLayout.JAVA_DOUBLE, 0)
 
@@ -80,11 +106,239 @@ actual object NativeInterop {
         return String(bytes, StandardCharsets.UTF_16LE)
     }
 
+    actual fun readGuid(pointer: NativePointer): Guid {
+        val bytes = pointer.segment.reinterpret(Guid.BYTE_SIZE.toLong()).toArray(ValueLayout.JAVA_BYTE)
+        return Guid.fromLittleEndianBytes(bytes)
+    }
+
+    actual fun writePointer(slot: NativePointer, value: NativePointer) {
+        slot.segment.set(ValueLayout.ADDRESS, 0, value.segment)
+    }
+
+    actual fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer) {
+        slot.segment.set(ValueLayout.ADDRESS, offsetBytes, value.segment)
+    }
+
+    actual fun writeInt8(slot: NativePointer, value: Byte) {
+        slot.segment.set(ValueLayout.JAVA_BYTE, 0, value)
+    }
+
+    actual fun writeInt32(slot: NativePointer, value: Int) {
+        slot.segment.set(ValueLayout.JAVA_INT, 0, value)
+    }
+
+    actual fun writeInt32(slot: NativePointer, offsetBytes: Long, value: Int) {
+        slot.segment.set(ValueLayout.JAVA_INT, offsetBytes, value)
+    }
+
+    actual fun writeInt64(slot: NativePointer, value: Long) {
+        slot.segment.set(ValueLayout.JAVA_LONG, 0, value)
+    }
+
+    actual fun writeDouble(slot: NativePointer, value: Double) {
+        slot.segment.set(ValueLayout.JAVA_DOUBLE, 0, value)
+    }
+
+    actual fun writeGuid(pointer: NativePointer, value: Guid) {
+        val bytes = value.toLittleEndianBytes()
+        pointer.segment.reinterpret(bytes.size.toLong()).copyFrom(MemorySegment.ofArray(bytes))
+    }
+
     actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer) {
         array.segment.setAtIndex(ValueLayout.ADDRESS, index.toLong(), value.segment)
     }
+
+    actual fun pointerKey(pointer: NativePointer): Long = pointer.segment.address()
+
+    actual fun invokeVtableInt32(
+        instance: NativePointer,
+        slot: Int,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int {
+        val method = linker.downcallHandle(
+            RawVtableCallSupport.entry(instance.segment, slot),
+            descriptor.asJavaFunctionDescriptor(),
+        )
+        return method.invokeWithArguments(
+            listOf(instance.segment) + convertArguments(descriptor.argumentLayouts.drop(1), args.asList()),
+        ) as Int
+    }
+
+    actual fun invokeFunctionInt32(
+        function: NativePointer,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int {
+        val method = linker.downcallHandle(
+            function.segment,
+            descriptor.asJavaFunctionDescriptor(),
+        )
+        return method.invokeWithArguments(
+            convertArguments(descriptor.argumentLayouts, args.asList()),
+        ) as Int
+    }
+
+    actual fun invokeFunctionVoid(
+        function: NativePointer,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ) {
+        val method = linker.downcallHandle(
+            function.segment,
+            descriptor.asJavaFunctionDescriptor(),
+        )
+        method.invokeWithArguments(
+            convertArguments(descriptor.argumentLayouts, args.asList()),
+        )
+    }
+
+    actual fun createCallback(
+        descriptor: NativeFunctionDescriptor,
+        callback: (List<Any?>) -> Int,
+    ): NativeCallbackHandle {
+        require(descriptor.returnLayout == NativeValueLayout.JAVA_INT) {
+            "Only INT32-return callbacks are currently supported."
+        }
+        val callbackId = nextCallbackId.getAndIncrement()
+        callbacks[callbackId] = RegisteredCallback(descriptor, callback)
+        val baseHandle = lookup.findStatic(
+            NativeInterop::class.java,
+            "invokeCallbackBridge",
+            MethodType.methodType(
+                Int::class.javaPrimitiveType,
+                Long::class.javaPrimitiveType,
+                Array<Any?>::class.java,
+            ),
+        )
+        val boundHandle = MethodHandles.insertArguments(baseHandle, 0, callbackId)
+        val collectedHandle = boundHandle.asCollector(Array<Any?>::class.java, descriptor.argumentLayouts.size)
+        val exactHandle = collectedHandle.asType(
+            MethodType.methodType(
+                Int::class.javaPrimitiveType,
+                descriptor.argumentLayouts.map(::carrierClass),
+            ),
+        )
+        val stub = linker.upcallStub(exactHandle, descriptor.asJavaFunctionDescriptor(), sharedArena)
+        return NativeCallbackHandle(
+            pointer = stub.asNativePointer(),
+            onClose = { callbacks.remove(callbackId) },
+        )
+    }
+
+    @JvmStatic
+    private fun invokeCallbackBridge(
+        callbackId: Long,
+        rawArguments: Array<Any?>,
+    ): Int {
+        val registered = callbacks[callbackId] ?: return KnownHResults.E_POINTER.value
+        val converted = registered.descriptor.argumentLayouts.zip(rawArguments.asList()).map { (layout, value) ->
+            fromJvmCarrier(layout, value)
+        }
+        return registered.callback(converted)
+    }
+
+    private data class RegisteredCallback(
+        val descriptor: NativeFunctionDescriptor,
+        val callback: (List<Any?>) -> Int,
+    )
 }
 
 internal fun NativePointer.asMemorySegment(): MemorySegment = segment
 
 internal fun MemorySegment.asNativePointer(): NativePointer = NativePointer(this)
+
+private fun NativeFunctionDescriptor.asJavaFunctionDescriptor(): FunctionDescriptor =
+    if (returnLayout == null) {
+        FunctionDescriptor.ofVoid(*argumentLayouts.map(::toJavaLayout).toTypedArray())
+    } else {
+        FunctionDescriptor.of(
+            toJavaLayout(returnLayout),
+            *argumentLayouts.map(::toJavaLayout).toTypedArray(),
+        )
+    }
+
+private fun toJavaLayout(layout: NativeValueLayout) =
+    when (layout) {
+        NativeValueLayout.ADDRESS -> ValueLayout.ADDRESS
+        NativeValueLayout.JAVA_BYTE -> ValueLayout.JAVA_BYTE
+        NativeValueLayout.JAVA_INT -> ValueLayout.JAVA_INT
+        NativeValueLayout.JAVA_LONG -> ValueLayout.JAVA_LONG
+        NativeValueLayout.JAVA_DOUBLE -> ValueLayout.JAVA_DOUBLE
+    }
+
+private fun carrierClass(layout: NativeValueLayout): Class<*> =
+    when (layout) {
+        NativeValueLayout.ADDRESS -> MemorySegment::class.java
+        NativeValueLayout.JAVA_BYTE -> Byte::class.javaPrimitiveType!!
+        NativeValueLayout.JAVA_INT -> Int::class.javaPrimitiveType!!
+        NativeValueLayout.JAVA_LONG -> Long::class.javaPrimitiveType!!
+        NativeValueLayout.JAVA_DOUBLE -> Double::class.javaPrimitiveType!!
+    }
+
+private fun convertArguments(
+    layouts: List<NativeValueLayout>,
+    args: List<Any?>,
+): List<Any?> {
+    require(layouts.size == args.size) {
+        "Argument count ${args.size} must match descriptor arity ${layouts.size}."
+    }
+    return layouts.zip(args).map { (layout, value) ->
+        toJvmCarrier(layout, value)
+    }
+}
+
+private fun toJvmCarrier(
+    layout: NativeValueLayout,
+    value: Any?,
+): Any? =
+    when (layout) {
+        NativeValueLayout.ADDRESS ->
+            when (value) {
+                null -> MemorySegment.NULL
+                is NativePointer -> value.segment
+                is MemorySegment -> value
+                else -> error("Expected NativePointer-compatible value, got '${value::class.qualifiedName}'.")
+            }
+
+        NativeValueLayout.JAVA_BYTE ->
+            when (value) {
+                is Byte -> value
+                is Int -> value.toByte()
+                else -> error("Expected byte-compatible value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+            }
+
+        NativeValueLayout.JAVA_INT ->
+            when (value) {
+                is Int -> value
+                is UInt -> value.toInt()
+                else -> error("Expected int-compatible value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+            }
+
+        NativeValueLayout.JAVA_LONG ->
+            when (value) {
+                is Long -> value
+                is ULong -> value.toLong()
+                else -> error("Expected long-compatible value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+            }
+
+        NativeValueLayout.JAVA_DOUBLE ->
+            when (value) {
+                is Double -> value
+                is Float -> value.toDouble()
+                else -> error("Expected double-compatible value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+            }
+    }
+
+private fun fromJvmCarrier(
+    layout: NativeValueLayout,
+    value: Any?,
+): Any? =
+    when (layout) {
+        NativeValueLayout.ADDRESS -> (value as MemorySegment).asNativePointer()
+        NativeValueLayout.JAVA_BYTE,
+        NativeValueLayout.JAVA_INT,
+        NativeValueLayout.JAVA_LONG,
+        NativeValueLayout.JAVA_DOUBLE,
+        -> value
+    }

@@ -230,28 +230,28 @@ internal object WinRtDelegateAbiMarshaller {
 
     private fun encodeObject(abiValue: Any?): MemorySegment = when (abiValue) {
         null -> MemorySegment.NULL
-        is IWinRTObject -> abiValue.nativeObject.pointer
-        is ComObjectReference -> abiValue.pointer
+        is IWinRTObject -> abiValue.nativeObject.pointer.asMemorySegment()
+        is ComObjectReference -> abiValue.pointer.asMemorySegment()
         is MemorySegment -> abiValue
         else -> error("Unsupported outbound ABI object argument: ${abiValue::class.qualifiedName}")
     }
 
     private fun encodeUnknownReference(abiValue: Any?): MemorySegment = when (abiValue) {
         null -> MemorySegment.NULL
-        is IUnknownReference -> abiValue.pointer
-        is IInspectableReference -> abiValue.pointer
-        is ComObjectReference -> abiValue.pointer
-        is IWinRTObject -> abiValue.nativeObject.pointer
+        is IUnknownReference -> abiValue.pointer.asMemorySegment()
+        is IInspectableReference -> abiValue.pointer.asMemorySegment()
+        is ComObjectReference -> abiValue.pointer.asMemorySegment()
+        is IWinRTObject -> abiValue.nativeObject.pointer.asMemorySegment()
         is MemorySegment -> abiValue
         else -> error("Unsupported outbound ABI unknown reference argument: ${abiValue::class.qualifiedName}")
     }
 
     private fun encodeInspectableReference(abiValue: Any?): MemorySegment = when (abiValue) {
         null -> MemorySegment.NULL
-        is IInspectableReference -> abiValue.pointer
-        is IUnknownReference -> abiValue.pointer
-        is ComObjectReference -> abiValue.pointer
-        is IWinRTObject -> abiValue.nativeObject.pointer
+        is IInspectableReference -> abiValue.pointer.asMemorySegment()
+        is IUnknownReference -> abiValue.pointer.asMemorySegment()
+        is ComObjectReference -> abiValue.pointer.asMemorySegment()
+        is IWinRTObject -> abiValue.nativeObject.pointer.asMemorySegment()
         is MemorySegment -> abiValue
         else -> error("Unsupported outbound ABI inspectable reference argument: ${abiValue::class.qualifiedName}")
     }

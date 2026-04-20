@@ -170,7 +170,7 @@ open class WinRtCollectionReferenceBase(
 
     protected fun invokeReplaceAllObjectArray(slot: Int, items: List<ComObjectReference>) {
         RawObjectAbiSupport.replaceAllObjectArray(
-            items = items.map { it.pointer.asNativePointer() },
+            items = items.map { it.pointer },
             invoke = { size, itemsAbi ->
                 invokeIntMethod(
                     slot = slot,
@@ -214,12 +214,12 @@ open class WinRtKeyValuePairReference(
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun key(): IUnknownReference? =
         invokeNullableObjectMethod(slot = 6)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
         }
 
     open fun value(): IUnknownReference? =
         invokeNullableObjectMethod(slot = 7)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
         }
 
     protected open fun createUnknownReference(
@@ -234,7 +234,7 @@ open class WinRtIterableReference(
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun first(iteratorInterfaceId: Guid): WinRtIteratorReference =
-        invokeObjectMethod(slot = 6).let { reference -> createIteratorReference(reference.pointer, iteratorInterfaceId) }
+        invokeObjectMethod(slot = 6).let { reference -> createIteratorReference(reference.pointer.asMemorySegment(), iteratorInterfaceId) }
 
     protected open fun createIteratorReference(
         pointer: MemorySegment,
@@ -254,7 +254,7 @@ open class WinRtIteratorReference(
         )
 
     open fun currentOrNull(): IUnknownReference? =
-        invokeNullableObjectMethod(slot = 6)?.let { reference -> createUnknownReference(reference.pointer, reference.interfaceId) }
+        invokeNullableObjectMethod(slot = 6)?.let { reference -> createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId) }
 
     open fun hasCurrent(): Boolean = invokeBooleanMethod(slot = 7)
 
@@ -291,7 +291,7 @@ open class WinRtVectorViewReference(
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
         invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
@@ -335,13 +335,13 @@ open class WinRtVectorReference(
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
         invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
 
     open fun getView(vectorViewInterfaceId: Guid): WinRtVectorViewReference =
-        invokeObjectMethod(slot = 8).let { reference -> createVectorViewReference(reference.pointer, vectorViewInterfaceId) }
+        invokeObjectMethod(slot = 8).let { reference -> createVectorViewReference(reference.pointer.asMemorySegment(), vectorViewInterfaceId) }
 
     open fun indexOf(value: ComObjectReference): Pair<Boolean, UInt> =
         invokeIndexOfMethodWithObjectArg(slot = 9, value = value)
@@ -431,7 +431,7 @@ open class WinRtMapViewReference(
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
         invokeNullableObjectMethodWithObjectArg(slot = 6, value = key)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
@@ -443,7 +443,7 @@ open class WinRtMapViewReference(
 
     open fun asIterable(iterableInterfaceId: Guid): WinRtIterableReference =
         queryInterface(iterableInterfaceId).getOrThrow().let { reference ->
-            createIterableReference(reference.pointer, iterableInterfaceId)
+            createIterableReference(reference.pointer.asMemorySegment(), iterableInterfaceId)
         }
 
     protected open fun createUnknownReference(
@@ -486,7 +486,7 @@ open class WinRtMapReference(
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
         invokeNullableObjectMethodWithObjectArg(slot = 6, value = key)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
@@ -494,7 +494,7 @@ open class WinRtMapReference(
     open fun hasKey(key: ComObjectReference): Boolean = invokeBooleanMethodWithObjectArg(slot = 8, value = key)
 
     open fun getView(mapViewInterfaceId: Guid): WinRtMapViewReference =
-        invokeObjectMethod(slot = 9).let { reference -> createMapViewReference(reference.pointer, mapViewInterfaceId) }
+        invokeObjectMethod(slot = 9).let { reference -> createMapViewReference(reference.pointer.asMemorySegment(), mapViewInterfaceId) }
 
     open fun insert(key: ComObjectReference, value: ComObjectReference): Boolean =
         invokeBooleanMethodWithTwoObjectArgs(slot = 10, first = key, second = value)

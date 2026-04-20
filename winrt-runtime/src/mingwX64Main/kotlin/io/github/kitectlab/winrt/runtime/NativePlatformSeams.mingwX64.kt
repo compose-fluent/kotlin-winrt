@@ -6,6 +6,12 @@ actual class NativeScope : AutoCloseable {
     actual override fun close() {}
 }
 
+actual class NativeCallbackHandle : AutoCloseable {
+    actual val pointer: NativePointer = NativePointer()
+
+    actual override fun close() {}
+}
+
 actual object NativeInterop {
     actual val nullPointer: NativePointer = NativePointer()
 
@@ -23,6 +29,8 @@ actual object NativeInterop {
 
     actual fun allocateInt32Slot(scope: NativeScope): NativePointer = TODO()
 
+    actual fun allocateInt64Slot(scope: NativeScope): NativePointer = TODO()
+
     actual fun allocateDoubleSlot(scope: NativeScope): NativePointer = TODO()
 
     actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer = TODO()
@@ -39,11 +47,57 @@ actual object NativeInterop {
 
     actual fun readInt32(slot: NativePointer): Int = TODO()
 
+    actual fun readInt64(slot: NativePointer): Long = TODO()
+
     actual fun readDouble(slot: NativePointer): Double = TODO()
 
     actual fun readUtf16(pointer: NativePointer, length: Int): String = TODO()
 
+    actual fun readGuid(pointer: NativePointer): Guid = TODO()
+
+    actual fun writePointer(slot: NativePointer, value: NativePointer): Unit = TODO()
+
+    actual fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer): Unit = TODO()
+
+    actual fun writeInt8(slot: NativePointer, value: Byte): Unit = TODO()
+
+    actual fun writeInt32(slot: NativePointer, value: Int): Unit = TODO()
+
+    actual fun writeInt32(slot: NativePointer, offsetBytes: Long, value: Int): Unit = TODO()
+
+    actual fun writeInt64(slot: NativePointer, value: Long): Unit = TODO()
+
+    actual fun writeDouble(slot: NativePointer, value: Double): Unit = TODO()
+
+    actual fun writeGuid(pointer: NativePointer, value: Guid): Unit = TODO()
+
     actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer): Unit = TODO()
+
+    actual fun pointerKey(pointer: NativePointer): Long = TODO()
+
+    actual fun invokeVtableInt32(
+        instance: NativePointer,
+        slot: Int,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int = TODO()
+
+    actual fun invokeFunctionInt32(
+        function: NativePointer,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int = TODO()
+
+    actual fun invokeFunctionVoid(
+        function: NativePointer,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Unit = TODO()
+
+    actual fun createCallback(
+        descriptor: NativeFunctionDescriptor,
+        callback: (List<Any?>) -> Int,
+    ): NativeCallbackHandle = TODO()
 }
 
 actual object WinRtPlatformApi {

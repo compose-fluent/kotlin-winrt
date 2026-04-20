@@ -42,10 +42,10 @@ class WinRtBindableInteropTest {
 
             assertEquals(3u, vectorView.size())
             assertSame(element.pointer, vectorView.getAt(1u).pointer)
-            assertEquals(true to 2u, vectorView.indexOf(key.pointer))
+            assertEquals(true to 2u, vectorView.indexOf(key.pointer.asMemorySegment()))
             assertEquals(listOf(7), vectorView.uintSlots)
             assertEquals(listOf(6 to 1u), vectorView.uintArgSlots)
-            assertEquals(listOf(8 to key.pointer), vectorView.indexOfSlots)
+            assertEquals(listOf(8 to key.pointer.asMemorySegment()), vectorView.indexOfSlots)
         }
     }
 
@@ -72,21 +72,27 @@ class WinRtBindableInteropTest {
             assertSame(element.pointer, vector.getAt(0u).pointer)
             assertEquals(5u, vector.size())
             assertSame(vectorView.pointer, vector.getView().pointer)
-            assertEquals(true to 3u, vector.indexOf(element.pointer))
-            vector.setAt(1u, replacement.pointer)
-            vector.insertAt(2u, replacement.pointer)
+            assertEquals(true to 3u, vector.indexOf(element.pointer.asMemorySegment()))
+            vector.setAt(1u, replacement.pointer.asMemorySegment())
+            vector.insertAt(2u, replacement.pointer.asMemorySegment())
             vector.removeAt(4u)
-            vector.append(replacement.pointer)
+            vector.append(replacement.pointer.asMemorySegment())
             vector.removeAtEnd()
             vector.clear()
 
             assertEquals(listOf(7), vector.uintSlots)
             assertEquals(listOf(6 to 0u), vector.uintArgSlots)
             assertEquals(listOf(8), vector.objectSlots)
-            assertEquals(listOf(9 to element.pointer), vector.indexOfSlots)
-            assertEquals(listOf(10 to (1u to replacement.pointer), 11 to (2u to replacement.pointer)), vector.uintObjectSlots)
+            assertEquals(listOf(9 to element.pointer.asMemorySegment()), vector.indexOfSlots)
+            assertEquals(
+                listOf(
+                    10 to (1u to replacement.pointer.asMemorySegment()),
+                    11 to (2u to replacement.pointer.asMemorySegment()),
+                ),
+                vector.uintObjectSlots,
+            )
             assertEquals(listOf(12 to 4u), vector.removeAtSlots)
-            assertEquals(listOf(13 to replacement.pointer), vector.appendSlots)
+            assertEquals(listOf(13 to replacement.pointer.asMemorySegment()), vector.appendSlots)
             assertEquals(listOf(14, 15), vector.unitSlots)
         }
     }

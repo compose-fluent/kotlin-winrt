@@ -467,7 +467,7 @@ object MarshalInterface {
             getAbiPointer = { value ->
                 when (value) {
                     null -> MemorySegment.NULL
-                    is ComObjectReference -> value.pointer
+                    is ComObjectReference -> value.pointer.asMemorySegment()
                     is MemorySegment -> value
                     else -> error("Expected COM object reference marshaler, got '${value.javaClass.name}'.")
                 }
@@ -511,7 +511,7 @@ object MarshalInspectable {
             getAbiPointer = { value ->
                 when (value) {
                     null -> MemorySegment.NULL
-                    is ComObjectReference -> value.pointer
+                    is ComObjectReference -> value.pointer.asMemorySegment()
                     is MemorySegment -> value
                     else -> error("Expected inspectable marshaler, got '${value.javaClass.name}'.")
                 }
@@ -550,7 +550,7 @@ object MarshalInspectable {
             getAbiPointer = { value ->
                 when (value) {
                     null -> MemorySegment.NULL
-                    is ComObjectReference -> value.pointer
+                    is ComObjectReference -> value.pointer.asMemorySegment()
                     is MemorySegment -> value
                     else -> error("Expected inspectable marshaler, got '${value.javaClass.name}'.")
                 }
@@ -580,7 +580,7 @@ object MarshalDelegate {
     fun createMarshaler(value: WinRtDelegateReference?): WinRtDelegateReference? =
         value?.let { WinRtDelegateReference.fromAbi(it.getRef(), it.descriptor) }
 
-    fun getAbi(value: WinRtDelegateReference?): MemorySegment = value?.pointer ?: MemorySegment.NULL
+    fun getAbi(value: WinRtDelegateReference?): MemorySegment = value?.pointer?.asMemorySegment() ?: MemorySegment.NULL
 
     fun fromAbi(pointer: MemorySegment, descriptor: WinRtDelegateDescriptor): WinRtDelegateReference? =
         WinRtDelegateReference.fromAbi(pointer, descriptor)
@@ -901,6 +901,6 @@ private fun abiPointer(value: Any?): MemorySegment =
         is MemorySegment -> value
         is ReferencedHString -> value.handle.asMemorySegment()
         is HString -> value.handle.asMemorySegment()
-        is ComObjectReference -> value.pointer
+        is ComObjectReference -> value.pointer.asMemorySegment()
         else -> error("Expected pointer-backed ABI value, got '${value.javaClass.name}'.")
     }

@@ -43,7 +43,7 @@ class WinRtCollectionProjectionTest {
                         assertEquals(2u, vectorView.size())
                         assertEquals("one", projectBorrowedForTest(vectorView.getAtOrNull(0u), adapter))
                         val iterable = vectorView.queryInterface(iterableInterfaceIdFor(adapter)).getOrThrow()
-                        WinRtIterableReference(iterable.pointer, iterableInterfaceIdFor(adapter)).use { base ->
+                        WinRtIterableReference(iterable.pointer.asMemorySegment(), iterableInterfaceIdFor(adapter)).use { base ->
                             val iterator = base.first(iteratorInterfaceIdFor(adapter))
                             iterator.use {
                                 assertTrue(it.hasCurrent())

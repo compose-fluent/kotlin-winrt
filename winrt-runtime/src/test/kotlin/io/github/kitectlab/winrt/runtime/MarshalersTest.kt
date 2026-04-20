@@ -56,7 +56,7 @@ class MarshalersTest {
 
         val reference = marshaler.createMarshaler(projected) as ComObjectReference
         try {
-            assertEquals(projected.nativeObject.pointer, marshaler.getAbi(reference))
+            assertEquals(projected.nativeObject.pointer.asMemorySegment(), marshaler.getAbi(reference))
         } finally {
             marshaler.disposeMarshaler(reference)
             projected.nativeObject.close()

@@ -6,6 +6,36 @@ expect class NativeScope : AutoCloseable {
     override fun close()
 }
 
+enum class NativeValueLayout {
+    ADDRESS,
+    JAVA_BYTE,
+    JAVA_INT,
+    JAVA_LONG,
+    JAVA_DOUBLE,
+}
+
+data class NativeFunctionDescriptor(
+    val returnLayout: NativeValueLayout?,
+    val argumentLayouts: List<NativeValueLayout>,
+) {
+    companion object {
+        fun of(
+            returnLayout: NativeValueLayout,
+            vararg argumentLayouts: NativeValueLayout,
+        ): NativeFunctionDescriptor = NativeFunctionDescriptor(returnLayout, argumentLayouts.toList())
+
+        fun ofVoid(
+            vararg argumentLayouts: NativeValueLayout,
+        ): NativeFunctionDescriptor = NativeFunctionDescriptor(null, argumentLayouts.toList())
+    }
+}
+
+expect class NativeCallbackHandle : AutoCloseable {
+    val pointer: NativePointer
+
+    override fun close()
+}
+
 expect object NativeInterop {
     val nullPointer: NativePointer
 
@@ -23,6 +53,8 @@ expect object NativeInterop {
 
     fun allocateInt32Slot(scope: NativeScope): NativePointer
 
+    fun allocateInt64Slot(scope: NativeScope): NativePointer
+
     fun allocateDoubleSlot(scope: NativeScope): NativePointer
 
     fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer
@@ -39,11 +71,57 @@ expect object NativeInterop {
 
     fun readInt32(slot: NativePointer): Int
 
+    fun readInt64(slot: NativePointer): Long
+
     fun readDouble(slot: NativePointer): Double
 
     fun readUtf16(pointer: NativePointer, length: Int): String
 
+    fun readGuid(pointer: NativePointer): Guid
+
+    fun writePointer(slot: NativePointer, value: NativePointer)
+
+    fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer)
+
+    fun writeInt8(slot: NativePointer, value: Byte)
+
+    fun writeInt32(slot: NativePointer, value: Int)
+
+    fun writeInt32(slot: NativePointer, offsetBytes: Long, value: Int)
+
+    fun writeInt64(slot: NativePointer, value: Long)
+
+    fun writeDouble(slot: NativePointer, value: Double)
+
+    fun writeGuid(pointer: NativePointer, value: Guid)
+
     fun writePointerAt(array: NativePointer, index: Int, value: NativePointer)
+
+    fun pointerKey(pointer: NativePointer): Long
+
+    fun invokeVtableInt32(
+        instance: NativePointer,
+        slot: Int,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int
+
+    fun invokeFunctionInt32(
+        function: NativePointer,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int
+
+    fun invokeFunctionVoid(
+        function: NativePointer,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    )
+
+    fun createCallback(
+        descriptor: NativeFunctionDescriptor,
+        callback: (List<Any?>) -> Int,
+    ): NativeCallbackHandle
 }
 
 expect object WinRtPlatformApi {

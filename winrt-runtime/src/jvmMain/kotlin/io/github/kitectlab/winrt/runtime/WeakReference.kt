@@ -1,70 +1,67 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
+private val getWeakReferenceDescriptor = NativeFunctionDescriptor.of(
+    NativeValueLayout.JAVA_INT,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+)
+
+private val resolveWeakReferenceDescriptor = NativeFunctionDescriptor.of(
+    NativeValueLayout.JAVA_INT,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+)
 
 internal class WeakReferenceSourceReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = IID.IWeakReferenceSource,
 ) : IUnknownReference(pointer, interfaceId) {
-    fun getWeakReference(): WeakReferenceReference? {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+    fun getWeakReference(): WeakReferenceReference? =
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocatePointerSlot(scope)
             ExceptionHelpers.throwExceptionForHR(
                 invokeAbi(
                     slot = 3,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                    ),
+                    descriptor = getWeakReferenceDescriptor,
                     resultOut,
                 ),
                 operation = "IWeakReferenceSource.GetWeakReference",
             )
-            val pointer = resultOut.get(ValueLayout.ADDRESS, 0)
-            return if (pointer == MemorySegment.NULL) {
+            val resolvedPointer = NativeInterop.readPointer(resultOut)
+            if (NativeInterop.isNull(resolvedPointer)) {
                 null
             } else {
-                WeakReferenceReference(pointer, IID.IWeakReference)
+                WeakReferenceReference(resolvedPointer, IID.IWeakReference)
             }
         }
-    }
 }
 
 internal class WeakReferenceReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = IID.IWeakReference,
 ) : IUnknownReference(pointer, interfaceId) {
-    fun resolve(interfaceId: Guid): IUnknownReference? {
-        Arena.ofConfined().use { arena ->
-            val iidMemory = arena.allocate(AbiLayouts.GUID)
+    fun resolve(interfaceId: Guid): IUnknownReference? =
+        NativeInterop.confinedScope().use { scope ->
+            val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val resultOut = NativeInterop.allocatePointerSlot(scope)
             ExceptionHelpers.throwExceptionForHR(
                 invokeAbi(
                     slot = 3,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                    ),
+                    descriptor = resolveWeakReferenceDescriptor,
                     iidMemory,
                     resultOut,
                 ),
                 operation = "IWeakReference.Resolve",
             )
-            val pointer = resultOut.get(ValueLayout.ADDRESS, 0)
-            return if (pointer == MemorySegment.NULL) {
+            val resolvedPointer = NativeInterop.readPointer(resultOut)
+            if (NativeInterop.isNull(resolvedPointer)) {
                 null
             } else {
-                IUnknownReference(pointer, interfaceId)
+                IUnknownReference(resolvedPointer, interfaceId)
             }
         }
-    }
 }
 
 internal actual class PlatformManagedWeakReference<T : Any> actual constructor(target: T?) {
@@ -106,6 +103,6 @@ internal actual object WeakReferenceInterop {
 
     actual fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
         reference.reference.resolve(IID.IUnknown)?.use { resolved ->
-            ComWrappersSupport.createRcwForComObject(resolved.pointer)
+            ComWrappersSupport.createRcwForComObject(resolved.pointer.asMemorySegment())
         }
 }

@@ -1,30 +1,94 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
+import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 
+private fun hResultDescriptor(
+    vararg argumentLayouts: NativeValueLayout,
+): NativeFunctionDescriptor = NativeFunctionDescriptor.of(NativeValueLayout.JAVA_INT, *argumentLayouts)
+
+private fun FunctionDescriptor.toNativeDescriptor(): NativeFunctionDescriptor {
+    val arguments = argumentLayouts().map(MemoryLayout::toNativeValueLayout).toTypedArray()
+    val returnLayout = returnLayout()
+    return if (returnLayout.isPresent) {
+        NativeFunctionDescriptor.of(returnLayout.get().toNativeValueLayout(), *arguments)
+    } else {
+        NativeFunctionDescriptor.ofVoid(*arguments)
+    }
+}
+
+private fun MemoryLayout.toNativeValueLayout(): NativeValueLayout =
+    when (this) {
+        ValueLayout.ADDRESS -> NativeValueLayout.ADDRESS
+        ValueLayout.JAVA_BYTE -> NativeValueLayout.JAVA_BYTE
+        ValueLayout.JAVA_INT -> NativeValueLayout.JAVA_INT
+        ValueLayout.JAVA_LONG -> NativeValueLayout.JAVA_LONG
+        ValueLayout.JAVA_DOUBLE -> NativeValueLayout.JAVA_DOUBLE
+        else -> error("Unsupported JVM FFM layout '$this' in runtime compatibility bridge.")
+    }
+
+private fun Array<out Any?>.toNativeInvokeArguments(): Array<out Any?> =
+    map { argument ->
+        if (argument is MemorySegment) {
+            argument.asNativePointer()
+        } else {
+            argument
+        }
+    }.toTypedArray()
+
+private fun trimExplicitThisArgument(
+    ownerPointer: NativePointer,
+    descriptor: FunctionDescriptor,
+    args: Array<out Any?>,
+): Array<out Any?> {
+    if (descriptor.argumentLayouts().isEmpty() || descriptor.argumentLayouts().first() != ValueLayout.ADDRESS || args.isEmpty()) {
+        return args
+    }
+    val firstPointer = when (val first = args.first()) {
+        is MemorySegment -> first.asNativePointer()
+        is NativePointer -> first
+        else -> null
+    } ?: return args
+    return if (NativeInterop.samePointer(ownerPointer, firstPointer)) {
+        args.copyOfRange(1, args.size)
+    } else {
+        args
+    }
+}
+
 open class ComObjectReference(
-    val pointer: MemorySegment,
+    val pointer: NativePointer,
     val interfaceId: Guid,
-    referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
+    referenceTrackerPointer: NativePointer = NativeInterop.nullPointer,
     private val preventReleaseOnDispose: Boolean = false,
 ) : AutoCloseable {
-    private val support = RawComObjectReferenceSupport(
+    constructor(
+        pointer: MemorySegment,
+        interfaceId: Guid,
+        referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
+        preventReleaseOnDispose: Boolean = false,
+    ) : this(
         pointer = pointer.asNativePointer(),
+        interfaceId = interfaceId,
+        referenceTrackerPointer = referenceTrackerPointer.asNativePointer(),
+        preventReleaseOnDispose = preventReleaseOnDispose,
+    )
+
+    private val support = RawComObjectReferenceSupport(
+        pointer = pointer,
         interfaceId = interfaceId,
         preventReleaseOnDispose = preventReleaseOnDispose,
     )
 
     init {
-        require(pointer != MemorySegment.NULL) {
+        require(!NativeInterop.isNull(pointer)) {
             "COM object reference cannot wrap a null pointer."
         }
-        if (referenceTrackerPointer != MemorySegment.NULL) {
+        if (!NativeInterop.isNull(referenceTrackerPointer)) {
             support.attachReferenceTracker(
-                trackerPointer = referenceTrackerPointer.asNativePointer(),
+                trackerPointer = referenceTrackerPointer,
                 addRefFromTrackerSource = true,
                 retainTrackerPointer = { invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.AddRef) },
                 addRefFromTrackerSourceCallback = { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) },
@@ -41,8 +105,8 @@ open class ComObjectReference(
     internal open val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.Unknown
 
-    internal val referenceTrackerHandle: MemorySegment
-        get() = support.referenceTrackerHandle.asMemorySegment()
+    internal val referenceTrackerHandle: NativePointer
+        get() = support.referenceTrackerHandle
 
     fun addRef(): UInt =
         support.addRef { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) }
@@ -50,9 +114,10 @@ open class ComObjectReference(
     fun release(): UInt =
         support.release { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.ReleaseFromTrackerSource) }
 
-    fun getRef(): MemorySegment =
+    fun getRef(): MemorySegment = getRefPointer().asMemorySegment()
+
+    fun getRefPointer(): NativePointer =
         support.getRef { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) }
-            .asMemorySegment()
 
     open fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? =
         support.tryQueryInterface(requestedInterfaceId, ::wrapQueriedReference)
@@ -70,99 +135,85 @@ open class ComObjectReference(
     fun tryAsInspectable(): IInspectableReference? =
         tryQueryInterface(IID.IInspectable)?.let { IInspectableReference(it.pointer, IID.IInspectable) }
 
-    open fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference {
-        return RawAbiResultSupport.objectResult(
+    open fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference =
+        RawAbiResultSupport.objectResult(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = hResultDescriptor(
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
                     value.pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
-            wrap = { IUnknownReference(it.asMemorySegment()) },
+            wrap = ::IUnknownReference,
         )
-    }
 
-    open fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean {
-        return RawAbiResultSupport.booleanResult(
+    open fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean =
+        RawAbiResultSupport.booleanResult(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = hResultDescriptor(
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
                     value.pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
         )
-    }
 
     open fun invokeBooleanMethodWithTwoObjectArgs(
         slot: Int,
         first: ComObjectReference,
         second: ComObjectReference,
-    ): Boolean {
-        return RawAbiResultSupport.booleanResult(
+    ): Boolean =
+        RawAbiResultSupport.booleanResult(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = hResultDescriptor(
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
                     first.pointer,
                     second.pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
         )
-    }
 
-    open fun invokeObjectMethod(slot: Int): IUnknownReference {
-        return RawAbiResultSupport.objectResult(
+    open fun invokeObjectMethod(slot: Int): IUnknownReference =
+        RawAbiResultSupport.objectResult(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = hResultDescriptor(
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
-            wrap = { IUnknownReference(it.asMemorySegment()) },
+            wrap = ::IUnknownReference,
         )
-    }
 
     fun invokeHStringMethod(slot: Int): HString =
         RawAbiResultSupport.hStringResult { resultOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = hResultDescriptor(
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                resultOut.asMemorySegment(),
+                resultOut,
             )
         }
 
@@ -170,13 +221,11 @@ open class ComObjectReference(
         RawAbiResultSupport.doubleResult { resultOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = hResultDescriptor(
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                resultOut.asMemorySegment(),
+                resultOut,
             )
         }
 
@@ -184,24 +233,18 @@ open class ComObjectReference(
         RawAbiResultSupport.int32Result { resultOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = hResultDescriptor(
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                resultOut.asMemorySegment(),
+                resultOut,
             )
         }
 
     open fun invokeUnitMethod(slot: Int) {
         val hr = invokeIntMethod(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-            ),
-            pointer,
+            descriptor = hResultDescriptor(NativeValueLayout.ADDRESS),
         )
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
@@ -209,12 +252,10 @@ open class ComObjectReference(
     open fun invokeUnitMethodWithObjectArg(slot: Int, value: ComObjectReference) {
         val hr = invokeIntMethod(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
+            descriptor = hResultDescriptor(
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.ADDRESS,
             ),
-            pointer,
             value.pointer,
         )
         WinRtPlatformApi.checkSucceededRaw(hr)
@@ -223,12 +264,10 @@ open class ComObjectReference(
     fun invokeUnitMethodWithInt64Arg(slot: Int, value: Long) {
         val hr = invokeIntMethod(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_LONG,
+            descriptor = hResultDescriptor(
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.JAVA_LONG,
             ),
-            pointer,
             value,
         )
         WinRtPlatformApi.checkSucceededRaw(hr)
@@ -238,13 +277,11 @@ open class ComObjectReference(
         RawAbiResultSupport.booleanResult { resultOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = hResultDescriptor(
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                resultOut.asMemorySegment(),
+                resultOut,
             )
         }
 
@@ -252,13 +289,11 @@ open class ComObjectReference(
         RawAbiResultSupport.uint32Result { resultOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = hResultDescriptor(
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                resultOut.asMemorySegment(),
+                resultOut,
             )
         }
 
@@ -284,58 +319,51 @@ open class ComObjectReference(
     protected fun invokeUIntMethod(slot: Int): UInt =
         invokeIntMethod(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-            ),
-            pointer,
+            descriptor = hResultDescriptor(NativeValueLayout.ADDRESS),
         ).toUInt()
 
     fun invokeAbi(
         slot: Int,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int = invokeIntMethod(slot, descriptor, *args)
+
+    fun invokeAbi(
+        slot: Int,
         descriptor: FunctionDescriptor,
-        vararg args: Any,
-    ): Int = invokeIntMethod(slot, descriptor, pointer, *args)
+        vararg args: Any?,
+    ): Int {
+        val adjustedArgs = trimExplicitThisArgument(pointer, descriptor, args)
+        return invokeAbi(slot, descriptor.toNativeDescriptor(), *adjustedArgs.toNativeInvokeArguments())
+    }
 
     private fun invokeUIntMethodUncheckedOnPointer(
         targetPointer: NativePointer,
         slot: Int,
-    ): UInt {
-        val method = Linker.nativeLinker().downcallHandle(
-            RawVtableCallSupport.entry(targetPointer.asMemorySegment(), slot),
-            FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-            ),
-        )
-        return (method.invokeWithArguments(targetPointer.asMemorySegment()) as Int).toUInt()
+    ): UInt =
+        NativeInterop.invokeVtableInt32(
+            instance = targetPointer,
+            slot = slot,
+            descriptor = hResultDescriptor(NativeValueLayout.ADDRESS),
+        ).toUInt()
+
+    protected fun invokeIntMethod(
+        slot: Int,
+        descriptor: NativeFunctionDescriptor,
+        vararg args: Any?,
+    ): Int {
+        throwIfDisposed()
+        return NativeInterop.invokeVtableInt32(pointer, slot, descriptor, *args)
     }
 
     protected fun invokeIntMethod(
         slot: Int,
         descriptor: FunctionDescriptor,
-        vararg args: Any,
+        vararg args: Any?,
     ): Int {
-        throwIfDisposed()
-        return invokeIntMethodUnchecked(slot, descriptor, *args)
+        val adjustedArgs = trimExplicitThisArgument(pointer, descriptor, args)
+        return invokeIntMethod(slot, descriptor.toNativeDescriptor(), *adjustedArgs.toNativeInvokeArguments())
     }
-
-    private fun invokeIntMethodUnchecked(
-        slot: Int,
-        descriptor: FunctionDescriptor,
-        vararg args: Any,
-    ): Int {
-        val method = Linker.nativeLinker().downcallHandle(vtableEntryUnchecked(slot), descriptor)
-        return method.invokeWithArguments(*args) as Int
-    }
-
-    protected fun vtableEntry(slot: Int): MemorySegment {
-        throwIfDisposed()
-        return vtableEntryUnchecked(slot)
-    }
-
-    private fun vtableEntryUnchecked(slot: Int): MemorySegment =
-        RawVtableCallSupport.entry(pointer, slot)
 
     protected fun throwIfDisposed() {
         support.throwIfDisposed()
@@ -344,16 +372,12 @@ open class ComObjectReference(
     private fun invokeReferenceTrackerMethod(
         trackerPointer: NativePointer,
         slot: Int,
-    ): UInt {
-        val method = Linker.nativeLinker().downcallHandle(
-            RawVtableCallSupport.entry(trackerPointer.asMemorySegment(), slot),
-            FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-            ),
-        )
-        return (method.invokeWithArguments(trackerPointer.asMemorySegment()) as Int).toUInt()
-    }
+    ): UInt =
+        NativeInterop.invokeVtableInt32(
+            instance = trackerPointer,
+            slot = slot,
+            descriptor = hResultDescriptor(NativeValueLayout.ADDRESS),
+        ).toUInt()
 
     private fun wrapQueriedReference(
         queriedPointer: NativePointer,
@@ -362,24 +386,41 @@ open class ComObjectReference(
         queriedPreventReleaseOnDispose: Boolean,
     ): ComObjectReference =
         ComObjectReference(
-            pointer = queriedPointer.asMemorySegment(),
+            pointer = queriedPointer,
             interfaceId = queriedInterfaceId,
-            referenceTrackerPointer = trackerHandle.asMemorySegment(),
+            referenceTrackerPointer = trackerHandle,
             preventReleaseOnDispose = queriedPreventReleaseOnDispose,
         )
 }
 
 open class IUnknownReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = IID.IUnknown,
-    referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
+    referenceTrackerPointer: NativePointer = NativeInterop.nullPointer,
     preventReleaseOnDispose: Boolean = false,
-) : ComObjectReference(pointer, interfaceId, referenceTrackerPointer, preventReleaseOnDispose)
+) : ComObjectReference(pointer, interfaceId, referenceTrackerPointer, preventReleaseOnDispose) {
+    constructor(
+        pointer: MemorySegment,
+        interfaceId: Guid = IID.IUnknown,
+        referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
+        preventReleaseOnDispose: Boolean = false,
+    ) : this(
+        pointer = pointer.asNativePointer(),
+        interfaceId = interfaceId,
+        referenceTrackerPointer = referenceTrackerPointer.asNativePointer(),
+        preventReleaseOnDispose = preventReleaseOnDispose,
+    )
+}
 
 class ActivationFactoryReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = IID.IActivationFactory,
 ) : IUnknownReference(pointer, interfaceId) {
+    constructor(
+        pointer: MemorySegment,
+        interfaceId: Guid = IID.IActivationFactory,
+    ) : this(pointer.asNativePointer(), interfaceId)
+
     internal override val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.ActivationFactory
 
@@ -388,24 +429,27 @@ class ActivationFactoryReference(
             invokeActivate = { instanceOut ->
                 invokeIntMethod(
                     slot = 6,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = hResultDescriptor(
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
-                    instanceOut.asMemorySegment(),
+                    instanceOut,
                 )
             },
-            wrapInspectable = { inspectedPointer -> IInspectableReference(inspectedPointer.asMemorySegment(), IID.IInspectable) },
+            wrapInspectable = { inspectedPointer -> IInspectableReference(inspectedPointer, IID.IInspectable) },
             initializeReferenceTracker = { it.tryInitializeReferenceTracker() },
         )
 }
 
 class InspectableReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = IID.IInspectable,
 ) : ComObjectReference(pointer, interfaceId), IWinRTObject {
+    constructor(
+        pointer: MemorySegment,
+        interfaceId: Guid = IID.IInspectable,
+    ) : this(pointer.asNativePointer(), interfaceId)
+
     internal override val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.Inspectable
 
@@ -420,13 +464,11 @@ class InspectableReference(
             invokeGetRuntimeClassName = { hStringOut ->
                 invokeIntMethod(
                     slot = 4,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = hResultDescriptor(
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
-                    hStringOut.asMemorySegment(),
+                    hStringOut,
                 )
             },
         )

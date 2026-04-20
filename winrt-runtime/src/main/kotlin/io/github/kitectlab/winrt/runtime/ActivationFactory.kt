@@ -41,13 +41,13 @@ object ActivationFactory {
             pointer = pointer,
             interfaceId = interfaceId,
             wrapUnknown = { wrappedPointer, wrappedInterfaceId ->
-                IUnknownReference(wrappedPointer.asMemorySegment(), wrappedInterfaceId)
+                IUnknownReference(wrappedPointer, wrappedInterfaceId)
             },
             wrapInspectable = { wrappedPointer, wrappedInterfaceId ->
-                IUnknownReference(wrappedPointer.asMemorySegment(), wrappedInterfaceId)
+                IUnknownReference(wrappedPointer, wrappedInterfaceId)
             },
             wrapActivationFactory = { wrappedPointer, wrappedInterfaceId ->
-                ActivationFactoryReference(wrappedPointer.asMemorySegment(), wrappedInterfaceId)
+                ActivationFactoryReference(wrappedPointer, wrappedInterfaceId)
             },
         )
 }

@@ -1,45 +1,42 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
-import java.lang.foreign.MemoryLayout
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-import java.lang.invoke.MethodHandles
-import java.lang.invoke.MethodType
-import java.util.concurrent.atomic.AtomicLong
+private val contextCallbackDescriptor = NativeFunctionDescriptor.of(
+    NativeValueLayout.JAVA_INT,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.ADDRESS,
+    NativeValueLayout.JAVA_INT,
+    NativeValueLayout.ADDRESS,
+)
+
+private const val comCallDataSizeBytes = 16L
+private const val comCallDataDispidOffset = 0L
+private const val comCallDataReservedOffset = 4L
+private const val comCallDataUserDefinedOffset = 8L
 
 internal class ContextCallbackReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = IID.IContextCallback,
 ) : IUnknownReference(pointer, interfaceId) {
     fun contextCallback(
-        callbackPointer: MemorySegment,
-        callDataPointer: MemorySegment,
+        callbackPointer: NativePointer,
+        callDataPointer: NativePointer,
         interfaceId: Guid,
         methodIndex: Int,
     ) {
-        Arena.ofConfined().use { arena ->
-            val iidMemory = arena.allocate(AbiLayouts.GUID)
+        NativeInterop.confinedScope().use { scope ->
+            val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
             ExceptionHelpers.throwExceptionForHR(
                 invokeAbi(
                     slot = 3,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                    ),
+                    descriptor = contextCallbackDescriptor,
                     callbackPointer,
                     callDataPointer,
                     iidMemory,
                     methodIndex,
-                    MemorySegment.NULL,
+                    NativeInterop.nullPointer,
                 ),
                 operation = "IContextCallback.ContextCallback",
             )
@@ -48,34 +45,27 @@ internal class ContextCallbackReference(
 }
 
 internal object Context {
-    private val linker: Linker = Linker.nativeLinker()
-    private val lookup = MethodHandles.lookup()
-    private val sharedArena = Arena.global()
     private val callbackStates = ConcurrentCacheMap<Long, CallbackState>()
-    private val nextCallbackId = AtomicLong(1)
-    private val contextCallbackStub: MemorySegment = linker.upcallStub(
-        lookup.findStatic(
-            Context::class.java,
-            "contextCallbackBridge",
-            MethodType.methodType(
-                Int::class.javaPrimitiveType,
-                MemorySegment::class.java,
+    private val callbackIdLock = PlatformLock()
+    private var nextCallbackId = 1L
+    private val contextCallbackStub: NativeCallbackHandle =
+        NativeInterop.createCallback(
+            descriptor = NativeFunctionDescriptor.of(
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
             ),
-        ),
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-        ),
-        sharedArena,
-    )
+        ) { rawArguments ->
+            val callDataPointer = rawArguments.singleOrNull() as? NativePointer ?: return@createCallback KnownHResults.E_POINTER.value
+            contextCallbackBridge(callDataPointer)
+        }
 
-    fun getContextToken(): MemorySegment {
+    fun getContextToken(): NativePointer {
         if (!PlatformRuntime.isWindows) {
-            return MemorySegment.NULL
+            return NativeInterop.nullPointer
         }
         val result = WinRtPlatformApi.coGetContextTokenRaw()
         HResult(result.hResultValue).requireSuccess("CoGetContextToken")
-        return result.pointer.asMemorySegment()
+        return result.pointer
     }
 
     fun getContextCallback(): ContextCallbackReference? {
@@ -87,31 +77,34 @@ internal object Context {
         return if (NativeInterop.isNull(result.pointer)) {
             null
         } else {
-            ContextCallbackReference(result.pointer.asMemorySegment(), IID.IContextCallback)
+            ContextCallbackReference(result.pointer, IID.IContextCallback)
         }
     }
 
     @Suppress("UNCHECKED_CAST")
     fun <T> callInContext(
         contextCallback: ContextCallbackReference?,
-        contextToken: MemorySegment,
+        contextToken: NativePointer,
         callback: (T) -> Unit,
         onFail: ((T) -> Unit)? = null,
         state: T,
     ) {
-        if (contextCallback == null || contextToken == MemorySegment.NULL || getContextToken().address() == contextToken.address()) {
+        if (contextCallback == null ||
+            NativeInterop.isNull(contextToken) ||
+            NativeInterop.pointerKey(getContextToken()) == NativeInterop.pointerKey(contextToken)
+        ) {
             callback(state)
             return
         }
 
-        Arena.ofConfined().use { arena ->
-            val callbackId = nextCallbackId.getAndIncrement()
-            val userData = arena.allocate(ValueLayout.JAVA_LONG)
-            userData.set(ValueLayout.JAVA_LONG, 0, callbackId)
-            val callData = arena.allocate(COM_CALL_DATA)
-            callData.set(ValueLayout.JAVA_INT, COM_CALL_DATA_DISPID_OFFSET, 0)
-            callData.set(ValueLayout.JAVA_INT, COM_CALL_DATA_RESERVED_OFFSET, 0)
-            callData.set(ValueLayout.ADDRESS, COM_CALL_DATA_USER_DEFINED_OFFSET, userData)
+        NativeInterop.confinedScope().use { scope ->
+            val callbackId = callbackIdLock.withLock { nextCallbackId++ }
+            val userData = NativeInterop.allocateInt64Slot(scope)
+            NativeInterop.writeInt64(userData, callbackId)
+            val callData = NativeInterop.allocateBytes(scope, comCallDataSizeBytes)
+            NativeInterop.writeInt32(callData, comCallDataDispidOffset, 0)
+            NativeInterop.writeInt32(callData, comCallDataReservedOffset, 0)
+            NativeInterop.writePointer(callData, comCallDataUserDefinedOffset, userData)
             callbackStates[callbackId] = CallbackState(
                 callback = { value -> callback(value as T) },
                 onFail = onFail?.let { handler -> { value -> handler(value as T) } },
@@ -120,7 +113,7 @@ internal object Context {
             try {
                 runCatching {
                     contextCallback.contextCallback(
-                        callbackPointer = contextCallbackStub,
+                        callbackPointer = contextCallbackStub.pointer,
                         callDataPointer = callData,
                         interfaceId = IID.ICallbackWithNoReentrancyToApplicationSTA,
                         methodIndex = 5,
@@ -138,13 +131,12 @@ internal object Context {
         contextCallback?.close()
     }
 
-    @JvmStatic
-    private fun contextCallbackBridge(callDataPointer: MemorySegment): Int {
-        val userData = callDataPointer.get(ValueLayout.ADDRESS, COM_CALL_DATA_USER_DEFINED_OFFSET)
-        if (userData == MemorySegment.NULL) {
+    private fun contextCallbackBridge(callDataPointer: NativePointer): Int {
+        val userData = NativeInterop.readPointerAt(callDataPointer, 1)
+        if (NativeInterop.isNull(userData)) {
             return KnownHResults.E_POINTER.value
         }
-        val callbackId = userData.reinterpret(ValueLayout.JAVA_LONG.byteSize()).get(ValueLayout.JAVA_LONG, 0)
+        val callbackId = NativeInterop.readInt64(userData)
         val state = callbackStates[callbackId] ?: return KnownHResults.RO_E_CLOSED.value
         return try {
             state.callback(state.state)
@@ -160,13 +152,4 @@ internal object Context {
         val onFail: ((Any?) -> Unit)?,
         val state: Any?,
     )
-
-    private val COM_CALL_DATA: MemoryLayout = MemoryLayout.structLayout(
-        ValueLayout.JAVA_INT.withName("dwDispid"),
-        ValueLayout.JAVA_INT.withName("dwReserved"),
-        ValueLayout.ADDRESS.withName("pUserDefined"),
-    )
-    private const val COM_CALL_DATA_DISPID_OFFSET = 0L
-    private const val COM_CALL_DATA_RESERVED_OFFSET = 4L
-    private const val COM_CALL_DATA_USER_DEFINED_OFFSET = 8L
 }

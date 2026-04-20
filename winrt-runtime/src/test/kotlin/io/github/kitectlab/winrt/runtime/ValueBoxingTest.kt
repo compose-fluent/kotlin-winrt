@@ -163,7 +163,7 @@ class ValueBoxingTest {
             IUnknownReference(priorityPointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(priorityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer, preventReleaseOnDispose = true)
+                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asMemorySegment(), preventReleaseOnDispose = true)
                     assertEquals(2, projected.getValue())
                 }
             }
@@ -178,7 +178,7 @@ class ValueBoxingTest {
             IUnknownReference(visibilityPointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(visibilityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer, preventReleaseOnDispose = true)
+                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asMemorySegment(), preventReleaseOnDispose = true)
                     assertEquals(1u, projected.getValue())
                 }
             }

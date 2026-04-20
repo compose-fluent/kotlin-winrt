@@ -146,7 +146,7 @@ object ExceptionHelpers {
         runCatching {
             ManagedErrorInfoComObject(error).detachReference().use { errorInfo ->
                 HResult(
-                    WinRtPlatformApi.setErrorInfoRaw(errorInfo.pointer.asNativePointer()),
+                    WinRtPlatformApi.setErrorInfoRaw(errorInfo.pointer),
                 ).requireSuccess("SetErrorInfo")
             }
         }

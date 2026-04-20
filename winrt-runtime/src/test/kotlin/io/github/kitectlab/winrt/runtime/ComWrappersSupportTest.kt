@@ -98,8 +98,8 @@ class ComWrappersSupportTest {
 
         val managed = TestManagedType("payload")
         ComWrappersSupport.createCCWForObject(managed, interfaceId).use { ccw ->
-            val found = ComWrappersSupport.findObject(ccw.pointer, TestManagedType::class)
-            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
+            val found = ComWrappersSupport.findObject(ccw.pointer.asMemorySegment(), TestManagedType::class)
+            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer.asMemorySegment())
 
             assertSame(managed, found)
             assertNotNull(info)

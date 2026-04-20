@@ -20,7 +20,7 @@ class WinRtProjectionMarshaler internal constructor(
                 lease = AbiReferenceLeaseSupport.borrowed(
                     reference = reference,
                     cloneReference = ::cloneComReference,
-                    abiOf = { it.pointer.asNativePointer() },
+                    abiOf = ComObjectReference::pointer,
                 ),
             )
 
@@ -32,7 +32,7 @@ class WinRtProjectionMarshaler internal constructor(
                 lease = ManagedReferenceHostSupport.createLease(
                     createReference = { host.createReference(interfaceId) },
                     releaseManagedReference = host::releaseManagedReference,
-                    abiOf = { it.pointer.asNativePointer() },
+                    abiOf = ComObjectReference::pointer,
                 ),
             )
 
@@ -41,7 +41,7 @@ class WinRtProjectionMarshaler internal constructor(
         ): WinRtProjectionMarshaler =
             WinRtProjectionMarshaler(
                 lease = AbiReferenceLeaseSupport.create(
-                    abi = reference.pointer.asNativePointer(),
+                    abi = reference.pointer,
                     ownedReference = reference,
                 ),
             )
@@ -64,17 +64,11 @@ internal fun borrowedProjectionMarshaler(
 internal fun cloneComReference(reference: ComObjectReference): ComObjectReference =
     ComReferenceWrapperSupport.wrap(
         kind = reference.wrapperKind,
-        pointer = reference.getRef().asNativePointer(),
+        pointer = reference.getRefPointer(),
         interfaceId = reference.interfaceId,
-        wrapUnknown = { pointer, interfaceId ->
-            IUnknownReference(pointer.asMemorySegment(), interfaceId)
-        },
-        wrapInspectable = { pointer, interfaceId ->
-            IInspectableReference(pointer.asMemorySegment(), interfaceId)
-        },
-        wrapActivationFactory = { pointer, interfaceId ->
-            ActivationFactoryReference(pointer.asMemorySegment(), interfaceId)
-        },
+        wrapUnknown = ::IUnknownReference,
+        wrapInspectable = ::IInspectableReference,
+        wrapActivationFactory = ::ActivationFactoryReference,
     )
 
 internal fun <T : ComObjectReference> T.useAndGetRef(): MemorySegment = use { it.getRef() }

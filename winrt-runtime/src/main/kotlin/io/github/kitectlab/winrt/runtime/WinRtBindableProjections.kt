@@ -82,11 +82,11 @@ internal object WinRtBindableObjectMarshaller {
         if (reference == null) {
             return null
         }
-        findManagedValue(reference.pointer)?.let { managed ->
+        findManagedValue(reference.pointer.asMemorySegment())?.let { managed ->
             reference.close()
             return managed
         }
-        WinRtValueBoxing.tryProjectBorrowedInspectable(reference.pointer)?.let { propertyValue ->
+        WinRtValueBoxing.tryProjectBorrowedInspectable(reference.pointer.asMemorySegment())?.let { propertyValue ->
             reference.close()
             return propertyValue
         }

@@ -827,19 +827,19 @@ internal object WinRtValueBoxing {
             }
         }
 
-        WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer)?.let { return it }
+        WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asMemorySegment())?.let { return it }
 
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
             queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
             }
         }?.let { return it }
 
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
             queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceArrayReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
             }
         }?.let { return it }
 
@@ -1166,7 +1166,7 @@ internal object WinRtValueBoxing {
             return queryReferencePointer(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
                 readEnumReferenceValue(
                     WinRtReferenceReference(
-                        reference.pointer,
+                        reference.pointer.asMemorySegment(),
                         descriptor.nullableInterfaceId,
                         preventReleaseOnDispose = true,
                     ),
@@ -1180,14 +1180,14 @@ internal object WinRtValueBoxing {
             val adapter = adapterForClass(elementType) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceArrayReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
             }
         }
 
         val adapter = adapterForClass(projectedType) ?: return null
         val interfaceId = adapter.nullableInterfaceId ?: return null
         return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-            WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+            WinRtReferenceReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
         }
     }
 
@@ -1538,7 +1538,7 @@ internal object WinRtPropertyValueProjection {
                     .getOrThrow()
             }.getOrNull() ?: return null
         return propertyValue.use { reference ->
-            WinRtPropertyValueReference(reference.pointer, preventReleaseOnDispose = true).getValue()
+            WinRtPropertyValueReference(reference.pointer.asMemorySegment(), preventReleaseOnDispose = true).getValue()
         }
     }
 }

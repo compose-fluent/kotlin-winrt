@@ -297,7 +297,7 @@ object WinRtReadOnlyListProjection {
         private val adapter by lazy {
             WinRtVectorViewListAdapter(
                 vectorView = WinRtVectorViewReference(
-                    vectorView.pointer,
+                    vectorView.pointer.asMemorySegment(),
                     vectorView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -450,7 +450,7 @@ object WinRtListProjection {
         private val adapter by lazy {
             WinRtVectorListAdapter(
                 vector = WinRtVectorReference(
-                    vector.pointer,
+                    vector.pointer.asMemorySegment(),
                     vector.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -727,7 +727,7 @@ object WinRtReadOnlyDictionaryProjection {
         private val adapter by lazy {
             WinRtMapViewAdapter(
                 mapView = WinRtMapViewReference(
-                    mapView.pointer,
+                    mapView.pointer.asMemorySegment(),
                     mapView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -891,7 +891,7 @@ object WinRtDictionaryProjection {
         private val adapter by lazy {
             WinRtMapAdapter(
                 map = WinRtMapReference(
-                    map.pointer,
+                    map.pointer.asMemorySegment(),
                     map.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -1148,7 +1148,7 @@ private fun <K, V> keyValuePairAdapter(
         projector = { reference ->
             val pair = reference?.let {
                 WinRtKeyValuePairReference(
-                    it.pointer,
+                    it.pointer.asMemorySegment(),
                     keyValuePairInterfaceId(keyAdapter, valueAdapter),
                     preventReleaseOnDispose = true,
                 )
