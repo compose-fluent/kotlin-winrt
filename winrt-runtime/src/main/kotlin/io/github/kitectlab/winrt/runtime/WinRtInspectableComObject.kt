@@ -78,11 +78,13 @@ internal class WinRtInspectableComObject(
     }
 
     private fun interfacePointer(interfaceId: Guid): MemorySegment =
-        interfaceEntries[interfaceId]?.objectMemory
-            ?: throw WinRtUnsupportedOperationException(
-                "Managed COM object does not implement interface '$interfaceId'.",
-                KnownHResults.E_NOINTERFACE,
-            )
+        when (interfaceId) {
+            IID.IUnknown, IID.IInspectable -> interfaceEntries.getValue(primaryInterfaceId).objectMemory
+            else -> interfaceEntries[interfaceId]?.objectMemory
+        } ?: throw WinRtUnsupportedOperationException(
+            "Managed COM object does not implement interface '$interfaceId'.",
+            KnownHResults.E_NOINTERFACE,
+        )
 
     private fun createInterfaceEntry(
         definition: WinRtInspectableInterfaceDefinition,

@@ -29,9 +29,11 @@ object GuidGenerator {
     fun getSignature(
         type: Class<*>,
     ): String {
+        val guidType = TypeExtensions.getGuidType(type)
+
         WinRtTypeClassifier.classify(type)?.let { return it.signature.render() }
 
-        type.getAnnotation(WindowsRuntimeType::class.java)?.guidSignature?.takeIf { it.isNotBlank() }?.let { return it }
+        guidType.getAnnotation(WindowsRuntimeType::class.java)?.guidSignature?.takeIf { it.isNotBlank() }?.let { return it }
 
         if (TypeExtensions.isDelegate(type)) {
             return WinRtTypeSignature.delegate(getGuid(type)).render()

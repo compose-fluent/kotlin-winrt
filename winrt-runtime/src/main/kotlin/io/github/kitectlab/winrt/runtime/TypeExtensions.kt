@@ -36,11 +36,7 @@ object TypeExtensions {
 
     fun getGuidType(
         type: Class<*>,
-    ): Class<*> = if (isDelegate(type)) {
-        findHelperType(type, throwIfMissing = false) ?: type
-    } else {
-        type
-    }
+    ): Class<*> = findHelperType(type, throwIfMissing = false) ?: type
 
     fun findVftblType(
         helperType: Class<*>,

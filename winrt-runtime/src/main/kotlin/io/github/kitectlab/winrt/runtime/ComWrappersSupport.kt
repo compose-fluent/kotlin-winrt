@@ -39,6 +39,10 @@ object ComWrappersSupport {
     private val rcwCache = ConcurrentHashMap<Long, WeakReference<Any>>()
     private val runtimeClassNameLookups = CopyOnWriteArrayList<(Class<*>) -> String?>()
 
+    init {
+        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
+    }
+
     fun registerTypedRcwFactory(
         typeHandle: WinRtTypeHandle,
         factory: (IInspectableReference) -> Any,
@@ -116,6 +120,7 @@ object ComWrappersSupport {
         staticallyDeterminedType: WinRtTypeHandle? = null,
         tryUseCache: Boolean = true,
     ): Any? {
+        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
         if (pointer == MemorySegment.NULL) {
             return null
         }
@@ -148,6 +153,7 @@ object ComWrappersSupport {
         value: Any,
         interfaceId: Guid? = null,
     ): ComObjectReference {
+        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
         tryUnwrapObject(value)?.use { unwrapped ->
             return if (interfaceId == null || interfaceId == unwrapped.interfaceId) {
                 cloneComReference(unwrapped)
@@ -155,6 +161,8 @@ object ComWrappersSupport {
                 unwrapped.queryInterface(interfaceId).getOrThrow().use(::cloneComReference)
             }
         }
+
+        WinRtBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)?.let { return it }
 
         val definition = createCcwDefinition(value)
         val host = WinRtInspectableComObject(
@@ -176,6 +184,7 @@ object ComWrappersSupport {
         Projections.clearRegistriesForTests()
         TypeNameSupport.clearRegistriesForTests()
         TypeExtensions.clearRegistriesForTests()
+        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
     }
 
     internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
@@ -190,8 +199,15 @@ object ComWrappersSupport {
     ): Any? {
         val inspectable = wrapInspectable(pointer)
         if (inspectable != null) {
-            resolveFactory(staticallyDeterminedType, inspectable.tryGetRuntimeClassName())?.let { factory ->
+            val runtimeClassName = inspectable.tryGetRuntimeClassName()
+            resolveFactory(staticallyDeterminedType, runtimeClassName)?.let { factory ->
                 return factory(inspectable)
+            }
+            if (staticallyDeterminedType == null) {
+                WinRtValueBoxing.tryProjectInspectable(inspectable, runtimeClassName)?.let { projectedValue ->
+                    inspectable.close()
+                    return projectedValue
+                }
             }
             if (staticallyDeterminedType == null) {
                 return inspectable
@@ -254,6 +270,7 @@ object ComWrappersSupport {
         findCcwFactory(value)?.let { factory ->
             return factory(value)
         }
+        WinRtBuiltInProjectionRuntimeHooks.createSyntheticCcwDefinition(value)?.let { return it }
         return WinRtCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
@@ -262,7 +279,7 @@ object ComWrappersSupport {
                 ),
             ),
             defaultInterfaceId = IID.IInspectable,
-            runtimeClassName = value::class.qualifiedName,
+            runtimeClassName = WinRtBuiltInProjectionRuntimeHooks.runtimeClassNameFor(value),
         )
     }
 

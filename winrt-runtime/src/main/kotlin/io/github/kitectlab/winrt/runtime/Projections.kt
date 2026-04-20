@@ -19,6 +19,10 @@ object Projections {
     private val runtimeClassToDefaultInterfaceMappings = ConcurrentHashMap<Class<*>, Class<*>>()
     private val isTypeWindowsRuntimeTypeCache = ConcurrentHashMap<Class<*>, Boolean>()
 
+    init {
+        WinRtBuiltInProjectionMappings.register()
+    }
+
     fun registerCustomHelperTypeMapping(
         publicType: Class<*>,
         helperType: Class<*>,
@@ -106,6 +110,7 @@ object Projections {
         projectedCustomTypeRuntimeClasses.clear()
         runtimeClassToDefaultInterfaceMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()
+        WinRtBuiltInProjectionMappings.register()
     }
 
     private fun isTypeWindowsRuntimeTypeNoArray(type: Class<*>): Boolean {

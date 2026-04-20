@@ -84,6 +84,14 @@ class Marshaler<T> internal constructor(
     }
 
     companion object {
+        fun int8(): Marshaler<Byte> = MarshalBlittable.int8()
+
+        fun uint8(): Marshaler<UByte> = MarshalBlittable.uint8()
+
+        fun int16(): Marshaler<Short> = MarshalBlittable.int16()
+
+        fun uint16(): Marshaler<UShort> = MarshalBlittable.uint16()
+
         fun boolean(): Marshaler<Boolean> = MarshalBlittable.boolean()
 
         fun char16(): Marshaler<Char> = MarshalBlittable.char16()
@@ -120,6 +128,78 @@ class Marshaler<T> internal constructor(
 }
 
 object MarshalBlittable {
+    fun int8(): Marshaler<Byte> = scalar(
+        category = WinRtAbiCategory.BLITTABLE,
+        componentClass = Byte::class.javaObjectType,
+        layout = ValueLayout.JAVA_BYTE,
+        toAbi = { it },
+        fromAbi = { abi ->
+            when (abi) {
+                is Byte -> abi
+                is UByte -> abi.toByte()
+                is MemorySegment -> abi.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).get(ValueLayout.JAVA_BYTE, 0)
+                else -> error("Expected ABI Int8, got '${abi?.javaClass?.name}'.")
+            }
+        },
+        copyManaged = { value, destination ->
+            destination.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(ValueLayout.JAVA_BYTE, 0, value)
+        },
+    )
+
+    fun uint8(): Marshaler<UByte> = scalar(
+        category = WinRtAbiCategory.BLITTABLE,
+        componentClass = UByte::class.java,
+        layout = ValueLayout.JAVA_BYTE,
+        toAbi = { it.toByte() },
+        fromAbi = { abi ->
+            when (abi) {
+                is Byte -> abi.toUByte()
+                is UByte -> abi
+                is MemorySegment -> abi.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).get(ValueLayout.JAVA_BYTE, 0).toUByte()
+                else -> error("Expected ABI UInt8, got '${abi?.javaClass?.name}'.")
+            }
+        },
+        copyManaged = { value, destination ->
+            destination.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(ValueLayout.JAVA_BYTE, 0, value.toByte())
+        },
+    )
+
+    fun int16(): Marshaler<Short> = scalar(
+        category = WinRtAbiCategory.BLITTABLE,
+        componentClass = Short::class.javaObjectType,
+        layout = ValueLayout.JAVA_SHORT,
+        toAbi = { it },
+        fromAbi = { abi ->
+            when (abi) {
+                is Short -> abi
+                is UShort -> abi.toShort()
+                is MemorySegment -> abi.reinterpret(ValueLayout.JAVA_SHORT.byteSize()).get(ValueLayout.JAVA_SHORT, 0)
+                else -> error("Expected ABI Int16, got '${abi?.javaClass?.name}'.")
+            }
+        },
+        copyManaged = { value, destination ->
+            destination.reinterpret(ValueLayout.JAVA_SHORT.byteSize()).set(ValueLayout.JAVA_SHORT, 0, value)
+        },
+    )
+
+    fun uint16(): Marshaler<UShort> = scalar(
+        category = WinRtAbiCategory.BLITTABLE,
+        componentClass = UShort::class.java,
+        layout = ValueLayout.JAVA_SHORT,
+        toAbi = { it.toShort() },
+        fromAbi = { abi ->
+            when (abi) {
+                is Short -> abi.toUShort()
+                is UShort -> abi
+                is MemorySegment -> abi.reinterpret(ValueLayout.JAVA_SHORT.byteSize()).get(ValueLayout.JAVA_SHORT, 0).toUShort()
+                else -> error("Expected ABI UInt16, got '${abi?.javaClass?.name}'.")
+            }
+        },
+        copyManaged = { value, destination ->
+            destination.reinterpret(ValueLayout.JAVA_SHORT.byteSize()).set(ValueLayout.JAVA_SHORT, 0, value.toShort())
+        },
+    )
+
     fun boolean(): Marshaler<Boolean> = scalar(
         category = WinRtAbiCategory.BLITTABLE,
         componentClass = Boolean::class.javaObjectType,

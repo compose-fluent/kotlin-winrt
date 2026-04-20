@@ -1,5 +1,8 @@
 package io.github.kitectlab.winrt.runtime
 
+import java.net.URI
+import java.time.Duration
+import java.time.OffsetDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -110,13 +113,50 @@ class ProjectionRegistryTest {
     fun intrinsic_type_classification_is_shared_across_runtime_helpers() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertEquals("UInt8", TypeNameSupport.getNameForType(java.lang.Byte::class.java))
-        assertEquals(java.lang.Byte::class.java, TypeNameSupport.findTypeByNameCached("UInt8"))
+        assertEquals("Int8", TypeNameSupport.getNameForType(java.lang.Byte::class.java))
+        assertEquals(UByte::class.java, TypeNameSupport.findTypeByNameCached("UInt8"))
         assertEquals(java.lang.Byte::class.java, TypeNameSupport.findTypeByNameCached("Int8"))
         assertEquals(Any::class.java, TypeNameSupport.findTypeByNameCached("Object"))
         assertTrue(Projections.isTypeWindowsRuntimeType(java.lang.Character.TYPE))
-        assertEquals("u1", GuidGenerator.getSignature(java.lang.Byte::class.java))
+        assertEquals("i1", GuidGenerator.getSignature(java.lang.Byte::class.java))
+        assertEquals("u1", GuidGenerator.getSignature(UByte::class.java))
         assertEquals("cinterface(IInspectable)", GuidGenerator.getSignature(Any::class.java))
+    }
+
+    @Test
+    fun runtime_117_system_projection_mappings_follow_cswinrt_owner_set() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertEquals(DateTimeProjection::class.java, TypeExtensions.findHelperType(OffsetDateTime::class.java))
+        assertEquals(TimeSpanProjection::class.java, TypeExtensions.findHelperType(Duration::class.java))
+        assertEquals(UriProjection::class.java, TypeExtensions.findHelperType(URI::class.java))
+        assertEquals(IClosableProjection::class.java, TypeExtensions.findHelperType(AutoCloseable::class.java))
+        assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class.java))
+        assertEquals(
+            "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
+            GuidGenerator.getSignature(URI::class.java),
+        )
+        assertEquals(
+            "Windows.Foundation.IReference`1<Int32>",
+            TypeNameSupport.getNameForType(Int::class.javaObjectType, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
+        )
+        assertEquals(
+            "Windows.Foundation.IReferenceArray`1<String>",
+            TypeNameSupport.getNameForType(Array<String>::class.java, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
+        )
+    }
+
+    @Test
+    fun type_name_support_resolves_boxed_reference_runtime_names_like_cswinrt() {
+        ComWrappersSupport.clearRegistriesForTests()
+        ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class.java)
+
+        assertEquals(String::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<String>"))
+        assertEquals(Class::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>"))
+        assertEquals(Exception::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Windows.Foundation.HResult>"))
+        assertEquals(IntArray::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReferenceArray`1<Int32>"))
+        assertEquals(TestProjectedEnum::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Contoso.Priority>"))
+        assertEquals("Contoso.Priority", TypeNameSupport.getNameForType(TestProjectedEnum::class.java))
     }
 
     @WinRtGuid("11111111-1111-1111-1111-111111111111")
@@ -147,4 +187,12 @@ class ProjectionRegistryTest {
     private class SampleStruct
 
     private class PlainManagedType
+
+    @WindowsRuntimeType("enum(Contoso.Priority;i4)")
+    private enum class TestProjectedEnum(
+        val abiValue: Int,
+    ) {
+        Low(0),
+        High(2),
+    }
 }

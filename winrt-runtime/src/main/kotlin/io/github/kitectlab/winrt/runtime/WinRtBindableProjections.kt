@@ -60,7 +60,11 @@ internal object WinRtBindableObjectMarshaller {
             return null
         }
         borrowInspectableReference(value)?.let { return WinRtBindableProjectionMarshaler.borrowed(it) }
-        return WinRtBindableProjectionMarshaler.hosted(WinRtInspectableComObject.inspectableBox(value), IID.IInspectable)
+        val reference = ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
+        return WinRtBindableProjectionMarshaler(
+            abi = reference.pointer,
+            ownedReference = reference,
+        )
     }
 
     fun fromManaged(value: Any?): MemorySegment {
@@ -68,7 +72,7 @@ internal object WinRtBindableObjectMarshaller {
             return MemorySegment.NULL
         }
         borrowInspectableReference(value)?.use { return it.getRef() }
-        return WinRtInspectableComObject.inspectableBox(value).detachReference(IID.IInspectable)
+        return ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
     }
 
     fun fromOwnedAbi(pointer: MemorySegment): Any? {
@@ -86,6 +90,10 @@ internal object WinRtBindableObjectMarshaller {
             reference.close()
             return managed
         }
+        WinRtValueBoxing.tryProjectBorrowedInspectable(reference.pointer)?.let { propertyValue ->
+            reference.close()
+            return propertyValue
+        }
         return WinRtBindableInspectableValue.fromOwnedReference(reference)
     }
 
@@ -94,6 +102,7 @@ internal object WinRtBindableObjectMarshaller {
             return null
         }
         findManagedValue(pointer)?.let { return it }
+        WinRtValueBoxing.tryProjectBorrowedInspectable(pointer)?.let { return it }
         val borrowed = IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
         val inspectable = try {
             borrowed.asInspectable()
