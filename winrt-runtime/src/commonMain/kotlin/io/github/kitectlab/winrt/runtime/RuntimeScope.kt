@@ -12,10 +12,10 @@ class RuntimeScope private constructor(
 
     override fun close() {
         if (winRtInitialized) {
-            JvmWinRtRuntime.uninitialize()
+            PlatformRuntimeInitialization.uninitializeWinRt()
         }
         if (comInitialized && winRtInitialization != KnownHResults.RPC_E_CHANGED_MODE) {
-            JvmComRuntime.uninitialize()
+            PlatformRuntimeInitialization.uninitializeCom()
         }
     }
 
@@ -27,14 +27,8 @@ class RuntimeScope private constructor(
             initialize(ApartmentType.MultiThreaded)
 
         private fun initialize(apartmentType: ApartmentType): RuntimeScope {
-            val comResult = when (apartmentType) {
-                ApartmentType.SingleThreaded -> JvmComRuntime.initializeSingleThreaded()
-                ApartmentType.MultiThreaded -> JvmComRuntime.initializeMultithreaded()
-            }
-            val winRtResult = when (apartmentType) {
-                ApartmentType.SingleThreaded -> JvmWinRtRuntime.initializeSingleThreaded()
-                ApartmentType.MultiThreaded -> JvmWinRtRuntime.initializeMultithreaded()
-            }
+            val comResult = PlatformRuntimeInitialization.initializeCom(apartmentType)
+            val winRtResult = PlatformRuntimeInitialization.initializeWinRt(apartmentType)
             return RuntimeScope(comResult, winRtResult)
         }
     }

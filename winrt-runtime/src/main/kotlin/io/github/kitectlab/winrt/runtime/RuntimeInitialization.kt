@@ -2,31 +2,20 @@ package io.github.kitectlab.winrt.runtime
 
 object JvmComRuntime {
     fun initializeSingleThreaded(): HResult =
-        initialize(ApartmentType.SingleThreaded)
+        PlatformRuntimeInitialization.initializeCom(ApartmentType.SingleThreaded)
 
     fun initializeMultithreaded(): HResult =
-        initialize(ApartmentType.MultiThreaded)
+        PlatformRuntimeInitialization.initializeCom(ApartmentType.MultiThreaded)
 
-    fun uninitialize() {
-        if (PlatformRuntime.isWindows) {
-            WinRtPlatformApi.coUninitializeRaw()
-        }
-    }
-
-    private fun initialize(apartmentType: ApartmentType): HResult {
-        if (!PlatformRuntime.isWindows) {
-            return KnownHResults.S_OK
-        }
-        return HResult(WinRtPlatformApi.coInitializeExRaw(apartmentType))
-    }
+    fun uninitialize() = PlatformRuntimeInitialization.uninitializeCom()
 }
 
 object JvmWinRtRuntime {
     fun initializeSingleThreaded(): HResult =
-        initialize(ApartmentType.SingleThreaded)
+        PlatformRuntimeInitialization.initializeWinRt(ApartmentType.SingleThreaded)
 
     fun initializeMultithreaded(): HResult =
-        initialize(ApartmentType.MultiThreaded)
+        PlatformRuntimeInitialization.initializeWinRt(ApartmentType.MultiThreaded)
 
     fun getActivationFactory(runtimeClassName: String, interfaceId: Guid = IID.IActivationFactory): Result<IUnknownReference> =
         runCatching {
@@ -38,17 +27,5 @@ object JvmWinRtRuntime {
             ActivationFactory.activateInstance(runtimeClassName)
         }
 
-    fun uninitialize() {
-        if (PlatformRuntime.isWindows) {
-            ActivationFactory.clearRuntimeCache()
-            WinRtPlatformApi.roUninitializeRaw()
-        }
-    }
-
-    private fun initialize(apartmentType: ApartmentType): HResult {
-        if (!PlatformRuntime.isWindows) {
-            return KnownHResults.S_OK
-        }
-        return HResult(WinRtPlatformApi.roInitializeRaw(apartmentType))
-    }
+    fun uninitialize() = PlatformRuntimeInitialization.uninitializeWinRt()
 }
