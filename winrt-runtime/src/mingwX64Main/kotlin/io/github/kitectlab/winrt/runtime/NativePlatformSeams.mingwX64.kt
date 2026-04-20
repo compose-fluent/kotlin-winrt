@@ -33,6 +33,17 @@ actual object NativeInterop {
 actual object WinRtPlatformApi {
     actual fun roGetActivationFactoryRaw(runtimeClassId: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
 
+    actual fun queryInterfaceRaw(unknown: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
+
+    actual fun addRefRaw(unknown: NativePointer): UInt = TODO()
+
+    actual fun releaseRaw(unknown: NativePointer): UInt = TODO()
+
+    actual fun dllGetActivationFactoryRaw(
+        getActivationFactoryProc: NativePointer,
+        runtimeClassId: NativePointer,
+    ): NativePointerResult = TODO()
+
     actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult = TODO()
 
     actual fun coInitializeExRaw(apartmentType: ApartmentType): Int = TODO()

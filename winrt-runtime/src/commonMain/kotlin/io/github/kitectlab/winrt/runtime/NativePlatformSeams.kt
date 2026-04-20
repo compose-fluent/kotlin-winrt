@@ -33,6 +33,14 @@ expect object NativeInterop {
 expect object WinRtPlatformApi {
     fun roGetActivationFactoryRaw(runtimeClassId: NativePointer, interfaceId: Guid): NativePointerResult
 
+    fun queryInterfaceRaw(unknown: NativePointer, interfaceId: Guid): NativePointerResult
+
+    fun addRefRaw(unknown: NativePointer): UInt
+
+    fun releaseRaw(unknown: NativePointer): UInt
+
+    fun dllGetActivationFactoryRaw(getActivationFactoryProc: NativePointer, runtimeClassId: NativePointer): NativePointerResult
+
     fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int = 1): NativePointerResult
 
     fun coInitializeExRaw(apartmentType: ApartmentType): Int

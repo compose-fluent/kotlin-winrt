@@ -398,6 +398,68 @@ actual object WinRtPlatformApi {
             NativePointerResult(hr, factoryOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
         }
 
+    actual fun queryInterfaceRaw(
+        unknown: NativePointer,
+        interfaceId: Guid,
+    ): NativePointerResult {
+        ensureWindows()
+        if (NativeInterop.isNull(unknown)) {
+            return NativePointerResult(KnownHResults.E_POINTER.value, NativeInterop.nullPointer)
+        }
+        return Arena.ofConfined().use { arena ->
+            val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
+            interfaceId.writeTo(iidMemory)
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val queryInterface = linker.downcallHandle(
+                RawVtableCallSupport.entry(unknown.asMemorySegment(), IUnknownVftblSlots.QueryInterface),
+                FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+            )
+            val hr = queryInterface.invokeWithArguments(
+                unknown.asMemorySegment(),
+                iidMemory,
+                resultOut,
+            ) as Int
+            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
+        }
+    }
+
+    actual fun addRefRaw(unknown: NativePointer): UInt =
+        invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.AddRef)
+
+    actual fun releaseRaw(unknown: NativePointer): UInt =
+        invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.Release)
+
+    actual fun dllGetActivationFactoryRaw(
+        getActivationFactoryProc: NativePointer,
+        runtimeClassId: NativePointer,
+    ): NativePointerResult {
+        ensureWindows()
+        if (NativeInterop.isNull(getActivationFactoryProc) || NativeInterop.isNull(runtimeClassId)) {
+            return NativePointerResult(KnownHResults.E_POINTER.value, NativeInterop.nullPointer)
+        }
+        return Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val getActivationFactory = linker.downcallHandle(
+                getActivationFactoryProc.asMemorySegment(),
+                FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS,
+                ),
+            )
+            val hr = getActivationFactory.invokeWithArguments(
+                runtimeClassId.asMemorySegment(),
+                resultOut,
+            ) as Int
+            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
+        }
+    }
+
     actual fun coCreateInstanceRaw(
         classId: Guid,
         interfaceId: Guid,
@@ -867,6 +929,21 @@ actual object WinRtPlatformApi {
         check(PlatformRuntime.isWindows) {
             "Windows runtime interop is only supported on Windows hosts."
         }
+    }
+
+    private fun invokeUnknownRefCountMethod(unknown: NativePointer, slot: Int): UInt {
+        ensureWindows()
+        if (NativeInterop.isNull(unknown)) {
+            return 0u
+        }
+        val method = linker.downcallHandle(
+            RawVtableCallSupport.entry(unknown.asMemorySegment(), slot),
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+        return (method.invokeWithArguments(unknown.asMemorySegment()) as Int).toUInt()
     }
 
     fun resolveModulePath(fileName: String): String =
