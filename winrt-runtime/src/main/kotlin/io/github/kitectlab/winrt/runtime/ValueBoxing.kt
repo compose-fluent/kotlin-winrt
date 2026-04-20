@@ -274,7 +274,7 @@ internal object WinRtValueBoxing {
             propertyType = null,
             propertyTypeArray = PropertyType.InspectableArray,
             exactUnbox = { it },
-            createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef() },
+            createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef().asMemorySegment() },
             readOwnedPointer = ::unboxInspectablePointer,
             disposeOwnedPointer = { pointer -> IUnknownReference(pointer, IID.IInspectable).close() },
         )
@@ -1448,7 +1448,7 @@ internal object WinRtReferenceProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, WinRtTypeHandle(value.javaClass.name, interfaceId))
+            borrowedProjectionAbi(value, WinRtTypeHandle(value.javaClass.name, interfaceId))?.asMemorySegment()
                 ?: WinRtValueBoxing.createReferenceHost(interfaceId, value).detachReference(interfaceId)
         }
 
@@ -1514,7 +1514,7 @@ internal object WinRtPropertyValueProjection {
             MemorySegment.NULL
         } else {
             if (WinRtValueBoxing.isPropertyValueCompatible(value)) {
-                ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue).useAndGetRef()
+                ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue).useAndGetRef().asMemorySegment()
             } else {
                 MemorySegment.NULL
             }
@@ -1544,9 +1544,9 @@ internal object WinRtPropertyValueProjection {
 }
 
 private fun unboxInspectablePointer(pointer: MemorySegment): Any {
-    WinRtInspectableComObject.findManagedValue(pointer)?.let { return it }
+    WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())?.let { return it }
     WinRtValueBoxing.tryProjectBorrowedInspectable(pointer)?.let { return it }
-    return ComWrappersSupport.createRcwForComObject(pointer)
+    return ComWrappersSupport.createRcwForComObject(pointer.asNativePointer())
         ?: WinRtInvalidCastException("Unable to project inspectable value.", HResult(TYPE_E_TYPEMISMATCH))
 }
 

@@ -1,7 +1,8 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.util.concurrent.CancellationException
-import java.util.concurrent.CompletableFuture
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 open class WinRtAsyncReferenceBase(
     pointer: NativePointer,
@@ -94,55 +95,26 @@ open class WinRtAsyncActionReference(
         return handle
     }
 
-    open fun toCompletableFuture(): CompletableFuture<Unit> {
-        val future = CompletableFuture<Unit>()
-        completeAsyncAction(future, status())
-        if (future.isDone) {
-            return future
-        }
-
-        val handle = whenCompleted { _, completedStatus ->
-            completeAsyncAction(future, completedStatus)
-        }
-
-        future.whenComplete { _, _ ->
-            if (future.isCancelled) {
-                runCatching(::cancel)
-            }
-        }
-        future.whenCompleteAsync { _, _ ->
-            handle.close()
-        }
-
-        if (!future.isDone) {
-            completeAsyncAction(future, status())
-        }
-
-        return future
-    }
-
     protected open fun registerCompletedHandler(handle: WinRtDelegateHandle) {
         handle.createReference().use(::setCompletedHandler)
     }
 
-    protected open fun completeAsyncAction(
-        future: CompletableFuture<Unit>,
+    internal open fun completeAsyncAction(
         currentStatus: WinRtAsyncStatus,
+        onCompleted: () -> Unit,
+        onCancelled: () -> Unit,
+        onError: (Throwable) -> Unit,
     ) {
         when (currentStatus) {
             WinRtAsyncStatus.Started -> Unit
             WinRtAsyncStatus.Completed -> {
                 getResults()
-                future.complete(Unit)
+                onCompleted()
             }
-
-            WinRtAsyncStatus.Canceled -> future.completeExceptionally(
-                WinRtCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED),
-            )
-
-            WinRtAsyncStatus.Error -> future.completeExceptionally(
-                WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async action"),
-            )
+            WinRtAsyncStatus.Canceled ->
+                onCancelled()
+            WinRtAsyncStatus.Error ->
+                onError(WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async action"))
         }
     }
 }
@@ -175,51 +147,23 @@ open class WinRtAsyncOperationReference<T>(
         return handle
     }
 
-    open fun toCompletableFuture(): CompletableFuture<T> {
-        val future = CompletableFuture<T>()
-        completeAsyncOperation(future, status())
-        if (future.isDone) {
-            return future
-        }
-
-        val handle = whenCompleted { _, completedStatus ->
-            completeAsyncOperation(future, completedStatus)
-        }
-
-        future.whenComplete { _, _ ->
-            if (future.isCancelled) {
-                runCatching(::cancel)
-            }
-        }
-        future.whenCompleteAsync { _, _ ->
-            handle.close()
-        }
-
-        if (!future.isDone) {
-            completeAsyncOperation(future, status())
-        }
-
-        return future
-    }
-
     protected open fun registerCompletedHandler(handle: WinRtDelegateHandle) {
         handle.createReference().use(::setCompletedHandler)
     }
 
-    protected open fun completeAsyncOperation(
-        future: CompletableFuture<T>,
+    internal open fun completeAsyncOperation(
         currentStatus: WinRtAsyncStatus,
+        onCompleted: (T) -> Unit,
+        onCancelled: () -> Unit,
+        onError: (Throwable) -> Unit,
     ) {
         when (currentStatus) {
             WinRtAsyncStatus.Started -> Unit
-            WinRtAsyncStatus.Completed -> future.complete(getResults())
-            WinRtAsyncStatus.Canceled -> future.completeExceptionally(
-                WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),
-            )
-
-            WinRtAsyncStatus.Error -> future.completeExceptionally(
-                WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async operation"),
-            )
+            WinRtAsyncStatus.Completed -> onCompleted(getResults())
+            WinRtAsyncStatus.Canceled ->
+                onCancelled()
+            WinRtAsyncStatus.Error ->
+                onError(WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async operation"))
         }
     }
 
@@ -238,18 +182,110 @@ open class WinRtAsyncOperationReference<T>(
     }
 }
 
-fun WinRtAsyncActionReference.await() {
-    toCompletableFuture().join()
+suspend fun WinRtAsyncActionReference.await() {
+    suspendCancellableCoroutine { continuation ->
+        completeAsyncAction(
+            currentStatus = status(),
+            onCompleted = { continuation.resume(Unit) },
+            onCancelled = {
+                continuation.resumeWithException(
+                    WinRtCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED),
+                )
+            },
+            onError = continuation::resumeWithException,
+        )
+        if (continuation.isCompleted) {
+            return@suspendCancellableCoroutine
+        }
+
+        val handle = whenCompleted { _, completedStatus ->
+            completeAsyncAction(
+                currentStatus = completedStatus,
+                onCompleted = { continuation.resume(Unit) },
+                onCancelled = {
+                    continuation.resumeWithException(
+                        WinRtCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED),
+                    )
+                },
+                onError = continuation::resumeWithException,
+            )
+        }
+        continuation.invokeOnCancellation {
+            runCatching(::cancel)
+            handle.close()
+        }
+        if (!continuation.isCompleted) {
+            completeAsyncAction(
+                currentStatus = status(),
+                onCompleted = { continuation.resume(Unit) },
+                onCancelled = {
+                    continuation.resumeWithException(
+                        WinRtCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED),
+                    )
+                },
+                onError = continuation::resumeWithException,
+            )
+        }
+        if (continuation.isCompleted) {
+            handle.close()
+        }
+    }
 }
 
-fun <T> WinRtAsyncOperationReference<T>.await(): T =
-    toCompletableFuture().join()
+suspend fun <T> WinRtAsyncOperationReference<T>.await(): T =
+    suspendCancellableCoroutine { continuation ->
+        completeAsyncOperation(
+            currentStatus = status(),
+            onCompleted = continuation::resume,
+            onCancelled = {
+                continuation.resumeWithException(
+                    WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),
+                )
+            },
+            onError = continuation::resumeWithException,
+        )
+        if (continuation.isCompleted) {
+            return@suspendCancellableCoroutine
+        }
+
+        val handle = whenCompleted { _, completedStatus ->
+            completeAsyncOperation(
+                currentStatus = completedStatus,
+                onCompleted = continuation::resume,
+                onCancelled = {
+                    continuation.resumeWithException(
+                        WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),
+                    )
+                },
+                onError = continuation::resumeWithException,
+            )
+        }
+        continuation.invokeOnCancellation {
+            runCatching(::cancel)
+            handle.close()
+        }
+        if (!continuation.isCompleted) {
+            completeAsyncOperation(
+                currentStatus = status(),
+                onCompleted = continuation::resume,
+                onCancelled = {
+                    continuation.resumeWithException(
+                        WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),
+                    )
+                },
+                onError = continuation::resumeWithException,
+            )
+        }
+        if (continuation.isCompleted) {
+            handle.close()
+        }
+    }
 
 fun WinRtAsyncActionReference.ensureCompleted(status: WinRtAsyncStatus = this.status()) {
     when (status) {
         WinRtAsyncStatus.Started -> throw IllegalStateException("Async action is still running.")
         WinRtAsyncStatus.Completed -> getResults()
-        WinRtAsyncStatus.Canceled -> throw CancellationException("WinRT async action was canceled.")
+        WinRtAsyncStatus.Canceled -> throw WinRtCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED)
         WinRtAsyncStatus.Error -> throw WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async action")
     }
 }
@@ -258,6 +294,7 @@ fun <T> WinRtAsyncOperationReference<T>.completeOperation(status: WinRtAsyncStat
     when (status) {
         WinRtAsyncStatus.Started -> throw IllegalStateException("Async operation is still running.")
         WinRtAsyncStatus.Completed -> getResults()
-        WinRtAsyncStatus.Canceled -> throw CancellationException("WinRT async operation was canceled.")
+        WinRtAsyncStatus.Canceled ->
+            throw WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED)
         WinRtAsyncStatus.Error -> throw WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async operation")
     }

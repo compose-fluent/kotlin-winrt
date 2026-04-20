@@ -15,7 +15,7 @@ class WinRtCollectionProjectionTest {
 
         try {
             ComObjectReference(
-                marshaler.abi.asNativePointer(),
+                marshaler.abi,
                 iterableInterfaceIdFor(adapter),
                 preventReleaseOnDispose = true,
             ).use { borrowed ->

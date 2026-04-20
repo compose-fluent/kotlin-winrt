@@ -17,7 +17,7 @@ fun Any.winrtAs(typeHandle: WinRtTypeHandle): Any {
         )
 
     objRef.use {
-        return ComWrappersSupport.createRcwForComObject(it.getRef(), typeHandle)
+        return ComWrappersSupport.createRcwForComObject(it.getRefPointer(), typeHandle)
             ?: throw IllegalArgumentException(
                 "Unable to create a WinRT wrapper for '${typeHandle.projectedTypeName}'.",
             )

@@ -473,13 +473,13 @@ object MarshalInterface {
                 }
             },
             fromAbiPointer = { pointer ->
-                ComWrappersSupport.findObject(pointer, expectedType)
-                    ?: projector(ComWrappersSupport.createRcwForComObject(pointer, typeHandle))
+                ComWrappersSupport.findObject(pointer.asNativePointer(), expectedType)
+                    ?: projector(ComWrappersSupport.createRcwForComObject(pointer.asNativePointer(), typeHandle))
             },
             fromManagedPointer = { value ->
                 when (value) {
                     null -> MemorySegment.NULL
-                    else -> ComWrappersSupport.createCCWForObject(value, typeHandle.interfaceId).useAndGetRef()
+                    else -> ComWrappersSupport.createCCWForObject(value, typeHandle.interfaceId).useAndGetRef().asMemorySegment()
                 }
             },
             disposeMarshaler = { value ->
@@ -517,13 +517,13 @@ object MarshalInspectable {
                 }
             },
             fromAbiPointer = { pointer ->
-                ComWrappersSupport.findObject(pointer, expectedType)
-                    ?: projector(ComWrappersSupport.createRcwForComObject(pointer))
+                ComWrappersSupport.findObject(pointer.asNativePointer(), expectedType)
+                    ?: projector(ComWrappersSupport.createRcwForComObject(pointer.asNativePointer()))
             },
             fromManagedPointer = { value ->
                 when (value) {
                     null -> MemorySegment.NULL
-                    else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
+                    else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef().asMemorySegment()
                 }
             },
             disposeMarshaler = { value ->
@@ -556,13 +556,13 @@ object MarshalInspectable {
                 }
             },
             fromAbiPointer = { pointer ->
-                WinRtInspectableComObject.findManagedValue(pointer)
-                    ?: ComWrappersSupport.createRcwForComObject(pointer)
+                WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())
+                    ?: ComWrappersSupport.createRcwForComObject(pointer.asNativePointer())
             },
             fromManagedPointer = { value ->
                 when (value) {
                     null -> MemorySegment.NULL
-                    else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
+                    else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef().asMemorySegment()
                 }
             },
             disposeMarshaler = { value ->
@@ -586,7 +586,7 @@ object MarshalDelegate {
         WinRtDelegateReference.fromAbi(pointer, descriptor)
 
     fun fromManaged(value: WinRtDelegateHandle?): MemorySegment =
-        value?.createReference()?.useAndGetRef() ?: MemorySegment.NULL
+        value?.createReference()?.useAndGetRef()?.asMemorySegment() ?: MemorySegment.NULL
 
     fun disposeMarshaler(value: WinRtDelegateReference?) {
         value?.close()

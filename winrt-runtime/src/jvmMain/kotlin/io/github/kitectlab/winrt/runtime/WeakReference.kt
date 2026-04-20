@@ -103,6 +103,6 @@ internal actual object WeakReferenceInterop {
 
     actual fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
         reference.reference.resolve(IID.IUnknown)?.use { resolved ->
-            ComWrappersSupport.createRcwForComObject(resolved.pointer.asMemorySegment())
+            ComWrappersSupport.createRcwForComObject(resolved.pointer)
         }
 }

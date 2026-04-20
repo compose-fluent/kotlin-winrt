@@ -1,12 +1,10 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.MemorySegment
-
 class WinRtProjectionMarshaler internal constructor(
     private val lease: AbiReferenceLease<ComObjectReference>,
 ) : AutoCloseable {
-    val abi: MemorySegment
-        get() = lease.abi.asMemorySegment()
+    val abi: NativePointer
+        get() = lease.abi
 
     override fun close() {
         lease.close()
@@ -51,7 +49,7 @@ class WinRtProjectionMarshaler internal constructor(
 internal fun borrowedProjectionAbi(
     value: Any,
     typeHandle: WinRtTypeHandle,
-): MemorySegment? = borrowedProjectionReference(value, typeHandle)?.useAndGetRef()
+): NativePointer? = borrowedProjectionReference(value, typeHandle)?.useAndGetRef()
 
 internal fun borrowedProjectionMarshaler(
     value: Any,
@@ -71,7 +69,7 @@ internal fun cloneComReference(reference: ComObjectReference): ComObjectReferenc
         wrapActivationFactory = ::ActivationFactoryReference,
     )
 
-internal fun <T : ComObjectReference> T.useAndGetRef(): MemorySegment = use { it.getRef() }
+internal fun <T : ComObjectReference> T.useAndGetRef(): NativePointer = use { it.getRefPointer() }
 
 private fun borrowedProjectionReference(
     value: Any,

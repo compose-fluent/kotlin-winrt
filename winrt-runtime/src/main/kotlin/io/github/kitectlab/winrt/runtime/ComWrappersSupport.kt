@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.MemorySegment
 import kotlin.reflect.KClass
 
 data class WinRtCcwDefinition(
@@ -105,22 +104,22 @@ object ComWrappersSupport {
         runtimeClassNameLookups.add { type: KClass<*> -> lookup(type.registeredClass()) }
     }
 
-    fun getInspectableInfo(pointer: MemorySegment): WinRtInspectableInfo? =
+    fun getInspectableInfo(pointer: NativePointer): WinRtInspectableInfo? =
         WinRtInspectableComObject.findInspectableInfo(pointer)?.let {
             WinRtInspectableInfo(it.runtimeClassName, it.interfaceIds)
         }
 
     fun <T : Any> findObject(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         expectedType: KClass<T>,
     ): T? = WinRtInspectableComObject.findManagedValue(pointer)?.takeIf(expectedType::isInstance) as? T
 
     fun <T : Any> findObject(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         expectedType: Class<T>,
     ): T? = findObject(pointer, expectedType.kotlin)
 
-    inline fun <reified T : Any> findObject(pointer: MemorySegment): T? = findObject(pointer, T::class)
+    inline fun <reified T : Any> findObject(pointer: NativePointer): T? = findObject(pointer, T::class)
 
     fun tryUnwrapObject(
         value: Any?,
@@ -134,16 +133,16 @@ object ComWrappersSupport {
         )
 
     fun createRcwForComObject(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         staticallyDeterminedType: WinRtTypeHandle? = null,
         tryUseCache: Boolean = true,
     ): Any? {
         WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             return null
         }
 
-        val pointerKey = pointer.address()
+        val pointerKey = NativeInterop.pointerKey(pointer)
         if (tryUseCache) {
             rcwCache[pointerKey]?.let { cached ->
                 val cachedWinRt = cached as? IWinRTObject
@@ -216,7 +215,7 @@ object ComWrappersSupport {
     ): String? = getRuntimeClassNameForNonWinRTTypeFromLookupTable(type.kotlin)
 
     private fun createRcwCore(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         staticallyDeterminedType: WinRtTypeHandle?,
     ): Any? {
         val inspectable = wrapInspectable(pointer)
@@ -272,7 +271,7 @@ object ComWrappersSupport {
         return null
     }
 
-    private fun wrapInspectable(pointer: MemorySegment): IInspectableReference? {
+    private fun wrapInspectable(pointer: NativePointer): IInspectableReference? {
         val existingInspectable = runCatching {
             IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable()
         }.getOrNull()

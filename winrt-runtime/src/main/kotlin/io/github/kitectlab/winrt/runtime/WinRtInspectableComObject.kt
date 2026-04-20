@@ -207,11 +207,11 @@ internal class WinRtInspectableComObject(
         private val sharedArena: Arena = Arena.global()
         private val registry = ConcurrentCacheMap<Long, WinRtInspectableComObject>()
 
-        internal fun findManagedValue(pointer: MemorySegment): Any? =
-            registry[pointerKey(pointer)]?.managedValue
+        internal fun findManagedValue(pointer: NativePointer): Any? =
+            registry[NativeInterop.pointerKey(pointer)]?.managedValue
 
-        internal fun findInspectableInfo(pointer: MemorySegment): WinRtInspectableInfoSnapshot? =
-            registry[pointerKey(pointer)]?.let { host ->
+        internal fun findInspectableInfo(pointer: NativePointer): WinRtInspectableInfoSnapshot? =
+            registry[NativeInterop.pointerKey(pointer)]?.let { host ->
                 WinRtInspectableInfoSnapshot(
                     runtimeClassName = host.runtimeClassName,
                     interfaceIds = host.interfaces.keys.toList(),

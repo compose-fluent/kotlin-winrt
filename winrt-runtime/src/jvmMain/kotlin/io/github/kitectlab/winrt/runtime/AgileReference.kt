@@ -157,7 +157,7 @@ class AgileReference(
             git().getInterfaceFromGlobal(cookie, typeHandle.interfaceId)
         } ?: return null
         return reference.use {
-            ComWrappersSupport.createRcwForComObject(reference.pointer.asMemorySegment(), typeHandle) as? T
+            ComWrappersSupport.createRcwForComObject(reference.pointer, typeHandle) as? T
         }
     }
 

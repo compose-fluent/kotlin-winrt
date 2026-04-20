@@ -68,7 +68,7 @@ internal object WinRtBindableObjectMarshaller {
             return MemorySegment.NULL
         }
         borrowInspectableReference(value)?.use { return it.getRef() }
-        return ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
+        return ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef().asMemorySegment()
     }
 
     fun fromOwnedAbi(pointer: MemorySegment): Any? {
@@ -109,7 +109,7 @@ internal object WinRtBindableObjectMarshaller {
     }
 
     private fun findManagedValue(pointer: MemorySegment): Any? =
-        WinRtInspectableComObject.findManagedValue(pointer)
+        WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())
 
     private fun borrowInspectableReference(value: Any?): IInspectableReference? =
         when (value) {
@@ -193,7 +193,7 @@ object WinRtBindableIterableProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, bindableIterableTypeHandle) ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableIterableTypeHandle)?.asMemorySegment() ?: ToAbiHelper(value).detachReference()
         }
 
     fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
@@ -436,7 +436,7 @@ object WinRtBindableVectorViewProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, bindableVectorViewTypeHandle) ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableVectorViewTypeHandle)?.asMemorySegment() ?: ToAbiHelper(value).detachReference()
         }
 
     fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
@@ -468,7 +468,7 @@ object WinRtBindableVectorProjection {
         override fun set(index: Int, element: Any?): Any? {
             val previous = get(index)
             WinRtBindableObjectMarshaller.createMarshaler(element).use { marshaler ->
-                vector.setAt(index.toUInt(), marshaler?.abi?.asNativePointer() ?: NativeInterop.nullPointer)
+                vector.setAt(index.toUInt(), marshaler?.abi ?: NativeInterop.nullPointer)
             }
             return previous
         }
@@ -477,9 +477,9 @@ object WinRtBindableVectorProjection {
             require(index >= 0) { "index must be non-negative." }
             WinRtBindableObjectMarshaller.createMarshaler(element).use { marshaler ->
                 if (index == size) {
-                    vector.append(marshaler?.abi?.asNativePointer() ?: NativeInterop.nullPointer)
+                    vector.append(marshaler?.abi ?: NativeInterop.nullPointer)
                 } else {
-                    vector.insertAt(index.toUInt(), marshaler?.abi?.asNativePointer() ?: NativeInterop.nullPointer)
+                    vector.insertAt(index.toUInt(), marshaler?.abi ?: NativeInterop.nullPointer)
                 }
             }
         }
@@ -662,7 +662,7 @@ object WinRtBindableVectorProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, bindableVectorTypeHandle) ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableVectorTypeHandle)?.asMemorySegment() ?: ToAbiHelper(value).detachReference()
         }
 
     fun fromAbi(pointer: MemorySegment): FromAbiHelper? =

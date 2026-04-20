@@ -21,7 +21,7 @@ class ComWrappersSupportTest {
             value = "payload",
             runtimeClassName = "test.RuntimeClass",
         )
-        val pointer = host.detachReference(IID.IInspectable)
+        val pointer = host.detachReference(IID.IInspectable).asNativePointer()
 
         val first = ComWrappersSupport.createRcwForComObject(pointer) as TestRuntimeClassWrapper
         val second = ComWrappersSupport.createRcwForComObject(pointer) as TestRuntimeClassWrapper
@@ -46,7 +46,7 @@ class ComWrappersSupportTest {
             value = "payload",
             runtimeClassName = "test.RuntimeClass",
         )
-        val pointer = host.detachReference(IID.IInspectable)
+        val pointer = host.detachReference(IID.IInspectable).asNativePointer()
         val wrapper = ComWrappersSupport.createRcwForComObject(pointer, interfaceType) as TestTypedWrapper
 
         assertEquals(helperType, wrapper.primaryTypeHandle)
@@ -69,7 +69,7 @@ class ComWrappersSupportTest {
             runtimeClassName = "test.Fallback",
         )
 
-        val pointer = host.detachReference(interfaceId)
+        val pointer = host.detachReference(interfaceId).asNativePointer()
         val wrapper = ComWrappersSupport.createRcwForComObject(pointer, typeHandle) as SingleInterfaceOptimizedObject
 
         assertEquals(typeHandle, wrapper.primaryTypeHandle)
@@ -98,8 +98,8 @@ class ComWrappersSupportTest {
 
         val managed = TestManagedType("payload")
         ComWrappersSupport.createCCWForObject(managed, interfaceId).use { ccw ->
-            val found = ComWrappersSupport.findObject(ccw.pointer.asMemorySegment(), TestManagedType::class)
-            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer.asMemorySegment())
+            val found = ComWrappersSupport.findObject(ccw.pointer, TestManagedType::class)
+            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
 
             assertSame(managed, found)
             assertNotNull(info)
@@ -117,7 +117,9 @@ class ComWrappersSupportTest {
         }
 
         val projected = ProjectedInspectableObject(
-            pointer = WinRtInspectableComObject.inspectableBox("payload", "test.RuntimeClass").detachReference(IID.IInspectable),
+            pointer = WinRtInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
+                .detachReference(IID.IInspectable)
+                .asNativePointer(),
         )
 
         val cast = projected.winrtAs(interfaceType) as TestTypedWrapper
@@ -129,7 +131,7 @@ class ComWrappersSupportTest {
     private data class TestManagedType(val name: String)
 
     private class ProjectedInspectableObject(
-        pointer: MemorySegment,
+        pointer: NativePointer,
     ) : IWinRTObject {
         override val nativeObject: ComObjectReference = IInspectableReference(pointer, IID.IInspectable)
     }

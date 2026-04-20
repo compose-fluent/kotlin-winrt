@@ -99,7 +99,7 @@ object WinRtIterableProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, iterableTypeHandle(elementAdapter))
+            borrowedProjectionAbi(value, iterableTypeHandle(elementAdapter))?.asMemorySegment()
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
@@ -418,7 +418,7 @@ object WinRtReadOnlyListProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, vectorViewTypeHandle(elementAdapter))
+            borrowedProjectionAbi(value, vectorViewTypeHandle(elementAdapter))?.asMemorySegment()
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
@@ -694,7 +694,7 @@ object WinRtListProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, vectorTypeHandle(elementAdapter))
+            borrowedProjectionAbi(value, vectorTypeHandle(elementAdapter))?.asMemorySegment()
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
@@ -856,7 +856,7 @@ object WinRtReadOnlyDictionaryProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter))
+            borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter))?.asMemorySegment()
                 ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
         }
 
@@ -1061,7 +1061,7 @@ object WinRtDictionaryProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter))
+            borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter))?.asMemorySegment()
                 ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
         }
 
@@ -1258,7 +1258,7 @@ private fun <T> MemorySegment.writeManagedValues(
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
     values.forEachIndexed { index, value ->
-        setAtIndex(ValueLayout.ADDRESS, index.toLong(), adapter.marshaller(value).useAndGetRef())
+        setAtIndex(ValueLayout.ADDRESS, index.toLong(), adapter.marshaller(value).useAndGetRef().asMemorySegment())
     }
 }
 
@@ -1266,7 +1266,11 @@ private fun <T> MemorySegment.writeManagedValue(
     value: T,
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
-    reinterpret(ValueLayout.ADDRESS.byteSize()).set(ValueLayout.ADDRESS, 0, adapter.marshaller(value).useAndGetRef())
+    reinterpret(ValueLayout.ADDRESS.byteSize()).set(
+        ValueLayout.ADDRESS,
+        0,
+        adapter.marshaller(value).useAndGetRef().asMemorySegment(),
+    )
 }
 
 private fun MemorySegment.writeBoolean(value: Boolean) {
