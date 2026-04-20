@@ -3,25 +3,26 @@ package io.github.kitectlab.winrt.runtime
 import java.lang.foreign.MemorySegment
 
 class WinRtProjectionMarshaler internal constructor(
-    val abi: MemorySegment,
-    private val ownedReference: ComObjectReference? = null,
-    private val cleanup: (() -> Unit)? = null,
+    private val lease: AbiReferenceLease<ComObjectReference>,
 ) : AutoCloseable {
+    val abi: MemorySegment
+        get() = lease.abi.asMemorySegment()
+
     override fun close() {
-        ownedReference?.close()
-        cleanup?.invoke()
+        lease.close()
     }
 
     companion object {
         internal fun borrowed(
             reference: ComObjectReference,
-        ): WinRtProjectionMarshaler {
-            val owned = cloneComReference(reference)
-            return WinRtProjectionMarshaler(
-                abi = owned.pointer,
-                ownedReference = owned,
+        ): WinRtProjectionMarshaler =
+            WinRtProjectionMarshaler(
+                lease = AbiReferenceLeaseSupport.borrowed(
+                    reference = reference,
+                    cloneReference = ::cloneComReference,
+                    abiOf = { it.pointer.asNativePointer() },
+                ),
             )
-        }
 
         internal fun hosted(
             host: WinRtInspectableComObject,
@@ -29,11 +30,23 @@ class WinRtProjectionMarshaler internal constructor(
         ): WinRtProjectionMarshaler {
             val reference = host.createReference(interfaceId)
             return WinRtProjectionMarshaler(
-                abi = reference.pointer,
-                ownedReference = reference,
-                cleanup = host::releaseManagedReference,
+                lease = AbiReferenceLeaseSupport.create(
+                    abi = reference.pointer.asNativePointer(),
+                    ownedReference = reference,
+                    cleanup = host::releaseManagedReference,
+                ),
             )
         }
+
+        internal fun owned(
+            reference: ComObjectReference,
+        ): WinRtProjectionMarshaler =
+            WinRtProjectionMarshaler(
+                lease = AbiReferenceLeaseSupport.create(
+                    abi = reference.pointer.asNativePointer(),
+                    ownedReference = reference,
+                ),
+            )
     }
 }
 
@@ -47,10 +60,7 @@ internal fun borrowedProjectionMarshaler(
     typeHandle: WinRtTypeHandle,
 ): WinRtProjectionMarshaler? =
     borrowedProjectionReference(value, typeHandle)?.let { reference ->
-        WinRtProjectionMarshaler(
-            abi = reference.pointer,
-            ownedReference = reference,
-        )
+        WinRtProjectionMarshaler.owned(reference)
     }
 
 internal fun cloneComReference(reference: ComObjectReference): ComObjectReference =

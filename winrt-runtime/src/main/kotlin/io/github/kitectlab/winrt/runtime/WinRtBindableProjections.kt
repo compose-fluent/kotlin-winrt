@@ -60,10 +60,7 @@ internal object WinRtBindableObjectMarshaller {
         }
         borrowInspectableReference(value)?.let { return WinRtBindableProjectionMarshaler.borrowed(it) }
         val reference = ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
-        return WinRtBindableProjectionMarshaler(
-            abi = reference.pointer,
-            ownedReference = reference,
-        )
+        return WinRtBindableProjectionMarshaler.owned(reference)
     }
 
     fun fromManaged(value: Any?): MemorySegment {

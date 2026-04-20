@@ -1506,10 +1506,7 @@ internal object WinRtPropertyValueProjection {
             return null
         }
         val reference = ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue)
-        return WinRtProjectionMarshaler(
-            abi = reference.pointer,
-            ownedReference = reference,
-        )
+        return WinRtProjectionMarshaler.owned(reference)
     }
 
     fun fromManaged(value: Any?): MemorySegment =
