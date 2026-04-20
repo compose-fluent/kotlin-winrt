@@ -151,7 +151,7 @@ internal class WinRtInspectableComObject(
             result.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL)
             return KnownHResults.S_OK.value
         }
-        result.set(ValueLayout.ADDRESS, 0, HString.create(runtimeClassName).handle)
+        result.set(ValueLayout.ADDRESS, 0, HString.create(runtimeClassName).handle.asMemorySegment())
         return KnownHResults.S_OK.value
     }
 

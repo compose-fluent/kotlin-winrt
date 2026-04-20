@@ -104,7 +104,7 @@ internal object UriProjection {
                                 ValueLayout.ADDRESS,
                                 ValueLayout.ADDRESS,
                             ),
-                            rawUri.handle,
+                            rawUri.handle.asMemorySegment(),
                             resultOut,
                         )
                         WindowsRuntimePlatform.checkSucceeded(hr)
@@ -208,7 +208,7 @@ internal object TypeProjection {
                 TypeNameSupport.getNameForType(value)
             }
         return TypeAbi(
-            name = StringMarshaller.fromManaged(typeName)?.handle ?: MemorySegment.NULL,
+            name = StringMarshaller.fromManaged(typeName)?.handle?.asMemorySegment() ?: MemorySegment.NULL,
             kind = kind.ordinal,
         )
     }

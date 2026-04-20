@@ -533,7 +533,7 @@ actual object WinRtPlatformApi {
             interfaceId.writeTo(iidMemory)
             val factoryOut = arena.allocate(ValueLayout.ADDRESS)
             val hr = roGetActivationFactoryHandle.invokeWithArguments(
-                runtimeClassId.handle,
+                runtimeClassId.handle.asMemorySegment(),
                 iidMemory,
                 factoryOut,
             ) as Int

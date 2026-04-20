@@ -261,7 +261,7 @@ internal object WinRtValueBoxing {
             propertyTypeArray = PropertyType.StringArray,
             exactUnbox = { it as String },
             propertyValueCoerce = ::coerceString,
-            createPointer = { value -> StringMarshaller.fromManaged(value)?.handle ?: MemorySegment.NULL },
+            createPointer = { value -> StringMarshaller.fromManaged(value)?.handle?.asMemorySegment() ?: MemorySegment.NULL },
             readOwnedPointer = StringMarshaller::fromAbi,
             disposeOwnedPointer = StringMarshaller::disposeAbi,
         )

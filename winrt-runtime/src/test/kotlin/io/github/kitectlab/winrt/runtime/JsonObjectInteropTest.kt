@@ -31,7 +31,7 @@ class JsonObjectInteropTest {
                                 ValueLayout.ADDRESS,
                                 ValueLayout.ADDRESS,
                             ),
-                            hString.handle,
+                            hString.handle.asMemorySegment(),
                             resultOut,
                         )
                         HResult(hr).requireSuccess()
@@ -50,11 +50,11 @@ class JsonObjectInteropTest {
                                     ValueLayout.ADDRESS,
                                     ValueLayout.ADDRESS,
                                 ),
-                                hString.handle,
+                                hString.handle.asMemorySegment(),
                                 resultOut,
                             )
                             HResult(hr).requireSuccess()
-                            HString.fromHandle(resultOut.get(ValueLayout.ADDRESS, 0), owner = true).use { it.toKString() }
+                            HString.fromHandle(resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer(), owner = true).use { it.toKString() }
                         }
                     }
                     val runtimeClass = instance.asInspectable().use { it.getRuntimeClassName() }

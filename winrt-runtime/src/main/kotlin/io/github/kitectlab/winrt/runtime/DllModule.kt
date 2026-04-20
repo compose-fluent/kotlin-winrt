@@ -23,7 +23,7 @@ internal class DllModule private constructor(
                     ),
                 )
                 val hr = getActivationFactory.invokeWithArguments(
-                    classId.handle,
+                    classId.handle.asMemorySegment(),
                     out,
                 ) as Int
                 return ActivationResult(HResult(hr), out.get(ValueLayout.ADDRESS, 0))

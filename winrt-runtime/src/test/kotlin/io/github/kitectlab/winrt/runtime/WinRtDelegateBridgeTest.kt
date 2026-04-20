@@ -44,7 +44,7 @@ class WinRtDelegateBridgeTest {
 
         HString.create("payload").use { hString ->
             handle.use {
-                it.invokeAbiForTesting(listOf(MemorySegment.NULL, 42L, hString.handle))
+                it.invokeAbiForTesting(listOf(MemorySegment.NULL, 42L, hString.handle.asMemorySegment()))
             }
         }
 
@@ -68,7 +68,7 @@ class WinRtDelegateBridgeTest {
         HString.create("message").use { payload ->
             handle.use {
                 it.createReference().use { reference ->
-                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(listOf(payload.handle)))
+                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(listOf(payload.handle.asMemorySegment())))
                 }
             }
         }

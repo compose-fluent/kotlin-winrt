@@ -194,7 +194,7 @@ open class ComObjectReference(
                 resultOut,
             )
             WindowsRuntimePlatform.checkSucceeded(hr)
-            return HString.fromHandle(resultOut.get(ValueLayout.ADDRESS, 0), owner = true)
+            return HString.fromHandle(resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer(), owner = true)
         }
     }
 
@@ -561,7 +561,7 @@ class InspectableReference(
             if (hstring == MemorySegment.NULL) {
                 return null
             }
-            return HString.fromHandle(hstring, owner = true).use(HString::toKString)
+            return HString.fromHandle(hstring.asNativePointer(), owner = true).use(HString::toKString)
         }
     }
 }

@@ -106,7 +106,7 @@ internal object WinRtDelegateAbiMarshaller {
                     if (handle == MemorySegment.NULL) {
                         null
                     } else {
-                        HString.fromHandle(handle, owner = true).use { it.toKString() }
+                        HString.fromHandle(handle.asNativePointer(), owner = true).use { it.toKString() }
                     }
                 }
         }
@@ -223,7 +223,7 @@ internal object WinRtDelegateAbiMarshaller {
             if (abiValue == MemorySegment.NULL) {
                 null
             } else {
-                HString.fromHandle(abiValue, owner = false).toKString()
+                HString.fromHandle(abiValue.asNativePointer(), owner = false).toKString()
             }
         else -> error("Unsupported ABI HSTRING argument: ${abiValue::class.qualifiedName}")
     }
@@ -291,16 +291,16 @@ internal object WinRtDelegateAbiMarshaller {
     private fun encodeHStringArgument(abiValue: Any?): MemorySegment = when (abiValue) {
         null -> MemorySegment.NULL
         is MemorySegment -> abiValue
-        is HString -> abiValue.handle
-        is ReferencedHString -> abiValue.handle
+        is HString -> abiValue.handle.asMemorySegment()
+        is ReferencedHString -> abiValue.handle.asMemorySegment()
         else -> error("Unsupported outbound ABI HSTRING argument: ${abiValue::class.qualifiedName}")
     }
 
     private fun encodeHStringValue(abiValue: Any?): MemorySegment = when (abiValue) {
         null -> MemorySegment.NULL
-        is String -> HString.create(abiValue).handle
-        is HString -> abiValue.handle
-        is ReferencedHString -> abiValue.handle
+        is String -> HString.create(abiValue).handle.asMemorySegment()
+        is HString -> abiValue.handle.asMemorySegment()
+        is ReferencedHString -> abiValue.handle.asMemorySegment()
         is MemorySegment -> abiValue
         else -> error("Unsupported outbound ABI HSTRING return value: ${abiValue::class.qualifiedName}")
     }

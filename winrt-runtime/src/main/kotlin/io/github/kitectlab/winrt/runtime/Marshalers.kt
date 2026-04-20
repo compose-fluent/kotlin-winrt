@@ -435,7 +435,7 @@ object MarshalString {
                 }
             },
             fromAbiPointer = { pointer -> StringMarshaller.fromAbi(pointer) },
-            fromManagedPointer = { value -> StringMarshaller.fromManaged(value)?.handle ?: MemorySegment.NULL },
+            fromManagedPointer = { value -> StringMarshaller.fromManaged(value)?.handle?.asMemorySegment() ?: MemorySegment.NULL },
             disposeMarshaler = { value ->
                 when (value) {
                     null -> Unit
@@ -899,8 +899,8 @@ private fun abiPointer(value: Any?): MemorySegment =
     when (value) {
         null -> MemorySegment.NULL
         is MemorySegment -> value
-        is ReferencedHString -> value.handle
-        is HString -> value.handle
+        is ReferencedHString -> value.handle.asMemorySegment()
+        is HString -> value.handle.asMemorySegment()
         is ComObjectReference -> value.pointer
         else -> error("Expected pointer-backed ABI value, got '${value.javaClass.name}'.")
     }

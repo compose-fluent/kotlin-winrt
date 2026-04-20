@@ -50,9 +50,9 @@ object StringMarshaller {
             HString.createReference(value)
         }
 
-    fun getAbi(value: ReferencedHString?): MemorySegment = value?.handle ?: MemorySegment.NULL
+    fun getAbi(value: ReferencedHString?): MemorySegment = value?.handle?.asMemorySegment() ?: MemorySegment.NULL
 
-    fun getAbi(value: HString?): MemorySegment = value?.handle ?: MemorySegment.NULL
+    fun getAbi(value: HString?): MemorySegment = value?.handle?.asMemorySegment() ?: MemorySegment.NULL
 
     fun disposeMarshaler(value: ReferencedHString?) {
         value?.close()
@@ -68,7 +68,7 @@ object StringMarshaller {
         if (handle == MemorySegment.NULL) {
             ""
         } else {
-            HString.fromHandle(handle, owner = false).toKString()
+            HString.fromHandle(handle.asNativePointer(), owner = false).toKString()
         }
 
     fun fromManaged(value: String?): HString? =

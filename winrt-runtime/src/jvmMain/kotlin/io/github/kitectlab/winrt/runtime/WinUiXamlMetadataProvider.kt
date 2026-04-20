@@ -42,7 +42,7 @@ class WinUiXamlMetadataProviderReference(
                         ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS,
                     ),
-                    hString.handle,
+                    hString.handle.asMemorySegment(),
                     resultOut,
                 )
                 HResult(hr).requireSuccess()
