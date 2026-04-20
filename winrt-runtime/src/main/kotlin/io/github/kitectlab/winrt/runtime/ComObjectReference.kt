@@ -68,23 +68,23 @@ open class ComObjectReference(
         tryQueryInterface(IID.IInspectable)?.let { IInspectableReference(it.pointer, IID.IInspectable) }
 
     open fun invokeObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                value.pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
-        }
+        return RawAbiResultSupport.objectResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    value.pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+            wrap = { IUnknownReference(it.asMemorySegment()) },
+        )
     }
 
     open fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean {
@@ -134,27 +134,26 @@ open class ComObjectReference(
     }
 
     open fun invokeObjectMethod(slot: Int): IUnknownReference {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
-        }
+        return RawAbiResultSupport.objectResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+            wrap = { IUnknownReference(it.asMemorySegment()) },
+        )
     }
 
-    fun invokeHStringMethod(slot: Int): HString {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
+    fun invokeHStringMethod(slot: Int): HString =
+        RawAbiResultSupport.hStringResult { resultOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -162,12 +161,9 @@ open class ComObjectReference(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                resultOut,
+                resultOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return HString.fromHandle(resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer(), owner = true)
         }
-    }
 
     fun invokeDoubleMethod(slot: Int): Double {
         Arena.ofConfined().use { arena ->
@@ -187,10 +183,9 @@ open class ComObjectReference(
         }
     }
 
-    open fun invokeInt32Method(slot: Int): Int {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
-            val hr = invokeIntMethod(
+    open fun invokeInt32Method(slot: Int): Int =
+        RawAbiResultSupport.int32Result { resultOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -198,12 +193,9 @@ open class ComObjectReference(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                resultOut,
+                resultOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_INT, 0)
         }
-    }
 
     open fun invokeUnitMethod(slot: Int) {
         val hr = invokeIntMethod(
@@ -263,10 +255,9 @@ open class ComObjectReference(
         }
     }
 
-    open fun invokeUInt32Method(slot: Int): UInt {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
-            val hr = invokeIntMethod(
+    open fun invokeUInt32Method(slot: Int): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -274,12 +265,9 @@ open class ComObjectReference(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                resultOut,
+                resultOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
-    }
 
     fun asInspectable(): IInspectableReference =
         tryAsInspectable()
