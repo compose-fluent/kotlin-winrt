@@ -1222,23 +1222,17 @@ internal object WinRtValueBoxing {
             return null
         }
 
+        val registeredType = type.registeredWinRtType() ?: return null
         val signature = runCatching { GuidGenerator.getSignature(type) }.getOrNull() ?: return null
         val match = enumSignaturePattern.matchEntire(signature) ?: return null
         val projectedTypeName = match.groupValues[1]
         val underlyingSignature = match.groupValues[2]
-        val abiField = runCatching { type.getDeclaredField("abiValue") }.getOrNull() ?: return null
-        abiField.isAccessible = true
+        if (registeredType.enumAbiValue == null) {
+            return null
+        }
 
         fun readBits(enumValue: Any): Int =
-            when (val raw = abiField.get(enumValue)) {
-                is Int -> raw
-                is UInt -> raw.toInt()
-                is Number -> raw.toInt()
-                else -> throw WinRtInvalidCastException(
-                    "Unsupported enum ABI backing value: ${raw?.javaClass?.name}",
-                    HResult(TYPE_E_TYPEMISMATCH),
-                )
-            }
+            registeredType.readEnumAbiValue(enumValue)
 
         val constants = type.enumConstants ?: return null
 

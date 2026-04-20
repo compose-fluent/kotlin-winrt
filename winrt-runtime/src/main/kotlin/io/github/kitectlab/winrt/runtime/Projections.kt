@@ -172,6 +172,7 @@ object Projections {
                 guid = existing?.guid,
                 iid = existing?.iid,
                 signature = existing?.signature,
+                enumAbiValue = existing?.enumAbiValue,
                 helperType = helperType?.registeredKClass() ?: existing?.helperType,
                 defaultInterface = defaultInterface?.registeredKClass() ?: existing?.defaultInterface,
                 boxedName = existing?.boxedName,

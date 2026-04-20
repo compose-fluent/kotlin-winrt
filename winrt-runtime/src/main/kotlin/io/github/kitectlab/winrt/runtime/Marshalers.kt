@@ -4,6 +4,7 @@ import java.lang.foreign.Arena
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import java.lang.invoke.MethodHandles
 
 enum class WinRtAbiCategory {
     BLITTABLE,
@@ -841,7 +842,7 @@ private fun <T> decodePointerArray(
 
 @Suppress("UNCHECKED_CAST")
 private fun <T> newTypedArray(length: Int, componentClass: Class<*>): Array<T?> =
-    java.lang.reflect.Array.newInstance(componentClass, length) as Array<T?>
+    MethodHandles.arrayConstructor(componentClass.arrayType()).invoke(length) as Array<T?>
 
 private fun <T> copyManagedPointerArray(
     values: Array<out T?>?,

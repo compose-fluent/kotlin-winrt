@@ -10,3 +10,8 @@ internal fun Class<*>.registeredWinRtType(): WinRtTypeId<*>? = WinRtTypeRegistry
 internal fun KClass<*>.registeredClass(): Class<*> = java
 
 internal fun WinRtTypeId<*>.registeredClass(): Class<*> = kClass.registeredClass()
+
+@Suppress("UNCHECKED_CAST")
+internal fun WinRtTypeId<*>.readEnumAbiValue(enumValue: Any): Int =
+    (enumAbiValue as? (Any) -> Int)?.invoke(enumValue)
+        ?: error("Type '${kClass.qualifiedName ?: kClass.simpleName}' is missing enum ABI metadata.")

@@ -426,6 +426,7 @@ internal object WinRtBuiltInProjectionMappings {
                 guid = guid ?: existing?.guid,
                 iid = iid ?: existing?.iid,
                 signature = signature ?: existing?.signature,
+                enumAbiValue = existing?.enumAbiValue,
                 helperType = helperType?.registeredKClass() ?: existing?.helperType,
                 defaultInterface = defaultInterface?.registeredKClass() ?: existing?.defaultInterface,
                 boxedName = boxedName ?: existing?.boxedName,

@@ -233,6 +233,7 @@ class ProjectionRegistryTest {
         WinRtTypeRegistry.register<TestProjectedEnum>(
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
+            enumAbiValue = { it.abiValue },
             isWindowsRuntimeType = true,
         )
     }

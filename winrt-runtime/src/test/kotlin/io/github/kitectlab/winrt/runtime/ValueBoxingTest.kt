@@ -231,11 +231,13 @@ class ValueBoxingTest {
         WinRtTypeRegistry.register<TestPriority>(
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
+            enumAbiValue = { it.abiValue },
             isWindowsRuntimeType = true,
         )
         WinRtTypeRegistry.register<TestVisibility>(
             projectedTypeName = "Contoso.Visibility",
             signature = "enum(Contoso.Visibility;u4)",
+            enumAbiValue = { it.abiValue.toInt() },
             isWindowsRuntimeType = true,
         )
     }
