@@ -382,6 +382,147 @@ actual object WinRtPlatformApi {
         )
     }
 
+    actual fun roGetActivationFactoryRaw(
+        runtimeClassId: NativePointer,
+        interfaceId: Guid,
+    ): NativePointerResult =
+        Arena.ofConfined().use { arena ->
+            val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
+            interfaceId.writeTo(iidMemory)
+            val factoryOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = roGetActivationFactoryHandle.invokeWithArguments(
+                runtimeClassId.asMemorySegment(),
+                iidMemory,
+                factoryOut,
+            ) as Int
+            NativePointerResult(hr, factoryOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
+        }
+
+    actual fun coCreateInstanceRaw(
+        classId: Guid,
+        interfaceId: Guid,
+        classContext: Int,
+    ): NativePointerResult =
+        coCreateInstance(classId, interfaceId, classContext).toNativePointerResult()
+
+    actual fun coInitializeExRaw(apartmentType: ApartmentType): Int =
+        coInitializeEx(apartmentType).value
+
+    actual fun coUninitializeRaw() {
+        coUninitialize()
+    }
+
+    actual fun roInitializeRaw(apartmentType: ApartmentType): Int =
+        roInitialize(apartmentType).value
+
+    actual fun roUninitializeRaw() {
+        roUninitialize()
+    }
+
+    actual fun coIncrementMtaUsageRaw(): NativePointerResult =
+        coIncrementMtaUsage().toNativePointerResult()
+
+    actual fun coDecrementMtaUsageRaw(cookie: NativePointer): Int =
+        coDecrementMtaUsage(cookie.asMemorySegment()).value
+
+    actual fun roGetAgileReferenceRaw(
+        unknown: NativePointer,
+        interfaceId: Guid,
+    ): NativePointerResult =
+        roGetAgileReference(unknown.asMemorySegment(), interfaceId).toNativePointerResult()
+
+    actual fun coGetContextTokenRaw(): NativePointerResult =
+        coGetContextToken().toNativePointerResult()
+
+    actual fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult =
+        coGetObjectContext(interfaceId).toNativePointerResult()
+
+    actual fun setErrorInfoRaw(errorInfo: NativePointer): Int =
+        setErrorInfo(errorInfo.asMemorySegment()).value
+
+    actual fun borrowRestrictedErrorInfoRaw(): NativePointer? =
+        borrowRestrictedErrorInfo()?.asNativePointer()
+
+    actual fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int? =
+        reportUnhandledError(errorInfo.asMemorySegment())?.value
+
+    actual fun sysAllocStringRaw(value: String?): NativePointer =
+        sysAllocString(value).asNativePointer()
+
+    actual fun sysFreeStringRaw(value: NativePointer) {
+        sysFreeString(value.asMemorySegment())
+    }
+
+    actual fun readAndFreeBstrRaw(value: NativePointer): String =
+        readAndFreeBstr(value.asMemorySegment())
+
+    actual fun coCreateFreeThreadedMarshalerRaw(outer: NativePointer): NativePointerResult =
+        coCreateFreeThreadedMarshaler(outer.asMemorySegment()).toNativePointerResult()
+
+    actual fun windowsCreateStringRaw(
+        utf16Chars: NativePointer,
+        length: Int,
+        outHandle: NativePointer,
+    ): Int =
+        windowsCreateString(utf16Chars.asMemorySegment(), length, outHandle.asMemorySegment())
+
+    actual fun windowsCreateStringReferenceRaw(
+        utf16Chars: NativePointer,
+        length: Int,
+        header: NativePointer,
+        outHandle: NativePointer,
+    ): Int =
+        windowsCreateStringReference(
+            utf16Chars.asMemorySegment(),
+            length,
+            header.asMemorySegment(),
+            outHandle.asMemorySegment(),
+        )
+
+    actual fun windowsDeleteStringRaw(handle: NativePointer) {
+        windowsDeleteString(handle.asMemorySegment())
+    }
+
+    actual fun windowsGetStringRawBufferRaw(
+        handle: NativePointer,
+        lengthOut: NativePointer,
+    ): NativePointer =
+        windowsGetStringRawBuffer(handle.asMemorySegment(), lengthOut.asMemorySegment()).asNativePointer()
+
+    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer =
+        tryLoadLibraryExW(absolutePath, flags).asNativePointer()
+
+    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer =
+        loadLibraryExW(absolutePath, flags).asNativePointer()
+
+    actual fun tryGetProcAddressRaw(
+        moduleHandle: NativePointer,
+        procedureName: String,
+    ): NativePointer =
+        tryGetProcAddress(moduleHandle.asMemorySegment(), procedureName).asNativePointer()
+
+    actual fun getProcAddressRaw(
+        moduleHandle: NativePointer,
+        procedureName: String,
+    ): NativePointer =
+        getProcAddress(moduleHandle.asMemorySegment(), procedureName).asNativePointer()
+
+    actual fun freeLibraryRaw(moduleHandle: NativePointer): Boolean =
+        freeLibrary(moduleHandle.asMemorySegment())
+
+    actual fun tryFormatMessageRaw(hResultValue: Int): String? =
+        tryFormatMessage(HResult(hResultValue))
+
+    actual fun lastErrorAsHResultRaw(): Int =
+        lastErrorAsHResult().value
+
+    actual fun checkSucceededRaw(result: Int) {
+        checkSucceeded(result)
+    }
+
+    actual fun resolveModulePathRaw(fileName: String): String =
+        resolveModulePath(fileName)
+
     internal fun roGetActivationFactory(
         runtimeClassId: HString,
         interfaceId: Guid,
@@ -768,3 +909,9 @@ internal data class PointerResult(
     val hResult: HResult,
     val pointer: MemorySegment,
 )
+
+private fun ActivationResult.toNativePointerResult(): NativePointerResult =
+    NativePointerResult(hResult.value, pointer.asNativePointer())
+
+private fun PointerResult.toNativePointerResult(): NativePointerResult =
+    NativePointerResult(hResult.value, pointer.asNativePointer())

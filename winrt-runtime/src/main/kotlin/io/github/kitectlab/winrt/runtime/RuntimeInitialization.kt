@@ -1,10 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-enum class ApartmentType {
-    SingleThreaded,
-    MultiThreaded,
-}
-
 object JvmComRuntime {
     fun initializeSingleThreaded(): HResult =
         initialize(ApartmentType.SingleThreaded)

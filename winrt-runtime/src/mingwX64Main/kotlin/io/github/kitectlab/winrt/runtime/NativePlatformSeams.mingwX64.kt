@@ -1,11 +1,84 @@
 package io.github.kitectlab.winrt.runtime
 
-actual class NativePointer actual constructor()
+actual class NativePointer
 
-actual class NativeScope actual constructor() : AutoCloseable {
+actual class NativeScope : AutoCloseable {
     actual override fun close() {}
 }
 
-actual object NativeInterop
+actual object NativeInterop {
+    actual val nullPointer: NativePointer = NativePointer()
 
-actual object WinRtPlatformApi
+    actual fun confinedScope(): NativeScope = NativeScope()
+
+    actual fun isNull(pointer: NativePointer): Boolean = pointer === nullPointer
+}
+
+actual object WinRtPlatformApi {
+    actual fun roGetActivationFactoryRaw(runtimeClassId: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
+
+    actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult = TODO()
+
+    actual fun coInitializeExRaw(apartmentType: ApartmentType): Int = TODO()
+
+    actual fun coUninitializeRaw(): Unit = TODO()
+
+    actual fun roInitializeRaw(apartmentType: ApartmentType): Int = TODO()
+
+    actual fun roUninitializeRaw(): Unit = TODO()
+
+    actual fun coIncrementMtaUsageRaw(): NativePointerResult = TODO()
+
+    actual fun coDecrementMtaUsageRaw(cookie: NativePointer): Int = TODO()
+
+    actual fun roGetAgileReferenceRaw(unknown: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
+
+    actual fun coGetContextTokenRaw(): NativePointerResult = TODO()
+
+    actual fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult = TODO()
+
+    actual fun setErrorInfoRaw(errorInfo: NativePointer): Int = TODO()
+
+    actual fun borrowRestrictedErrorInfoRaw(): NativePointer? = TODO()
+
+    actual fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int? = TODO()
+
+    actual fun sysAllocStringRaw(value: String?): NativePointer = TODO()
+
+    actual fun sysFreeStringRaw(value: NativePointer): Unit = TODO()
+
+    actual fun readAndFreeBstrRaw(value: NativePointer): String = TODO()
+
+    actual fun coCreateFreeThreadedMarshalerRaw(outer: NativePointer): NativePointerResult = TODO()
+
+    actual fun windowsCreateStringRaw(utf16Chars: NativePointer, length: Int, outHandle: NativePointer): Int = TODO()
+
+    actual fun windowsCreateStringReferenceRaw(
+        utf16Chars: NativePointer,
+        length: Int,
+        header: NativePointer,
+        outHandle: NativePointer,
+    ): Int = TODO()
+
+    actual fun windowsDeleteStringRaw(handle: NativePointer): Unit = TODO()
+
+    actual fun windowsGetStringRawBufferRaw(handle: NativePointer, lengthOut: NativePointer): NativePointer = TODO()
+
+    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer = TODO()
+
+    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer = TODO()
+
+    actual fun tryGetProcAddressRaw(moduleHandle: NativePointer, procedureName: String): NativePointer = TODO()
+
+    actual fun getProcAddressRaw(moduleHandle: NativePointer, procedureName: String): NativePointer = TODO()
+
+    actual fun freeLibraryRaw(moduleHandle: NativePointer): Boolean = TODO()
+
+    actual fun tryFormatMessageRaw(hResultValue: Int): String? = TODO()
+
+    actual fun lastErrorAsHResultRaw(): Int = TODO()
+
+    actual fun checkSucceededRaw(result: Int): Unit = TODO()
+
+    actual fun resolveModulePathRaw(fileName: String): String = TODO()
+}
