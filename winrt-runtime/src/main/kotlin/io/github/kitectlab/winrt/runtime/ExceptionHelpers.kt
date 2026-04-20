@@ -145,7 +145,9 @@ object ExceptionHelpers {
         }
         runCatching {
             ManagedErrorInfoComObject(error).detachReference().use { errorInfo ->
-                WindowsRuntimePlatform.setErrorInfo(errorInfo.pointer).requireSuccess("SetErrorInfo")
+                HResult(
+                    WinRtPlatformApi.setErrorInfoRaw(errorInfo.pointer.asNativePointer()),
+                ).requireSuccess("SetErrorInfo")
             }
         }
     }
@@ -156,19 +158,20 @@ object ExceptionHelpers {
             return
         }
         runCatching {
-            val restrictedErrorInfo = WindowsRuntimePlatform.borrowRestrictedErrorInfo() ?: return
+            val restrictedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return
             try {
-                WindowsRuntimePlatform.reportUnhandledError(restrictedErrorInfo)
+                WinRtPlatformApi.reportUnhandledErrorRaw(restrictedErrorInfo)
+                    ?.let(::HResult)
                     ?.requireSuccess("RoReportUnhandledError")
             } finally {
-                IUnknownReference(restrictedErrorInfo, IID.IRestrictedErrorInfo).close()
+                IUnknownReference(restrictedErrorInfo.asMemorySegment(), IID.IRestrictedErrorInfo).close()
             }
         }
     }
 
     fun formatMessage(hResult: HResult): String? =
         if (PlatformRuntime.isWindows) {
-            WindowsRuntimePlatform.tryFormatMessage(hResult)
+            WinRtPlatformApi.tryFormatMessageRaw(hResult.value)
                 ?.trimEnd('\r', '\n')
                 ?.takeIf { it.isNotBlank() }
         } else {
@@ -213,8 +216,8 @@ object ExceptionHelpers {
             return null
         }
         return runCatching {
-            val borrowedErrorInfo = WindowsRuntimePlatform.borrowRestrictedErrorInfo() ?: return null
-            IUnknownReference(borrowedErrorInfo, IID.IRestrictedErrorInfo).use { errorInfo ->
+            val borrowedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return null
+            IUnknownReference(borrowedErrorInfo.asMemorySegment(), IID.IRestrictedErrorInfo).use { errorInfo ->
                 val details = readRestrictedErrorInfo(errorInfo) ?: return null
                 if (details.hResult != expectedHResult) {
                     return null
@@ -267,23 +270,26 @@ object ExceptionHelpers {
             return RestrictedErrorInfoDetails(
                 hResult = HResult(errorOut.get(ValueLayout.JAVA_INT, 0)),
                 info = WinRtRestrictedErrorInfo(
-                    description = WindowsRuntimePlatform.readAndFreeBstr(descriptionOut.get(ValueLayout.ADDRESS, 0)).ifBlank { null },
+                    description = readAndFreeBstr(descriptionOut).ifBlank { null },
                     restrictedDescription =
-                        WindowsRuntimePlatform.readAndFreeBstr(
-                            restrictedDescriptionOut.get(ValueLayout.ADDRESS, 0),
-                        ).ifBlank { null },
+                        readAndFreeBstr(restrictedDescriptionOut).ifBlank { null },
                     reference =
                         if (referenceResult.isSuccess) {
-                            WindowsRuntimePlatform.readAndFreeBstr(referenceOut.get(ValueLayout.ADDRESS, 0)).ifBlank { null }
+                            readAndFreeBstr(referenceOut).ifBlank { null }
                         } else {
                             null
                         },
                     capabilitySid =
-                        WindowsRuntimePlatform.readAndFreeBstr(capabilitySidOut.get(ValueLayout.ADDRESS, 0)).ifBlank { null },
+                        readAndFreeBstr(capabilitySidOut).ifBlank { null },
                 ),
             )
         }
     }
+
+    private fun readAndFreeBstr(slot: java.lang.foreign.MemorySegment): String =
+        WinRtPlatformApi.readAndFreeBstrRaw(
+            slot.get(ValueLayout.ADDRESS, 0).asNativePointer(),
+        )
 
     private data class RestrictedErrorInfoDetails(
         val hResult: HResult,

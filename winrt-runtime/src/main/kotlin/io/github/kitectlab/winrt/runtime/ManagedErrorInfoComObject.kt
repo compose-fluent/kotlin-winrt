@@ -162,7 +162,7 @@ internal class ManagedErrorInfoComObject(
         val outPointer = resultPointer.reinterpret(ValueLayout.ADDRESS.byteSize())
         outPointer.set(ValueLayout.ADDRESS, 0, MemorySegment.NULL)
         return runCatching {
-            outPointer.set(ValueLayout.ADDRESS, 0, WindowsRuntimePlatform.sysAllocString(value))
+            outPointer.set(ValueLayout.ADDRESS, 0, WinRtPlatformApi.sysAllocStringRaw(value).asMemorySegment())
             KnownHResults.S_OK.value
         }.getOrElse { failure ->
             WinRtExceptionTranslator.hResultFromException(failure).value
