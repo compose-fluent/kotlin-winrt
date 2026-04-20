@@ -56,7 +56,7 @@ open class ComObjectReference(
         if (hResult == KnownHResults.E_NOINTERFACE || resultPointer == MemorySegment.NULL) {
             return null
         }
-        WindowsRuntimePlatform.checkSucceeded(hResult.value)
+        WinRtPlatformApi.checkSucceededRaw(hResult.value)
         return ComObjectReference(
             pointer = resultPointer,
             interfaceId = requestedInterfaceId,
@@ -74,7 +74,7 @@ open class ComObjectReference(
         if (hResult == KnownHResults.E_NOINTERFACE || trackerPointer == MemorySegment.NULL) {
             return false
         }
-        WindowsRuntimePlatform.checkSucceeded(hResult.value)
+        WinRtPlatformApi.checkSucceededRaw(hResult.value)
         try {
             attachReferenceTracker(trackerPointer, addRefFromTrackerSource)
         } finally {
@@ -111,7 +111,7 @@ open class ComObjectReference(
                 value.pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
         }
     }
@@ -131,7 +131,7 @@ open class ComObjectReference(
                 value.pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
         }
     }
@@ -157,7 +157,7 @@ open class ComObjectReference(
                 second.pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
         }
     }
@@ -175,7 +175,7 @@ open class ComObjectReference(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
         }
     }
@@ -193,7 +193,7 @@ open class ComObjectReference(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return HString.fromHandle(resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer(), owner = true)
         }
     }
@@ -211,7 +211,7 @@ open class ComObjectReference(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_DOUBLE, 0)
         }
     }
@@ -229,7 +229,7 @@ open class ComObjectReference(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_INT, 0)
         }
     }
@@ -243,7 +243,7 @@ open class ComObjectReference(
             ),
             pointer,
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun invokeUnitMethodWithObjectArg(slot: Int, value: ComObjectReference) {
@@ -257,7 +257,7 @@ open class ComObjectReference(
             pointer,
             value.pointer,
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     fun invokeUnitMethodWithInt64Arg(slot: Int, value: Long) {
@@ -271,7 +271,7 @@ open class ComObjectReference(
             pointer,
             value,
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun invokeBooleanMethod(slot: Int): Boolean {
@@ -287,7 +287,7 @@ open class ComObjectReference(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
         }
     }
@@ -305,7 +305,7 @@ open class ComObjectReference(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
     }
@@ -520,7 +520,7 @@ class ActivationFactoryReference(
                 pointer,
                 instanceOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return IInspectableReference(instanceOut.get(ValueLayout.ADDRESS, 0), IID.IInspectable).also {
                 it.tryInitializeReferenceTracker()
             }
@@ -554,7 +554,7 @@ class InspectableReference(
                 if (noThrow) {
                     return null
                 }
-                WindowsRuntimePlatform.checkSucceeded(hr)
+                WinRtPlatformApi.checkSucceededRaw(hr)
             }
 
             val hstring = hstringOut.get(ValueLayout.ADDRESS, 0)

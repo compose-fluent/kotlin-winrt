@@ -257,7 +257,7 @@ class WinRtDelegateReference internal constructor(
                     descriptor = WinRtDelegateAbiMarshaller.functionDescriptor(descriptor),
                     *arrayOf(pointer, *encodedArguments.toTypedArray(), resultOut),
                 )
-                WindowsRuntimePlatform.checkSucceeded(hr)
+                WinRtPlatformApi.checkSucceededRaw(hr)
                 WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor.returnKind, resultOut)
             }
         }

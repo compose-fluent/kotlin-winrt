@@ -107,7 +107,7 @@ internal object UriProjection {
                             rawUri.handle.asMemorySegment(),
                             resultOut,
                         )
-                        WindowsRuntimePlatform.checkSucceeded(hr)
+                        WinRtPlatformApi.checkSucceededRaw(hr)
                         IInspectableReference(resultOut.get(ValueLayout.ADDRESS, 0), IID.IInspectable)
                     }
                 }
@@ -139,7 +139,7 @@ internal object UriProjection {
                 ),
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val handle = resultOut.get(ValueLayout.ADDRESS, 0)
             try {
                 StringMarshaller.fromAbi(handle)

@@ -24,7 +24,7 @@ open class WinRtAsyncReferenceBase(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return resultOut.get(ValueLayout.JAVA_INT, 0)
         }
     }
@@ -44,7 +44,7 @@ open class WinRtAsyncReferenceBase(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
             return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
         }

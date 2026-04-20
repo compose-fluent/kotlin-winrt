@@ -102,7 +102,7 @@ open class WinRtBindableVectorViewReference(
                 indexOut,
                 foundOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return (foundOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0) to indexOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
     }
@@ -164,7 +164,7 @@ open class WinRtBindableVectorReference(
                 indexOut,
                 foundOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return (foundOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0) to indexOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
     }
@@ -187,7 +187,7 @@ open class WinRtBindableVectorReference(
             ),
             index.toInt(),
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun append(valuePointer: MemorySegment) {
@@ -200,7 +200,7 @@ open class WinRtBindableVectorReference(
             ),
             valuePointer,
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun removeAtEnd() {
@@ -247,6 +247,6 @@ open class WinRtBindableVectorReference(
             index.toInt(),
             valuePointer,
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 }

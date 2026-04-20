@@ -24,7 +24,7 @@ open class WinRtCollectionReferenceBase(
                 pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
             return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
         }
@@ -45,7 +45,7 @@ open class WinRtCollectionReferenceBase(
                 value.toInt(),
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
             return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
         }
@@ -66,7 +66,7 @@ open class WinRtCollectionReferenceBase(
                 value.pointer,
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
             return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
         }
@@ -90,7 +90,7 @@ open class WinRtCollectionReferenceBase(
                 indexOut,
                 foundOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return (foundOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0) to indexOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
     }
@@ -108,7 +108,7 @@ open class WinRtCollectionReferenceBase(
             index.toInt(),
             value.pointer,
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     protected fun invokeUnitMethodWithUInt32(slot: Int, value: UInt) {
@@ -122,7 +122,7 @@ open class WinRtCollectionReferenceBase(
             pointer,
             value.toInt(),
         )
-        WindowsRuntimePlatform.checkSucceeded(hr)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     protected fun invokeObjectGetMany(
@@ -172,7 +172,7 @@ open class WinRtCollectionReferenceBase(
                     resultOut,
                 )
             }
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val actualCount = resultOut.get(ValueLayout.JAVA_INT, 0)
             return (0 until actualCount).map { index ->
                 val elementPointer = itemsOut.getAtIndex(ValueLayout.ADDRESS, index.toLong())
@@ -200,7 +200,7 @@ open class WinRtCollectionReferenceBase(
                 items.size,
                 itemsMemory,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
         }
     }
 
@@ -220,7 +220,7 @@ open class WinRtCollectionReferenceBase(
                 firstOut,
                 secondOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return firstOut.get(ValueLayout.ADDRESS, 0) to secondOut.get(ValueLayout.ADDRESS, 0)
         }
     }

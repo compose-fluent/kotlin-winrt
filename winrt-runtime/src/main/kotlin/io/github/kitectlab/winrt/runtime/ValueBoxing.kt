@@ -1211,7 +1211,7 @@ internal object WinRtValueBoxing {
                 ),
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             descriptor.fromAbiBits(resultOut.get(ValueLayout.JAVA_INT, 0))
         }
 
@@ -1291,7 +1291,7 @@ internal class WinRtReferenceReference(
                 ),
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             try {
                 adapter.readValue(resultOut)
             } finally {
@@ -1320,7 +1320,7 @@ internal class WinRtReferenceArrayReference(
                 countOut,
                 dataOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             val length = countOut.get(ValueLayout.JAVA_INT, 0)
             val data = dataOut.get(ValueLayout.ADDRESS, 0)
             try {
@@ -1347,7 +1347,7 @@ internal class WinRtPropertyValueReference(
                 ),
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             PropertyType.fromCode(resultOut.get(ValueLayout.JAVA_INT, 0))
         }
 
@@ -1363,7 +1363,7 @@ internal class WinRtPropertyValueReference(
                 ),
                 resultOut,
             )
-            WindowsRuntimePlatform.checkSucceeded(hr)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
         }
 
@@ -1383,7 +1383,7 @@ internal class WinRtPropertyValueReference(
                     ),
                     resultOut,
                 )
-                WindowsRuntimePlatform.checkSucceeded(hr)
+                WinRtPlatformApi.checkSucceededRaw(hr)
                 try {
                     scalarAdapter.readValue(resultOut)
                 } finally {
@@ -1413,7 +1413,7 @@ internal class WinRtPropertyValueReference(
                     countOut,
                     dataOut,
                 )
-                WindowsRuntimePlatform.checkSucceeded(hr)
+                WinRtPlatformApi.checkSucceededRaw(hr)
                 val length = countOut.get(ValueLayout.JAVA_INT, 0)
                 val data = dataOut.get(ValueLayout.ADDRESS, 0)
                 try {
