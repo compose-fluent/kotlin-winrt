@@ -1,8 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 
@@ -11,72 +9,64 @@ open class WinRtCollectionReferenceBase(
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
-    protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
-            return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
-        }
-    }
+    protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? =
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+        )
 
-    protected fun invokeNullableObjectMethodWithUInt32Arg(slot: Int, value: UInt): IUnknownReference? {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                value.toInt(),
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
-            return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
-        }
-    }
+    protected fun invokeNullableObjectMethodWithUInt32Arg(slot: Int, value: UInt): IUnknownReference? =
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    value.toInt(),
+                    resultOut.asMemorySegment(),
+                )
+            },
+            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+        )
 
-    protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference? {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                value.pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
-            return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
-        }
-    }
+    protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference? =
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    value.pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+        )
 
-    protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> {
-        Arena.ofConfined().use { arena ->
-            val indexOut = arena.allocate(ValueLayout.JAVA_INT)
-            val foundOut = arena.allocate(ValueLayout.JAVA_BYTE)
-            val hr = invokeIntMethod(
+    protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> =
+        RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -87,13 +77,10 @@ open class WinRtCollectionReferenceBase(
                 ),
                 pointer,
                 value.pointer,
-                indexOut,
-                foundOut,
+                indexOut.asMemorySegment(),
+                foundOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return (foundOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0) to indexOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
-    }
 
     protected fun invokeUnitMethodWithUInt32ObjectArg(slot: Int, index: UInt, value: ComObjectReference) {
         val hr = invokeIntMethod(
@@ -129,86 +116,81 @@ open class WinRtCollectionReferenceBase(
         slot: Int,
         startIndex: UInt?,
         capacity: Int,
-    ): List<IUnknownReference?> {
-        Arena.ofConfined().use { arena ->
-            val itemsLayout = MemoryLayout.sequenceLayout(capacity.toLong(), ValueLayout.ADDRESS)
-            val itemsOut = arena.allocate(itemsLayout)
-            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
-            val descriptor = if (startIndex == null) {
-                FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                )
-            } else {
-                FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                )
-            }
-            val hr = if (startIndex == null) {
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = descriptor,
-                    pointer,
-                    capacity,
-                    itemsOut,
-                    resultOut,
-                )
-            } else {
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = descriptor,
-                    pointer,
-                    startIndex.toInt(),
-                    capacity,
-                    itemsOut,
-                    resultOut,
-                )
-            }
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            val actualCount = resultOut.get(ValueLayout.JAVA_INT, 0)
-            return (0 until actualCount).map { index ->
-                val elementPointer = itemsOut.getAtIndex(ValueLayout.ADDRESS, index.toLong())
-                if (elementPointer == MemorySegment.NULL) null else IUnknownReference(elementPointer)
-            }
-        }
-    }
+    ): List<IUnknownReference?> =
+        RawObjectAbiSupport.objectGetManyResult(
+            capacity = capacity,
+            invoke = { itemsOut, countOut ->
+                val descriptor = if (startIndex == null) {
+                    FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    )
+                } else {
+                    FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    )
+                }
+                if (startIndex == null) {
+                    invokeIntMethod(
+                        slot = slot,
+                        descriptor = descriptor,
+                        pointer,
+                        capacity,
+                        itemsOut.asMemorySegment(),
+                        countOut.asMemorySegment(),
+                    )
+                } else {
+                    invokeIntMethod(
+                        slot = slot,
+                        descriptor = descriptor,
+                        pointer,
+                        startIndex.toInt(),
+                        capacity,
+                        itemsOut.asMemorySegment(),
+                        countOut.asMemorySegment(),
+                    )
+                }
+            },
+            wrap = { elementPointer ->
+                if (NativeInterop.isNull(elementPointer)) {
+                    null
+                } else {
+                    IUnknownReference(elementPointer.asMemorySegment())
+                }
+            },
+        )
 
     protected fun invokeReplaceAllObjectArray(slot: Int, items: List<ComObjectReference>) {
-        Arena.ofConfined().use { arena ->
-            val itemsLayout = MemoryLayout.sequenceLayout(items.size.toLong(), ValueLayout.ADDRESS)
-            val itemsMemory = arena.allocate(itemsLayout)
-            items.forEachIndexed { index, item ->
-                itemsMemory.setAtIndex(ValueLayout.ADDRESS, index.toLong(), item.pointer)
-            }
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                items.size,
-                itemsMemory,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-        }
+        RawObjectAbiSupport.replaceAllObjectArray(
+            items = items.map { it.pointer.asNativePointer() },
+            invoke = { size, itemsAbi ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    size,
+                    itemsAbi.asMemorySegment(),
+                )
+            },
+        )
     }
 
-    protected fun invokeMapViewSplitPointers(slot: Int): Pair<MemorySegment, MemorySegment> {
-        Arena.ofConfined().use { arena ->
-            val firstOut = arena.allocate(ValueLayout.ADDRESS)
-            val secondOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
+    protected fun invokeMapViewSplitPointers(slot: Int): Pair<MemorySegment, MemorySegment> =
+        RawObjectAbiSupport.pointerPairResult { firstOut, secondOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -217,13 +199,12 @@ open class WinRtCollectionReferenceBase(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                firstOut,
-                secondOut,
+                firstOut.asMemorySegment(),
+                secondOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return firstOut.get(ValueLayout.ADDRESS, 0) to secondOut.get(ValueLayout.ADDRESS, 0)
+        }.let { (firstPointer, secondPointer) ->
+            firstPointer.asMemorySegment() to secondPointer.asMemorySegment()
         }
-    }
 }
 
 open class WinRtKeyValuePairReference(

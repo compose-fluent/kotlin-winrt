@@ -27,9 +27,13 @@ expect object NativeInterop {
 
     fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer
 
+    fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer
+
     fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean = false): NativePointer
 
     fun readPointer(slot: NativePointer): NativePointer
+
+    fun readPointerAt(array: NativePointer, index: Int): NativePointer
 
     fun readInt8(slot: NativePointer): Byte
 
@@ -38,6 +42,8 @@ expect object NativeInterop {
     fun readDouble(slot: NativePointer): Double
 
     fun readUtf16(pointer: NativePointer, length: Int): String
+
+    fun writePointerAt(array: NativePointer, index: Int, value: NativePointer)
 }
 
 expect object WinRtPlatformApi {

@@ -46,6 +46,9 @@ actual object NativeInterop {
     actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer =
         scope.arena.allocate(sizeBytes).asNativePointer()
 
+    actual fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer =
+        scope.arena.allocate(ValueLayout.ADDRESS, size.toLong()).asNativePointer()
+
     actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): NativePointer =
         if (nulTerminated) {
             scope.arena.allocateFrom("$value\u0000", StandardCharsets.UTF_16LE).asNativePointer()
@@ -55,6 +58,9 @@ actual object NativeInterop {
 
     actual fun readPointer(slot: NativePointer): NativePointer =
         slot.segment.get(ValueLayout.ADDRESS, 0).asNativePointer()
+
+    actual fun readPointerAt(array: NativePointer, index: Int): NativePointer =
+        array.segment.getAtIndex(ValueLayout.ADDRESS, index.toLong()).asNativePointer()
 
     actual fun readInt8(slot: NativePointer): Byte =
         slot.segment.get(ValueLayout.JAVA_BYTE, 0)
@@ -72,6 +78,10 @@ actual object NativeInterop {
         val sized = pointer.segment.reinterpret(length.toLong() * ValueLayout.JAVA_CHAR.byteSize())
         val bytes = sized.toArray(ValueLayout.JAVA_BYTE)
         return String(bytes, StandardCharsets.UTF_16LE)
+    }
+
+    actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer) {
+        array.segment.setAtIndex(ValueLayout.ADDRESS, index.toLong(), value.segment)
     }
 }
 

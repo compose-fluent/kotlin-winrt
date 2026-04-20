@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
@@ -85,11 +84,9 @@ open class WinRtBindableVectorViewReference(
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
 
-    open fun indexOf(valuePointer: MemorySegment): Pair<Boolean, UInt> {
-        Arena.ofConfined().use { arena ->
-            val indexOut = arena.allocate(ValueLayout.JAVA_INT)
-            val foundOut = arena.allocate(ValueLayout.JAVA_BYTE)
-            val hr = invokeAbi(
+    open fun indexOf(valuePointer: MemorySegment): Pair<Boolean, UInt> =
+        RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
+            invokeAbi(
                 slot = 8,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -99,13 +96,10 @@ open class WinRtBindableVectorViewReference(
                     ValueLayout.ADDRESS,
                 ),
                 valuePointer,
-                indexOut,
-                foundOut,
+                indexOut.asMemorySegment(),
+                foundOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return (foundOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0) to indexOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
-    }
 
     open fun asIterable(): WinRtBindableIterableReference =
         queryInterface(WinRtBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
@@ -147,11 +141,9 @@ open class WinRtBindableVectorReference(
             createVectorViewReference(reference.getRef(), WinRtBindableInterfaceIds.IBindableVectorView)
         }
 
-    open fun indexOf(valuePointer: MemorySegment): Pair<Boolean, UInt> {
-        Arena.ofConfined().use { arena ->
-            val indexOut = arena.allocate(ValueLayout.JAVA_INT)
-            val foundOut = arena.allocate(ValueLayout.JAVA_BYTE)
-            val hr = invokeAbi(
+    open fun indexOf(valuePointer: MemorySegment): Pair<Boolean, UInt> =
+        RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
+            invokeAbi(
                 slot = 9,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -161,13 +153,10 @@ open class WinRtBindableVectorReference(
                     ValueLayout.ADDRESS,
                 ),
                 valuePointer,
-                indexOut,
-                foundOut,
+                indexOut.asMemorySegment(),
+                foundOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return (foundOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0) to indexOut.get(ValueLayout.JAVA_INT, 0).toUInt()
         }
-    }
 
     open fun setAt(index: UInt, valuePointer: MemorySegment) {
         invokeNullableInspectableMethod(slot = 10, index = index, valuePointer = valuePointer)

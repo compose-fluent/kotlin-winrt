@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
@@ -11,10 +10,9 @@ open class WinRtAsyncReferenceBase(
     pointer: MemorySegment,
     interfaceId: Guid,
 ) : ComObjectReference(pointer, interfaceId) {
-    override fun invokeInt32Method(slot: Int): Int {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
-            val hr = invokeIntMethod(
+    override fun invokeInt32Method(slot: Int): Int =
+        RawAbiResultSupport.int32Result { resultOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -22,33 +20,28 @@ open class WinRtAsyncReferenceBase(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                resultOut,
+                resultOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_INT, 0)
         }
-    }
 
     protected fun invokeHResultMethod(slot: Int): HResult = HResult(invokeInt32Method(slot))
 
-    protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            val resultPointer = resultOut.get(ValueLayout.ADDRESS, 0)
-            return if (resultPointer == MemorySegment.NULL) null else IUnknownReference(resultPointer)
-        }
-    }
+    protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? =
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+        )
 }
 
 open class WinRtAsyncInfoReference(

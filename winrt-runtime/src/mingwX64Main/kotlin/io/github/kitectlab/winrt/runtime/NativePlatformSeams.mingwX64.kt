@@ -27,9 +27,13 @@ actual object NativeInterop {
 
     actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer = TODO()
 
+    actual fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer = TODO()
+
     actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): NativePointer = TODO()
 
     actual fun readPointer(slot: NativePointer): NativePointer = TODO()
+
+    actual fun readPointerAt(array: NativePointer, index: Int): NativePointer = TODO()
 
     actual fun readInt8(slot: NativePointer): Byte = TODO()
 
@@ -38,6 +42,8 @@ actual object NativeInterop {
     actual fun readDouble(slot: NativePointer): Double = TODO()
 
     actual fun readUtf16(pointer: NativePointer, length: Int): String = TODO()
+
+    actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer): Unit = TODO()
 }
 
 actual object WinRtPlatformApi {
