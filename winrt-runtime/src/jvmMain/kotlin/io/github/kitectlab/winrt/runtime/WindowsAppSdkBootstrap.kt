@@ -4,9 +4,7 @@ import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
-import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
-import java.lang.invoke.MethodHandle
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,6 +17,9 @@ object WindowsAppSdkBootstrap {
     private const val bootstrapDllName = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
     private const val bootstrapDllProperty = "io.github.kitectlab.winrt.bootstrapDll"
     private const val windowsAppSdkRootProperty = "io.github.kitectlab.winrt.windowsAppSdkRoot"
+    private const val loadWithAlteredSearchPath = 0x00000008
+    private const val bootstrapInitialize2 = "MddBootstrapInitialize2"
+    private const val bootstrapShutdown = "MddBootstrapShutdown"
     private val releaseMajorRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJOR\s+(\d+)""")
     private val releaseMinorRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MINOR\s+(\d+)""")
     private val releaseMajorMinorRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJORMINOR\s+(0x[0-9A-Fa-f]+)""")
@@ -28,79 +29,18 @@ object WindowsAppSdkBootstrap {
     private val mainPackageFamilyNameRegex = Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_PACKAGE_MAIN_PACKAGEFAMILYNAME\s+"([^"]+)"""")
     private val singletonPackageFamilyNameRegex = Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_PACKAGE_SINGLETON_PACKAGEFAMILYNAME\s+"([^"]+)"""")
 
-    data class BootstrapLibrary(
+    class BootstrapLibrary internal constructor(
         val path: Path,
-        val lookup: SymbolLookup,
-    )
+        private val moduleHandle: NativePointer,
+        private val initializePointer: NativePointer,
+        private val shutdownPointer: NativePointer,
+    ) : AutoCloseable {
+        @Volatile
+        private var closed = false
 
-    data class BootstrapVersionInfo(
-        val releaseMajor: Int?,
-        val releaseMinor: Int?,
-        val majorMinorVersion: Int,
-        val versionTag: String,
-        val minVersion: Long,
-        val frameworkPackageFamilyName: String?,
-        val mainPackageFamilyName: String?,
-        val singletonPackageFamilyName: String?,
-    )
-
-    fun parseNuGetGlobalPackagesOutput(output: String): List<Path> =
-        output.lineSequence()
-            .map(String::trim)
-            .filter { it.startsWith("global-packages:", ignoreCase = true) }
-            .map { it.substringAfter(':').trim().trim('"') }
-            .filter(String::isNotEmpty)
-            .map(Path::of)
-            .toList()
-
-    fun discoverBootstrapLibrary(): BootstrapLibrary? {
-        val arena = Arena.ofAuto()
-        return explicitBootstrapCandidates()
-            .firstOrNull(Files::isRegularFile)
-            ?.let { path ->
-                BootstrapLibrary(
-                    path = path,
-                    lookup = SymbolLookup.libraryLookup(path, arena),
-                )
-            }
-    }
-
-    fun discoverConfiguredVersionInfo(): BootstrapVersionInfo? {
-        val candidates = buildList {
-            System.getProperty(windowsAppSdkRootProperty)
-                ?.takeIf(String::isNotBlank)
-                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
-            System.getenv("WINAPPSDK_BOOTSTRAP_DLL")
-                ?.takeIf(String::isNotBlank)
-                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
-            System.getProperty(bootstrapDllProperty)
-                ?.takeIf(String::isNotBlank)
-                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
-        }
-
-        val header = candidates.distinct().firstOrNull(Files::isRegularFile) ?: return null
-        return parseVersionInfoHeader(Files.readString(header))
-    }
-
-    fun initialize(majorMinorVersion: Int = defaultMajorMinorVersion): Result<BootstrapLibrary> =
-        runCatching {
-            val library = discoverBootstrapLibrary()
-                ?: error("$bootstrapDllName was not found")
-            val versionInfo = discoverVersionInfo(library.path)
-                ?: discoverConfiguredVersionInfo()
-                ?: BootstrapVersionInfo(
-                    releaseMajor = 1,
-                    releaseMinor = 8,
-                    majorMinorVersion = majorMinorVersion,
-                    versionTag = versionTag,
-                    minVersion = defaultMinVersion,
-                    frameworkPackageFamilyName = null,
-                    mainPackageFamilyName = null,
-                    singletonPackageFamilyName = null,
-                )
-            val initialize2 = downcall(
-                library,
-                "MddBootstrapInitialize2",
+        fun initialize(versionInfo: BootstrapVersionInfo) {
+            val initialize2 = Linker.nativeLinker().downcallHandle(
+                initializePointer.asMemorySegment(),
                 FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT,
@@ -124,13 +64,130 @@ object WindowsAppSdkBootstrap {
                     ) as Int,
                 ).requireSuccess("MddBootstrapInitialize2")
             }
-            library
+        }
+
+        fun shutdown() {
+            try {
+                Linker.nativeLinker().downcallHandle(
+                    shutdownPointer.asMemorySegment(),
+                    FunctionDescriptor.ofVoid(),
+                ).invokeWithArguments()
+            } finally {
+                close()
+            }
+        }
+
+        override fun close() {
+            if (closed) {
+                return
+            }
+            synchronized(this) {
+                if (closed) {
+                    return
+                }
+                WinRtPlatformApi.freeLibraryRaw(moduleHandle)
+                closed = true
+            }
+        }
+    }
+
+    data class BootstrapVersionInfo(
+        val releaseMajor: Int?,
+        val releaseMinor: Int?,
+        val majorMinorVersion: Int,
+        val versionTag: String,
+        val minVersion: Long,
+        val frameworkPackageFamilyName: String?,
+        val mainPackageFamilyName: String?,
+        val singletonPackageFamilyName: String?,
+    )
+
+    fun parseNuGetGlobalPackagesOutput(output: String): List<Path> =
+        output.lineSequence()
+            .map(String::trim)
+            .filter { it.startsWith("global-packages:", ignoreCase = true) }
+            .map { it.substringAfter(':').trim().trim('"') }
+            .filter(String::isNotEmpty)
+            .map(Path::of)
+            .toList()
+
+    fun discoverBootstrapLibrary(): BootstrapLibrary? =
+        explicitBootstrapCandidates()
+            .firstNotNullOfOrNull { path ->
+                if (!Files.isRegularFile(path)) {
+                    return@firstNotNullOfOrNull null
+                }
+
+                val moduleHandle = WinRtPlatformApi.tryLoadLibraryExWRaw(
+                    path.toAbsolutePath().toString(),
+                    loadWithAlteredSearchPath,
+                )
+                if (NativeInterop.isNull(moduleHandle)) {
+                    return@firstNotNullOfOrNull null
+                }
+
+                val initializePointer = WinRtPlatformApi.tryGetProcAddressRaw(moduleHandle, bootstrapInitialize2)
+                val shutdownPointer = WinRtPlatformApi.tryGetProcAddressRaw(moduleHandle, bootstrapShutdown)
+                if (NativeInterop.isNull(initializePointer) || NativeInterop.isNull(shutdownPointer)) {
+                    WinRtPlatformApi.freeLibraryRaw(moduleHandle)
+                    return@firstNotNullOfOrNull null
+                }
+
+                BootstrapLibrary(
+                    path = path,
+                    moduleHandle = moduleHandle,
+                    initializePointer = initializePointer,
+                    shutdownPointer = shutdownPointer,
+                )
+            }
+
+    fun discoverConfiguredVersionInfo(): BootstrapVersionInfo? {
+        val candidates = buildList {
+            System.getProperty(windowsAppSdkRootProperty)
+                ?.takeIf(String::isNotBlank)
+                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
+            System.getenv("WINAPPSDK_BOOTSTRAP_DLL")
+                ?.takeIf(String::isNotBlank)
+                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
+            System.getProperty(bootstrapDllProperty)
+                ?.takeIf(String::isNotBlank)
+                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
+        }
+
+        val header = candidates.distinct().firstOrNull(Files::isRegularFile) ?: return null
+        return parseVersionInfoHeader(Files.readString(header))
+    }
+
+    fun initialize(majorMinorVersion: Int = defaultMajorMinorVersion): Result<BootstrapLibrary> =
+        runCatching {
+            val library = discoverBootstrapLibrary()
+                ?: error("$bootstrapDllName was not found")
+            try {
+                val versionInfo = discoverVersionInfo(library.path)
+                    ?: discoverConfiguredVersionInfo()
+                    ?: BootstrapVersionInfo(
+                        releaseMajor = 1,
+                        releaseMinor = 8,
+                        majorMinorVersion = majorMinorVersion,
+                        versionTag = versionTag,
+                        minVersion = defaultMinVersion,
+                        frameworkPackageFamilyName = null,
+                        mainPackageFamilyName = null,
+                        singletonPackageFamilyName = null,
+                    )
+                library.initialize(versionInfo)
+                library
+            } catch (t: Throwable) {
+                runCatching {
+                    library.close()
+                }
+                throw t
+            }
         }
 
     fun shutdown(library: BootstrapLibrary): Result<Unit> =
         runCatching {
-            downcall(library, "MddBootstrapShutdown", FunctionDescriptor.ofVoid())
-                .invokeWithArguments()
+            library.shutdown()
         }
 
     internal fun parseVersionInfoHeader(content: String): BootstrapVersionInfo {
@@ -188,16 +245,6 @@ object WindowsAppSdkBootstrap {
             .take(8)
             .map { it.resolve(versionInfoHeaderRelativePath) }
             .toList()
-    }
-
-    private fun downcall(
-        library: BootstrapLibrary,
-        name: String,
-        descriptor: FunctionDescriptor,
-    ): MethodHandle {
-        val symbol = library.lookup.find(name).orElse(null)
-        requireNotNull(symbol) { "Bootstrap symbol not found: $name in ${library.path}" }
-        return Linker.nativeLinker().downcallHandle(symbol, descriptor)
     }
 
     private fun allocateWideString(arena: Arena, value: String): MemorySegment =
