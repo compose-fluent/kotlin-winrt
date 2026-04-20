@@ -399,25 +399,23 @@ class ActivationFactoryReference(
     pointer: MemorySegment,
     interfaceId: Guid = IID.IActivationFactory,
 ) : IUnknownReference(pointer, interfaceId) {
-    fun activateInstance(): IInspectableReference {
-        Arena.ofConfined().use { arena ->
-            val instanceOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = 6,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                instanceOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return IInspectableReference(instanceOut.get(ValueLayout.ADDRESS, 0), IID.IInspectable).also {
-                it.tryInitializeReferenceTracker()
-            }
-        }
-    }
+    fun activateInstance(): IInspectableReference =
+        ActivationFactoryReferenceSupport.activateInstance(
+            invokeActivate = { instanceOut ->
+                invokeIntMethod(
+                    slot = 6,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    instanceOut.asMemorySegment(),
+                )
+            },
+            wrapInspectable = { inspectedPointer -> IInspectableReference(inspectedPointer.asMemorySegment(), IID.IInspectable) },
+            initializeReferenceTracker = { it.tryInitializeReferenceTracker() },
+        )
 }
 
 class InspectableReference(
@@ -429,33 +427,22 @@ class InspectableReference(
 
     fun tryGetRuntimeClassName(): String? = getRuntimeClassName(noThrow = true)
 
-    fun getRuntimeClassName(noThrow: Boolean = false): String? {
-        Arena.ofConfined().use { arena ->
-            val hstringOut = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethod(
-                slot = 4,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                hstringOut,
-            )
-            if (HResult(hr).isFailure) {
-                if (noThrow) {
-                    return null
-                }
-                WinRtPlatformApi.checkSucceededRaw(hr)
-            }
-
-            val hstring = hstringOut.get(ValueLayout.ADDRESS, 0)
-            if (hstring == MemorySegment.NULL) {
-                return null
-            }
-            return HString.fromHandle(hstring.asNativePointer(), owner = true).use(HString::toKString)
-        }
-    }
+    fun getRuntimeClassName(noThrow: Boolean = false): String? =
+        InspectableReferenceSupport.getRuntimeClassName(
+            noThrow = noThrow,
+            invokeGetRuntimeClassName = { hStringOut ->
+                invokeIntMethod(
+                    slot = 4,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    hStringOut.asMemorySegment(),
+                )
+            },
+        )
 }
 
 typealias IInspectableReference = InspectableReference
