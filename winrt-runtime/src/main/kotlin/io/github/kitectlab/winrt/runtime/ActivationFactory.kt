@@ -3,24 +3,12 @@ package io.github.kitectlab.winrt.runtime
 object ActivationFactory {
     val iActivationFactoryIid: Guid = IID.IActivationFactory
 
-    private data class CacheKey(
-        val runtimeClassName: String,
-        val interfaceId: Guid,
-    )
-
-    private val cache = ConcurrentCacheMap<CacheKey, IUnknownReference>()
-
     fun get(runtimeClassName: String): ActivationFactoryReference {
         return get(runtimeClassName, iActivationFactoryIid) as ActivationFactoryReference
     }
 
     fun get(runtimeClassName: String, interfaceId: Guid): IUnknownReference {
-        val cached = cache[CacheKey(runtimeClassName, interfaceId)]
-        if (cached != null) {
-            return cloneCachedReference(cached)
-        }
-
-        val result = tryGet(runtimeClassName, interfaceId)
+        val result = CachedActivationFactoryPointers.get(runtimeClassName, interfaceId)
         if (!result.isSuccess) {
             throw WinRtExceptionTranslator.exceptionFor(
                 result.hResult,
@@ -28,48 +16,24 @@ object ActivationFactory {
             )
         }
 
-        val created = wrapFactory(result.pointer, interfaceId)
-        val existing = cache.putIfAbsent(CacheKey(runtimeClassName, interfaceId), created)
-        if (existing != null) {
-            created.close()
-            return cloneCachedReference(existing)
-        }
-
-        return cloneCachedReference(created)
+        return wrapFactory(result.pointer, interfaceId)
     }
 
-    fun tryGet(runtimeClassName: String, interfaceId: Guid = iActivationFactoryIid): ActivationResult {
-        if (!PlatformRuntime.isWindows) {
-            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
-        }
-
-        WinRtModule.ensureInitialized()
-        HString.create(runtimeClassName).use { classId ->
-            val activationResult = WinRtPlatformApi.roGetActivationFactoryRaw(classId.handle, interfaceId).toActivationResult()
-            if (activationResult.isSuccess || activationResult.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
-                return activationResult
-            }
-        }
-
-        return ManifestFreeActivation.tryGet(runtimeClassName, interfaceId)
-    }
+    fun tryGet(runtimeClassName: String, interfaceId: Guid = iActivationFactoryIid): ActivationResult =
+        RawActivationFactoryLookup.tryGet(runtimeClassName, interfaceId)
 
     fun activateInstance(runtimeClassName: String): IInspectableReference =
         get(runtimeClassName).use { it.activateInstance() }
 
-    internal fun cachedFactoryCount(): Int = cache.size
+    internal fun cachedFactoryCount(): Int = CachedActivationFactoryPointers.cachedFactoryCount()
 
     internal fun clearCacheForTests() {
         clearRuntimeCache()
     }
 
     internal fun clearRuntimeCache() {
-        cache.values.forEach { it.close() }
-        cache.clear()
+        CachedActivationFactoryPointers.clearRuntimeCache()
     }
-
-    private fun cloneCachedReference(reference: IUnknownReference): IUnknownReference =
-        wrapFactory(reference.getRef().asNativePointer(), reference.interfaceId)
 
     private fun wrapFactory(pointer: NativePointer, interfaceId: Guid): IUnknownReference =
         if (interfaceId == IID.IActivationFactory) {
