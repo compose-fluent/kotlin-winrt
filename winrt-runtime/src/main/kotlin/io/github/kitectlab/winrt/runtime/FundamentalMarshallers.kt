@@ -44,35 +44,27 @@ object GuidMarshaller {
 
 object StringMarshaller {
     fun createMarshaler(value: String?): ReferencedHString? =
-        if (value.isNullOrEmpty()) {
-            null
-        } else {
-            HString.createReference(value)
-        }
+        NativeStringMarshaller.createMarshaler(value)
 
-    fun getAbi(value: ReferencedHString?): MemorySegment = value?.handle?.asMemorySegment() ?: MemorySegment.NULL
+    fun getAbi(value: ReferencedHString?): MemorySegment =
+        NativeStringMarshaller.getAbi(value).asMemorySegment()
 
-    fun getAbi(value: HString?): MemorySegment = value?.handle?.asMemorySegment() ?: MemorySegment.NULL
+    fun getAbi(value: HString?): MemorySegment =
+        NativeStringMarshaller.getAbi(value).asMemorySegment()
 
     fun disposeMarshaler(value: ReferencedHString?) {
-        value?.close()
+        NativeStringMarshaller.disposeMarshaler(value)
     }
 
     fun disposeAbi(handle: MemorySegment) {
-        if (handle != MemorySegment.NULL) {
-            WindowsRuntimePlatform.windowsDeleteString(handle)
-        }
+        NativeStringMarshaller.disposeAbi(handle.asNativePointer())
     }
 
     fun fromAbi(handle: MemorySegment): String =
-        if (handle == MemorySegment.NULL) {
-            ""
-        } else {
-            HString.fromHandle(handle.asNativePointer(), owner = false).toKString()
-        }
+        NativeStringMarshaller.fromAbi(handle.asNativePointer())
 
     fun fromManaged(value: String?): HString? =
-        value?.let(HString::create)
+        NativeStringMarshaller.fromManaged(value)
 
     fun readFrom(source: MemorySegment): String =
         fromAbi(source.get(ValueLayout.ADDRESS, 0))
