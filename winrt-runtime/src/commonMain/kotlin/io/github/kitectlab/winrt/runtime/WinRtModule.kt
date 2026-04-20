@@ -1,33 +1,39 @@
 package io.github.kitectlab.winrt.runtime
 
 /**
- * JVM-side equivalent of the `.cswinrt/src/WinRT.Runtime/Module.cs` WinRT module owner.
+ * Shared equivalent of the `.cswinrt/src/WinRT.Runtime/Module.cs` WinRT module owner.
  *
  * The runtime keeps one process-wide MTA usage cookie alive so activation and interop helpers do not
  * each invent their own initialization lifetime.
  */
 internal object WinRtModule {
-    private val mtaCookie: NativePointer by lazy {
+    private data class State(
+        val mtaCookie: NativePointer,
+        val shutdownHook: AutoCloseable?,
+    )
+
+    private val state: State by lazy {
         if (!PlatformRuntime.isWindows) {
-            NativeInterop.nullPointer
+            State(NativeInterop.nullPointer, null)
         } else {
             val result = WinRtPlatformApi.coIncrementMtaUsageRaw()
             HResult(result.hResultValue).requireSuccess("CoIncrementMTAUsage")
-            if (!NativeInterop.isNull(result.pointer)) {
-                Runtime.getRuntime().addShutdownHook(
-                    Thread {
+            val shutdownHook =
+                if (NativeInterop.isNull(result.pointer)) {
+                    null
+                } else {
+                    PlatformProcessHooks.registerShutdownHook {
                         runCatching {
                             WinRtPlatformApi.coDecrementMtaUsageRaw(result.pointer)
                         }
-                    },
-                )
-            }
-            result.pointer
+                    }
+                }
+            State(result.pointer, shutdownHook)
         }
     }
 
     fun ensureInitialized() {
         @Suppress("UNUSED_VARIABLE")
-        val ignored = mtaCookie
+        val ignored = state.mtaCookie
     }
 }
