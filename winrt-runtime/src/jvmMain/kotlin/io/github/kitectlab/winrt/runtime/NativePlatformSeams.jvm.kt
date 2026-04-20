@@ -28,6 +28,9 @@ actual object NativeInterop {
 
     actual fun isNull(pointer: NativePointer): Boolean = pointer.segment == MemorySegment.NULL
 
+    actual fun samePointer(first: NativePointer, second: NativePointer): Boolean =
+        first.segment == second.segment
+
     actual fun allocatePointerSlot(scope: NativeScope): NativePointer =
         scope.arena.allocate(ValueLayout.ADDRESS).asNativePointer()
 

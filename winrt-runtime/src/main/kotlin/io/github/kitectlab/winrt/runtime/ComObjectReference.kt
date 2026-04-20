@@ -12,83 +12,57 @@ open class ComObjectReference(
     referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
     private val preventReleaseOnDispose: Boolean = false,
 ) : AutoCloseable {
-    private val state = ComObjectReferenceState()
+    private val support = RawComObjectReferenceSupport(
+        pointer = pointer.asNativePointer(),
+        interfaceId = interfaceId,
+        preventReleaseOnDispose = preventReleaseOnDispose,
+    )
 
     init {
         require(pointer != MemorySegment.NULL) {
             "COM object reference cannot wrap a null pointer."
         }
         if (referenceTrackerPointer != MemorySegment.NULL) {
-            attachReferenceTracker(referenceTrackerPointer, addRefFromTrackerSource = true)
+            support.attachReferenceTracker(
+                trackerPointer = referenceTrackerPointer.asNativePointer(),
+                addRefFromTrackerSource = true,
+                retainTrackerPointer = { invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.AddRef) },
+                addRefFromTrackerSourceCallback = { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) },
+            )
         }
     }
 
     val isDisposed: Boolean
-        get() = state.isDisposed
+        get() = support.isDisposed
 
     val hasReferenceTracker: Boolean
-        get() = state.hasReferenceTracker
+        get() = support.hasReferenceTracker
 
     internal val referenceTrackerHandle: MemorySegment
-        get() = state.referenceTrackerHandle.asMemorySegment()
+        get() = support.referenceTrackerHandle.asMemorySegment()
 
-    fun addRef(): UInt {
-        val count = invokeUIntMethod(IUnknownVftblSlots.AddRef)
-        addRefFromTrackerSource()
-        return count
-    }
+    fun addRef(): UInt =
+        support.addRef { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) }
 
-    fun release(): UInt {
-        releaseFromTrackerSource()
-        return invokeUIntMethod(IUnknownVftblSlots.Release)
-    }
+    fun release(): UInt =
+        support.release { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.ReleaseFromTrackerSource) }
 
-    fun getRef(): MemorySegment {
-        addRef()
-        return pointer
-    }
+    fun getRef(): MemorySegment =
+        support.getRef { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) }
+            .asMemorySegment()
 
-    open fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? {
-        val (hResult, resultPointer) = queryInterfacePointer(requestedInterfaceId)
-        if (hResult == KnownHResults.E_NOINTERFACE || resultPointer == MemorySegment.NULL) {
-            return null
-        }
-        WinRtPlatformApi.checkSucceededRaw(hResult.value)
-        return ComObjectReference(
-            pointer = resultPointer,
-            interfaceId = requestedInterfaceId,
-            referenceTrackerPointer = referenceTrackerHandle,
-            preventReleaseOnDispose = preventReleaseOnDispose,
+    open fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? =
+        support.tryQueryInterface(requestedInterfaceId, ::wrapQueriedReference)
+
+    fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean =
+        support.tryInitializeReferenceTracker(
+            addRefFromTrackerSource = addRefFromTrackerSource,
+            retainTrackerPointer = { invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.AddRef) },
+            addRefFromTrackerSourceCallback = { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) },
         )
-    }
 
-    fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean {
-        if (referenceTrackerHandle != MemorySegment.NULL) {
-            return true
-        }
-
-        val (hResult, trackerPointer) = queryInterfacePointer(IID.IReferenceTracker)
-        if (hResult == KnownHResults.E_NOINTERFACE || trackerPointer == MemorySegment.NULL) {
-            return false
-        }
-        WinRtPlatformApi.checkSucceededRaw(hResult.value)
-        try {
-            attachReferenceTracker(trackerPointer, addRefFromTrackerSource)
-        } finally {
-            invokeUIntMethodUncheckedOnPointer(trackerPointer.asNativePointer(), IUnknownVftblSlots.Release)
-        }
-        return true
-    }
-
-    fun queryInterface(requestedInterfaceId: Guid): Result<ComObjectReference> {
-        return runCatching {
-            tryQueryInterface(requestedInterfaceId)
-                ?: throw WinRtUnsupportedOperationException(
-                    "QueryInterface failed for $requestedInterfaceId with ${KnownHResults.E_NOINTERFACE}",
-                    KnownHResults.E_NOINTERFACE,
-                )
-        }
-    }
+    fun queryInterface(requestedInterfaceId: Guid): Result<ComObjectReference> =
+        support.queryInterface(requestedInterfaceId, ::wrapQueriedReference)
 
     fun tryAsInspectable(): IInspectableReference? =
         tryQueryInterface(IID.IInspectable)?.let { IInspectableReference(it.pointer, IID.IInspectable) }
@@ -314,39 +288,16 @@ open class ComObjectReference(
                 KnownHResults.E_NOINTERFACE,
             )
 
-    fun sameIdentity(other: ComObjectReference): Boolean {
-        throwIfDisposed()
-        other.throwIfDisposed()
-
-        val thisIdentity = tryQueryInterface(IID.IUnknown)?.let { IUnknownReference(it.pointer, IID.IUnknown) }
-            ?: return false
-        val otherIdentity = try {
-            other.tryQueryInterface(IID.IUnknown)?.let { IUnknownReference(it.pointer, IID.IUnknown) }
-                ?: return false
-        } catch (error: Throwable) {
-            thisIdentity.close()
-            throw error
-        }
-
-        return try {
-            thisIdentity.pointer == otherIdentity.pointer
-        } finally {
-            thisIdentity.close()
-            otherIdentity.close()
-        }
-    }
+    fun sameIdentity(other: ComObjectReference): Boolean =
+        support.sameIdentity(other.support)
 
     override fun close() {
-        if (state.beginDispose()) {
-            try {
-                if (!preventReleaseOnDispose) {
-                    releaseFromTrackerSource()
-                    invokeUIntMethodUnchecked(IUnknownVftblSlots.Release)
-                }
-            } finally {
-                disposeReferenceTracker()
-            }
-        }
+        support.close(
+            releaseFromTrackerSourceCallback = {
+                invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.ReleaseFromTrackerSource)
+            },
+            releaseTrackerPointer = { invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.Release) },
+        )
     }
 
     protected fun invokeUIntMethod(slot: Int): UInt =
@@ -364,16 +315,6 @@ open class ComObjectReference(
         descriptor: FunctionDescriptor,
         vararg args: Any,
     ): Int = invokeIntMethod(slot, descriptor, pointer, *args)
-
-    private fun invokeUIntMethodUnchecked(slot: Int): UInt =
-        invokeIntMethodUnchecked(
-            slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-            ),
-            pointer,
-        ).toUInt()
 
     private fun invokeUIntMethodUncheckedOnPointer(
         targetPointer: NativePointer,
@@ -416,61 +357,7 @@ open class ComObjectReference(
         RawVtableCallSupport.entry(pointer, slot)
 
     protected fun throwIfDisposed() {
-        if (state.isDisposed) {
-            throw WinRtObjectDisposedException("Object reference is disposed.")
-        }
-    }
-
-    private fun queryInterfacePointer(requestedInterfaceId: Guid): Pair<HResult, MemorySegment> {
-        throwIfDisposed()
-        Arena.ofConfined().use { arena ->
-            val iidMemory = arena.allocate(AbiLayouts.GUID)
-            requestedInterfaceId.writeTo(iidMemory)
-            val resultPtr = arena.allocate(ValueLayout.ADDRESS)
-            val hr = invokeIntMethodUnchecked(
-                slot = IUnknownVftblSlots.QueryInterface,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                iidMemory,
-                resultPtr,
-            )
-            return HResult(hr) to resultPtr.get(ValueLayout.ADDRESS, 0)
-        }
-    }
-
-    private fun attachReferenceTracker(
-        trackerPointer: MemorySegment,
-        addRefFromTrackerSource: Boolean,
-    ) {
-        state.attachReferenceTracker(
-            trackerPointer = trackerPointer.asNativePointer(),
-            addRefFromTrackerSource = addRefFromTrackerSource,
-            retainTrackerPointer = { invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.AddRef) },
-            addRefFromTrackerSourceCallback = { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) },
-        )
-    }
-
-    private fun addRefFromTrackerSource() {
-        state.addRefFromTrackerSourceIfNeeded {
-            invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource)
-        }
-    }
-
-    private fun releaseFromTrackerSource() {
-        state.releaseFromTrackerSourceIfNeeded {
-            invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.ReleaseFromTrackerSource)
-        }
-    }
-
-    private fun disposeReferenceTracker() {
-        state.disposeReferenceTracker {
-            invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.Release)
-        }
+        support.throwIfDisposed()
     }
 
     private fun invokeReferenceTrackerMethod(
@@ -486,6 +373,19 @@ open class ComObjectReference(
         )
         return (method.invokeWithArguments(trackerPointer.asMemorySegment()) as Int).toUInt()
     }
+
+    private fun wrapQueriedReference(
+        queriedPointer: NativePointer,
+        queriedInterfaceId: Guid,
+        trackerHandle: NativePointer,
+        queriedPreventReleaseOnDispose: Boolean,
+    ): ComObjectReference =
+        ComObjectReference(
+            pointer = queriedPointer.asMemorySegment(),
+            interfaceId = queriedInterfaceId,
+            referenceTrackerPointer = trackerHandle.asMemorySegment(),
+            preventReleaseOnDispose = queriedPreventReleaseOnDispose,
+        )
 }
 
 open class IUnknownReference(

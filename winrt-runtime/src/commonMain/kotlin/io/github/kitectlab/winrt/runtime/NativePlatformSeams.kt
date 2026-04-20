@@ -15,6 +15,8 @@ expect object NativeInterop {
 
     fun isNull(pointer: NativePointer): Boolean
 
+    fun samePointer(first: NativePointer, second: NativePointer): Boolean
+
     fun allocatePointerSlot(scope: NativeScope): NativePointer
 
     fun allocateInt32Slot(scope: NativeScope): NativePointer

@@ -15,6 +15,8 @@ actual object NativeInterop {
 
     actual fun isNull(pointer: NativePointer): Boolean = pointer === nullPointer
 
+    actual fun samePointer(first: NativePointer, second: NativePointer): Boolean = first === second
+
     actual fun allocatePointerSlot(scope: NativeScope): NativePointer = TODO()
 
     actual fun allocateInt32Slot(scope: NativeScope): NativePointer = TODO()
