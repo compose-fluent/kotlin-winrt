@@ -83,7 +83,7 @@ class ComWrappersSupportTest {
     fun create_ccw_and_find_object_use_registered_factory() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("44444444-4444-4444-4444-444444444444")
-        ComWrappersSupport.registerCcwFactory(TestManagedType::class.java) { value ->
+        ComWrappersSupport.registerCcwFactory(TestManagedType::class) { value ->
             WinRtCcwDefinition(
                 interfaceDefinitions = listOf(
                     WinRtInspectableInterfaceDefinition(
@@ -98,7 +98,7 @@ class ComWrappersSupportTest {
 
         val managed = TestManagedType("payload")
         ComWrappersSupport.createCCWForObject(managed, interfaceId).use { ccw ->
-            val found = ComWrappersSupport.findObject(ccw.pointer, TestManagedType::class.java)
+            val found = ComWrappersSupport.findObject(ccw.pointer, TestManagedType::class)
             val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
 
             assertSame(managed, found)

@@ -50,7 +50,7 @@ class ProjectionRegistryTest {
         ComWrappersSupport.clearRegistriesForTests()
         registerTestTypeDescriptors()
 
-        ComWrappersSupport.registerProjectionAssembly(SampleRuntimeClass::class.java)
+        ComWrappersSupport.registerProjectionAssembly(SampleRuntimeClass::class)
         TypeNameSupport.registerProjectionTypeBaseTypeMapping(
             mapOf("Contoso.DerivedRuntimeClass" to "Contoso.SampleRuntimeClass"),
         )
@@ -65,7 +65,7 @@ class ProjectionRegistryTest {
     fun type_name_support_uses_non_winrt_runtime_class_lookup_hooks() {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.registerTypeRuntimeClassNameLookup { type ->
-            if (type == PlainManagedType::class.java) {
+            if (type == PlainManagedType::class) {
                 "Contoso.LookupRegisteredRuntimeClass"
             } else {
                 null
@@ -152,7 +152,7 @@ class ProjectionRegistryTest {
     fun type_name_support_resolves_boxed_reference_runtime_names_like_cswinrt() {
         ComWrappersSupport.clearRegistriesForTests()
         registerTestTypeDescriptors()
-        ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class.java)
+        ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class)
 
         assertEquals(String::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<String>"))
         assertEquals(Class::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>"))

@@ -68,7 +68,7 @@ class MarshalersTest {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("77777777-7777-7777-7777-777777777777")
         val typeHandle = WinRtTypeHandle("test.IManaged", interfaceId)
-        ComWrappersSupport.registerCcwFactory(TestManagedInterfaceImpl::class.java) {
+        ComWrappersSupport.registerCcwFactory(TestManagedInterfaceImpl::class) {
             WinRtCcwDefinition(
                 interfaceDefinitions = listOf(
                     WinRtInspectableInterfaceDefinition(

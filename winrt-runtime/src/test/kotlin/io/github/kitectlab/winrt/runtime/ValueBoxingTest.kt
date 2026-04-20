@@ -144,7 +144,7 @@ class ValueBoxingTest {
     fun boxed_reference_runtime_names_round_trip_type_exception_and_enum_values() {
         ComWrappersSupport.clearRegistriesForTests()
         registerEnumDescriptors()
-        ComWrappersSupport.registerProjectionAssembly(TestPriority::class.java, TestVisibility::class.java)
+        ComWrappersSupport.registerProjectionAssembly(TestPriority::class, TestVisibility::class)
 
         roundTripInspectable(Marshaler.inspectableAny(), String::class.java) { expected, actual ->
             assertEquals(expected, actual)

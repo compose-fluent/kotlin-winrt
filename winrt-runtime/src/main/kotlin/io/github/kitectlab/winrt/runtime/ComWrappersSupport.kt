@@ -1,6 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.MemorySegment
+import kotlin.reflect.KClass
 
 data class WinRtCcwDefinition(
     val interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
@@ -27,9 +28,9 @@ object ComWrappersSupport {
     private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
     private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
-    private val ccwFactories = ConcurrentCacheMap<Class<*>, (Any) -> WinRtCcwDefinition>()
+    private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRtCcwDefinition>()
     private val rcwCache = WeakValueCache<Long, Any>()
-    private val runtimeClassNameLookups = SnapshotList<(Class<*>) -> String?>()
+    private val runtimeClassNameLookups = SnapshotList<(KClass<*>) -> String?>()
 
     init {
         WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
@@ -51,21 +52,39 @@ object ComWrappersSupport {
     ): Boolean = helperTypeRegistry.putIfAbsent(projectedType, helperType) == null
 
     fun registerCcwFactory(
-        implementationType: Class<*>,
+        implementationType: KClass<*>,
         factory: (Any) -> WinRtCcwDefinition,
     ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
 
+    fun registerCcwFactory(
+        implementationType: Class<*>,
+        factory: (Any) -> WinRtCcwDefinition,
+    ): Boolean = registerCcwFactory(implementationType.kotlin, factory)
+
     fun registerProjectionType(
-        type: Class<*>,
+        type: KClass<*>,
         runtimeClassName: String? = null,
     ) {
         TypeNameSupport.registerProjectionType(type, runtimeClassName)
     }
 
+    fun registerProjectionType(
+        type: Class<*>,
+        runtimeClassName: String? = null,
+    ) {
+        registerProjectionType(type.kotlin, runtimeClassName)
+    }
+
+    fun registerProjectionAssembly(
+        vararg projectionTypes: KClass<*>,
+    ) {
+        TypeNameSupport.registerProjectionAssembly(*projectionTypes)
+    }
+
     fun registerProjectionAssembly(
         vararg projectionTypes: Class<*>,
     ) {
-        TypeNameSupport.registerProjectionAssembly(*projectionTypes)
+        registerProjectionAssembly(*projectionTypes.map { it.kotlin }.toTypedArray())
     }
 
     fun registerProjectionTypeBaseTypeMapping(
@@ -75,9 +94,15 @@ object ComWrappersSupport {
     }
 
     fun registerTypeRuntimeClassNameLookup(
-        lookup: (Class<*>) -> String?,
+        lookup: (KClass<*>) -> String?,
     ) {
         runtimeClassNameLookups.add(lookup)
+    }
+
+    fun registerJavaTypeRuntimeClassNameLookup(
+        lookup: (Class<*>) -> String?,
+    ) {
+        runtimeClassNameLookups.add { type: KClass<*> -> lookup(type.registeredClass()) }
     }
 
     fun getInspectableInfo(pointer: MemorySegment): WinRtInspectableInfo? =
@@ -87,8 +112,15 @@ object ComWrappersSupport {
 
     fun <T : Any> findObject(
         pointer: MemorySegment,
+        expectedType: KClass<T>,
+    ): T? = WinRtInspectableComObject.findManagedValue(pointer)?.takeIf(expectedType::isInstance) as? T
+
+    fun <T : Any> findObject(
+        pointer: MemorySegment,
         expectedType: Class<T>,
-    ): T? = WinRtInspectableComObject.findManagedValue(pointer)?.let(expectedType::cast)
+    ): T? = findObject(pointer, expectedType.kotlin)
+
+    inline fun <reified T : Any> findObject(pointer: MemorySegment): T? = findObject(pointer, T::class)
 
     fun tryUnwrapObject(
         value: Any?,
@@ -174,10 +206,14 @@ object ComWrappersSupport {
     }
 
     internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
-        type: Class<*>,
+        type: KClass<*>,
     ): String? = runtimeClassNameLookups.firstNotNullOfOrNull { lookup ->
         lookup(type)?.takeIf { it.isNotBlank() }
     }
+
+    internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
+        type: Class<*>,
+    ): String? = getRuntimeClassNameForNonWinRTTypeFromLookupTable(type.kotlin)
 
     private fun createRcwCore(
         pointer: MemorySegment,
@@ -270,7 +306,7 @@ object ComWrappersSupport {
     }
 
     private fun findCcwFactory(value: Any): ((Any) -> WinRtCcwDefinition)? {
-        ccwFactories[value.javaClass]?.let { return it }
+        ccwFactories[value::class]?.let { return it }
         return ccwFactories.entries.firstOrNull { (type, _) -> type.isInstance(value) }?.value
     }
 

@@ -1,5 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
+import kotlin.reflect.KClass
+
 enum class TypeNameGenerationFlag {
     GenerateBoxedName,
     ForGetRuntimeClassName,
@@ -17,41 +19,60 @@ object TypeNameSupport {
     private const val REFERENCE_ARRAY_RUNTIME_NAME_PREFIX = "Windows.Foundation.IReferenceArray`1<"
 
     private sealed interface TypeLookupResult {
-        data class Found(val type: Class<*>) : TypeLookupResult
+        data class Found(val type: KClass<*>) : TypeLookupResult
         data object Missing : TypeLookupResult
     }
 
-    private val registeredProjectionTypes = ConcurrentCacheMap<String, Class<*>>()
-    private val registeredReferenceArrayTypes = ConcurrentCacheMap<Class<*>, Class<*>>()
+    private val registeredProjectionTypes = ConcurrentCacheMap<String, KClass<*>>()
+    private val registeredReferenceArrayTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
     private val projectionTypeNameToBaseTypeNameMappings = mutableListOf<Map<String, String>>()
     private val typeNameCache = ConcurrentCacheMap<String, TypeLookupResult>()
     private val baseRcwTypeCache = ConcurrentCacheMap<String, TypeLookupResult>()
 
     fun registerProjectionAssembly(
-        vararg projectionTypes: Class<*>,
+        vararg projectionTypes: KClass<*>,
     ) {
         projectionTypes.forEach(::registerProjectionType)
     }
 
+    fun registerProjectionAssembly(
+        vararg projectionTypes: Class<*>,
+    ) {
+        registerProjectionAssembly(*projectionTypes.map { it.kotlin }.toTypedArray())
+    }
+
     fun registerProjectionType(
-        type: Class<*>,
+        type: KClass<*>,
         runtimeClassName: String? = inferRuntimeClassName(type),
     ) {
         typeNameCache.clear()
         baseRcwTypeCache.clear()
         if (runtimeClassName != null) {
             registeredProjectionTypes[runtimeClassName] = type
-            WinRtTypeRegistry.registerAlias(type.kotlin, runtimeClassName)
+            WinRtTypeRegistry.registerAlias(type, runtimeClassName)
         }
-        registeredProjectionTypes[type.name] = type
-        WinRtTypeRegistry.registerAlias(type.kotlin, type.name)
-        type.canonicalName?.let { alias ->
-            WinRtTypeRegistry.registerAlias(type.kotlin, alias)
+        registeredProjectionTypes[type.qualifiedName ?: type.simpleName.orEmpty()] = type
+        WinRtTypeRegistry.registerAlias(type, type.qualifiedName ?: type.simpleName.orEmpty())
+        type.registeredClass().canonicalName?.let { alias ->
+            WinRtTypeRegistry.registerAlias(type, alias)
         }
+    }
+
+    fun registerProjectionType(
+        type: Class<*>,
+        runtimeClassName: String? = inferRuntimeClassName(type),
+    ) {
+        registerProjectionType(type.kotlin, runtimeClassName)
     }
 
     fun registerProjectionTypes(
         vararg types: Class<*>,
+    ) {
+        types.forEach(::registerProjectionType)
+    }
+
+    fun registerProjectionTypes(
+        vararg types: KClass<*>,
     ) {
         types.forEach(::registerProjectionType)
     }
@@ -67,12 +88,12 @@ object TypeNameSupport {
 
     fun registerBaseTypeForTypeName(
         runtimeClassName: String,
-        baseType: Class<*>,
+        baseType: KClass<*>,
     ) {
         baseRcwTypeCache.compute(runtimeClassName) { _, existing ->
             when (existing) {
                 is TypeLookupResult.Found ->
-                    if (existing.type.isAssignableFrom(baseType)) {
+                    if (existing.type.registeredClass().isAssignableFrom(baseType.registeredClass())) {
                         TypeLookupResult.Found(baseType)
                     } else {
                         existing
@@ -83,12 +104,26 @@ object TypeNameSupport {
         }
     }
 
+    fun registerBaseTypeForTypeName(
+        runtimeClassName: String,
+        baseType: Class<*>,
+    ) {
+        registerBaseTypeForTypeName(runtimeClassName, baseType.kotlin)
+    }
+
+    fun registerReferenceArrayType(
+        elementType: KClass<*>,
+        arrayType: KClass<*>,
+    ) {
+        typeNameCache.clear()
+        registeredReferenceArrayTypes[elementType] = arrayType
+    }
+
     fun registerReferenceArrayType(
         elementType: Class<*>,
         arrayType: Class<*>,
     ) {
-        typeNameCache.clear()
-        registeredReferenceArrayTypes[elementType] = arrayType
+        registerReferenceArrayType(elementType.kotlin, arrayType.kotlin)
     }
 
     fun findRcwTypeByNameCached(
@@ -103,12 +138,12 @@ object TypeNameSupport {
             synchronized(projectionTypeNameToBaseTypeNameMappings) {
                 projectionTypeNameToBaseTypeNameMappings.firstNotNullOfOrNull { mapping ->
                     mapping[missingName]?.let { baseTypeName ->
-                        findRcwTypeByNameCached(baseTypeName)?.let(TypeLookupResult::Found)
+                        findRcwTypeByNameCached(baseTypeName)?.kotlin?.let(TypeLookupResult::Found)
                     }
                 } ?: TypeLookupResult.Missing
             }
         }) {
-            is TypeLookupResult.Found -> cached.type
+            is TypeLookupResult.Found -> cached.type.registeredClass()
             TypeLookupResult.Missing -> null
         }
     }
@@ -119,7 +154,7 @@ object TypeNameSupport {
         when (val cached = typeNameCache.computeIfAbsent(runtimeClassName) { requestedName ->
             resolveTypeByName(requestedName)?.let(TypeLookupResult::Found) ?: TypeLookupResult.Missing
         }) {
-            is TypeLookupResult.Found -> cached.type
+            is TypeLookupResult.Found -> cached.type.registeredClass()
             TypeLookupResult.Missing -> null
         }
 
@@ -149,11 +184,15 @@ object TypeNameSupport {
         }
 
         if (flags.contains(TypeNameGenerationFlag.ForGetRuntimeClassName)) {
-            return ComWrappersSupport.getRuntimeClassNameForNonWinRTTypeFromLookupTable(type) ?: ""
+            return ComWrappersSupport.getRuntimeClassNameForNonWinRTTypeFromLookupTable(type.kotlin) ?: ""
         }
 
         return type.name
     }
+
+    internal fun inferRuntimeClassName(
+        type: KClass<*>,
+    ): String? = inferRuntimeClassName(type.registeredClass())
 
     internal fun inferRuntimeClassName(
         type: Class<*>,
@@ -174,25 +213,25 @@ object TypeNameSupport {
 
     private fun resolveTypeByName(
         runtimeClassName: String,
-    ): Class<*>? {
+    ): KClass<*>? {
         parseSingleGenericArgument(runtimeClassName, REFERENCE_RUNTIME_NAME_PREFIX)?.let { elementTypeName ->
             return resolveTypeByName(elementTypeName)
         }
         parseSingleGenericArgument(runtimeClassName, REFERENCE_ARRAY_RUNTIME_NAME_PREFIX)?.let { elementTypeName ->
-            return resolveTypeByName(elementTypeName)?.let(::arrayClassForElementType)
+            return resolveTypeByName(elementTypeName)?.let { arrayClassForElementType(it.registeredClass())?.kotlin }
         }
 
-        Projections.findCustomTypeForAbiTypeName(runtimeClassName)?.let { return it }
-        WinRtTypeRegistry.findByName(runtimeClassName)?.let { return it.registeredClass() }
+        Projections.findCustomTypeForAbiTypeName(runtimeClassName)?.let { return it.kotlin }
+        WinRtTypeRegistry.findByName(runtimeClassName)?.let { return it.kClass }
         registeredProjectionTypes[runtimeClassName]?.let { return it }
-        WinRtTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeClass }
+        WinRtTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeClass.kotlin }
 
         val genericBaseName = runtimeClassName.substringBefore('<')
         if (genericBaseName != runtimeClassName) {
-            Projections.findCustomTypeForAbiTypeName(genericBaseName)?.let { return it }
-            WinRtTypeRegistry.findByName(genericBaseName)?.let { return it.registeredClass() }
+            Projections.findCustomTypeForAbiTypeName(genericBaseName)?.let { return it.kotlin }
+            WinRtTypeRegistry.findByName(genericBaseName)?.let { return it.kClass }
             registeredProjectionTypes[genericBaseName]?.let { return it }
-            WinRtTypeClassifier.resolve(genericBaseName)?.let { return it.representativeClass }
+            WinRtTypeClassifier.resolve(genericBaseName)?.let { return it.representativeClass.kotlin }
         }
 
         return null
@@ -253,6 +292,6 @@ object TypeNameSupport {
             java.lang.Character::class.java,
             -> CharArray::class.java
 
-            else -> registeredReferenceArrayTypes[elementType]
+            else -> registeredReferenceArrayTypes[elementType.kotlin]?.registeredClass()
         }
 }
