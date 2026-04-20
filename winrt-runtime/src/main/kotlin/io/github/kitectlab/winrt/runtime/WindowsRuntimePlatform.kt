@@ -19,6 +19,7 @@ internal object WindowsRuntimePlatform {
     private val kernel32Lookup: SymbolLookup by lazy { SymbolLookup.libraryLookup("kernel32", Arena.global()) }
     private val combaseLookup: SymbolLookup by lazy { SymbolLookup.libraryLookup("combase", Arena.global()) }
     private val ole32Lookup: SymbolLookup by lazy { SymbolLookup.libraryLookup("ole32", Arena.global()) }
+    private val oleaut32Lookup: SymbolLookup by lazy { SymbolLookup.libraryLookup("oleaut32", Arena.global()) }
 
     private val coInitializeExHandle: MethodHandle by lazy {
         downcall(
@@ -64,6 +65,20 @@ internal object WindowsRuntimePlatform {
             combaseLookup,
             "RoGetActivationFactory",
             FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val roGetAgileReferenceHandle: MethodHandle by lazy {
+        downcall(
+            combaseLookup,
+            "RoGetAgileReference",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
                 ValueLayout.JAVA_INT,
                 ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS,
@@ -122,6 +137,90 @@ internal object WindowsRuntimePlatform {
         )
     }
 
+    private val coCreateInstanceHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoCreateInstance",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val coIncrementMtaUsageHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoIncrementMTAUsage",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val coDecrementMtaUsageHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoDecrementMTAUsage",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val coGetContextTokenHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoGetContextToken",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val coGetObjectContextHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoGetObjectContext",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val setErrorInfoHandle: MethodHandle by lazy {
+        downcall(
+            oleaut32Lookup,
+            "SetErrorInfo",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val coCreateFreeThreadedMarshalerHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoCreateFreeThreadedMarshaler",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
     private val loadLibraryExWHandle: MethodHandle by lazy {
         downcall(
             kernel32Lookup,
@@ -141,6 +240,34 @@ internal object WindowsRuntimePlatform {
             "GetProcAddress",
             FunctionDescriptor.of(
                 ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val formatMessageWHandle: MethodHandle by lazy {
+        downcall(
+            kernel32Lookup,
+            "FormatMessageW",
+            FunctionDescriptor.of(
+                ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_INT,
+                ValueLayout.ADDRESS,
+            ),
+        )
+    }
+
+    private val localFreeHandle: MethodHandle by lazy {
+        downcall(
+            kernel32Lookup,
+            "LocalFree",
+            FunctionDescriptor.of(
                 ValueLayout.ADDRESS,
                 ValueLayout.ADDRESS,
             ),
@@ -187,6 +314,29 @@ internal object WindowsRuntimePlatform {
         }
     }
 
+    fun coCreateInstance(
+        classId: Guid,
+        interfaceId: Guid,
+        classContext: Int = 1,
+    ): PointerResult {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val classIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
+            classId.writeTo(classIdMemory)
+            val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
+            interfaceId.writeTo(interfaceIdMemory)
+            val instanceOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = coCreateInstanceHandle.invokeWithArguments(
+                classIdMemory,
+                MemorySegment.NULL,
+                classContext,
+                interfaceIdMemory,
+                instanceOut,
+            ) as Int
+            return PointerResult(HResult(hr), instanceOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
     fun coInitializeEx(apartmentType: ApartmentType): HResult {
         ensureWindows()
         val flags = when (apartmentType) {
@@ -213,6 +363,79 @@ internal object WindowsRuntimePlatform {
     fun roUninitialize() {
         ensureWindows()
         roUninitializeHandle.invokeWithArguments()
+    }
+
+    fun coIncrementMtaUsage(): PointerResult {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val cookieOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = coIncrementMtaUsageHandle.invokeWithArguments(cookieOut) as Int
+            return PointerResult(HResult(hr), cookieOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    fun coDecrementMtaUsage(cookie: MemorySegment): HResult {
+        ensureWindows()
+        return HResult(coDecrementMtaUsageHandle.invokeWithArguments(cookie) as Int)
+    }
+
+    fun roGetAgileReference(
+        unknown: MemorySegment,
+        interfaceId: Guid = IID.IUnknown,
+    ): PointerResult {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
+            interfaceId.writeTo(interfaceIdMemory)
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = roGetAgileReferenceHandle.invokeWithArguments(
+                0,
+                interfaceIdMemory,
+                unknown,
+                resultOut,
+            ) as Int
+            return PointerResult(HResult(hr), resultOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    fun coGetContextToken(): PointerResult {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val tokenOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = coGetContextTokenHandle.invokeWithArguments(tokenOut) as Int
+            return PointerResult(HResult(hr), tokenOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    fun coGetObjectContext(interfaceId: Guid): PointerResult {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
+            interfaceId.writeTo(interfaceIdMemory)
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = coGetObjectContextHandle.invokeWithArguments(
+                interfaceIdMemory,
+                resultOut,
+            ) as Int
+            return PointerResult(HResult(hr), resultOut.get(ValueLayout.ADDRESS, 0))
+        }
+    }
+
+    fun setErrorInfo(errorInfo: MemorySegment): HResult {
+        ensureWindows()
+        return HResult(setErrorInfoHandle.invokeWithArguments(0, errorInfo) as Int)
+    }
+
+    fun coCreateFreeThreadedMarshaler(outer: MemorySegment = MemorySegment.NULL): PointerResult {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val resultOut = arena.allocate(ValueLayout.ADDRESS)
+            val hr = coCreateFreeThreadedMarshalerHandle.invokeWithArguments(
+                outer,
+                resultOut,
+            ) as Int
+            return PointerResult(HResult(hr), resultOut.get(ValueLayout.ADDRESS, 0))
+        }
     }
 
     fun windowsCreateString(
@@ -300,10 +523,38 @@ internal object WindowsRuntimePlatform {
         return (freeLibraryHandle.invokeWithArguments(moduleHandle) as Int) != 0
     }
 
+    fun tryFormatMessage(hResult: HResult): String? {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val messageOut = arena.allocate(ValueLayout.ADDRESS)
+            val charCount = formatMessageWHandle.invokeWithArguments(
+                0x13FF,
+                MemorySegment.NULL,
+                hResult.value,
+                0,
+                messageOut,
+                0,
+                MemorySegment.NULL,
+            ) as Int
+            if (charCount <= 0) {
+                return null
+            }
+            val messagePointer = messageOut.get(ValueLayout.ADDRESS, 0)
+            if (messagePointer == MemorySegment.NULL) {
+                return null
+            }
+            try {
+                return readUtf16Message(messagePointer, charCount)
+            } finally {
+                localFreeHandle.invokeWithArguments(messagePointer)
+            }
+        }
+    }
+
     fun lastErrorAsHResult(): HResult {
         ensureWindows()
         val errorCode = getLastErrorHandle.invokeWithArguments() as Int
-        return WinRtExceptionTranslator.hResultFromWin32(errorCode)
+        return ExceptionHelpers.hResultFromWin32(errorCode)
     }
 
     fun checkSucceeded(result: Int) {
@@ -333,4 +584,20 @@ internal object WindowsRuntimePlatform {
 
     fun resolveModulePath(fileName: String): String =
         java.nio.file.Path.of(System.getProperty("user.dir"), fileName).toString()
+
+    private fun readUtf16Message(pointer: MemorySegment, charCount: Int): String {
+        val sized = pointer.reinterpret(charCount.toLong() * ValueLayout.JAVA_CHAR.byteSize())
+        val chars = CharArray(charCount)
+        var index = 0
+        while (index < charCount) {
+            chars[index] = sized.get(ValueLayout.JAVA_CHAR, index.toLong() * ValueLayout.JAVA_CHAR.byteSize())
+            index += 1
+        }
+        return String(chars)
+    }
 }
+
+internal data class PointerResult(
+    val hResult: HResult,
+    val pointer: MemorySegment,
+)

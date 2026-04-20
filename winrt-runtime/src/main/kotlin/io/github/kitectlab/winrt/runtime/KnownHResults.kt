@@ -1,29 +1,56 @@
 package io.github.kitectlab.winrt.runtime
 
 object KnownHResults {
-    val S_OK = HResult(0x00000000)
-    val S_FALSE = HResult(0x00000001)
-    val E_FAIL = HResult(0x80004005.toInt())
-    val E_BOUNDS = HResult(0x8000000B.toInt())
-    val E_CHANGED_STATE = HResult(0x8000000C.toInt())
-    val E_ILLEGAL_STATE_CHANGE = HResult(0x8000000D.toInt())
-    val E_ILLEGAL_METHOD_CALL = HResult(0x8000000E.toInt())
-    val RO_E_CLOSED = HResult(0x80000013.toInt())
-    val E_ILLEGAL_DELEGATE_ASSIGNMENT = HResult(0x80000018.toInt())
-    val WEB_E_JSON_VALUE_NOT_FOUND = HResult(0x83750009.toInt())
-    val E_NOTIMPL = HResult(0x80004001.toInt())
-    val E_NOINTERFACE = HResult(0x80004002.toInt())
-    val E_POINTER = HResult(0x80004003.toInt())
-    val CO_E_NOTINITIALIZED = HResult(0x800401F0.toInt())
-    val REGDB_E_CLASSNOTREG = HResult(0x80040154.toInt())
-    val RPC_E_CHANGED_MODE = HResult(0x80010106.toInt())
-    val E_ACCESSDENIED = HResult(0x80070005.toInt())
-    val E_OUTOFMEMORY = HResult(0x8007000E.toInt())
-    val E_INVALIDARG = HResult(0x80070057.toInt())
-    val ERROR_FILE_NOT_FOUND = HResult(0x80070002.toInt())
-    val ERROR_PATH_NOT_FOUND = HResult(0x80070003.toInt())
-    val ERROR_BAD_FORMAT = HResult(0x8007000B.toInt())
-    val ERROR_CANCELLED = HResult(0x800704C7.toInt())
-    val ERROR_TIMEOUT = HResult(0x800705B4.toInt())
-    val APPMODEL_ERROR_NO_PACKAGE = HResult(0x80073D54.toInt())
+    val S_OK: HResult
+        get() = ExceptionHelpers.S_OK
+    val S_FALSE: HResult
+        get() = ExceptionHelpers.S_FALSE
+    val E_FAIL: HResult
+        get() = ExceptionHelpers.E_FAIL
+    val E_BOUNDS: HResult
+        get() = ExceptionHelpers.E_BOUNDS
+    val E_CHANGED_STATE: HResult
+        get() = ExceptionHelpers.E_CHANGED_STATE
+    val E_ILLEGAL_STATE_CHANGE: HResult
+        get() = ExceptionHelpers.E_ILLEGAL_STATE_CHANGE
+    val E_ILLEGAL_METHOD_CALL: HResult
+        get() = ExceptionHelpers.E_ILLEGAL_METHOD_CALL
+    val RO_E_CLOSED: HResult
+        get() = ExceptionHelpers.RO_E_CLOSED
+    val E_ILLEGAL_DELEGATE_ASSIGNMENT: HResult
+        get() = ExceptionHelpers.E_ILLEGAL_DELEGATE_ASSIGNMENT
+    val WEB_E_JSON_VALUE_NOT_FOUND: HResult
+        get() = ExceptionHelpers.WEB_E_JSON_VALUE_NOT_FOUND
+    val E_NOTIMPL: HResult
+        get() = ExceptionHelpers.E_NOTIMPL
+    val E_NOINTERFACE: HResult
+        get() = ExceptionHelpers.E_NOINTERFACE
+    val E_POINTER: HResult
+        get() = ExceptionHelpers.E_POINTER
+    val CO_E_NOTINITIALIZED: HResult
+        get() = ExceptionHelpers.CO_E_NOTINITIALIZED
+    val REGDB_E_CLASSNOTREG: HResult
+        get() = ExceptionHelpers.REGDB_E_CLASSNOTREG
+    val RPC_E_CHANGED_MODE: HResult
+        get() = ExceptionHelpers.RPC_E_CHANGED_MODE
+    val E_ACCESSDENIED: HResult
+        get() = ExceptionHelpers.E_ACCESSDENIED
+    val E_OUTOFMEMORY: HResult
+        get() = ExceptionHelpers.E_OUTOFMEMORY
+    val E_INVALIDARG: HResult
+        get() = ExceptionHelpers.E_INVALIDARG
+    val E_NOTSUPPORTED: HResult
+        get() = ExceptionHelpers.E_NOTSUPPORTED
+    val ERROR_FILE_NOT_FOUND: HResult
+        get() = ExceptionHelpers.ERROR_FILE_NOT_FOUND
+    val ERROR_PATH_NOT_FOUND: HResult
+        get() = ExceptionHelpers.ERROR_PATH_NOT_FOUND
+    val ERROR_BAD_FORMAT: HResult
+        get() = ExceptionHelpers.ERROR_BAD_FORMAT
+    val ERROR_CANCELLED: HResult
+        get() = ExceptionHelpers.ERROR_CANCELLED
+    val ERROR_TIMEOUT: HResult
+        get() = ExceptionHelpers.ERROR_TIMEOUT
+    val APPMODEL_ERROR_NO_PACKAGE: HResult
+        get() = ExceptionHelpers.APPMODEL_ERROR_NO_PACKAGE
 }

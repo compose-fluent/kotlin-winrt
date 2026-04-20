@@ -568,14 +568,6 @@ class InspectableReference(
 
 typealias IInspectableReference = InspectableReference
 
-object IID {
-    val IUnknown: Guid = Guid("00000000-0000-0000-C000-000000000046")
-    val IInspectable: Guid = Guid("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90")
-    val IActivationFactory: Guid = Guid("00000035-0000-0000-C000-000000000046")
-    val IReferenceTracker: Guid = Guid("11D3B13A-180E-4789-A8BE-7712882893E6")
-    val IReferenceTrackerTarget: Guid = Guid("64BD43F8-BFEE-4EC4-B7EB-2935158DAE21")
-}
-
 object ReferenceTrackerVftblSlots {
     const val ConnectFromTrackerSource = 3
     const val DisconnectFromTrackerSource = 4

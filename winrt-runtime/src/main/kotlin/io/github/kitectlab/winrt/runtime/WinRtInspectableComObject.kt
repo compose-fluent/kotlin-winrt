@@ -164,12 +164,7 @@ internal class WinRtInspectableComObject(
             val interfaceId = token.substringBefore('#').let(::Guid)
             val methodIndex = token.substringAfter('#').toInt()
             interfaces.getValue(interfaceId).methods[methodIndex].handler(rawArguments)
-        }.getOrElse { error ->
-            when (error) {
-                is WinRtRuntimeException -> (error.hResult ?: KnownHResults.E_FAIL).value
-                else -> KnownHResults.E_FAIL.value
-            }
-        }
+        }.getOrElse { error -> WinRtExceptionTranslator.hResultFromException(error).value }
 
     private fun cleanup() {
         if (cleanedUp.compareAndSet(false, true)) {

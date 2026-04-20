@@ -87,10 +87,8 @@ internal class WinRtDelegateComObject(
                 WinRtDelegateAbiMarshaller.writeReturnValue(descriptor.returnKind, returnValue, resultOut)
             }
             KnownHResults.S_OK.value
-        } catch (error: WinRtRuntimeException) {
-            (error.hResult ?: KnownHResults.E_FAIL).value
-        } catch (_: Throwable) {
-            KnownHResults.E_FAIL.value
+        } catch (error: Throwable) {
+            WinRtExceptionTranslator.hResultFromException(error).value
         }
     }
 

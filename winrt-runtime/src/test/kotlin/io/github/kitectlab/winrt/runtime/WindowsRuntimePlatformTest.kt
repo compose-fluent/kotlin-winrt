@@ -15,10 +15,35 @@ class WindowsRuntimePlatformTest {
     @Test
     fun hresult_translation_returns_semantic_runtime_exception_types() {
         assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_INVALIDARG) is WinRtIllegalArgumentException)
+        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_POINTER) is WinRtNullReferenceException)
         assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_BOUNDS) is WinRtIndexOutOfBoundsException)
+        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_NOTIMPL) is WinRtNotImplementedException)
+        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_NOINTERFACE) is WinRtInvalidCastException)
+        assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_OUTOFMEMORY) is WinRtOutOfMemoryException)
         assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.E_ACCESSDENIED) is WinRtAccessDeniedException)
         assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.ERROR_TIMEOUT) is WinRtTimeoutException)
         assertTrue(WinRtExceptionTranslator.exceptionFor(KnownHResults.REGDB_E_CLASSNOTREG) is WinRtIllegalStateException)
+    }
+
+    @Test
+    fun throwable_to_hresult_translation_matches_runtime_owner() {
+        assertEquals(KnownHResults.E_INVALIDARG, WinRtExceptionTranslator.hResultFromException(IllegalArgumentException("bad arg")))
+        assertEquals(KnownHResults.E_BOUNDS, WinRtExceptionTranslator.hResultFromException(IndexOutOfBoundsException("bad index")))
+        assertEquals(KnownHResults.E_NOTSUPPORTED, WinRtExceptionTranslator.hResultFromException(UnsupportedOperationException("unsupported")))
+        assertEquals(KnownHResults.ERROR_CANCELLED, WinRtExceptionTranslator.hResultFromException(java.util.concurrent.CancellationException("cancelled")))
+        assertEquals(KnownHResults.ERROR_TIMEOUT, WinRtExceptionTranslator.hResultFromException(java.util.concurrent.TimeoutException("timeout")))
+        assertEquals(KnownHResults.E_ACCESSDENIED, WinRtExceptionTranslator.hResultFromException(WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)))
+    }
+
+    @Test
+    fun iid_catalog_matches_cswinrt_reference_values() {
+        assertEquals(Guid("00000037-0000-0000-C000-000000000046"), IID.IWeakReference)
+        assertEquals(Guid("00000038-0000-0000-C000-000000000046"), IID.IWeakReferenceSource)
+        assertEquals(Guid("94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90"), IID.IAgileObject)
+        assertEquals(Guid("00000003-0000-0000-C000-000000000046"), IID.IMarshal)
+        assertEquals(Guid("000001DA-0000-0000-C000-000000000046"), IID.IContextCallback)
+        assertEquals(Guid("82BA7092-4C88-427D-A7BC-16DD93FEB67E"), IID.IRestrictedErrorInfo)
+        assertEquals(Guid("00000146-0000-0000-C000-000000000046"), IID.IGlobalInterfaceTable)
     }
 
     @Test
@@ -34,5 +59,13 @@ class WindowsRuntimePlatformTest {
         } finally {
             WindowsRuntimePlatform.freeLibrary(kernel32)
         }
+    }
+
+    @Test
+    fun format_message_uses_windows_system_message_table() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        val message = ExceptionHelpers.formatMessage(KnownHResults.ERROR_FILE_NOT_FOUND)
+        assertTrue(!message.isNullOrBlank())
     }
 }
