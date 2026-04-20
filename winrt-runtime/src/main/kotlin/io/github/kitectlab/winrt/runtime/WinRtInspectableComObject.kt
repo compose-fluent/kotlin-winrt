@@ -414,9 +414,3 @@ internal class WinRtInspectableComObject(
     }
 }
 
-internal object IInspectableVftblSlots {
-    const val GetIids = 3
-    const val GetRuntimeClassName = 4
-    const val GetTrustLevel = 5
-    const val FirstCustom = 6
-}

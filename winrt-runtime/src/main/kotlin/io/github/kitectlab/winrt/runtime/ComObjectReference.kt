@@ -5,7 +5,6 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
-import java.util.concurrent.atomic.AtomicBoolean
 
 open class ComObjectReference(
     val pointer: MemorySegment,
@@ -13,9 +12,7 @@ open class ComObjectReference(
     referenceTrackerPointer: MemorySegment = MemorySegment.NULL,
     private val preventReleaseOnDispose: Boolean = false,
 ) : AutoCloseable {
-    private val disposed = AtomicBoolean(false)
-    private var referenceTrackerPointer: MemorySegment = MemorySegment.NULL
-    private var releaseFromTrackerSourceOnDispose: Boolean = false
+    private val state = ComObjectReferenceState()
 
     init {
         require(pointer != MemorySegment.NULL) {
@@ -27,13 +24,13 @@ open class ComObjectReference(
     }
 
     val isDisposed: Boolean
-        get() = disposed.get()
+        get() = state.isDisposed
 
     val hasReferenceTracker: Boolean
-        get() = referenceTrackerPointer != MemorySegment.NULL
+        get() = state.hasReferenceTracker
 
     internal val referenceTrackerHandle: MemorySegment
-        get() = referenceTrackerPointer
+        get() = state.referenceTrackerHandle.asMemorySegment()
 
     fun addRef(): UInt {
         val count = invokeUIntMethod(IUnknownVftblSlots.AddRef)
@@ -60,13 +57,13 @@ open class ComObjectReference(
         return ComObjectReference(
             pointer = resultPointer,
             interfaceId = requestedInterfaceId,
-            referenceTrackerPointer = referenceTrackerPointer,
+            referenceTrackerPointer = referenceTrackerHandle,
             preventReleaseOnDispose = preventReleaseOnDispose,
         )
     }
 
     fun tryInitializeReferenceTracker(addRefFromTrackerSource: Boolean = true): Boolean {
-        if (referenceTrackerPointer != MemorySegment.NULL) {
+        if (referenceTrackerHandle != MemorySegment.NULL) {
             return true
         }
 
@@ -78,7 +75,7 @@ open class ComObjectReference(
         try {
             attachReferenceTracker(trackerPointer, addRefFromTrackerSource)
         } finally {
-            invokeUIntMethodUncheckedOnPointer(trackerPointer, IUnknownVftblSlots.Release)
+            invokeUIntMethodUncheckedOnPointer(trackerPointer.asNativePointer(), IUnknownVftblSlots.Release)
         }
         return true
     }
@@ -340,7 +337,7 @@ open class ComObjectReference(
     }
 
     override fun close() {
-        if (disposed.compareAndSet(false, true)) {
+        if (state.beginDispose()) {
             try {
                 if (!preventReleaseOnDispose) {
                     releaseFromTrackerSource()
@@ -379,17 +376,17 @@ open class ComObjectReference(
         ).toUInt()
 
     private fun invokeUIntMethodUncheckedOnPointer(
-        targetPointer: MemorySegment,
+        targetPointer: NativePointer,
         slot: Int,
     ): UInt {
         val method = Linker.nativeLinker().downcallHandle(
-            RawVtableCallSupport.entry(targetPointer, slot),
+            RawVtableCallSupport.entry(targetPointer.asMemorySegment(), slot),
             FunctionDescriptor.of(
                 ValueLayout.JAVA_INT,
                 ValueLayout.ADDRESS,
             ),
         )
-        return (method.invokeWithArguments(targetPointer) as Int).toUInt()
+        return (method.invokeWithArguments(targetPointer.asMemorySegment()) as Int).toUInt()
     }
 
     protected fun invokeIntMethod(
@@ -419,7 +416,7 @@ open class ComObjectReference(
         RawVtableCallSupport.entry(pointer, slot)
 
     protected fun throwIfDisposed() {
-        if (isDisposed) {
+        if (state.isDisposed) {
             throw WinRtObjectDisposedException("Object reference is disposed.")
         }
     }
@@ -450,49 +447,44 @@ open class ComObjectReference(
         trackerPointer: MemorySegment,
         addRefFromTrackerSource: Boolean,
     ) {
-        if (referenceTrackerPointer != MemorySegment.NULL) {
-            return
-        }
-        referenceTrackerPointer = trackerPointer
-        invokeUIntMethodUncheckedOnPointer(referenceTrackerPointer, IUnknownVftblSlots.AddRef)
-        if (addRefFromTrackerSource) {
-            invokeReferenceTrackerMethod(ReferenceTrackerVftblSlots.AddRefFromTrackerSource)
-            releaseFromTrackerSourceOnDispose = true
-        }
+        state.attachReferenceTracker(
+            trackerPointer = trackerPointer.asNativePointer(),
+            addRefFromTrackerSource = addRefFromTrackerSource,
+            retainTrackerPointer = { invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.AddRef) },
+            addRefFromTrackerSourceCallback = { invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource) },
+        )
     }
 
     private fun addRefFromTrackerSource() {
-        if (!hasReferenceTracker) {
-            return
+        state.addRefFromTrackerSourceIfNeeded {
+            invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.AddRefFromTrackerSource)
         }
-        invokeReferenceTrackerMethod(ReferenceTrackerVftblSlots.AddRefFromTrackerSource)
     }
 
     private fun releaseFromTrackerSource() {
-        if (!hasReferenceTracker || !releaseFromTrackerSourceOnDispose) {
-            return
+        state.releaseFromTrackerSourceIfNeeded {
+            invokeReferenceTrackerMethod(it, ReferenceTrackerVftblSlots.ReleaseFromTrackerSource)
         }
-        invokeReferenceTrackerMethod(ReferenceTrackerVftblSlots.ReleaseFromTrackerSource)
     }
 
     private fun disposeReferenceTracker() {
-        if (referenceTrackerPointer == MemorySegment.NULL) {
-            return
+        state.disposeReferenceTracker {
+            invokeUIntMethodUncheckedOnPointer(it, IUnknownVftblSlots.Release)
         }
-        invokeUIntMethodUncheckedOnPointer(referenceTrackerPointer, IUnknownVftblSlots.Release)
-        referenceTrackerPointer = MemorySegment.NULL
-        releaseFromTrackerSourceOnDispose = false
     }
 
-    private fun invokeReferenceTrackerMethod(slot: Int): UInt {
+    private fun invokeReferenceTrackerMethod(
+        trackerPointer: NativePointer,
+        slot: Int,
+    ): UInt {
         val method = Linker.nativeLinker().downcallHandle(
-            RawVtableCallSupport.entry(referenceTrackerPointer, slot),
+            RawVtableCallSupport.entry(trackerPointer.asMemorySegment(), slot),
             FunctionDescriptor.of(
                 ValueLayout.JAVA_INT,
                 ValueLayout.ADDRESS,
             ),
         )
-        return (method.invokeWithArguments(referenceTrackerPointer) as Int).toUInt()
+        return (method.invokeWithArguments(trackerPointer.asMemorySegment()) as Int).toUInt()
     }
 }
 
@@ -567,13 +559,3 @@ class InspectableReference(
 }
 
 typealias IInspectableReference = InspectableReference
-
-object ReferenceTrackerVftblSlots {
-    const val ConnectFromTrackerSource = 3
-    const val DisconnectFromTrackerSource = 4
-    const val FindTrackerTargets = 5
-    const val GetReferenceTrackerManager = 6
-    const val AddRefFromTrackerSource = 7
-    const val ReleaseFromTrackerSource = 8
-    const val PegFromTrackerSource = 9
-}

@@ -23,12 +23,6 @@ internal object AbiLayouts {
     )
 }
 
-internal object IUnknownVftblSlots {
-    const val QueryInterface = 0
-    const val AddRef = 1
-    const val Release = 2
-}
-
 internal object RawVtableCallSupport {
     fun entry(pointer: java.lang.foreign.MemorySegment, slot: Int): java.lang.foreign.MemorySegment {
         val objectMemory = pointer.reinterpret(ValueLayout.ADDRESS.byteSize())
