@@ -34,8 +34,14 @@ actual object NativeInterop {
     actual fun allocatePointerSlot(scope: NativeScope): NativePointer =
         scope.arena.allocate(ValueLayout.ADDRESS).asNativePointer()
 
+    actual fun allocateInt8Slot(scope: NativeScope): NativePointer =
+        scope.arena.allocate(ValueLayout.JAVA_BYTE).asNativePointer()
+
     actual fun allocateInt32Slot(scope: NativeScope): NativePointer =
         scope.arena.allocate(ValueLayout.JAVA_INT).asNativePointer()
+
+    actual fun allocateDoubleSlot(scope: NativeScope): NativePointer =
+        scope.arena.allocate(ValueLayout.JAVA_DOUBLE).asNativePointer()
 
     actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer =
         scope.arena.allocate(sizeBytes).asNativePointer()
@@ -50,8 +56,14 @@ actual object NativeInterop {
     actual fun readPointer(slot: NativePointer): NativePointer =
         slot.segment.get(ValueLayout.ADDRESS, 0).asNativePointer()
 
+    actual fun readInt8(slot: NativePointer): Byte =
+        slot.segment.get(ValueLayout.JAVA_BYTE, 0)
+
     actual fun readInt32(slot: NativePointer): Int =
         slot.segment.get(ValueLayout.JAVA_INT, 0)
+
+    actual fun readDouble(slot: NativePointer): Double =
+        slot.segment.get(ValueLayout.JAVA_DOUBLE, 0)
 
     actual fun readUtf16(pointer: NativePointer, length: Int): String {
         if (length == 0) {

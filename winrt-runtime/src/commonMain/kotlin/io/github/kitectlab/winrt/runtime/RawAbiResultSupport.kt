@@ -33,4 +33,24 @@ internal object RawAbiResultSupport {
     fun uint32Result(
         invoke: (NativePointer) -> Int,
     ): UInt = int32Result(invoke).toUInt()
+
+    fun booleanResult(
+        invoke: (NativePointer) -> Int,
+    ): Boolean =
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateInt8Slot(scope)
+            val hResult = invoke(resultOut)
+            WinRtPlatformApi.checkSucceededRaw(hResult)
+            return NativeInterop.readInt8(resultOut).toInt() != 0
+        }
+
+    fun doubleResult(
+        invoke: (NativePointer) -> Int,
+    ): Double =
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateDoubleSlot(scope)
+            val hResult = invoke(resultOut)
+            WinRtPlatformApi.checkSucceededRaw(hResult)
+            return NativeInterop.readDouble(resultOut)
+        }
 }

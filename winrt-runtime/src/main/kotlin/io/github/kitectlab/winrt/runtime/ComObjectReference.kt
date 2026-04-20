@@ -88,23 +88,22 @@ open class ComObjectReference(
     }
 
     open fun invokeBooleanMethodWithObjectArg(slot: Int, value: ComObjectReference): Boolean {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                value.pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
-        }
+        return RawAbiResultSupport.booleanResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    value.pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+        )
     }
 
     open fun invokeBooleanMethodWithTwoObjectArgs(
@@ -112,25 +111,24 @@ open class ComObjectReference(
         first: ComObjectReference,
         second: ComObjectReference,
     ): Boolean {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
-            val hr = invokeIntMethod(
-                slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                ),
-                pointer,
-                first.pointer,
-                second.pointer,
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
-        }
+        return RawAbiResultSupport.booleanResult(
+            invoke = { resultOut ->
+                invokeIntMethod(
+                    slot = slot,
+                    descriptor = FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS,
+                    ),
+                    pointer,
+                    first.pointer,
+                    second.pointer,
+                    resultOut.asMemorySegment(),
+                )
+            },
+        )
     }
 
     open fun invokeObjectMethod(slot: Int): IUnknownReference {
@@ -165,10 +163,9 @@ open class ComObjectReference(
             )
         }
 
-    fun invokeDoubleMethod(slot: Int): Double {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_DOUBLE)
-            val hr = invokeIntMethod(
+    fun invokeDoubleMethod(slot: Int): Double =
+        RawAbiResultSupport.doubleResult { resultOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -176,12 +173,9 @@ open class ComObjectReference(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                resultOut,
+                resultOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_DOUBLE, 0)
         }
-    }
 
     open fun invokeInt32Method(slot: Int): Int =
         RawAbiResultSupport.int32Result { resultOut ->
@@ -237,10 +231,9 @@ open class ComObjectReference(
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
-    open fun invokeBooleanMethod(slot: Int): Boolean {
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
-            val hr = invokeIntMethod(
+    open fun invokeBooleanMethod(slot: Int): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeIntMethod(
                 slot = slot,
                 descriptor = FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
@@ -248,12 +241,9 @@ open class ComObjectReference(
                     ValueLayout.ADDRESS,
                 ),
                 pointer,
-                resultOut,
+                resultOut.asMemorySegment(),
             )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            return resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
         }
-    }
 
     open fun invokeUInt32Method(slot: Int): UInt =
         RawAbiResultSupport.uint32Result { resultOut ->

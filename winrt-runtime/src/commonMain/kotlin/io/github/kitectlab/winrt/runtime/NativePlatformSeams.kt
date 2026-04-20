@@ -19,7 +19,11 @@ expect object NativeInterop {
 
     fun allocatePointerSlot(scope: NativeScope): NativePointer
 
+    fun allocateInt8Slot(scope: NativeScope): NativePointer
+
     fun allocateInt32Slot(scope: NativeScope): NativePointer
+
+    fun allocateDoubleSlot(scope: NativeScope): NativePointer
 
     fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer
 
@@ -27,7 +31,11 @@ expect object NativeInterop {
 
     fun readPointer(slot: NativePointer): NativePointer
 
+    fun readInt8(slot: NativePointer): Byte
+
     fun readInt32(slot: NativePointer): Int
+
+    fun readDouble(slot: NativePointer): Double
 
     fun readUtf16(pointer: NativePointer, length: Int): String
 }
