@@ -253,7 +253,7 @@ class WinRtCollectionInteropTest {
     private open class FakeReference(
         arena: Arena,
         val label: String,
-    ) : IUnknownReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000201")) {
+    ) : IUnknownReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000201")) {
         override fun close() = Unit
     }
 
@@ -261,7 +261,7 @@ class WinRtCollectionInteropTest {
         arena: Arena,
         private val keyResult: IUnknownReference?,
         private val valueResult: IUnknownReference?,
-    ) : WinRtKeyValuePairReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000210")) {
+    ) : WinRtKeyValuePairReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000210")) {
         override fun key(): IUnknownReference? = keyResult
 
         override fun value(): IUnknownReference? = valueResult
@@ -273,7 +273,7 @@ class WinRtCollectionInteropTest {
         arena: Arena,
         private val firstResult: WinRtIteratorReference,
         private val iteratorFactory: (() -> WinRtIteratorReference)? = null,
-    ) : WinRtIterableReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000202")) {
+    ) : WinRtIterableReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000202")) {
         val objectSlots = mutableListOf<Int>()
 
         override fun first(iteratorInterfaceId: Guid): WinRtIteratorReference {
@@ -288,7 +288,7 @@ class WinRtCollectionInteropTest {
         arena: Arena,
         private val currentResults: List<IUnknownReference?>,
         private val getManyResults: List<IUnknownReference?>,
-    ) : WinRtIteratorReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000203")) {
+    ) : WinRtIteratorReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000203")) {
         private var currentIndex = 0
         val slotCalls = mutableListOf<Int>()
         val getManySlots = mutableListOf<Pair<Int, Int>>()
@@ -323,7 +323,7 @@ class WinRtCollectionInteropTest {
         private val sizeResult: UInt,
         private val indexOfResult: Pair<Boolean, UInt>,
         private val getManyResults: List<IUnknownReference?>,
-    ) : WinRtVectorViewReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000204")) {
+    ) : WinRtVectorViewReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000204")) {
         val uintSlots = mutableListOf<Int>()
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val indexOfSlots = mutableListOf<Pair<Int, ComObjectReference>>()
@@ -360,7 +360,7 @@ class WinRtCollectionInteropTest {
         private val getManyResults: List<IUnknownReference?>,
         private val vectorViewResult: WinRtVectorViewReference,
         private val getAtResultsByIndex: Map<UInt, IUnknownReference?> = emptyMap(),
-    ) : WinRtVectorReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000205")) {
+    ) : WinRtVectorReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000205")) {
         val uintSlots = mutableListOf<Int>()
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val objectSlots = mutableListOf<Int>()
@@ -435,7 +435,7 @@ class WinRtCollectionInteropTest {
         private val hasKeyResult: Boolean,
         private val splitResult: Pair<WinRtMapViewReference?, WinRtMapViewReference?>,
         private val iterableResult: WinRtIterableReference? = null,
-    ) : WinRtMapViewReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000206")) {
+    ) : WinRtMapViewReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000206")) {
         val lookupSlots = mutableListOf<Pair<Int, ComObjectReference>>()
         val hasKeySlots = mutableListOf<Pair<Int, ComObjectReference>>()
         val uintSlots = mutableListOf<Int>()
@@ -474,7 +474,7 @@ class WinRtCollectionInteropTest {
         private val hasKeyResult: Boolean,
         private val insertResult: Boolean,
         private val mapViewResult: WinRtMapViewReference,
-    ) : WinRtMapReference(arena.allocate(8), Guid("00000000-0000-0000-0000-000000000207")) {
+    ) : WinRtMapReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000207")) {
         val lookupSlots = mutableListOf<Pair<Int, ComObjectReference>>()
         val hasKeySlots = mutableListOf<Pair<Int, ComObjectReference>>()
         val uintSlots = mutableListOf<Int>()

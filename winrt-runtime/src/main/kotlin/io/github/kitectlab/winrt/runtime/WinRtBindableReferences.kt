@@ -1,9 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-
 /**
  * Runtime object-reference wrappers corresponding to `.cswinrt/src/WinRT.Runtime/Projections/Bindable.net5.cs`.
  *
@@ -11,23 +7,23 @@ import java.lang.foreign.ValueLayout
  * `winrt-runtime`, instead of pushing object marshalling policy into the generator.
  */
 open class WinRtBindableIterableReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableIterable,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun first(): WinRtBindableIteratorReference =
         invokeObjectMethod(slot = 6).use { reference ->
-            createIteratorReference(reference.getRef(), WinRtBindableInterfaceIds.IBindableIterator)
+            createIteratorReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableIterator)
         }
 
     protected open fun createIteratorReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtBindableIteratorReference = WinRtBindableIteratorReference(pointer, interfaceId)
 }
 
 open class WinRtBindableIteratorReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableIterator,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -40,7 +36,7 @@ open class WinRtBindableIteratorReference(
 
     open fun currentOrNull(): IUnknownReference? =
         invokeNullableObjectMethod(slot = 6)?.use { reference ->
-            createUnknownReference(reference.getRef(), IID.IInspectable)
+            createUnknownReference(reference.getRefPointer(), IID.IInspectable)
         }
 
     open fun hasCurrent(): Boolean = invokeBooleanMethod(slot = 7)
@@ -60,13 +56,13 @@ open class WinRtBindableIteratorReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 }
 
 open class WinRtBindableVectorViewReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableVectorView,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -79,46 +75,46 @@ open class WinRtBindableVectorViewReference(
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
         invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.use { reference ->
-            createUnknownReference(reference.getRef(), IID.IInspectable)
+            createUnknownReference(reference.getRefPointer(), IID.IInspectable)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
 
-    open fun indexOf(valuePointer: MemorySegment): Pair<Boolean, UInt> =
+    open fun indexOf(valuePointer: NativePointer): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
             invokeAbi(
                 slot = 8,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 valuePointer,
-                indexOut.asMemorySegment(),
-                foundOut.asMemorySegment(),
+                indexOut,
+                foundOut,
             )
         }
 
     open fun asIterable(): WinRtBindableIterableReference =
         queryInterface(WinRtBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
-            createIterableReference(reference.getRef(), WinRtBindableInterfaceIds.IBindableIterable)
+            createIterableReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableIterable)
         }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
     protected open fun createIterableReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtBindableIterableReference = WinRtBindableIterableReference(pointer, interfaceId)
 }
 
 open class WinRtBindableVectorReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableVector,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -131,61 +127,61 @@ open class WinRtBindableVectorReference(
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
         invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.use { reference ->
-            createUnknownReference(reference.getRef(), IID.IInspectable)
+            createUnknownReference(reference.getRefPointer(), IID.IInspectable)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
 
     open fun getView(): WinRtBindableVectorViewReference =
         invokeObjectMethod(slot = 8).use { reference ->
-            createVectorViewReference(reference.getRef(), WinRtBindableInterfaceIds.IBindableVectorView)
+            createVectorViewReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableVectorView)
         }
 
-    open fun indexOf(valuePointer: MemorySegment): Pair<Boolean, UInt> =
+    open fun indexOf(valuePointer: NativePointer): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
             invokeAbi(
                 slot = 9,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 valuePointer,
-                indexOut.asMemorySegment(),
-                foundOut.asMemorySegment(),
+                indexOut,
+                foundOut,
             )
         }
 
-    open fun setAt(index: UInt, valuePointer: MemorySegment) {
+    open fun setAt(index: UInt, valuePointer: NativePointer) {
         invokeNullableInspectableMethod(slot = 10, index = index, valuePointer = valuePointer)
     }
 
-    open fun insertAt(index: UInt, valuePointer: MemorySegment) {
+    open fun insertAt(index: UInt, valuePointer: NativePointer) {
         invokeNullableInspectableMethod(slot = 11, index = index, valuePointer = valuePointer)
     }
 
     open fun removeAt(index: UInt) {
         val hr = invokeAbi(
             slot = 12,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_INT,
+            descriptor = NativeFunctionDescriptor.of(
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.JAVA_INT,
             ),
             index.toInt(),
         )
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
-    open fun append(valuePointer: MemorySegment) {
+    open fun append(valuePointer: NativePointer) {
         val hr = invokeAbi(
             slot = 13,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.ADDRESS,
+            descriptor = NativeFunctionDescriptor.of(
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.ADDRESS,
             ),
             valuePointer,
         )
@@ -202,36 +198,36 @@ open class WinRtBindableVectorReference(
 
     open fun asIterable(): WinRtBindableIterableReference =
         queryInterface(WinRtBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
-            createIterableReference(reference.getRef(), WinRtBindableInterfaceIds.IBindableIterable)
+            createIterableReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableIterable)
         }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
     protected open fun createVectorViewReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtBindableVectorViewReference = WinRtBindableVectorViewReference(pointer, interfaceId)
 
     protected open fun createIterableReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtBindableIterableReference = WinRtBindableIterableReference(pointer, interfaceId)
 
     private fun invokeNullableInspectableMethod(
         slot: Int,
         index: UInt,
-        valuePointer: MemorySegment,
+        valuePointer: NativePointer,
     ) {
         val hr = invokeAbi(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
+            descriptor = NativeFunctionDescriptor.of(
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
             ),
             index.toInt(),
             valuePointer,

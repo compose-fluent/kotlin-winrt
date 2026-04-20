@@ -15,11 +15,11 @@ class WinRtCollectionProjectionTest {
 
         try {
             ComObjectReference(
-                marshaler.abi,
+                marshaler.abi.asNativePointer(),
                 iterableInterfaceIdFor(adapter),
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRtIterableProjection.fromAbi(borrowed.getRef(), adapter)!!.use { projected ->
+                WinRtIterableProjection.fromAbi(borrowed.getRefPointer().asMemorySegment(), adapter)!!.use { projected ->
                     assertEquals(listOf("one", "two"), projected.toList())
                     assertEquals(iterableTypeHandleFor(adapter), projected.primaryTypeHandle)
                 }
@@ -39,11 +39,11 @@ class WinRtCollectionProjectionTest {
         try {
             ComObjectReference(abi, vectorViewInterfaceIdFor(adapter)).use { owner ->
                 ComObjectReference(owner.pointer, vectorViewInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRtVectorViewReference(borrowed.getRef(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
+                    WinRtVectorViewReference(borrowed.getRefPointer(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
                         assertEquals(2u, vectorView.size())
                         assertEquals("one", projectBorrowedForTest(vectorView.getAtOrNull(0u), adapter))
                         val iterable = vectorView.queryInterface(iterableInterfaceIdFor(adapter)).getOrThrow()
-                        WinRtIterableReference(iterable.pointer.asMemorySegment(), iterableInterfaceIdFor(adapter)).use { base ->
+                        WinRtIterableReference(iterable.pointer, iterableInterfaceIdFor(adapter)).use { base ->
                             val iterator = base.first(iteratorInterfaceIdFor(adapter))
                             iterator.use {
                                 assertTrue(it.hasCurrent())
@@ -51,7 +51,7 @@ class WinRtCollectionProjectionTest {
                             }
                         }
                     }
-                    WinRtReadOnlyListProjection.fromAbi(borrowed.getRef(), adapter)!!.use { projected ->
+                    WinRtReadOnlyListProjection.fromAbi(borrowed.getRefPointer().asMemorySegment(), adapter)!!.use { projected ->
                         assertEquals(listOf("one", "two"), projected.toList())
                     }
                 }
@@ -71,7 +71,7 @@ class WinRtCollectionProjectionTest {
         try {
             ComObjectReference(abi, vectorInterfaceIdFor(adapter)).use { owner ->
                 ComObjectReference(owner.pointer, vectorInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRtVectorReference(borrowed.getRef(), vectorInterfaceIdFor(adapter)).use { vector ->
+                    WinRtVectorReference(borrowed.getRefPointer(), vectorInterfaceIdFor(adapter)).use { vector ->
                         adapter.marshaller("updated").use { value ->
                             vector.setAt(0u, value)
                         }
@@ -83,7 +83,7 @@ class WinRtCollectionProjectionTest {
 
                     assertEquals(listOf("updated", "three"), managed)
 
-                    WinRtListProjection.fromAbi(borrowed.getRef(), adapter)!!.use { projected ->
+                    WinRtListProjection.fromAbi(borrowed.getRefPointer().asMemorySegment(), adapter)!!.use { projected ->
                         projected.add("four")
                         assertEquals(listOf("updated", "three", "four"), projected.toList())
                     }
@@ -111,7 +111,7 @@ class WinRtCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRtReadOnlyDictionaryProjection.fromAbi(
-                        borrowed.getRef(),
+                        borrowed.getRefPointer().asMemorySegment(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->
@@ -144,7 +144,7 @@ class WinRtCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRtDictionaryProjection.fromAbi(
-                        borrowed.getRef(),
+                        borrowed.getRefPointer().asMemorySegment(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->

@@ -105,7 +105,7 @@ class WinRtMapViewAdapter<K, V>(
                 null -> error("IKeyValuePair reference cannot be null.")
                 is WinRtKeyValuePairReference -> current.projectPair(keyProjector, valueProjector)
                 else -> WinRtKeyValuePairReference(
-                    current.pointer.asMemorySegment(),
+                    current.pointer,
                     keyValuePairInterfaceId,
                     preventReleaseOnDispose = true,
                 ).usePair(keyProjector, valueProjector)

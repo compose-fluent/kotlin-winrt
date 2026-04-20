@@ -100,7 +100,7 @@ class WinRtAsyncInteropTest {
         arena: Arena,
         private var statusState: WinRtAsyncStatus,
         private val errorCode: HResult = KnownHResults.S_OK,
-    ) : WinRtAsyncActionReference(arena.allocate(8)) {
+    ) : WinRtAsyncActionReference(arena.allocate(8).asNativePointer()) {
         var resultsCalled = false
         var cancelCalled = false
         private var completedHandle: WinRtDelegateHandle? = null
@@ -136,7 +136,7 @@ class WinRtAsyncInteropTest {
         private val result: String,
         private val errorCode: HResult = KnownHResults.S_OK,
     ) : WinRtAsyncOperationReference<String>(
-        pointer = arena.allocate(8),
+        pointer = arena.allocate(8).asNativePointer(),
         interfaceId = Guid("11111111-2222-3333-4444-555555555555"),
         completedHandlerInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
         resultReader = { error("Fake override should be used.") },

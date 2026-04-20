@@ -200,7 +200,7 @@ object WinRtBindableIterableProjection {
         if (pointer == MemorySegment.NULL) {
             null
         } else {
-            FromAbiHelper(WinRtBindableIterableReference(pointer, WinRtBindableInterfaceIds.IBindableIterable))
+            FromAbiHelper(WinRtBindableIterableReference(pointer.asNativePointer(), WinRtBindableInterfaceIds.IBindableIterable))
         }
 }
 
@@ -443,7 +443,7 @@ object WinRtBindableVectorViewProjection {
         if (pointer == MemorySegment.NULL) {
             null
         } else {
-            FromAbiHelper(WinRtBindableVectorViewReference(pointer, WinRtBindableInterfaceIds.IBindableVectorView))
+            FromAbiHelper(WinRtBindableVectorViewReference(pointer.asNativePointer(), WinRtBindableInterfaceIds.IBindableVectorView))
         }
 }
 
@@ -468,7 +468,7 @@ object WinRtBindableVectorProjection {
         override fun set(index: Int, element: Any?): Any? {
             val previous = get(index)
             WinRtBindableObjectMarshaller.createMarshaler(element).use { marshaler ->
-                vector.setAt(index.toUInt(), marshaler?.abi ?: MemorySegment.NULL)
+                vector.setAt(index.toUInt(), marshaler?.abi?.asNativePointer() ?: NativeInterop.nullPointer)
             }
             return previous
         }
@@ -477,9 +477,9 @@ object WinRtBindableVectorProjection {
             require(index >= 0) { "index must be non-negative." }
             WinRtBindableObjectMarshaller.createMarshaler(element).use { marshaler ->
                 if (index == size) {
-                    vector.append(marshaler?.abi ?: MemorySegment.NULL)
+                    vector.append(marshaler?.abi?.asNativePointer() ?: NativeInterop.nullPointer)
                 } else {
-                    vector.insertAt(index.toUInt(), marshaler?.abi ?: MemorySegment.NULL)
+                    vector.insertAt(index.toUInt(), marshaler?.abi?.asNativePointer() ?: NativeInterop.nullPointer)
                 }
             }
         }
@@ -669,7 +669,7 @@ object WinRtBindableVectorProjection {
         if (pointer == MemorySegment.NULL) {
             null
         } else {
-            FromAbiHelper(WinRtBindableVectorReference(pointer, WinRtBindableInterfaceIds.IBindableVector))
+            FromAbiHelper(WinRtBindableVectorReference(pointer.asNativePointer(), WinRtBindableInterfaceIds.IBindableVector))
         }
 }
 

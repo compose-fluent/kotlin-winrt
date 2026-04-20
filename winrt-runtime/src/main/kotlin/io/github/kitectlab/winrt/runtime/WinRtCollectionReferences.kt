@@ -1,11 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-
 open class WinRtCollectionReferenceBase(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
@@ -14,16 +10,15 @@ open class WinRtCollectionReferenceBase(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
-            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+            wrap = ::IUnknownReference,
         )
 
     protected fun invokeNullableObjectMethodWithUInt32Arg(slot: Int, value: UInt): IUnknownReference? =
@@ -31,18 +26,17 @@ open class WinRtCollectionReferenceBase(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
                     value.toInt(),
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
-            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+            wrap = ::IUnknownReference,
         )
 
     protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference? =
@@ -50,48 +44,45 @@ open class WinRtCollectionReferenceBase(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
                     value.pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
-            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+            wrap = ::IUnknownReference,
         )
 
     protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
                 value.pointer,
-                indexOut.asMemorySegment(),
-                foundOut.asMemorySegment(),
+                indexOut,
+                foundOut,
             )
         }
 
     protected fun invokeUnitMethodWithUInt32ObjectArg(slot: Int, index: UInt, value: ComObjectReference) {
         val hr = invokeIntMethod(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
+            descriptor = NativeFunctionDescriptor.of(
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
             ),
-            pointer,
             index.toInt(),
             value.pointer,
         )
@@ -101,12 +92,11 @@ open class WinRtCollectionReferenceBase(
     protected fun invokeUnitMethodWithUInt32(slot: Int, value: UInt) {
         val hr = invokeIntMethod(
             slot = slot,
-            descriptor = FunctionDescriptor.of(
-                ValueLayout.JAVA_INT,
-                ValueLayout.ADDRESS,
-                ValueLayout.JAVA_INT,
+            descriptor = NativeFunctionDescriptor.of(
+                NativeValueLayout.JAVA_INT,
+                NativeValueLayout.ADDRESS,
+                NativeValueLayout.JAVA_INT,
             ),
-            pointer,
             value.toInt(),
         )
         WinRtPlatformApi.checkSucceededRaw(hr)
@@ -121,41 +111,39 @@ open class WinRtCollectionReferenceBase(
             capacity = capacity,
             invoke = { itemsOut, countOut ->
                 val descriptor = if (startIndex == null) {
-                    FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     )
                 } else {
-                    FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     )
                 }
                 if (startIndex == null) {
                     invokeIntMethod(
                         slot = slot,
                         descriptor = descriptor,
-                        pointer,
                         capacity,
-                        itemsOut.asMemorySegment(),
-                        countOut.asMemorySegment(),
+                        itemsOut,
+                        countOut,
                     )
                 } else {
                     invokeIntMethod(
                         slot = slot,
                         descriptor = descriptor,
-                        pointer,
                         startIndex.toInt(),
                         capacity,
-                        itemsOut.asMemorySegment(),
-                        countOut.asMemorySegment(),
+                        itemsOut,
+                        countOut,
                     )
                 }
             },
@@ -163,7 +151,7 @@ open class WinRtCollectionReferenceBase(
                 if (NativeInterop.isNull(elementPointer)) {
                     null
                 } else {
-                    IUnknownReference(elementPointer.asMemorySegment())
+                    IUnknownReference(elementPointer)
                 }
             },
         )
@@ -174,76 +162,72 @@ open class WinRtCollectionReferenceBase(
             invoke = { size, itemsAbi ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
                     size,
-                    itemsAbi.asMemorySegment(),
+                    itemsAbi,
                 )
             },
         )
     }
 
-    protected fun invokeMapViewSplitPointers(slot: Int): Pair<MemorySegment, MemorySegment> =
+    protected fun invokeMapViewSplitPointers(slot: Int): Pair<NativePointer, NativePointer> =
         RawObjectAbiSupport.pointerPairResult { firstOut, secondOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                firstOut.asMemorySegment(),
-                secondOut.asMemorySegment(),
+                firstOut,
+                secondOut,
             )
-        }.let { (firstPointer, secondPointer) ->
-            firstPointer.asMemorySegment() to secondPointer.asMemorySegment()
         }
 }
 
 open class WinRtKeyValuePairReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun key(): IUnknownReference? =
         invokeNullableObjectMethod(slot = 6)?.let { reference ->
-            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
+            createUnknownReference(reference.pointer, reference.interfaceId)
         }
 
     open fun value(): IUnknownReference? =
         invokeNullableObjectMethod(slot = 7)?.let { reference ->
-            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
+            createUnknownReference(reference.pointer, reference.interfaceId)
         }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 }
 
 open class WinRtIterableReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun first(iteratorInterfaceId: Guid): WinRtIteratorReference =
-        invokeObjectMethod(slot = 6).let { reference -> createIteratorReference(reference.pointer.asMemorySegment(), iteratorInterfaceId) }
+        invokeObjectMethod(slot = 6).let { reference -> createIteratorReference(reference.pointer, iteratorInterfaceId) }
 
     protected open fun createIteratorReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtIteratorReference = WinRtIteratorReference(pointer, interfaceId)
 }
 
 open class WinRtIteratorReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -254,7 +238,7 @@ open class WinRtIteratorReference(
         )
 
     open fun currentOrNull(): IUnknownReference? =
-        invokeNullableObjectMethod(slot = 6)?.let { reference -> createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId) }
+        invokeNullableObjectMethod(slot = 6)?.let { reference -> createUnknownReference(reference.pointer, reference.interfaceId) }
 
     open fun hasCurrent(): Boolean = invokeBooleanMethod(slot = 7)
 
@@ -266,7 +250,7 @@ open class WinRtIteratorReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
@@ -278,7 +262,7 @@ open class WinRtIteratorReference(
 }
 
 open class WinRtVectorViewReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -291,7 +275,7 @@ open class WinRtVectorViewReference(
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
         invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.let { reference ->
-            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
+            createUnknownReference(reference.pointer, reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
@@ -305,7 +289,7 @@ open class WinRtVectorViewReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
@@ -322,7 +306,7 @@ open class WinRtVectorViewReference(
 }
 
 open class WinRtVectorReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -335,13 +319,13 @@ open class WinRtVectorReference(
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
         invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.let { reference ->
-            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
+            createUnknownReference(reference.pointer, reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
 
     open fun getView(vectorViewInterfaceId: Guid): WinRtVectorViewReference =
-        invokeObjectMethod(slot = 8).let { reference -> createVectorViewReference(reference.pointer.asMemorySegment(), vectorViewInterfaceId) }
+        invokeObjectMethod(slot = 8).let { reference -> createVectorViewReference(reference.pointer, vectorViewInterfaceId) }
 
     open fun indexOf(value: ComObjectReference): Pair<Boolean, UInt> =
         invokeIndexOfMethodWithObjectArg(slot = 9, value = value)
@@ -380,12 +364,12 @@ open class WinRtVectorReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
     protected open fun createVectorViewReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtVectorViewReference = WinRtVectorViewReference(pointer, interfaceId)
 
@@ -418,7 +402,7 @@ open class WinRtVectorReference(
 }
 
 open class WinRtMapViewReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -431,7 +415,7 @@ open class WinRtMapViewReference(
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
         invokeNullableObjectMethodWithObjectArg(slot = 6, value = key)?.let { reference ->
-            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
+            createUnknownReference(reference.pointer, reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
@@ -443,21 +427,21 @@ open class WinRtMapViewReference(
 
     open fun asIterable(iterableInterfaceId: Guid): WinRtIterableReference =
         queryInterface(iterableInterfaceId).getOrThrow().let { reference ->
-            createIterableReference(reference.pointer.asMemorySegment(), iterableInterfaceId)
+            createIterableReference(reference.pointer, iterableInterfaceId)
         }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
     protected open fun createMapViewReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtMapViewReference = WinRtMapViewReference(pointer, interfaceId)
 
     protected open fun createIterableReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtIterableReference = WinRtIterableReference(pointer, interfaceId)
 
@@ -466,14 +450,14 @@ open class WinRtMapViewReference(
         mapViewInterfaceId: Guid,
     ): Pair<WinRtMapViewReference?, WinRtMapViewReference?> {
         val (firstPointer, secondPointer) = invokeMapViewSplitPointers(slot)
-        val first = if (firstPointer == MemorySegment.NULL) null else createMapViewReference(firstPointer, mapViewInterfaceId)
-        val second = if (secondPointer == MemorySegment.NULL) null else createMapViewReference(secondPointer, mapViewInterfaceId)
+        val first = if (NativeInterop.isNull(firstPointer)) null else createMapViewReference(firstPointer, mapViewInterfaceId)
+        val second = if (NativeInterop.isNull(secondPointer)) null else createMapViewReference(secondPointer, mapViewInterfaceId)
         return first to second
     }
 }
 
 open class WinRtMapReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -486,7 +470,7 @@ open class WinRtMapReference(
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
         invokeNullableObjectMethodWithObjectArg(slot = 6, value = key)?.let { reference ->
-            createUnknownReference(reference.pointer.asMemorySegment(), reference.interfaceId)
+            createUnknownReference(reference.pointer, reference.interfaceId)
         }
 
     open fun size(): UInt = invokeUInt32Method(slot = 7)
@@ -494,7 +478,7 @@ open class WinRtMapReference(
     open fun hasKey(key: ComObjectReference): Boolean = invokeBooleanMethodWithObjectArg(slot = 8, value = key)
 
     open fun getView(mapViewInterfaceId: Guid): WinRtMapViewReference =
-        invokeObjectMethod(slot = 9).let { reference -> createMapViewReference(reference.pointer.asMemorySegment(), mapViewInterfaceId) }
+        invokeObjectMethod(slot = 9).let { reference -> createMapViewReference(reference.pointer, mapViewInterfaceId) }
 
     open fun insert(key: ComObjectReference, value: ComObjectReference): Boolean =
         invokeBooleanMethodWithTwoObjectArgs(slot = 10, first = key, second = value)
@@ -508,12 +492,12 @@ open class WinRtMapReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference = IUnknownReference(pointer, interfaceId)
 
     protected open fun createMapViewReference(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         interfaceId: Guid,
     ): WinRtMapViewReference = WinRtMapViewReference(pointer, interfaceId)
 }

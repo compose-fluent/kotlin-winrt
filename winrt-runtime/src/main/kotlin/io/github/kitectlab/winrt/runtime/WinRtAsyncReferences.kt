@@ -1,26 +1,22 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
 import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 
 open class WinRtAsyncReferenceBase(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
 ) : ComObjectReference(pointer, interfaceId) {
     override fun invokeInt32Method(slot: Int): Int =
         RawAbiResultSupport.int32Result { resultOut ->
             invokeIntMethod(
                 slot = slot,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
-                pointer,
-                resultOut.asMemorySegment(),
+                resultOut,
             )
         }
 
@@ -31,21 +27,20 @@ open class WinRtAsyncReferenceBase(
             invoke = { resultOut ->
                 invokeIntMethod(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
-                    pointer,
-                    resultOut.asMemorySegment(),
+                    resultOut,
                 )
             },
-            wrap = { resultPointer -> IUnknownReference(resultPointer.asMemorySegment()) },
+            wrap = ::IUnknownReference,
         )
 }
 
 open class WinRtAsyncInfoReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncInfo,
 ) : WinRtAsyncReferenceBase(pointer, interfaceId) {
     open fun id(): UInt = invokeUInt32Method(WinRtAsyncInfoVftblSlots.Id)
@@ -72,7 +67,7 @@ open class WinRtAsyncInfoReference(
 }
 
 open class WinRtAsyncActionReference(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncAction,
 ) : WinRtAsyncInfoReference(pointer, interfaceId) {
     open fun setCompletedHandler(handler: ComObjectReference) {
@@ -153,7 +148,7 @@ open class WinRtAsyncActionReference(
 }
 
 open class WinRtAsyncOperationReference<T>(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     interfaceId: Guid,
     private val completedHandlerInterfaceId: Guid,
     private val resultReader: (WinRtAsyncOperationReference<T>) -> T,

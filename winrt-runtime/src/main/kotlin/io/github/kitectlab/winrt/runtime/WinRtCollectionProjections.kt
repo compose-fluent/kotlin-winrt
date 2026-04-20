@@ -111,7 +111,7 @@ object WinRtIterableProjection {
             null
         } else {
             FromAbiHelper(
-                iterable = WinRtIterableReference(pointer, iterableInterfaceId(elementAdapter)),
+                iterable = WinRtIterableReference(pointer.asNativePointer(), iterableInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
             )
         }
@@ -297,7 +297,7 @@ object WinRtReadOnlyListProjection {
         private val adapter by lazy {
             WinRtVectorViewListAdapter(
                 vectorView = WinRtVectorViewReference(
-                    vectorView.pointer.asMemorySegment(),
+                    vectorView.pointer,
                     vectorView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -430,7 +430,7 @@ object WinRtReadOnlyListProjection {
             null
         } else {
             FromAbiHelper(
-                vectorView = WinRtVectorViewReference(pointer, vectorViewInterfaceId(elementAdapter)),
+                vectorView = WinRtVectorViewReference(pointer.asNativePointer(), vectorViewInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
             )
         }
@@ -450,7 +450,7 @@ object WinRtListProjection {
         private val adapter by lazy {
             WinRtVectorListAdapter(
                 vector = WinRtVectorReference(
-                    vector.pointer.asMemorySegment(),
+                    vector.pointer,
                     vector.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -706,7 +706,7 @@ object WinRtListProjection {
             null
         } else {
             FromAbiHelper(
-                vector = WinRtVectorReference(pointer, vectorInterfaceId(elementAdapter)),
+                vector = WinRtVectorReference(pointer.asNativePointer(), vectorInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
             )
         }
@@ -727,7 +727,7 @@ object WinRtReadOnlyDictionaryProjection {
         private val adapter by lazy {
             WinRtMapViewAdapter(
                 mapView = WinRtMapViewReference(
-                    mapView.pointer.asMemorySegment(),
+                    mapView.pointer,
                     mapView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -869,7 +869,7 @@ object WinRtReadOnlyDictionaryProjection {
             null
         } else {
             FromAbiHelper(
-                mapView = WinRtMapViewReference(pointer, mapViewInterfaceId(keyAdapter, valueAdapter)),
+                mapView = WinRtMapViewReference(pointer.asNativePointer(), mapViewInterfaceId(keyAdapter, valueAdapter)),
                 keyAdapter = keyAdapter,
                 valueAdapter = valueAdapter,
             )
@@ -891,7 +891,7 @@ object WinRtDictionaryProjection {
         private val adapter by lazy {
             WinRtMapAdapter(
                 map = WinRtMapReference(
-                    map.pointer.asMemorySegment(),
+                    map.pointer,
                     map.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -1074,7 +1074,7 @@ object WinRtDictionaryProjection {
             null
         } else {
             FromAbiHelper(
-                map = WinRtMapReference(pointer, mapInterfaceId(keyAdapter, valueAdapter)),
+                map = WinRtMapReference(pointer.asNativePointer(), mapInterfaceId(keyAdapter, valueAdapter)),
                 keyAdapter = keyAdapter,
                 valueAdapter = valueAdapter,
             )
@@ -1148,7 +1148,7 @@ private fun <K, V> keyValuePairAdapter(
         projector = { reference ->
             val pair = reference?.let {
                 WinRtKeyValuePairReference(
-                    it.pointer.asMemorySegment(),
+                    it.pointer,
                     keyValuePairInterfaceId(keyAdapter, valueAdapter),
                     preventReleaseOnDispose = true,
                 )
