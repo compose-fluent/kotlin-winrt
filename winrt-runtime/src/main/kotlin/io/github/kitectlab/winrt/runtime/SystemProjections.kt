@@ -5,7 +5,6 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
-import java.net.URI
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.Instant
@@ -73,23 +72,23 @@ internal interface IUriRuntimeClassProjection
 
 @WindowsRuntimeType("rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})")
 internal object UriProjection {
-    fun fromAbi(pointer: MemorySegment): URI? {
+    fun fromAbi(pointer: MemorySegment): WinRtUri? {
         if (pointer == MemorySegment.NULL) {
             return null
         }
         return IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use(::fromInspectable)
     }
 
-    fun fromInspectable(inspectable: IInspectableReference): URI {
+    fun fromInspectable(inspectable: IInspectableReference): WinRtUri {
         val raw = getStringProperty(
             inspectable,
             slot = 16,
         )
-        return URI(raw)
+        return WinRtUri(raw)
     }
 
     fun createReference(
-        value: URI,
+        value: WinRtUri,
         interfaceId: Guid = IID.IInspectable,
     ): ComObjectReference {
         val inspectable =
@@ -155,7 +154,7 @@ internal object UriProjection {
 @WinRtGuid("30D5A829-7FA4-4026-83BB-D75BAE4EA99E")
 internal interface IClosableProjection
 
-private val uriTypeHandle = WinRtTypeHandle(URI::class.java.name, Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
+private val uriTypeHandle = WinRtTypeHandle(WinRtUri::class.java.name, Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
 private val closableTypeHandle = WinRtTypeHandle(AutoCloseable::class.java.name, IID.IDisposable)
 
 internal class WinRtClosableObject(
@@ -280,13 +279,13 @@ internal object WinRtBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
         Projections.registerCustomAbiTypeMapping(
-            publicType = URI::class.java,
+            publicType = WinRtUri::class.java,
             helperType = UriProjection::class.java,
             abiTypeName = "Windows.Foundation.Uri",
             isRuntimeClass = true,
         )
         registerMetadata(
-            type = URI::class.java,
+            type = WinRtUri::class.java,
             projectedTypeName = "Windows.Foundation.Uri",
             helperType = UriProjection::class.java,
             signature = "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
@@ -296,7 +295,7 @@ internal object WinRtBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
         Projections.registerDefaultInterfaceType(
-            runtimeClass = URI::class.java,
+            runtimeClass = WinRtUri::class.java,
             defaultInterface = IUriRuntimeClassProjection::class.java,
         )
         registerMetadata(
@@ -466,7 +465,7 @@ internal object WinRtBuiltInProjectionRuntimeHooks {
         interfaceId: Guid?,
     ): ComObjectReference? =
         when (value) {
-            is URI -> UriProjection.createReference(value, interfaceId ?: IID.IInspectable)
+            is WinRtUri -> UriProjection.createReference(value, interfaceId ?: IID.IInspectable)
             else -> null
         }
 

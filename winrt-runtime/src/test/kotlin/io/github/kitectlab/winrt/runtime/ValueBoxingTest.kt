@@ -1,7 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.MemorySegment
-import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -103,7 +102,7 @@ class ValueBoxingTest {
         assumeTrue(PlatformRuntime.isWindows)
         ComWrappersSupport.clearRegistriesForTests()
 
-        val uri = URI("https://example.com/runtime-117?value=1")
+        val uri = WinRtUri("https://example.com/runtime-117?value=1")
         val uriPointer = ComWrappersSupport.createCCWForObject(uri, IID.IInspectable).useAndGetRef()
         try {
             assertEquals(uri, ComWrappersSupport.createRcwForComObject(uriPointer))

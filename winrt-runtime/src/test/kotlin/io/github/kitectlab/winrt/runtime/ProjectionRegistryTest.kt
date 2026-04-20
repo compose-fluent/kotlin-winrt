@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.net.URI
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -132,12 +131,12 @@ class ProjectionRegistryTest {
 
         assertEquals(DateTimeProjection::class.java, TypeExtensions.findHelperType(Instant::class.java))
         assertEquals(TimeSpanProjection::class.java, TypeExtensions.findHelperType(Duration::class.java))
-        assertEquals(UriProjection::class.java, TypeExtensions.findHelperType(URI::class.java))
+        assertEquals(UriProjection::class.java, TypeExtensions.findHelperType(WinRtUri::class.java))
         assertEquals(IClosableProjection::class.java, TypeExtensions.findHelperType(AutoCloseable::class.java))
         assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class.java))
         assertEquals(
             "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
-            GuidGenerator.getSignature(URI::class.java),
+            GuidGenerator.getSignature(WinRtUri::class.java),
         )
         assertEquals(
             "Windows.Foundation.IReference`1<Int32>",
