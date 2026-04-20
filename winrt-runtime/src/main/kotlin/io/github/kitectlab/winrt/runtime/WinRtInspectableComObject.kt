@@ -65,12 +65,14 @@ internal class WinRtInspectableComObject(
         return ComObjectReference(interfacePointer(interfaceId), interfaceId)
     }
 
-    fun detachReference(interfaceId: Guid = primaryInterfaceId): MemorySegment {
-        addReference()
-        val pointer = interfacePointer(interfaceId)
-        releaseManagedReference()
-        return pointer
-    }
+    fun detachReference(interfaceId: Guid = primaryInterfaceId): MemorySegment =
+        ManagedReferenceHostSupport.detachReference(
+            createReference = {
+                addReference()
+                interfacePointer(interfaceId)
+            },
+            releaseManagedReference = ::releaseManagedReference,
+        )
 
     fun releaseManagedReference() {
         releaseReference()

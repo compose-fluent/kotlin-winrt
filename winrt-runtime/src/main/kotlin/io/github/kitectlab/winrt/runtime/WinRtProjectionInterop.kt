@@ -27,16 +27,14 @@ class WinRtProjectionMarshaler internal constructor(
         internal fun hosted(
             host: WinRtInspectableComObject,
             interfaceId: Guid,
-        ): WinRtProjectionMarshaler {
-            val reference = host.createReference(interfaceId)
-            return WinRtProjectionMarshaler(
-                lease = AbiReferenceLeaseSupport.create(
-                    abi = reference.pointer.asNativePointer(),
-                    ownedReference = reference,
-                    cleanup = host::releaseManagedReference,
+        ): WinRtProjectionMarshaler =
+            WinRtProjectionMarshaler(
+                lease = ManagedReferenceHostSupport.createLease(
+                    createReference = { host.createReference(interfaceId) },
+                    releaseManagedReference = host::releaseManagedReference,
+                    abiOf = { it.pointer.asNativePointer() },
                 ),
             )
-        }
 
         internal fun owned(
             reference: ComObjectReference,

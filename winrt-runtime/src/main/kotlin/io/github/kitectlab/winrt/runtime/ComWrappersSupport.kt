@@ -277,13 +277,16 @@ object ComWrappersSupport {
     private fun ownedReference(
         host: WinRtInspectableComObject,
         interfaceId: Guid,
-    ): ComObjectReference {
-        val inner = host.createReference(interfaceId)
-        return OwnedCcwReference(
-            inner = inner,
-            cleanup = host::releaseManagedReference,
-        )
-    }
+    ): ComObjectReference =
+        ManagedReferenceHostSupport.wrapOwnedReference(
+            createReference = { host.createReference(interfaceId) },
+            releaseManagedReference = host::releaseManagedReference,
+        ) { inner, cleanup ->
+            OwnedCcwReference(
+                inner = inner,
+                cleanup = cleanup,
+            )
+        }
 
     private class OwnedCcwReference(
         private val inner: ComObjectReference,

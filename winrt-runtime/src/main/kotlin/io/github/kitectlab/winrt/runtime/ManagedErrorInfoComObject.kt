@@ -52,11 +52,11 @@ internal class ManagedErrorInfoComObject(
         releaseManagedReference()
     }
 
-    fun detachReference(interfaceId: Guid = IID.IErrorInfo): IUnknownReference {
-        val reference = createReference(interfaceId)
-        releaseManagedReference()
-        return reference
-    }
+    fun detachReference(interfaceId: Guid = IID.IErrorInfo): IUnknownReference =
+        ManagedReferenceHostSupport.detachReference(
+            createReference = { createReference(interfaceId) },
+            releaseManagedReference = ::releaseManagedReference,
+        )
 
     private fun createReference(interfaceId: Guid): IUnknownReference {
         addReference()
