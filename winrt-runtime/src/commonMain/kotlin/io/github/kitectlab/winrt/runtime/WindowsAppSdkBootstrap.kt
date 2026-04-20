@@ -1,8 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.nio.file.Files
-import java.nio.file.Path
-
 object WindowsAppSdkBootstrap {
     private const val defaultMajorMinorVersion = 0x00010008
     private const val defaultMinVersion = 0x1F40032608CC0000L
@@ -24,12 +21,12 @@ object WindowsAppSdkBootstrap {
     private val singletonPackageFamilyNameRegex = Regex("""#define\s+WINDOWSAPPSDK_RUNTIME_PACKAGE_SINGLETON_PACKAGEFAMILYNAME\s+"([^"]+)"""")
 
     class BootstrapLibrary internal constructor(
-        val path: Path,
+        val path: String,
         private val moduleHandle: NativePointer,
         private val initializePointer: NativePointer,
         private val shutdownPointer: NativePointer,
     ) : AutoCloseable {
-        @Volatile
+        private val lock = PlatformLock()
         private var closed = false
 
         fun initialize(versionInfo: BootstrapVersionInfo) {
@@ -52,12 +49,9 @@ object WindowsAppSdkBootstrap {
         }
 
         override fun close() {
-            if (closed) {
-                return
-            }
-            synchronized(this) {
+            lock.withLock {
                 if (closed) {
-                    return
+                    return@withLock
                 }
                 WinRtPlatformApi.freeLibraryRaw(moduleHandle)
                 closed = true
@@ -76,24 +70,23 @@ object WindowsAppSdkBootstrap {
         val singletonPackageFamilyName: String?,
     )
 
-    fun parseNuGetGlobalPackagesOutput(output: String): List<Path> =
+    fun parseNuGetGlobalPackagesOutput(output: String): List<String> =
         output.lineSequence()
             .map(String::trim)
             .filter { it.startsWith("global-packages:", ignoreCase = true) }
             .map { it.substringAfter(':').trim().trim('"') }
             .filter(String::isNotEmpty)
-            .map(Path::of)
             .toList()
 
     fun discoverBootstrapLibrary(): BootstrapLibrary? =
         explicitBootstrapCandidates()
             .firstNotNullOfOrNull { path ->
-                if (!Files.isRegularFile(path)) {
+                if (!PlatformFileSystem.isRegularFile(path)) {
                     return@firstNotNullOfOrNull null
                 }
 
                 val moduleHandle = WinRtPlatformApi.tryLoadLibraryExWRaw(
-                    path.toAbsolutePath().toString(),
+                    PlatformFileSystem.absolutePath(path),
                     loadWithAlteredSearchPath,
                 )
                 if (NativeInterop.isNull(moduleHandle)) {
@@ -117,19 +110,19 @@ object WindowsAppSdkBootstrap {
 
     fun discoverConfiguredVersionInfo(): BootstrapVersionInfo? {
         val candidates = buildList {
-            System.getProperty(windowsAppSdkRootProperty)
+            PlatformFileSystem.systemProperty(windowsAppSdkRootProperty)
                 ?.takeIf(String::isNotBlank)
-                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
-            System.getenv("WINAPPSDK_BOOTSTRAP_DLL")
+                ?.let { addAll(versionInfoHeaderCandidates(it)) }
+            PlatformFileSystem.environmentVariable("WINAPPSDK_BOOTSTRAP_DLL")
                 ?.takeIf(String::isNotBlank)
-                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
-            System.getProperty(bootstrapDllProperty)
+                ?.let { addAll(versionInfoHeaderCandidates(it)) }
+            PlatformFileSystem.systemProperty(bootstrapDllProperty)
                 ?.takeIf(String::isNotBlank)
-                ?.let { addAll(versionInfoHeaderCandidates(Path.of(it))) }
+                ?.let { addAll(versionInfoHeaderCandidates(it)) }
         }
 
-        val header = candidates.distinct().firstOrNull(Files::isRegularFile) ?: return null
-        return parseVersionInfoHeader(Files.readString(header))
+        val header = candidates.distinct().firstOrNull(PlatformFileSystem::isRegularFile) ?: return null
+        return parseVersionInfoHeader(PlatformFileSystem.readText(header))
     }
 
     fun initialize(majorMinorVersion: Int = defaultMajorMinorVersion): Result<BootstrapLibrary> =
@@ -189,35 +182,38 @@ object WindowsAppSdkBootstrap {
         )
     }
 
-    private fun explicitBootstrapCandidates(): List<Path> = buildList {
-        System.getenv("WINAPPSDK_BOOTSTRAP_DLL")?.let { add(Path.of(it)) }
-        System.getProperty(bootstrapDllProperty)?.takeIf(String::isNotBlank)?.let { add(Path.of(it)) }
-        System.getProperty(windowsAppSdkRootProperty)?.takeIf(String::isNotBlank)?.let {
-            addAll(bootstrapDllCandidates(Path.of(it)))
+    private fun explicitBootstrapCandidates(): List<String> = buildList {
+        PlatformFileSystem.environmentVariable("WINAPPSDK_BOOTSTRAP_DLL")?.let(::add)
+        PlatformFileSystem.systemProperty(bootstrapDllProperty)?.takeIf(String::isNotBlank)?.let(::add)
+        PlatformFileSystem.systemProperty(windowsAppSdkRootProperty)?.takeIf(String::isNotBlank)?.let {
+            addAll(bootstrapDllCandidates(it))
         }
     }
 
-    private fun bootstrapDllCandidates(root: Path): List<Path> =
-        if (!Files.isDirectory(root)) {
+    private fun bootstrapDllCandidates(root: String): List<String> =
+        if (!PlatformFileSystem.isDirectory(root)) {
             emptyList()
         } else {
-            Files.walk(root).use { stream ->
-                stream.filter { file ->
-                    Files.isRegularFile(file) && file.fileName.toString().equals(bootstrapDllName, ignoreCase = true)
-                }.toList()
+            PlatformFileSystem.walkFiles(root).filter { path ->
+                PlatformFileSystem.isRegularFile(path) &&
+                    PlatformFileSystem.fileName(path).equals(bootstrapDllName, ignoreCase = true)
             }
         }
 
-    private fun discoverVersionInfo(bootstrapDll: Path): BootstrapVersionInfo? {
-        val header = versionInfoHeaderCandidates(bootstrapDll).firstOrNull(Files::isRegularFile) ?: return null
-        return parseVersionInfoHeader(Files.readString(header))
+    private fun discoverVersionInfo(bootstrapDll: String): BootstrapVersionInfo? {
+        val header = versionInfoHeaderCandidates(bootstrapDll).firstOrNull(PlatformFileSystem::isRegularFile) ?: return null
+        return parseVersionInfoHeader(PlatformFileSystem.readText(header))
     }
 
-    private fun versionInfoHeaderCandidates(location: Path): List<Path> {
-        val initial = if (Files.isDirectory(location)) location else location.parent
-        return generateSequence(initial) { current -> current.parent }
+    private fun versionInfoHeaderCandidates(location: String): List<String> {
+        val initial = if (PlatformFileSystem.isDirectory(location)) {
+            location
+        } else {
+            PlatformFileSystem.parent(location) ?: return emptyList()
+        }
+        return generateSequence(initial) { current -> PlatformFileSystem.parent(current) }
             .take(8)
-            .map { it.resolve(versionInfoHeaderRelativePath) }
+            .map { PlatformFileSystem.resolve(it, versionInfoHeaderRelativePath) }
             .toList()
     }
 }

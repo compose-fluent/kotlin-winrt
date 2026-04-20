@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.nio.file.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,7 +11,7 @@ class WindowsAppSdkBootstrapTest {
             "global-packages: F:\\Dependencies\\nuget\\",
         )
 
-        assertEquals(listOf(Path.of("F:\\Dependencies\\nuget\\")), roots)
+        assertEquals(listOf("F:\\Dependencies\\nuget\\"), roots)
     }
 
     @Test
@@ -46,7 +45,7 @@ class WindowsAppSdkBootstrapTest {
 
         val library = WindowsAppSdkBootstrap.discoverBootstrapLibrary()
         if (library != null) {
-            assertTrue(library.path.toString(), library.path.toString().endsWith(".dll", ignoreCase = true))
+            assertTrue(library.path, library.path.endsWith(".dll", ignoreCase = true))
         } else {
             assertTrue(WindowsAppSdkBootstrap.initialize().isFailure)
         }
