@@ -2,7 +2,6 @@ package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
-import java.util.concurrent.ConcurrentHashMap
 
 data class ActivationResult(
     val hResult: HResult,
@@ -20,7 +19,7 @@ object ActivationFactory {
         val interfaceId: Guid,
     )
 
-    private val cache = ConcurrentHashMap<CacheKey, IUnknownReference>()
+    private val cache = ConcurrentCacheMap<CacheKey, IUnknownReference>()
 
     fun get(runtimeClassName: String): ActivationFactoryReference {
         return get(runtimeClassName, iActivationFactoryIid) as ActivationFactoryReference

@@ -1,9 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.ref.WeakReference
 import java.lang.foreign.MemorySegment
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Kotlin runtime ownership layer corresponding to `.cswinrt/src/WinRT.Runtime/ComWrappersSupport*`.
@@ -32,12 +29,12 @@ class SingleInterfaceOptimizedObject(
 }
 
 object ComWrappersSupport {
-    private val typedRcwFactories = ConcurrentHashMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
-    private val runtimeClassFactories = ConcurrentHashMap<String, (IInspectableReference) -> Any>()
-    private val helperTypeRegistry = ConcurrentHashMap<WinRtTypeHandle, WinRtTypeHandle>()
-    private val ccwFactories = ConcurrentHashMap<Class<*>, (Any) -> WinRtCcwDefinition>()
-    private val rcwCache = ConcurrentHashMap<Long, WeakReference<Any>>()
-    private val runtimeClassNameLookups = CopyOnWriteArrayList<(Class<*>) -> String?>()
+    private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
+    private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
+    private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
+    private val ccwFactories = ConcurrentCacheMap<Class<*>, (Any) -> WinRtCcwDefinition>()
+    private val rcwCache = WeakValueCache<Long, Any>()
+    private val runtimeClassNameLookups = SnapshotList<(Class<*>) -> String?>()
 
     init {
         WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
@@ -85,7 +82,7 @@ object ComWrappersSupport {
     fun registerTypeRuntimeClassNameLookup(
         lookup: (Class<*>) -> String?,
     ) {
-        runtimeClassNameLookups += lookup
+        runtimeClassNameLookups.add(lookup)
     }
 
     fun getInspectableInfo(pointer: MemorySegment): WinRtInspectableInfo? =
@@ -127,7 +124,7 @@ object ComWrappersSupport {
 
         val pointerKey = pointer.address()
         if (tryUseCache) {
-            rcwCache[pointerKey]?.get()?.let { cached ->
+            rcwCache[pointerKey]?.let { cached ->
                 val cachedWinRt = cached as? IWinRTObject
                 if (cachedWinRt != null && cachedWinRt.nativeObject.isDisposed) {
                     rcwCache.remove(pointerKey)
@@ -144,7 +141,7 @@ object ComWrappersSupport {
 
         val rcw = createRcwCore(pointer, staticallyDeterminedType)
         if (tryUseCache && rcw != null) {
-            rcwCache[pointerKey] = WeakReference(rcw)
+            rcwCache[pointerKey] = rcw
         }
         return rcw
     }

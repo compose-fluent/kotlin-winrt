@@ -6,10 +6,10 @@ import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.net.URI
-import java.time.Duration
-import java.time.OffsetDateTime
-import java.time.ZoneId
-import java.time.ZoneOffset
+import kotlin.time.Duration
+import kotlin.time.DurationUnit
+import kotlin.time.Instant
+import kotlin.time.toDuration
 
 internal enum class WinRtTypeKind {
     Primitive,
@@ -23,16 +23,10 @@ internal object TimeSpanProjection {
     private const val NANOS_PER_TICK: Long = 100L
 
     fun fromAbi(value: Long): Duration =
-        Duration.ofSeconds(
-            value / TICKS_PER_SECOND,
-            (value % TICKS_PER_SECOND) * NANOS_PER_TICK,
-        )
+        Math.multiplyExact(value, NANOS_PER_TICK).toDuration(DurationUnit.NANOSECONDS)
 
     fun toAbi(value: Duration): Long =
-        Math.addExact(
-            Math.multiplyExact(value.seconds, TICKS_PER_SECOND),
-            value.nano.toLong() / NANOS_PER_TICK,
-        )
+        value.toLong(DurationUnit.NANOSECONDS) / NANOS_PER_TICK
 
     fun copyTo(value: Duration, destination: MemorySegment) {
         destination.set(ValueLayout.JAVA_LONG, 0, toAbi(value))
@@ -45,26 +39,22 @@ internal object DateTimeProjection {
     private const val TICKS_PER_SECOND: Long = 10_000_000L
     private const val NANOS_PER_TICK: Long = 100L
 
-    fun fromAbi(value: Long): OffsetDateTime {
+    fun fromAbi(value: Long): Instant {
         val utcTicks = Math.addExact(value, managedUtcTicksAtNativeZero)
-        val seconds = Math.floorDiv(utcTicks, TICKS_PER_SECOND)
-        val nanos = Math.floorMod(utcTicks, TICKS_PER_SECOND).toInt() * NANOS_PER_TICK.toInt()
-        return OffsetDateTime.ofInstant(
-            java.time.Instant.ofEpochSecond(seconds - EPOCH_ADJUST_SECONDS, nanos.toLong()),
-            ZoneId.systemDefault(),
-        )
+        val seconds = Math.floorDiv(utcTicks, TICKS_PER_SECOND) - EPOCH_ADJUST_SECONDS
+        val nanos = Math.floorMod(utcTicks, TICKS_PER_SECOND) * NANOS_PER_TICK
+        return Instant.fromEpochSeconds(seconds, nanos)
     }
 
-    fun toAbi(value: OffsetDateTime): Long {
-        val utc = value.withOffsetSameInstant(ZoneOffset.UTC)
+    fun toAbi(value: Instant): Long {
         val utcTicks = Math.addExact(
-            Math.multiplyExact(Math.addExact(utc.toEpochSecond(), EPOCH_ADJUST_SECONDS), TICKS_PER_SECOND),
-            utc.nano.toLong() / NANOS_PER_TICK,
+            Math.multiplyExact(Math.addExact(value.epochSeconds, EPOCH_ADJUST_SECONDS), TICKS_PER_SECOND),
+            value.nanosecondsOfSecond.toLong() / NANOS_PER_TICK,
         )
         return Math.subtractExact(utcTicks, managedUtcTicksAtNativeZero)
     }
 
-    fun copyTo(value: OffsetDateTime, destination: MemorySegment) {
+    fun copyTo(value: Instant, destination: MemorySegment) {
         destination.set(ValueLayout.JAVA_LONG, 0, toAbi(value))
     }
 
@@ -258,7 +248,7 @@ internal object TypeProjection {
 internal object WinRtBuiltInProjectionMappings {
     fun register() {
         Projections.registerCustomAbiTypeMapping(
-            publicType = OffsetDateTime::class.java,
+            publicType = Instant::class.java,
             helperType = DateTimeProjection::class.java,
             abiTypeName = "Windows.Foundation.DateTime",
         )

@@ -1,13 +1,13 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.net.URI
-import java.time.Duration
-import java.time.OffsetDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 class ProjectionRegistryTest {
     @Test
@@ -127,7 +127,7 @@ class ProjectionRegistryTest {
     fun runtime_117_system_projection_mappings_follow_cswinrt_owner_set() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertEquals(DateTimeProjection::class.java, TypeExtensions.findHelperType(OffsetDateTime::class.java))
+        assertEquals(DateTimeProjection::class.java, TypeExtensions.findHelperType(Instant::class.java))
         assertEquals(TimeSpanProjection::class.java, TypeExtensions.findHelperType(Duration::class.java))
         assertEquals(UriProjection::class.java, TypeExtensions.findHelperType(URI::class.java))
         assertEquals(IClosableProjection::class.java, TypeExtensions.findHelperType(AutoCloseable::class.java))

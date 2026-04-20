@@ -1,17 +1,17 @@
 package io.github.kitectlab.winrt.runtime
 
-object PlatformRuntime {
+actual object HostPlatformInfo {
     private val normalizedOsName = System.getProperty("os.name").orEmpty().lowercase()
 
-    val osName: String
+    actual val osName: String
         get() = System.getProperty("os.name").orEmpty()
 
-    val isWindows: Boolean
+    actual val isWindows: Boolean
         get() = normalizedOsName.contains("win")
 
-    val isLinux: Boolean
+    actual val isLinux: Boolean
         get() = normalizedOsName.contains("linux")
 
-    val isMacOs: Boolean
+    actual val isMacOs: Boolean
         get() = normalizedOsName.contains("mac")
 }

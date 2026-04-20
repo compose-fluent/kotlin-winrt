@@ -8,7 +8,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 internal class ContextCallbackReference(
@@ -52,7 +51,7 @@ internal object Context {
     private val linker: Linker = Linker.nativeLinker()
     private val lookup = MethodHandles.lookup()
     private val sharedArena = Arena.global()
-    private val callbackStates = ConcurrentHashMap<Long, CallbackState>()
+    private val callbackStates = ConcurrentCacheMap<Long, CallbackState>()
     private val nextCallbackId = AtomicLong(1)
     private val contextCallbackStub: MemorySegment = linker.upcallStub(
         lookup.findStatic(

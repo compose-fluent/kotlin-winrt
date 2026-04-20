@@ -7,7 +7,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -134,7 +133,7 @@ internal class WinRtDelegateComObject(
     companion object {
         private val linker: Linker = Linker.nativeLinker()
         private val lookup = MethodHandles.lookup()
-        private val registry = ConcurrentHashMap<Long, WinRtDelegateComObject>()
+        private val registry = ConcurrentCacheMap<Long, WinRtDelegateComObject>()
         private val sharedArena: Arena = Arena.global()
         private val queryInterfaceStub: MemorySegment = linker.upcallStub(
             lookup.findStatic(

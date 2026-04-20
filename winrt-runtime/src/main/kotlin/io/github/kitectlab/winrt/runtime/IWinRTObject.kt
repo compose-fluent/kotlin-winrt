@@ -1,10 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.ref.Cleaner
-import java.util.Collections
-import java.util.WeakHashMap
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * JVM-side equivalent of `.cswinrt/src/WinRT.Runtime/IWinRTObject`.
  *
@@ -32,10 +27,10 @@ interface IWinRTObject {
     val hasUnwrappableNativeObject: Boolean
         get() = true
 
-    val queryInterfaceCache: ConcurrentHashMap<WinRtTypeHandle, ComObjectReference>
+    val queryInterfaceCache: ConcurrentCacheMap<WinRtTypeHandle, ComObjectReference>
         get() = WinRtObjectStateStore.stateFor(this).queryInterfaceCache
 
-    val additionalTypeData: ConcurrentHashMap<WinRtTypeHandle, Any>
+    val additionalTypeData: ConcurrentCacheMap<WinRtTypeHandle, Any>
         get() = WinRtObjectStateStore.stateFor(this).additionalTypeData
 
     fun isInterfaceImplemented(
@@ -75,7 +70,8 @@ interface IWinRTObject {
         }
 
         if (isInterfaceImplemented(interfaceType, throwIfNotImplemented = true)) {
-            return queryInterfaceCache.getValue(interfaceType)
+            return queryInterfaceCache[interfaceType]
+                ?: error("Unreachable: interface presence check must populate the query-interface cache.")
         }
 
         error("Unreachable: interface presence check must either succeed or throw.")
@@ -99,32 +95,32 @@ interface IWinRTObject {
 }
 
 private object WinRtObjectStateStore {
-    private val cleaner: Cleaner = Cleaner.create()
-    private val states = Collections.synchronizedMap(WeakHashMap<IWinRTObject, WinRtObjectStateHolder>())
+    private val finalizationHook = FinalizationHook()
+    private val states = WeakKeyStateMap<IWinRTObject, WinRtObjectStateHolder>()
 
-    fun stateFor(instance: IWinRTObject): WinRtObjectState = synchronized(states) {
-        states[instance]?.state ?: createState(instance)
-    }
+    fun stateFor(instance: IWinRTObject): WinRtObjectState =
+        states.getOrPut(instance) {
+            createState(instance)
+        }.state
 
-    private fun createState(instance: IWinRTObject): WinRtObjectState {
+    private fun createState(instance: IWinRTObject): WinRtObjectStateHolder {
         val state = WinRtObjectState()
-        val cleanable = cleaner.register(instance) {
+        val cleanable = finalizationHook.register(instance) {
             state.close()
         }
-        states[instance] = WinRtObjectStateHolder(state, cleanable)
-        return state
+        return WinRtObjectStateHolder(state, cleanable)
     }
 }
 
 private class WinRtObjectStateHolder(
     val state: WinRtObjectState,
     @Suppress("unused")
-    val cleanable: Cleaner.Cleanable,
+    val cleanable: AutoCloseable,
 )
 
 private class WinRtObjectState {
-    val queryInterfaceCache = ConcurrentHashMap<WinRtTypeHandle, ComObjectReference>()
-    val additionalTypeData = ConcurrentHashMap<WinRtTypeHandle, Any>()
+    val queryInterfaceCache = ConcurrentCacheMap<WinRtTypeHandle, ComObjectReference>()
+    val additionalTypeData = ConcurrentCacheMap<WinRtTypeHandle, Any>()
 
     fun close() {
         queryInterfaceCache.values.forEach { reference ->

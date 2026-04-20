@@ -1,7 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.util.concurrent.ConcurrentHashMap
-
 enum class TypeNameGenerationFlag {
     GenerateBoxedName,
     ForGetRuntimeClassName,
@@ -23,10 +21,10 @@ object TypeNameSupport {
         data object Missing : TypeLookupResult
     }
 
-    private val registeredProjectionTypes = ConcurrentHashMap<String, Class<*>>()
+    private val registeredProjectionTypes = ConcurrentCacheMap<String, Class<*>>()
     private val projectionTypeNameToBaseTypeNameMappings = mutableListOf<Map<String, String>>()
-    private val typeNameCache = ConcurrentHashMap<String, TypeLookupResult>()
-    private val baseRcwTypeCache = ConcurrentHashMap<String, TypeLookupResult>()
+    private val typeNameCache = ConcurrentCacheMap<String, TypeLookupResult>()
+    private val baseRcwTypeCache = ConcurrentCacheMap<String, TypeLookupResult>()
 
     fun registerProjectionAssembly(
         vararg projectionTypes: Class<*>,

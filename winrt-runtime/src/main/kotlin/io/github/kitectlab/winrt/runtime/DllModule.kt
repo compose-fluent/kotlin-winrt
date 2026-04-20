@@ -4,7 +4,6 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.Linker
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
-import java.util.concurrent.ConcurrentHashMap
 
 internal class DllModule private constructor(
     val fileName: String,
@@ -34,7 +33,7 @@ internal class DllModule private constructor(
     }
 
     companion object {
-        private val cache = ConcurrentHashMap<String, DllModule>()
+        private val cache = ConcurrentCacheMap<String, DllModule>()
 
         fun tryLoad(fileName: String): DllModule? {
             if (!PlatformRuntime.isWindows) {

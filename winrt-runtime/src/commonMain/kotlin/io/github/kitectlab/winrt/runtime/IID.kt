@@ -1,11 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-/**
- * Kotlin/JVM IID catalog owned by the same `.cswinrt` source as `WinRT.Interop.IID`:
- * `.cswinrt/src/WinRT.Runtime/Interop/IID.tt`.
- *
- * Runtime slices must consume this shared owner instead of re-enumerating interface IDs locally.
- */
 object IID {
     val IUnknown: Guid = guidOf("00000000-0000-0000-C000-000000000046")
     val IInspectable: Guid = guidOf("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90")
@@ -115,7 +109,7 @@ object IID {
     val NullableException: Guid = guidOf("6FF27A1E-4B6A-59B7-B2C3-D1F2EE474593")
     val NullableEventHandler: Guid = guidOf("25230F05-B49C-57EE-8961-5373D98E1AB1")
     val NullableString: Guid = guidOf("FD416DFB-2A07-52EB-AAE3-DFCE14116C05")
-    val MUX_NullablePropertyChangedEventHandler: Guid = guidOf("1EEAE0CB-8F57-5C37-A087-A55d46E2FE3F")
+    val MUX_NullablePropertyChangedEventHandler: Guid = guidOf("1EEAE0CB-8F57-5C37-A087-A55D46E2FE3F")
     val WUX_NullablePropertyChangedEventHandler: Guid = guidOf("B1A920A9-C2F2-5453-A53E-66B1294A8BFE")
     val MUX_NullableNotifyCollectionChangedEventHandler: Guid = guidOf("779D5A21-0E7D-5476-BB90-27FA3B4B8DE5")
     val WUX_NullableNotifyCollectionChangedEventHandler: Guid = guidOf("A4FD5C6E-6549-59A9-86EF-5A490A1875D9")

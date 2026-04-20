@@ -7,9 +7,8 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
-import java.time.Duration
-import java.time.OffsetDateTime
-import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 internal enum class PropertyType(val code: Int) {
     Empty(0x0),
@@ -174,7 +173,7 @@ internal class WinRtValueAdapter<T : Any>(
 }
 
 private object TransferredArrayOwnership {
-    private val cleanups = ConcurrentHashMap<Long, () -> Unit>()
+    private val cleanups = ConcurrentCacheMap<Long, () -> Unit>()
 
     fun transfer(
         pointer: MemorySegment,
@@ -478,13 +477,13 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = GuidMarshaller::copyTo,
             ),
             directValueAdapter(
-                projectedClass = OffsetDateTime::class.java,
+                projectedClass = Instant::class.java,
                 nullableInterfaceId = IID.NullableDateTimeOffset,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfDateTimeOffset,
                 propertyType = PropertyType.DateTime,
                 propertyTypeArray = PropertyType.DateTimeArray,
                 abiLayout = ValueLayout.JAVA_LONG,
-                exactUnbox = { it as OffsetDateTime },
+                exactUnbox = { it as Instant },
                 readOwnedValue = { source -> DateTimeProjection.fromAbi(source.get(ValueLayout.JAVA_LONG, 0)) },
                 writeTransferredValue = DateTimeProjection::copyTo,
             ),

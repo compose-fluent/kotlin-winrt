@@ -2,14 +2,13 @@ package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.MemorySegment
 import java.net.URI
-import java.time.Duration
-import java.time.Instant
-import java.time.OffsetDateTime
-import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 class ValueBoxingTest {
     private val boxedReferenceGenericInterface = "61C17706-2D65-11E0-9AE8-D48564015472"
@@ -20,7 +19,7 @@ class ValueBoxingTest {
         ComWrappersSupport.clearRegistriesForTests()
 
         val marshaler = Marshaler.inspectableAny()
-        val dateTime = OffsetDateTime.ofInstant(Instant.parse("2024-05-06T07:08:09Z"), ZoneId.systemDefault())
+        val dateTime = Instant.parse("2024-05-06T07:08:09Z")
 
         roundTripInspectable(marshaler, 42) { expected, actual ->
             assertEquals(expected, actual)
@@ -28,11 +27,11 @@ class ValueBoxingTest {
         roundTripInspectable(marshaler, "projection-runtime") { expected, actual ->
             assertEquals(expected, actual)
         }
-        roundTripInspectable(marshaler, Duration.ofMinutes(5)) { expected, actual ->
+        roundTripInspectable(marshaler, 5.minutes) { expected, actual ->
             assertEquals(expected, actual)
         }
         roundTripInspectable(marshaler, dateTime) { expected, actual ->
-            assertEquals(expected.toInstant(), actual.toInstant())
+            assertEquals(expected, actual)
         }
         roundTripInspectable(marshaler, Point(1.5f, 2.5f)) { expected, actual ->
             assertEquals(expected, actual)
@@ -51,9 +50,9 @@ class ValueBoxingTest {
 
         assertEquals(42, WinRtReferenceProjection.fromAbi(WinRtReferenceProjection.fromManaged(42, IID.NullableInt), IID.NullableInt))
         assertEquals(
-            Duration.ofSeconds(12),
+            12.seconds,
             WinRtReferenceProjection.fromAbi(
-                WinRtReferenceProjection.fromManaged(Duration.ofSeconds(12), IID.NullableTimeSpan),
+                WinRtReferenceProjection.fromManaged(12.seconds, IID.NullableTimeSpan),
                 IID.NullableTimeSpan,
             ),
         )
@@ -134,9 +133,9 @@ class ValueBoxingTest {
     fun bindable_object_marshaler_unboxes_property_value_boxes() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        val pointer = ComWrappersSupport.createCCWForObject(Duration.ofSeconds(9), IID.IInspectable).useAndGetRef()
+        val pointer = ComWrappersSupport.createCCWForObject(9.seconds, IID.IInspectable).useAndGetRef()
         try {
-            assertEquals(Duration.ofSeconds(9), WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer))
+            assertEquals(9.seconds, WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer))
         } finally {
             IUnknownReference(pointer, IID.IInspectable).close()
         }

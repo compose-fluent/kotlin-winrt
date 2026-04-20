@@ -1,12 +1,10 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * JVM reflection helpers corresponding to `.cswinrt/src/WinRT.Runtime/TypeExtensions.cs`.
  */
 object TypeExtensions {
-    private val helperTypeCache = ConcurrentHashMap<Class<*>, Class<*>?>()
+    private val helperTypeCache = ConcurrentCacheMap<Class<*>, Class<*>?>()
 
     fun findHelperType(
         type: Class<*>,

@@ -1,11 +1,36 @@
 plugins {
-    alias(libs.plugins.kotlinJvm)
+    alias(libs.plugins.kotlinMultiplatform)
 }
 
 kotlin {
     jvmToolchain(22)
-}
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
 
-dependencies {
-    testImplementation(libs.junit)
+    jvm {
+        testRuns.named("test") {
+            executionTask.configure {
+                useJUnit()
+            }
+        }
+    }
+    mingwX64()
+
+    sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+
+        jvmMain {
+            kotlin.srcDirs("src/main/kotlin", "src/jvmMain/kotlin")
+        }
+        jvmTest {
+            kotlin.srcDirs("src/test/kotlin", "src/jvmTest/kotlin")
+            dependencies {
+                implementation(kotlin("test-junit"))
+                implementation(libs.junit)
+            }
+        }
+    }
 }

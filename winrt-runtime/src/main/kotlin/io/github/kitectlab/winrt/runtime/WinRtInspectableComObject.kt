@@ -8,7 +8,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -216,7 +215,7 @@ internal class WinRtInspectableComObject(
         private val linker: Linker = Linker.nativeLinker()
         private val lookup = MethodHandles.lookup()
         private val sharedArena: Arena = Arena.global()
-        private val registry = ConcurrentHashMap<Long, WinRtInspectableComObject>()
+        private val registry = ConcurrentCacheMap<Long, WinRtInspectableComObject>()
 
         internal fun findManagedValue(pointer: MemorySegment): Any? =
             registry[pointerKey(pointer)]?.managedValue

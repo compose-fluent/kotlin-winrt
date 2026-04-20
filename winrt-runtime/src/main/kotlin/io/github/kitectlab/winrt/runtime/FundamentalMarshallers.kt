@@ -3,7 +3,6 @@ package io.github.kitectlab.winrt.runtime
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.nio.ByteOrder
-import java.util.UUID
 
 object BooleanMarshaller {
     fun toAbi(value: Boolean): Byte = if (value) 1 else 0
@@ -37,21 +36,9 @@ object GuidMarshaller {
 
     fun readFrom(source: MemorySegment): Guid {
         val buffer = source.asSlice(0, 16).asByteBuffer().order(ByteOrder.LITTLE_ENDIAN)
-        val data1 = buffer.int.toLong() and 0xFFFFFFFFL
-        val data2 = buffer.short.toLong() and 0xFFFFL
-        val data3 = buffer.short.toLong() and 0xFFFFL
-
-        buffer.order(ByteOrder.BIG_ENDIAN)
-        val data4 = ByteArray(8)
-        buffer.get(data4)
-
-        val msb = (data1 shl 32) or (data2 shl 16) or data3
-        var lsb = 0L
-        for (byte in data4) {
-            lsb = (lsb shl 8) or (byte.toLong() and 0xFF)
-        }
-
-        return Guid(UUID(msb, lsb))
+        val bytes = ByteArray(Guid.BYTE_SIZE)
+        buffer.get(bytes)
+        return Guid.fromLittleEndianBytes(bytes)
     }
 }
 

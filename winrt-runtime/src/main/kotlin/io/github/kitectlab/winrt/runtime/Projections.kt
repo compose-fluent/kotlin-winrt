@@ -1,7 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * JVM-side projection/type-mapping registry corresponding to `.cswinrt/src/WinRT.Runtime/Projections.cs`.
  *
@@ -10,14 +8,14 @@ import java.util.concurrent.ConcurrentHashMap
  * type registrations instead of relying on assembly type lookup.
  */
 object Projections {
-    private val customTypeToHelperTypeMappings = ConcurrentHashMap<Class<*>, Class<*>>()
-    private val customAbiTypeToTypeMappings = ConcurrentHashMap<Class<*>, Class<*>>()
-    private val customAbiTypeNameToTypeMappings = ConcurrentHashMap<String, Class<*>>()
-    private val customTypeToAbiTypeNameMappings = ConcurrentHashMap<Class<*>, String>()
-    private val projectedRuntimeClassNames = ConcurrentHashMap.newKeySet<String>()
-    private val projectedCustomTypeRuntimeClasses = ConcurrentHashMap.newKeySet<Class<*>>()
-    private val runtimeClassToDefaultInterfaceMappings = ConcurrentHashMap<Class<*>, Class<*>>()
-    private val isTypeWindowsRuntimeTypeCache = ConcurrentHashMap<Class<*>, Boolean>()
+    private val customTypeToHelperTypeMappings = ConcurrentCacheMap<Class<*>, Class<*>>()
+    private val customAbiTypeToTypeMappings = ConcurrentCacheMap<Class<*>, Class<*>>()
+    private val customAbiTypeNameToTypeMappings = ConcurrentCacheMap<String, Class<*>>()
+    private val customTypeToAbiTypeNameMappings = ConcurrentCacheMap<Class<*>, String>()
+    private val projectedRuntimeClassNames = ConcurrentCacheSet<String>()
+    private val projectedCustomTypeRuntimeClasses = ConcurrentCacheSet<Class<*>>()
+    private val runtimeClassToDefaultInterfaceMappings = ConcurrentCacheMap<Class<*>, Class<*>>()
+    private val isTypeWindowsRuntimeTypeCache = ConcurrentCacheMap<Class<*>, Boolean>()
 
     init {
         WinRtBuiltInProjectionMappings.register()
@@ -43,8 +41,8 @@ object Projections {
         val abiNameAdded = customAbiTypeNameToTypeMappings.putIfAbsent(abiTypeName, publicType) == null
         val typeNameAdded = customTypeToAbiTypeNameMappings.putIfAbsent(publicType, abiTypeName) == null
         if (isRuntimeClass) {
-            projectedRuntimeClassNames += abiTypeName
-            projectedCustomTypeRuntimeClasses += publicType
+            projectedRuntimeClassNames.add(abiTypeName)
+            projectedCustomTypeRuntimeClasses.add(publicType)
         }
         return helperAdded && publicAdded && abiNameAdded && typeNameAdded
     }

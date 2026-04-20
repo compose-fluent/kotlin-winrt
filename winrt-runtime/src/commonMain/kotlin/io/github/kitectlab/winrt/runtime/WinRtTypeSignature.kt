@@ -162,23 +162,33 @@ sealed interface WinRtTypeSignature {
 
         fun guid(value: Guid): WinRtTypeSignature = GuidType(value)
 
-        fun runtimeClass(runtimeClassName: String, defaultInterface: WinRtTypeSignature): WinRtTypeSignature =
-            RuntimeClassType(runtimeClassName, defaultInterface)
+        fun runtimeClass(
+            runtimeClassName: String,
+            defaultInterface: WinRtTypeSignature,
+        ): WinRtTypeSignature = RuntimeClassType(runtimeClassName, defaultInterface)
 
-        fun enum(qualifiedName: String, underlyingType: WinRtTypeSignature = Int32Type): WinRtTypeSignature =
-            EnumType(qualifiedName, underlyingType)
+        fun enum(
+            qualifiedName: String,
+            underlyingType: WinRtTypeSignature = Int32Type,
+        ): WinRtTypeSignature = EnumType(qualifiedName, underlyingType)
 
-        fun struct(qualifiedName: String, vararg fieldTypes: WinRtTypeSignature): WinRtTypeSignature =
-            StructType(qualifiedName, fieldTypes.toList())
+        fun struct(
+            qualifiedName: String,
+            vararg fieldTypes: WinRtTypeSignature,
+        ): WinRtTypeSignature = StructType(qualifiedName, fieldTypes.toList())
 
         fun delegate(interfaceId: String): WinRtTypeSignature = DelegateType(Guid(interfaceId))
 
         fun delegate(interfaceId: Guid): WinRtTypeSignature = DelegateType(interfaceId)
 
-        fun parameterizedInterface(genericInterface: String, vararg arguments: WinRtTypeSignature): WinRtTypeSignature =
-            ParameterizedInterfaceType(Guid(genericInterface), arguments.toList())
+        fun parameterizedInterface(
+            genericInterface: String,
+            vararg arguments: WinRtTypeSignature,
+        ): WinRtTypeSignature = ParameterizedInterfaceType(Guid(genericInterface), arguments.toList())
 
-        fun parameterizedInterface(genericInterface: Guid, vararg arguments: WinRtTypeSignature): WinRtTypeSignature =
-            ParameterizedInterfaceType(genericInterface, arguments.toList())
+        fun parameterizedInterface(
+            genericInterface: Guid,
+            vararg arguments: WinRtTypeSignature,
+        ): WinRtTypeSignature = ParameterizedInterfaceType(genericInterface, arguments.toList())
     }
 }

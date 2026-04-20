@@ -1,7 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class WinRtTypeSignatureTest {
     @Test

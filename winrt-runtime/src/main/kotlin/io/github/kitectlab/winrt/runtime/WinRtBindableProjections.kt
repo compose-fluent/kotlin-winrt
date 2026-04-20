@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.ref.Cleaner
 import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
@@ -20,7 +19,7 @@ internal class WinRtBindableInspectableValue private constructor(
     private val inspectable: IInspectableReference,
 ) : IWinRTObject, AutoCloseable {
     private val closed = AtomicBoolean(false)
-    private val cleanable = cleaner.register(this) { inspectable.close() }
+    private val cleanable = finalizationHook.register(this) { inspectable.close() }
 
     override val nativeObject: ComObjectReference
         get() = inspectable
@@ -30,14 +29,14 @@ internal class WinRtBindableInspectableValue private constructor(
 
     override fun close() {
         if (closed.compareAndSet(false, true)) {
-            cleanable.clean()
+            cleanable.close()
         }
     }
 
     override fun toString(): String = inspectable.tryGetRuntimeClassName() ?: "Inspectable(${inspectable.pointer})"
 
     companion object {
-        private val cleaner: Cleaner = Cleaner.create()
+        private val finalizationHook = FinalizationHook()
 
         fun fromOwnedReference(reference: ComObjectReference): WinRtBindableInspectableValue {
             val inspectable = if (reference is IInspectableReference) {

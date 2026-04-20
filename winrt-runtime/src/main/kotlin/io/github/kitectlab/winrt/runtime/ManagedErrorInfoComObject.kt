@@ -8,7 +8,6 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -186,7 +185,7 @@ internal class ManagedErrorInfoComObject(
         private val linker: Linker = Linker.nativeLinker()
         private val lookup = MethodHandles.lookup()
         private val sharedArena = Arena.global()
-        private val registry = ConcurrentHashMap<Long, ManagedErrorInfoComObject>()
+        private val registry = ConcurrentCacheMap<Long, ManagedErrorInfoComObject>()
 
         private val queryInterfaceStub: MemorySegment = linker.upcallStub(
             lookup.findStatic(
