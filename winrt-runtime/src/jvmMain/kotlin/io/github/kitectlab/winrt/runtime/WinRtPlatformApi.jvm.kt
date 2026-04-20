@@ -572,6 +572,46 @@ actual object WinRtPlatformApi {
     actual fun freeLibraryRaw(moduleHandle: NativePointer): Boolean =
         freeLibrary(moduleHandle.asMemorySegment())
 
+    actual fun mddBootstrapInitialize2Raw(
+        initializeProc: NativePointer,
+        majorMinorVersion: Int,
+        versionTag: String,
+        minVersion: Long,
+    ): Int {
+        ensureWindows()
+        Arena.ofConfined().use { arena ->
+            val tag = if (versionTag.isBlank()) {
+                MemorySegment.NULL
+            } else {
+                arena.allocateFrom("$versionTag\u0000", StandardCharsets.UTF_16LE)
+            }
+            val handle = linker.downcallHandle(
+                initializeProc.asMemorySegment(),
+                FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_LONG,
+                    ValueLayout.JAVA_INT,
+                ),
+            )
+            return handle.invokeWithArguments(
+                majorMinorVersion,
+                tag,
+                minVersion,
+                0,
+            ) as Int
+        }
+    }
+
+    actual fun mddBootstrapShutdownRaw(shutdownProc: NativePointer) {
+        ensureWindows()
+        linker.downcallHandle(
+            shutdownProc.asMemorySegment(),
+            FunctionDescriptor.ofVoid(),
+        ).invokeWithArguments()
+    }
+
     actual fun tryFormatMessageRaw(hResultValue: Int): String? =
         tryFormatMessage(HResult(hResultValue))
 

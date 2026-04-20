@@ -171,6 +171,15 @@ actual object WinRtPlatformApi {
 
     actual fun freeLibraryRaw(moduleHandle: NativePointer): Boolean = TODO()
 
+    actual fun mddBootstrapInitialize2Raw(
+        initializeProc: NativePointer,
+        majorMinorVersion: Int,
+        versionTag: String,
+        minVersion: Long,
+    ): Int = TODO()
+
+    actual fun mddBootstrapShutdownRaw(shutdownProc: NativePointer): Unit = TODO()
+
     actual fun tryFormatMessageRaw(hResultValue: Int): String? = TODO()
 
     actual fun lastErrorAsHResultRaw(): Int = TODO()

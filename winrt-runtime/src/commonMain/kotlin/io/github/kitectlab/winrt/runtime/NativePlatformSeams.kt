@@ -192,6 +192,15 @@ expect object WinRtPlatformApi {
 
     fun freeLibraryRaw(moduleHandle: NativePointer): Boolean
 
+    fun mddBootstrapInitialize2Raw(
+        initializeProc: NativePointer,
+        majorMinorVersion: Int,
+        versionTag: String,
+        minVersion: Long,
+    ): Int
+
+    fun mddBootstrapShutdownRaw(shutdownProc: NativePointer)
+
     fun tryFormatMessageRaw(hResultValue: Int): String?
 
     fun lastErrorAsHResultRaw(): Int

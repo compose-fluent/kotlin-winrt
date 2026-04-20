@@ -1,11 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.Linker
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -39,39 +33,19 @@ object WindowsAppSdkBootstrap {
         private var closed = false
 
         fun initialize(versionInfo: BootstrapVersionInfo) {
-            val initialize2 = Linker.nativeLinker().downcallHandle(
-                initializePointer.asMemorySegment(),
-                FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG,
-                    ValueLayout.JAVA_INT,
+            HResult(
+                WinRtPlatformApi.mddBootstrapInitialize2Raw(
+                    initializeProc = initializePointer,
+                    majorMinorVersion = versionInfo.majorMinorVersion,
+                    versionTag = versionInfo.versionTag,
+                    minVersion = versionInfo.minVersion,
                 ),
-            )
-            Arena.ofConfined().use { arena ->
-                val tagSegment = if (versionInfo.versionTag.isBlank()) {
-                    MemorySegment.NULL
-                } else {
-                    allocateWideString(arena, versionInfo.versionTag)
-                }
-                HResult(
-                    initialize2.invokeWithArguments(
-                        versionInfo.majorMinorVersion,
-                        tagSegment,
-                        versionInfo.minVersion,
-                        0,
-                    ) as Int,
-                ).requireSuccess("MddBootstrapInitialize2")
-            }
+            ).requireSuccess("MddBootstrapInitialize2")
         }
 
         fun shutdown() {
             try {
-                Linker.nativeLinker().downcallHandle(
-                    shutdownPointer.asMemorySegment(),
-                    FunctionDescriptor.ofVoid(),
-                ).invokeWithArguments()
+                WinRtPlatformApi.mddBootstrapShutdownRaw(shutdownPointer)
             } finally {
                 close()
             }
@@ -246,7 +220,4 @@ object WindowsAppSdkBootstrap {
             .map { it.resolve(versionInfoHeaderRelativePath) }
             .toList()
     }
-
-    private fun allocateWideString(arena: Arena, value: String): MemorySegment =
-        arena.allocateFrom("$value\u0000", StandardCharsets.UTF_16LE)
 }
