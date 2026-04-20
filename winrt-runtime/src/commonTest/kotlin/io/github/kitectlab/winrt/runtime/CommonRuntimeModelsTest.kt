@@ -27,4 +27,23 @@ class CommonRuntimeModelsTest {
             manifestFreeActivationCandidateDllNames("Microsoft.UI.Xaml.Controls.Button"),
         )
     }
+
+    @Test
+    fun winrt_exception_models_preserve_hresult_and_restricted_info() {
+        val restrictedInfo = WinRtRestrictedErrorInfo(
+            description = "description",
+            restrictedDescription = "restricted",
+            reference = "ref",
+            capabilitySid = "sid",
+        )
+
+        val error = WinRtAccessDeniedException(
+            message = "denied",
+            hResult = KnownHResults.E_ACCESSDENIED,
+            restrictedErrorInfo = restrictedInfo,
+        )
+
+        assertEquals(KnownHResults.E_ACCESSDENIED, error.hResult)
+        assertEquals(restrictedInfo, error.restrictedErrorInfo)
+    }
 }
