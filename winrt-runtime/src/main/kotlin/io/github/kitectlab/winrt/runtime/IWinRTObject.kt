@@ -16,105 +16,53 @@ interface IWinRTObject {
         get() = true
 
     val queryInterfaceCache: ConcurrentCacheMap<WinRtTypeHandle, ComObjectReference>
-        get() = WinRtObjectStateStore.stateFor(this).queryInterfaceCache
+        get() = winRtObjectSupport.queryInterfaceCache(this)
 
     val additionalTypeData: ConcurrentCacheMap<WinRtTypeHandle, Any>
-        get() = WinRtObjectStateStore.stateFor(this).additionalTypeData
+        get() = winRtObjectSupport.additionalTypeData(this)
 
     fun isInterfaceImplemented(
         interfaceType: WinRtTypeHandle,
         throwIfNotImplemented: Boolean = false,
-    ): Boolean {
-        if (primaryTypeHandle == interfaceType) {
-            return true
-        }
+    ): Boolean =
+        winRtObjectSupport.isInterfaceImplemented(
+            instance = this,
+            primaryTypeHandle = primaryTypeHandle,
+            interfaceType = interfaceType,
+            nativeObject = nativeObject,
+            throwIfNotImplemented = throwIfNotImplemented,
+            tryQueryInterface = nativeObject::tryQueryInterface,
+            missingInterfaceError = ::missingInterfaceError,
+        )
 
-        if (queryInterfaceCache.containsKey(interfaceType)) {
-            return true
-        }
-
-        val queried = nativeObject.tryQueryInterface(interfaceType.interfaceId)
-        if (queried != null) {
-            val existing = queryInterfaceCache.putIfAbsent(interfaceType, queried)
-            if (existing != null) {
-                queried.close()
-            }
-            return true
-        }
-
-        if (throwIfNotImplemented) {
-            throw WinRtUnsupportedOperationException(
-                "Interface '${interfaceType.projectedTypeName}' is not implemented.",
-                KnownHResults.E_NOINTERFACE,
-            )
-        }
-
-        return false
-    }
-
-    fun getObjectReferenceForType(interfaceType: WinRtTypeHandle): ComObjectReference {
-        if (primaryTypeHandle == interfaceType) {
-            return nativeObject
-        }
-
-        if (isInterfaceImplemented(interfaceType, throwIfNotImplemented = true)) {
-            return queryInterfaceCache[interfaceType]
-                ?: error("Unreachable: interface presence check must populate the query-interface cache.")
-        }
-
-        error("Unreachable: interface presence check must either succeed or throw.")
-    }
+    fun getObjectReferenceForType(interfaceType: WinRtTypeHandle): ComObjectReference =
+        winRtObjectSupport.getObjectReferenceForType(
+            instance = this,
+            primaryTypeHandle = primaryTypeHandle,
+            interfaceType = interfaceType,
+            nativeObject = nativeObject,
+            tryQueryInterface = nativeObject::tryQueryInterface,
+            missingInterfaceError = ::missingInterfaceError,
+        )
 
     fun <T : Any> getOrAddAdditionalTypeData(
         type: WinRtTypeHandle,
         factory: () -> T,
-    ): T {
-        val existing = additionalTypeData[type]
-        if (existing != null) {
-            @Suppress("UNCHECKED_CAST")
-            return existing as T
-        }
-
-        val created = factory()
-        val raced = additionalTypeData.putIfAbsent(type, created)
-        @Suppress("UNCHECKED_CAST")
-        return (raced ?: created) as T
-    }
+    ): T =
+        winRtObjectSupport.getOrAddAdditionalTypeData(
+            instance = this,
+            type = type,
+            factory = factory,
+        )
 }
 
-private object WinRtObjectStateStore {
-    private val finalizationHook = FinalizationHook()
-    private val states = WeakKeyStateMap<IWinRTObject, WinRtObjectStateHolder>()
-
-    fun stateFor(instance: IWinRTObject): WinRtObjectState =
-        states.getOrPut(instance) {
-            createState(instance)
-        }.state
-
-    private fun createState(instance: IWinRTObject): WinRtObjectStateHolder {
-        val state = WinRtObjectState()
-        val cleanable = finalizationHook.register(instance) {
-            state.close()
-        }
-        return WinRtObjectStateHolder(state, cleanable)
+private val winRtObjectSupport =
+    WinRtObjectSupport<IWinRTObject, ComObjectReference> { reference ->
+        reference.close()
     }
-}
 
-private class WinRtObjectStateHolder(
-    val state: WinRtObjectState,
-    @Suppress("unused")
-    val cleanable: AutoCloseable,
-)
-
-private class WinRtObjectState {
-    val queryInterfaceCache = ConcurrentCacheMap<WinRtTypeHandle, ComObjectReference>()
-    val additionalTypeData = ConcurrentCacheMap<WinRtTypeHandle, Any>()
-
-    fun close() {
-        queryInterfaceCache.values.forEach { reference ->
-            runCatching { reference.close() }
-        }
-        queryInterfaceCache.clear()
-        additionalTypeData.clear()
-    }
-}
+private fun missingInterfaceError(interfaceType: WinRtTypeHandle): Throwable =
+    WinRtUnsupportedOperationException(
+        "Interface '${interfaceType.projectedTypeName}' is not implemented.",
+        KnownHResults.E_NOINTERFACE,
+    )
