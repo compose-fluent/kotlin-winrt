@@ -43,9 +43,9 @@ internal class GlobalInterfaceTableReference(
     interfaceId: Guid = IID.IGlobalInterfaceTable,
 ) : IUnknownReference(pointer, interfaceId) {
     fun registerInterfaceInGlobal(
-        interfacePointer: MemorySegment,
+        interfacePointer: NativePointer,
         interfaceId: Guid,
-    ): MemorySegment {
+    ): NativePointer {
         Arena.ofConfined().use { arena ->
             val iidMemory = arena.allocate(AbiLayouts.GUID)
             interfaceId.writeTo(iidMemory)
@@ -60,17 +60,17 @@ internal class GlobalInterfaceTableReference(
                         ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS,
                     ),
-                    interfacePointer,
+                    interfacePointer.asMemorySegment(),
                     iidMemory,
                     cookieOut,
                 ),
                 operation = "IGlobalInterfaceTable.RegisterInterfaceInGlobal",
             )
-            return cookieOut.get(ValueLayout.ADDRESS, 0)
+            return cookieOut.get(ValueLayout.ADDRESS, 0).asNativePointer()
         }
     }
 
-    fun tryRevokeInterfaceFromGlobal(cookie: MemorySegment): HResult =
+    fun tryRevokeInterfaceFromGlobal(cookie: NativePointer): HResult =
         HResult(
             invokeAbi(
                 slot = 4,
@@ -79,12 +79,12 @@ internal class GlobalInterfaceTableReference(
                     ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS,
                 ),
-                cookie,
+                cookie.asMemorySegment(),
             ),
         )
 
     fun getInterfaceFromGlobal(
-        cookie: MemorySegment,
+        cookie: NativePointer,
         interfaceId: Guid,
     ): IUnknownReference? {
         Arena.ofConfined().use { arena ->
@@ -101,7 +101,7 @@ internal class GlobalInterfaceTableReference(
                         ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS,
                     ),
-                    cookie,
+                    cookie.asMemorySegment(),
                     iidMemory,
                     resultOut,
                 ),
@@ -121,28 +121,29 @@ class AgileReference(
     instance: ComObjectReference?,
 ) : AutoCloseable {
     private val agileReference: AgileReferenceInterfaceReference?
-    private val cookie: MemorySegment
+    private val cookie: NativePointer
 
     init {
         if (instance == null || instance.pointer == MemorySegment.NULL) {
             agileReference = null
-            cookie = MemorySegment.NULL
+            cookie = NativeInterop.nullPointer
         } else {
-            val result = WindowsRuntimePlatform.roGetAgileReference(instance.pointer, IID.IUnknown)
-            if (result.hResult.isSuccess && result.pointer != MemorySegment.NULL) {
-                agileReference = AgileReferenceInterfaceReference(result.pointer, IID.IAgileReference)
-                cookie = MemorySegment.NULL
-            } else if (result.hResult == KnownHResults.E_NOTIMPL) {
+            val result = WinRtPlatformApi.roGetAgileReferenceRaw(instance.pointer.asNativePointer(), IID.IUnknown)
+            val hResult = HResult(result.hResultValue)
+            if (result.isSuccess) {
+                agileReference = AgileReferenceInterfaceReference(result.pointer.asMemorySegment(), IID.IAgileReference)
+                cookie = NativeInterop.nullPointer
+            } else if (hResult == KnownHResults.E_NOTIMPL) {
                 agileReference = null
-                cookie = git().registerInterfaceInGlobal(instance.pointer, IID.IUnknown)
+                cookie = git().registerInterfaceInGlobal(instance.pointer.asNativePointer(), IID.IUnknown)
             } else {
-                throw WinRtExceptionTranslator.exceptionFor(result.hResult, "RoGetAgileReference")
+                throw WinRtExceptionTranslator.exceptionFor(hResult, "RoGetAgileReference")
             }
         }
     }
 
     fun get(): IUnknownReference? =
-        if (cookie == MemorySegment.NULL) {
+        if (NativeInterop.isNull(cookie)) {
             agileReference?.resolve(IID.IUnknown)
         } else {
             git().getInterfaceFromGlobal(cookie, IID.IUnknown)
@@ -150,7 +151,7 @@ class AgileReference(
 
     @Suppress("UNCHECKED_CAST")
     internal fun <T : Any> get(typeHandle: WinRtTypeHandle): T? {
-        val reference = if (cookie == MemorySegment.NULL) {
+        val reference = if (NativeInterop.isNull(cookie)) {
             agileReference?.resolve(typeHandle.interfaceId)
         } else {
             git().getInterfaceFromGlobal(cookie, typeHandle.interfaceId)
@@ -162,7 +163,7 @@ class AgileReference(
 
     override fun close() {
         agileReference?.close()
-        if (cookie != MemorySegment.NULL) {
+        if (!NativeInterop.isNull(cookie)) {
             git().tryRevokeInterfaceFromGlobal(cookie)
         }
     }
@@ -170,12 +171,12 @@ class AgileReference(
     companion object {
         private val stdGlobalInterfaceTableClsid = guidOf("00000323-0000-0000-C000-000000000046")
         private val globalInterfaceTable by lazy {
-            val result = WindowsRuntimePlatform.coCreateInstance(
+            val result = WinRtPlatformApi.coCreateInstanceRaw(
                 classId = stdGlobalInterfaceTableClsid,
                 interfaceId = IID.IGlobalInterfaceTable,
             )
-            result.hResult.requireSuccess("CoCreateInstance(CLSID_StdGlobalInterfaceTable)")
-            GlobalInterfaceTableReference(result.pointer, IID.IGlobalInterfaceTable)
+            HResult(result.hResultValue).requireSuccess("CoCreateInstance(CLSID_StdGlobalInterfaceTable)")
+            GlobalInterfaceTableReference(result.pointer.asMemorySegment(), IID.IGlobalInterfaceTable)
         }
 
         private fun git(): GlobalInterfaceTableReference = globalInterfaceTable

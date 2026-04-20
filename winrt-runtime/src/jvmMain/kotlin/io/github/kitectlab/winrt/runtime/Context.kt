@@ -73,21 +73,21 @@ internal object Context {
         if (!PlatformRuntime.isWindows) {
             return MemorySegment.NULL
         }
-        val result = WindowsRuntimePlatform.coGetContextToken()
-        result.hResult.requireSuccess("CoGetContextToken")
-        return result.pointer
+        val result = WinRtPlatformApi.coGetContextTokenRaw()
+        HResult(result.hResultValue).requireSuccess("CoGetContextToken")
+        return result.pointer.asMemorySegment()
     }
 
     fun getContextCallback(): ContextCallbackReference? {
         if (!PlatformRuntime.isWindows) {
             return null
         }
-        val result = WindowsRuntimePlatform.coGetObjectContext(IID.IContextCallback)
-        result.hResult.requireSuccess("CoGetObjectContext")
-        return if (result.pointer == MemorySegment.NULL) {
+        val result = WinRtPlatformApi.coGetObjectContextRaw(IID.IContextCallback)
+        HResult(result.hResultValue).requireSuccess("CoGetObjectContext")
+        return if (NativeInterop.isNull(result.pointer)) {
             null
         } else {
-            ContextCallbackReference(result.pointer, IID.IContextCallback)
+            ContextCallbackReference(result.pointer.asMemorySegment(), IID.IContextCallback)
         }
     }
 
