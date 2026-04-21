@@ -10,8 +10,6 @@ import java.lang.foreign.ValueLayout
 import kotlin.jvm.JvmName
 import kotlin.reflect.KClass
 
-private const val DISP_E_OVERFLOW: Int = 0x8002000A.toInt()
-
 private data class ManagedArrayBox(
     val elements: Array<*>,
     val adapter: WinRtValueAdapter<*>,
@@ -208,7 +206,7 @@ internal object PlatformValueBoxingInterop {
             propertyTypeArray = PropertyType.InspectableArray,
             exactUnbox = { it },
             createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef() },
-            readOwnedPointer = { pointer -> unboxInspectablePointer(pointer.asMemorySegment()) },
+            readOwnedPointer = ::unboxInspectablePointer,
             disposeOwnedPointer = { pointer -> IUnknownReference(pointer, IID.IInspectable).close() },
         )
 
@@ -759,82 +757,3 @@ internal fun WinRtPropertyValueReference(
     preventReleaseOnDispose: Boolean = false,
 ): WinRtPropertyValueReference =
     WinRtPropertyValueReference(pointer.asNativePointer(), preventReleaseOnDispose)
-
-private fun unboxInspectablePointer(pointer: MemorySegment): Any {
-    WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())?.let { return it }
-    tryProjectBorrowedInspectableValue(pointer.asNativePointer())?.let { return it }
-    return ComWrappersSupport.createRcwForComObject(pointer.asNativePointer())
-        ?: WinRtInvalidCastException("Unable to project inspectable value.", HResult(TYPE_E_TYPEMISMATCH))
-}
-
-private fun coerceString(value: Any): String =
-    when (value) {
-        is String -> value
-        is Guid -> value.toString()
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to String.", HResult(TYPE_E_TYPEMISMATCH))
-    }
-
-private fun coerceGuid(value: Any): Guid =
-    when (value) {
-        is Guid -> value
-        is String -> runCatching { Guid(value) }.getOrElse {
-            throw WinRtInvalidCastException("Cannot parse Guid from '$value'.", HResult(TYPE_E_TYPEMISMATCH))
-        }
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Guid.", HResult(TYPE_E_TYPEMISMATCH))
-    }
-
-private fun coerceBoolean(value: Any): Boolean =
-    when (value) {
-        is Boolean -> value
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Boolean.", HResult(TYPE_E_TYPEMISMATCH))
-    }
-
-private fun coerceChar(value: Any): Char =
-    when (value) {
-        is Char -> value
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Char.", HResult(TYPE_E_TYPEMISMATCH))
-    }
-
-private fun coerceUByte(value: Any): UByte = numericCoerce("UByte", value) { (it as Number).toLong().toUByte() }
-
-private fun coerceShort(value: Any): Short = numericCoerce("Short", value) { (it as Number).toLong().toShort() }
-
-private fun coerceUShort(value: Any): UShort = numericCoerce("UShort", value) { (it as Number).toLong().toUShort() }
-
-private fun coerceInt(value: Any): Int = numericCoerce("Int", value) { (it as Number).toLong().toInt() }
-
-private fun coerceUInt(value: Any): UInt = numericCoerce("UInt", value) { (it as Number).toLong().toUInt() }
-
-private fun coerceLong(value: Any): Long = numericCoerce("Long", value) { (it as Number).toLong() }
-
-private fun coerceULong(value: Any): ULong = numericCoerce("ULong", value) { (it as Number).toLong().toULong() }
-
-private fun coerceFloat(value: Any): Float = numericCoerce("Float", value) { (it as Number).toDouble().toFloat() }
-
-private fun coerceDouble(value: Any): Double = numericCoerce("Double", value) { (it as Number).toDouble() }
-
-private fun <T> numericCoerce(
-    label: String,
-    value: Any,
-    convert: (Any) -> T,
-): T {
-    val coercible =
-        value is Byte ||
-            value is UByte ||
-            value is Short ||
-            value is UShort ||
-            value is Int ||
-            value is UInt ||
-            value is Long ||
-            value is ULong ||
-            value is Float ||
-            value is Double
-    if (!coercible) {
-        throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to $label.", HResult(TYPE_E_TYPEMISMATCH))
-    }
-    return try {
-        convert(value)
-    } catch (_: Throwable) {
-        throw WinRtInvalidCastException("Numeric coercion overflow for $label.", HResult(DISP_E_OVERFLOW))
-    }
-}
