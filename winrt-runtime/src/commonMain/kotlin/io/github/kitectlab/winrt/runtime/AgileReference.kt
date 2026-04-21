@@ -38,15 +38,14 @@ internal class AgileReferenceInterfaceReference(
             val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
             val resultOut = NativeInterop.allocatePointerSlot(scope)
-            ExceptionHelpers.throwExceptionForHR(
+            HResult(
                 invokeAbi(
                     slot = 3,
                     descriptor = resolveDescriptor,
                     iidMemory,
                     resultOut,
                 ),
-                operation = "IAgileReference.Resolve",
-            )
+            ).requireSuccess("IAgileReference.Resolve")
             val resolvedPointer = NativeInterop.readPointer(resultOut)
             if (NativeInterop.isNull(resolvedPointer)) {
                 null
@@ -68,7 +67,7 @@ internal class GlobalInterfaceTableReference(
             val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
             val cookieOut = NativeInterop.allocatePointerSlot(scope)
-            ExceptionHelpers.throwExceptionForHR(
+            HResult(
                 invokeAbi(
                     slot = 3,
                     descriptor = registerInGlobalDescriptor,
@@ -76,8 +75,7 @@ internal class GlobalInterfaceTableReference(
                     iidMemory,
                     cookieOut,
                 ),
-                operation = "IGlobalInterfaceTable.RegisterInterfaceInGlobal",
-            )
+            ).requireSuccess("IGlobalInterfaceTable.RegisterInterfaceInGlobal")
             NativeInterop.readPointer(cookieOut)
         }
 
@@ -98,7 +96,7 @@ internal class GlobalInterfaceTableReference(
             val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
             val resultOut = NativeInterop.allocatePointerSlot(scope)
-            ExceptionHelpers.throwExceptionForHR(
+            HResult(
                 invokeAbi(
                     slot = 5,
                     descriptor = getFromGlobalDescriptor,
@@ -106,8 +104,7 @@ internal class GlobalInterfaceTableReference(
                     iidMemory,
                     resultOut,
                 ),
-                operation = "IGlobalInterfaceTable.GetInterfaceFromGlobal",
-            )
+            ).requireSuccess("IGlobalInterfaceTable.GetInterfaceFromGlobal")
             val resolvedPointer = NativeInterop.readPointer(resultOut)
             if (NativeInterop.isNull(resolvedPointer)) {
                 null
@@ -137,7 +134,7 @@ class AgileReference(
                 agileReference = null
                 cookie = git().registerInterfaceInGlobal(instance.pointer, IID.IUnknown)
             } else {
-                throw WinRtExceptionTranslator.exceptionFor(hResult, "RoGetAgileReference")
+                throwHResultFailure(hResult, "RoGetAgileReference")
             }
         }
     }
@@ -149,17 +146,12 @@ class AgileReference(
             git().getInterfaceFromGlobal(cookie, IID.IUnknown)
         }
 
-    @Suppress("UNCHECKED_CAST")
-    internal fun <T : Any> get(typeHandle: WinRtTypeHandle): T? {
-        val reference = if (NativeInterop.isNull(cookie)) {
+    internal fun getReference(typeHandle: WinRtTypeHandle): IUnknownReference? =
+        if (NativeInterop.isNull(cookie)) {
             agileReference?.resolve(typeHandle.interfaceId)
         } else {
             git().getInterfaceFromGlobal(cookie, typeHandle.interfaceId)
-        } ?: return null
-        return reference.use {
-            ComWrappersSupport.createRcwForComObject(reference.pointer, typeHandle) as? T
         }
-    }
 
     override fun close() {
         agileReference?.close()
@@ -180,18 +172,5 @@ class AgileReference(
         }
 
         private fun git(): GlobalInterfaceTableReference = globalInterfaceTable
-    }
-}
-
-class AgileReferenceTyped<T : Any>(
-    private val typeHandle: WinRtTypeHandle,
-    instance: ComObjectReference?,
-) : AutoCloseable {
-    private val reference = AgileReference(instance)
-
-    fun get(): T? = reference.get<T>(typeHandle)
-
-    override fun close() {
-        reference.close()
     }
 }

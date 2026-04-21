@@ -28,7 +28,7 @@ internal class ContextCallbackReference(
         NativeInterop.confinedScope().use { scope ->
             val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
-            ExceptionHelpers.throwExceptionForHR(
+            HResult(
                 invokeAbi(
                     slot = 3,
                     descriptor = contextCallbackDescriptor,
@@ -38,8 +38,7 @@ internal class ContextCallbackReference(
                     methodIndex,
                     NativeInterop.nullPointer,
                 ),
-                operation = "IContextCallback.ContextCallback",
-            )
+            ).requireSuccess("IContextCallback.ContextCallback")
         }
     }
 }
@@ -142,8 +141,8 @@ internal object Context {
             state.callback(state.state)
             KnownHResults.S_OK.value
         } catch (error: Throwable) {
-            ExceptionHelpers.setErrorInfo(error)
-            WinRtExceptionTranslator.hResultFromException(error).value
+            platformSetErrorInfo(error)
+            platformHResultFromThrowable(error).value
         }
     }
 
