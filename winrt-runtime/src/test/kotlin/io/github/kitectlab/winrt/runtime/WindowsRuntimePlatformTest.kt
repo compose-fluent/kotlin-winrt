@@ -41,7 +41,7 @@ class WindowsRuntimePlatformTest {
             WinRtExceptionTranslator.hResultFromException(WinRtTimeoutException("timeout", KnownHResults.ERROR_TIMEOUT)),
         )
         assertEquals(KnownHResults.E_ACCESSDENIED, WinRtExceptionTranslator.hResultFromException(WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)))
-        assertEquals(ExceptionHelpers.ERROR_FILE_NOT_FOUND, WinRtExceptionTranslator.hResultFromException(java.io.FileNotFoundException("missing")))
+        assertEquals(ExceptionHelpers.E_FAIL, WinRtExceptionTranslator.hResultFromException(IllegalStateException("missing")))
     }
 
     @Test

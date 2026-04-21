@@ -987,7 +987,10 @@ actual object WinRtPlatformApi {
     }
 
     fun resolveModulePath(fileName: String): String =
-        java.nio.file.Path.of(System.getProperty("user.dir"), fileName).toString()
+        PlatformFileSystem.resolve(
+            PlatformFileSystem.systemProperty("user.dir") ?: ".",
+            fileName,
+        )
 
     private fun readUtf16Message(pointer: MemorySegment, charCount: Int): String {
         val sized = pointer.reinterpret(charCount.toLong() * ValueLayout.JAVA_CHAR.byteSize())
