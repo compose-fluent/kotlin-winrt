@@ -10,62 +10,6 @@ import kotlin.reflect.KClass
 import kotlin.time.Duration
 import kotlin.time.Instant
 
-internal enum class PropertyType(val code: Int) {
-    Empty(0x0),
-    UInt8(0x1),
-    Int16(0x2),
-    UInt16(0x3),
-    Int32(0x4),
-    UInt32(0x5),
-    Int64(0x6),
-    UInt64(0x7),
-    Single(0x8),
-    Double(0x9),
-    Char16(0xA),
-    Boolean(0xB),
-    String(0xC),
-    Inspectable(0xD),
-    DateTime(0xE),
-    TimeSpan(0xF),
-    Guid(0x10),
-    Point(0x11),
-    Size(0x12),
-    Rect(0x13),
-    OtherType(0x14),
-    UInt8Array(0x401),
-    Int16Array(0x402),
-    UInt16Array(0x403),
-    Int32Array(0x404),
-    UInt32Array(0x405),
-    Int64Array(0x406),
-    UInt64Array(0x407),
-    SingleArray(0x408),
-    DoubleArray(0x409),
-    Char16Array(0x40A),
-    BooleanArray(0x40B),
-    StringArray(0x40C),
-    InspectableArray(0x40D),
-    DateTimeArray(0x40E),
-    TimeSpanArray(0x40F),
-    GuidArray(0x410),
-    PointArray(0x411),
-    SizeArray(0x412),
-    RectArray(0x413),
-    OtherTypeArray(0x414),
-    ;
-
-    companion object {
-        private val byCode = entries.associateBy(PropertyType::code)
-
-        fun fromCode(code: Int): PropertyType =
-            byCode[code] ?: throw WinRtInvalidCastException(
-                "Unsupported Windows.Foundation.PropertyType value: $code",
-                HResult(TYPE_E_TYPEMISMATCH),
-            )
-    }
-}
-
-private const val TYPE_E_TYPEMISMATCH: Int = 0x80028CA0.toInt()
 private const val DISP_E_OVERFLOW: Int = 0x8002000A.toInt()
 private const val IREFERENCE_GENERIC_INTERFACE = "61C17706-2D65-11E0-9AE8-D48564015472"
 private val enumSignaturePattern = Regex("^enum\\((.+);(i4|u4)\\)$")
@@ -774,7 +718,12 @@ internal object WinRtValueBoxing {
     ): Any? {
         val adapter = adapterForReferenceInterface(interfaceId)
             ?: throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
-        return reference.getValue(adapter)
+        return reference.readValue(
+            sizeBytes = adapter.abiLayout.byteSize(),
+            alignmentBytes = adapter.abiLayout.byteAlignment(),
+            readValue = adapter::readValue,
+            disposeValue = adapter::disposeValue,
+        )
     }
 
     fun readReferenceArrayValue(
@@ -783,7 +732,10 @@ internal object WinRtValueBoxing {
     ): Array<Any?>? {
         val adapter = adapterForReferenceArrayInterface(interfaceId)
             ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
-        return reference.getValue(adapter)
+        return reference.readValue(
+            readArray = adapter::readOwnedArray,
+            disposeArray = adapter::disposeOwnedArray,
+        )
     }
 
     fun createReferenceHost(
@@ -836,14 +788,22 @@ internal object WinRtValueBoxing {
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
             queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
+                    sizeBytes = adapter.abiLayout.byteSize(),
+                    alignmentBytes = adapter.abiLayout.byteAlignment(),
+                    readValue = adapter::readValue,
+                    disposeValue = adapter::disposeValue,
+                )
             }
         }?.let { return it }
 
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
             queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
+                    readArray = adapter::readOwnedArray,
+                    disposeArray = adapter::disposeOwnedArray,
+                )
             }
         }?.let { return it }
 
@@ -1139,14 +1099,22 @@ internal object WinRtValueBoxing {
             val adapter = adapterForClass(elementType) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
+                    readArray = adapter::readOwnedArray,
+                    disposeArray = adapter::disposeOwnedArray,
+                )
             }
         }
 
         val adapter = adapterForClass(projectedType) ?: return null
         val interfaceId = adapter.nullableInterfaceId ?: return null
         return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-            WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+            WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
+                sizeBytes = adapter.abiLayout.byteSize(),
+                alignmentBytes = adapter.abiLayout.byteAlignment(),
+                readValue = adapter::readValue,
+                disposeValue = adapter::disposeValue,
+            )
         }
     }
 
@@ -1238,32 +1206,6 @@ private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(t
 
 private fun arrayElementType(type: KClass<*>): KClass<*>? = platformArrayElementType(type)
 
-internal class WinRtReferenceReference(
-    pointer: NativePointer,
-    interfaceId: Guid,
-    preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
-    fun getValue(adapter: WinRtValueAdapter<*>): Any? =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateBytes(scope, adapter.abiLayout.byteSize(), adapter.abiLayout.byteAlignment())
-            val hr = invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            try {
-                adapter.readValue(resultOut)
-            } finally {
-                adapter.disposeValue(resultOut)
-            }
-        }
-}
-
 internal fun WinRtReferenceReference(
     pointer: MemorySegment,
     interfaceId: Guid,
@@ -1271,140 +1213,12 @@ internal fun WinRtReferenceReference(
 ): WinRtReferenceReference =
     WinRtReferenceReference(pointer.asNativePointer(), interfaceId, preventReleaseOnDispose)
 
-internal class WinRtReferenceArrayReference(
-    pointer: NativePointer,
-    interfaceId: Guid,
-    preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
-    fun getValue(adapter: WinRtValueAdapter<*>): Array<Any?>? =
-        NativeInterop.confinedScope().use { scope ->
-            val countOut = NativeInterop.allocateInt32Slot(scope)
-            val dataOut = NativeInterop.allocatePointerSlot(scope)
-            val hr = invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                countOut,
-                dataOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            val length = NativeInterop.readInt32(countOut)
-            val data = NativeInterop.readPointer(dataOut)
-            try {
-                return adapter.readOwnedArray(length, data)
-            } finally {
-                adapter.disposeOwnedArray(length, data)
-            }
-        }
-}
-
 internal fun WinRtReferenceArrayReference(
     pointer: MemorySegment,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ): WinRtReferenceArrayReference =
     WinRtReferenceArrayReference(pointer.asNativePointer(), interfaceId, preventReleaseOnDispose)
-
-internal class WinRtPropertyValueReference(
-    pointer: NativePointer,
-    preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = preventReleaseOnDispose) {
-    fun type(): PropertyType =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt32Slot(scope)
-            val hr = invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            PropertyType.fromCode(NativeInterop.readInt32(resultOut))
-        }
-
-    fun isNumericScalar(): Boolean =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt8Slot(scope)
-            val hr = invokeAbi(
-                slot = 7,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            NativeInterop.readInt8(resultOut).toInt() != 0
-        }
-
-    fun getValue(): Any? {
-        val propertyType = type()
-        val scalarAdapter = WinRtValueBoxing.adapterForPropertyType(propertyType)
-        if (scalarAdapter != null) {
-            return NativeInterop.confinedScope().use { scope ->
-                val resultOut = NativeInterop.allocateBytes(scope, scalarAdapter.abiLayout.byteSize(), scalarAdapter.abiLayout.byteAlignment())
-                val slot = 8 + (propertyType.code - PropertyType.UInt8.code)
-                val hr = invokeAbi(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    resultOut,
-                )
-                WinRtPlatformApi.checkSucceededRaw(hr)
-                try {
-                    requireNotNull(scalarAdapter).readValue(resultOut)
-                } finally {
-                    requireNotNull(scalarAdapter).disposeValue(resultOut)
-                }
-            }
-        }
-
-        val arrayAdapter =
-            when (propertyType) {
-                PropertyType.InspectableArray -> WinRtValueBoxing.inspectableArrayAdapter()
-                else -> WinRtValueBoxing.adapterForPropertyTypeArray(propertyType)
-            }
-        if (arrayAdapter != null) {
-            return NativeInterop.confinedScope().use { scope ->
-                val countOut = NativeInterop.allocateInt32Slot(scope)
-                val dataOut = NativeInterop.allocatePointerSlot(scope)
-                val slot = 26 + (propertyType.code - PropertyType.UInt8Array.code)
-                val hr = invokeAbi(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    countOut,
-                    dataOut,
-                )
-                WinRtPlatformApi.checkSucceededRaw(hr)
-                val length = NativeInterop.readInt32(countOut)
-                val data = NativeInterop.readPointer(dataOut)
-                try {
-                    requireNotNull(arrayAdapter).readOwnedArray(length, data)
-                } finally {
-                    requireNotNull(arrayAdapter).disposeOwnedArray(length, data)
-                }
-            }
-        }
-
-        return null
-    }
-}
 
 internal fun WinRtPropertyValueReference(
     pointer: MemorySegment,

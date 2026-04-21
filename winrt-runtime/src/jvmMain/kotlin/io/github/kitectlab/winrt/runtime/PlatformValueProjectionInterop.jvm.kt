@@ -31,6 +31,67 @@ internal actual object PlatformValueProjectionInterop {
     actual fun createPropertyValueReference(value: Any): ComObjectReference =
         ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue)
 
+    actual fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any? {
+        val scalarAdapter = WinRtValueBoxing.adapterForPropertyType(propertyType)
+        if (scalarAdapter != null) {
+            return NativeInterop.confinedScope().use { scope ->
+                val resultOut = NativeInterop.allocateBytes(scope, scalarAdapter.abiLayout.byteSize(), scalarAdapter.abiLayout.byteAlignment())
+                val slot = 8 + (propertyType.code - PropertyType.UInt8.code)
+                val hr =
+                    IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = true).invokeAbi(
+                        slot = slot,
+                        descriptor = NativeFunctionDescriptor.of(
+                            NativeValueLayout.JAVA_INT,
+                            NativeValueLayout.ADDRESS,
+                            NativeValueLayout.ADDRESS,
+                        ),
+                        resultOut,
+                    )
+                WinRtPlatformApi.checkSucceededRaw(hr)
+                try {
+                    scalarAdapter.readValue(resultOut)
+                } finally {
+                    scalarAdapter.disposeValue(resultOut)
+                }
+            }
+        }
+
+        val arrayAdapter =
+            when (propertyType) {
+                PropertyType.InspectableArray -> WinRtValueBoxing.inspectableArrayAdapter()
+                else -> WinRtValueBoxing.adapterForPropertyTypeArray(propertyType)
+            }
+        if (arrayAdapter != null) {
+            return NativeInterop.confinedScope().use { scope ->
+                val countOut = NativeInterop.allocateInt32Slot(scope)
+                val dataOut = NativeInterop.allocatePointerSlot(scope)
+                val slot = 26 + (propertyType.code - PropertyType.UInt8Array.code)
+                val hr =
+                    IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = true).invokeAbi(
+                        slot = slot,
+                        descriptor = NativeFunctionDescriptor.of(
+                            NativeValueLayout.JAVA_INT,
+                            NativeValueLayout.ADDRESS,
+                            NativeValueLayout.ADDRESS,
+                            NativeValueLayout.ADDRESS,
+                        ),
+                        countOut,
+                        dataOut,
+                    )
+                WinRtPlatformApi.checkSucceededRaw(hr)
+                val length = NativeInterop.readInt32(countOut)
+                val data = NativeInterop.readPointer(dataOut)
+                try {
+                    arrayAdapter.readOwnedArray(length, data)
+                } finally {
+                    arrayAdapter.disposeOwnedArray(length, data)
+                }
+            }
+        }
+
+        return null
+    }
+
     actual fun readOwnedPropertyValue(pointer: NativePointer): Any? =
         WinRtPropertyValueReference(pointer).use { it.getValue() }
 

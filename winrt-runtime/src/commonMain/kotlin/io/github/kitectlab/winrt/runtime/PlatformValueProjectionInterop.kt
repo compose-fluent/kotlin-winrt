@@ -15,6 +15,8 @@ internal expect object PlatformValueProjectionInterop {
 
     fun createPropertyValueReference(value: Any): ComObjectReference
 
+    fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any?
+
     fun readOwnedPropertyValue(pointer: NativePointer): Any?
 
     fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any?

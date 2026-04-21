@@ -21,6 +21,9 @@ internal actual object PlatformValueProjectionInterop {
     actual fun createPropertyValueReference(value: Any): ComObjectReference =
         throw NotImplementedError("IPropertyValue host creation is not implemented for mingwX64 yet.")
 
+    actual fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any? =
+        throw NotImplementedError("IPropertyValue projection is not implemented for mingwX64 yet.")
+
     actual fun readOwnedPropertyValue(pointer: NativePointer): Any? =
         throw NotImplementedError("IPropertyValue projection is not implemented for mingwX64 yet.")
 
