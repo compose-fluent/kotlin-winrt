@@ -19,7 +19,7 @@ internal object WinRtReferenceProjection {
         val typeHandle = PlatformValueProjectionInterop.referenceTypeHandle(value, interfaceId)
         borrowedProjectionMarshaler(value, typeHandle)?.let { return it }
         return WinRtProjectionMarshaler.hosted(
-            host = PlatformValueProjectionInterop.createReferenceHost(interfaceId, value),
+            host = createReferenceHost(interfaceId, value),
             interfaceId = interfaceId,
         )
     }
@@ -34,7 +34,7 @@ internal object WinRtReferenceProjection {
             val typeHandle = PlatformValueProjectionInterop.referenceTypeHandle(value, interfaceId)
             borrowedProjectionAbi(value, typeHandle)
                 ?: run {
-                    val host = PlatformValueProjectionInterop.createReferenceHost(interfaceId, value)
+                    val host = createReferenceHost(interfaceId, value)
                     ManagedReferenceHostSupport.detachReference(
                         createReference = { host.createReference(interfaceId).pointer },
                         releaseManagedReference = host::releaseManagedReference,
@@ -62,7 +62,7 @@ internal object WinRtReferenceArrayProjection {
             return null
         }
         return WinRtProjectionMarshaler.hosted(
-            host = PlatformValueProjectionInterop.createReferenceArrayHost(interfaceId, value),
+            host = createReferenceArrayHost(interfaceId, value),
             interfaceId = interfaceId,
         )
     }
@@ -74,7 +74,7 @@ internal object WinRtReferenceArrayProjection {
         if (value == null) {
             NativeInterop.nullPointer
         } else {
-            val host = PlatformValueProjectionInterop.createReferenceArrayHost(interfaceId, value)
+            val host = createReferenceArrayHost(interfaceId, value)
             ManagedReferenceHostSupport.detachReference(
                 createReference = { host.createReference(interfaceId).pointer },
                 releaseManagedReference = host::releaseManagedReference,

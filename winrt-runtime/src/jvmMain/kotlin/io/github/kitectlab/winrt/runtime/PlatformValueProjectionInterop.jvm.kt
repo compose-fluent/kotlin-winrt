@@ -9,12 +9,6 @@ internal actual object PlatformValueProjectionInterop {
             interfaceId,
         )
 
-    actual fun createReferenceHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
-        WinRtValueBoxing.createReferenceHost(interfaceId, value)
-
-    actual fun createReferenceArrayHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
-        WinRtValueBoxing.createReferenceArrayHost(interfaceId, value)
-
     actual fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
         WinRtValueBoxing.createReferenceInterfaceDefinition(value)
 

@@ -6,12 +6,6 @@ internal actual object PlatformValueProjectionInterop {
     actual fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle =
         WinRtTypeHandle(value::class.qualifiedName ?: "kotlin.Any", interfaceId)
 
-    actual fun createReferenceHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
-        throw NotImplementedError("IReference<T> host creation is not implemented for mingwX64 yet.")
-
-    actual fun createReferenceArrayHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
-        throw NotImplementedError("IReferenceArray<T> host creation is not implemented for mingwX64 yet.")
-
     actual fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
         throw NotImplementedError("IReference<T> host definition is not implemented for mingwX64 yet.")
 

@@ -5,10 +5,6 @@ import kotlin.reflect.KClass
 internal expect object PlatformValueProjectionInterop {
     fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle
 
-    fun createReferenceHost(interfaceId: Guid, value: Any): ManagedReferenceHost
-
-    fun createReferenceArrayHost(interfaceId: Guid, value: Any): ManagedReferenceHost
-
     fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition?
 
     fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition?

@@ -702,28 +702,6 @@ internal object WinRtValueBoxing {
         )
     }
 
-    fun createReferenceHost(
-        interfaceId: Guid,
-        value: Any,
-    ): WinRtInspectableComObject {
-        return WinRtInspectableComObject(
-            interfaceDefinitions = listOf(createReferenceInterfaceDefinition(interfaceId, value)),
-            runtimeClassName = boxedRuntimeClassNameForType(value::class),
-            managedValue = value,
-        )
-    }
-
-    fun createReferenceArrayHost(
-        interfaceId: Guid,
-        value: Any,
-    ): WinRtInspectableComObject {
-        return WinRtInspectableComObject(
-            interfaceDefinitions = listOf(createReferenceArrayInterfaceDefinition(interfaceId, value)),
-            runtimeClassName = boxedRuntimeClassNameForType(value::class),
-            managedValue = normalizeManagedArray(value),
-        )
-    }
-
     internal fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
         referenceInterfaceIdForValue(value)?.let { interfaceId ->
             createReferenceInterfaceDefinition(interfaceId, value)
