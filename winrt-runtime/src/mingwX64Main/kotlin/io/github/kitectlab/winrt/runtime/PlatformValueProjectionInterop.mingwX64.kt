@@ -1,15 +1,13 @@
 package io.github.kitectlab.winrt.runtime
 
-import kotlin.reflect.KClass
-
 internal actual object PlatformValueProjectionInterop {
     actual fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle =
         WinRtTypeHandle(value::class.qualifiedName ?: "kotlin.Any", interfaceId)
 
-    actual fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+    actual fun createReferenceInterfaceDefinition(interfaceId: Guid, value: Any): WinRtInspectableInterfaceDefinition =
         throw NotImplementedError("IReference<T> host definition is not implemented for mingwX64 yet.")
 
-    actual fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+    actual fun createReferenceArrayInterfaceDefinition(interfaceId: Guid, value: Any): WinRtInspectableInterfaceDefinition =
         throw NotImplementedError("IReferenceArray<T> host definition is not implemented for mingwX64 yet.")
 
     actual fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
@@ -34,15 +32,6 @@ internal actual object PlatformValueProjectionInterop {
 
     actual fun readOwnedPropertyValue(pointer: NativePointer): Any? =
         throw NotImplementedError("IPropertyValue projection is not implemented for mingwX64 yet.")
-
-    actual fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? =
-        throw NotImplementedError("Inspectable boxed projection is not implemented for mingwX64 yet.")
-
-    actual fun tryProjectInspectableReference(inspectable: IInspectableReference): Any? =
-        throw NotImplementedError("Inspectable boxed projection is not implemented for mingwX64 yet.")
-
-    actual fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any? =
-        throw NotImplementedError("Inspectable boxed projection is not implemented for mingwX64 yet.")
 
     actual fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any? = null
 }

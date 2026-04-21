@@ -5,9 +5,9 @@ import kotlin.reflect.KClass
 internal expect object PlatformValueProjectionInterop {
     fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle
 
-    fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition?
+    fun createReferenceInterfaceDefinition(interfaceId: Guid, value: Any): WinRtInspectableInterfaceDefinition
 
-    fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition?
+    fun createReferenceArrayInterfaceDefinition(interfaceId: Guid, value: Any): WinRtInspectableInterfaceDefinition
 
     fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any?
 
@@ -22,12 +22,6 @@ internal expect object PlatformValueProjectionInterop {
     fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any?
 
     fun readOwnedPropertyValue(pointer: NativePointer): Any?
-
-    fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any?
-
-    fun tryProjectInspectableReference(inspectable: IInspectableReference): Any?
-
-    fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any?
 
     fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any?
 }

@@ -139,6 +139,12 @@ internal object ValueBoxingMetadata {
 
     fun inspectableArrayMetadata(): WinRtValueTypeMetadata = objectMetadata
 
+    fun descriptorForClass(type: KClass<*>): WinRtValueTypeMetadata? =
+        descriptorsByClass[type]
+            ?: if (platformIsAssignableFrom(Exception::class, type)) exceptionMetadata else null
+
+    fun referenceTypeDescriptors(): List<WinRtValueTypeMetadata> = descriptors
+
     fun enumMetadataForClass(type: KClass<*>): WinRtEnumBoxingMetadata? {
         if (!platformIsEnumType(type)) {
             return null
@@ -189,10 +195,6 @@ internal object ValueBoxingMetadata {
     }
 
     private fun descriptorForValue(value: Any): WinRtValueTypeMetadata? = descriptorForClass(value::class)
-
-    private fun descriptorForClass(type: KClass<*>): WinRtValueTypeMetadata? =
-        descriptorsByClass[type]
-            ?: if (platformIsAssignableFrom(Exception::class, type)) exceptionMetadata else null
 
     private fun classifyPropertyValue(value: Any): WinRtValueTypeMetadata? =
         descriptorForValue(value)?.takeIf { it.propertyType != null }

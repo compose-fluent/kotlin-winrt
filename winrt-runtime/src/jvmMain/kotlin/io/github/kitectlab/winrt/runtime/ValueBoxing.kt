@@ -1,3 +1,4 @@
+@file:JvmName("PlatformValueBoxingInteropJvm")
 @file:OptIn(ExperimentalUnsignedTypes::class)
 
 package io.github.kitectlab.winrt.runtime
@@ -6,6 +7,7 @@ import java.lang.foreign.Arena
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import kotlin.jvm.JvmName
 import kotlin.reflect.KClass
 
 private const val DISP_E_OVERFLOW: Int = 0x8002000A.toInt()
@@ -637,16 +639,6 @@ internal object PlatformValueBoxingInterop {
         )
     }
 
-    internal fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
-        referenceInterfaceIdForValue(value)?.let { interfaceId ->
-            createReferenceInterfaceDefinition(interfaceId, value)
-        }
-
-    internal fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
-        referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
-            createReferenceArrayInterfaceDefinition(interfaceId, value)
-        }
-
     internal fun createReferenceInterfaceDefinition(
         interfaceId: Guid,
         value: Any,
@@ -737,7 +729,7 @@ internal object PlatformValueBoxingInterop {
             else -> normalizePrimitiveManagedArray(value)
         }
 
-    private fun isSupportedArrayValue(value: Any): Boolean = isArrayKClass(value::class)
+    private fun isSupportedArrayValue(value: Any): Boolean = platformArrayElementType(value::class) != null
 
     private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayBox? {
         val elementType = WinRtTypeClassifier.primitiveArrayElementType(value::class) ?: return null
@@ -746,106 +738,7 @@ internal object PlatformValueBoxingInterop {
         return ManagedArrayBox(boxedElements, adapter)
     }
 
-    private fun referenceInterfaceIdForValue(value: Any): Guid? =
-        ValueBoxingMetadata.referenceInterfaceIdForValue(value)
-
-    private fun referenceArrayInterfaceIdForValue(value: Any): Guid? =
-        ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)
-
-    internal fun tryProjectInspectableAsType(
-        inspectable: IInspectableReference,
-        projectedType: KClass<*>,
-    ): Any? {
-        ValueBoxingMetadata.enumMetadataForClass(projectedType)?.let { descriptor ->
-            return queryReferencePointer(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
-                readEnumReferenceValue(
-                    WinRtReferenceReference(
-                        reference.pointer.asMemorySegment(),
-                        descriptor.nullableInterfaceId,
-                        preventReleaseOnDispose = true,
-                    ),
-                    descriptor,
-                )
-            }
-        }
-
-        if (isArrayKClass(projectedType) || WinRtTypeClassifier.primitiveArrayElementType(projectedType) != null) {
-            val elementType = WinRtTypeClassifier.primitiveArrayElementType(projectedType) ?: arrayElementType(projectedType) ?: return null
-            val adapter = adapterForClass(elementType) ?: return null
-            val interfaceId = adapter.referenceArrayInterfaceId ?: return null
-            return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
-                    readArray = adapter::readOwnedArray,
-                    disposeArray = adapter::disposeOwnedArray,
-                )
-            }
-        }
-
-        val adapter = adapterForClass(projectedType) ?: return null
-        val interfaceId = adapter.nullableInterfaceId ?: return null
-        return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-            WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
-                sizeBytes = adapter.abiLayout.byteSize(),
-                alignmentBytes = adapter.abiLayout.byteAlignment(),
-                readValue = adapter::readValue,
-                disposeValue = adapter::disposeValue,
-            )
-        }
-    }
-
-    internal fun tryProjectInspectableReference(inspectable: IInspectableReference): Any? =
-        adapters.firstNotNullOfOrNull { adapter ->
-            val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
-            queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
-                    sizeBytes = adapter.abiLayout.byteSize(),
-                    alignmentBytes = adapter.abiLayout.byteAlignment(),
-                    readValue = adapter::readValue,
-                    disposeValue = adapter::disposeValue,
-                )
-            }
-        }
-
-    internal fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any? =
-        adapters.firstNotNullOfOrNull { adapter ->
-            val interfaceId = adapter.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
-            queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
-                    readArray = adapter::readOwnedArray,
-                    disposeArray = adapter::disposeOwnedArray,
-                )
-            }
-        }
-
-    private fun queryReferencePointer(
-        inspectable: IInspectableReference,
-        interfaceId: Guid,
-    ): ComObjectReference? = runCatching { inspectable.queryInterface(interfaceId).getOrThrow() }.getOrNull()
-
-    private fun readEnumReferenceValue(
-        reference: WinRtReferenceReference,
-        descriptor: WinRtEnumBoxingMetadata,
-    ): Any =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt32Slot(scope)
-            val hr = reference.invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
-            WinRtPlatformApi.checkSucceededRaw(hr)
-            descriptor.fromAbiBits(NativeInterop.readInt32(resultOut))
-        }
-
 }
-
-private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(type) != null
-
-private fun arrayElementType(type: KClass<*>): KClass<*>? = platformArrayElementType(type)
 
 internal fun WinRtReferenceReference(
     pointer: MemorySegment,

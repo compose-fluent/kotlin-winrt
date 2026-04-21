@@ -16,10 +16,14 @@ internal object WinRtValueBoxing {
         ValueBoxingMetadata.isNumericScalar(value)
 
     fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
-        PlatformValueProjectionInterop.createReferenceInterfaceDefinition(value)
+        ValueBoxingMetadata.referenceInterfaceIdForValue(value)?.let { interfaceId ->
+            PlatformValueProjectionInterop.createReferenceInterfaceDefinition(interfaceId, value)
+        }
 
     fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
-        PlatformValueProjectionInterop.createReferenceArrayInterfaceDefinition(value)
+        ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
+            PlatformValueProjectionInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
+        }
 
     fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
         PlatformValueProjectionInterop.readReferenceValue(interfaceId, pointer)
@@ -35,12 +39,77 @@ internal object WinRtValueBoxing {
         PlatformValueProjectionInterop.writePropertyValueArray(expectedType, value, countOut, dataOut)
     }
 
-    fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? =
-        PlatformValueProjectionInterop.tryProjectInspectableAsType(inspectable, projectedType)
+    fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? {
+        ValueBoxingMetadata.enumMetadataForClass(projectedType)?.let { descriptor ->
+            return queryInspectableReference(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
+                readEnumReferenceValue(
+                    WinRtReferenceReference(
+                        reference.pointer,
+                        descriptor.nullableInterfaceId,
+                        preventReleaseOnDispose = true,
+                    ),
+                    descriptor,
+                )
+            }
+        }
+
+        if (isArrayKClass(projectedType) || WinRtTypeClassifier.primitiveArrayElementType(projectedType) != null) {
+            val elementType = WinRtTypeClassifier.primitiveArrayElementType(projectedType) ?: arrayElementType(projectedType) ?: return null
+            val descriptor = ValueBoxingMetadata.descriptorForClass(elementType) ?: return null
+            val interfaceId = descriptor.referenceArrayInterfaceId ?: return null
+            return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
+                PlatformValueProjectionInterop.readReferenceArrayValue(interfaceId, reference.pointer)
+            }
+        }
+
+        val descriptor = ValueBoxingMetadata.descriptorForClass(projectedType) ?: return null
+        val interfaceId = descriptor.nullableInterfaceId ?: return null
+        return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
+            PlatformValueProjectionInterop.readReferenceValue(interfaceId, reference.pointer)
+        }
+    }
 
     fun tryProjectInspectableReference(inspectable: IInspectableReference): Any? =
-        PlatformValueProjectionInterop.tryProjectInspectableReference(inspectable)
+        ValueBoxingMetadata.referenceTypeDescriptors().firstNotNullOfOrNull { descriptor ->
+            val interfaceId = descriptor.nullableInterfaceId ?: return@firstNotNullOfOrNull null
+            queryInspectableReference(inspectable, interfaceId)?.use { reference ->
+                PlatformValueProjectionInterop.readReferenceValue(interfaceId, reference.pointer)
+            }
+        }
 
     fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any? =
-        PlatformValueProjectionInterop.tryProjectInspectableReferenceArray(inspectable)
+        ValueBoxingMetadata.referenceTypeDescriptors().firstNotNullOfOrNull { descriptor ->
+            val interfaceId = descriptor.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
+            queryInspectableReference(inspectable, interfaceId)?.use { reference ->
+                PlatformValueProjectionInterop.readReferenceArrayValue(interfaceId, reference.pointer)
+            }
+        }
+
+    private fun queryInspectableReference(
+        inspectable: IInspectableReference,
+        interfaceId: Guid,
+    ): ComObjectReference? = runCatching { inspectable.queryInterface(interfaceId).getOrThrow() }.getOrNull()
+
+    private fun readEnumReferenceValue(
+        reference: WinRtReferenceReference,
+        descriptor: WinRtEnumBoxingMetadata,
+    ): Any =
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateInt32Slot(scope)
+            val hr = reference.invokeAbi(
+                slot = 6,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                ),
+                resultOut,
+            )
+            WinRtPlatformApi.checkSucceededRaw(hr)
+            descriptor.fromAbiBits(NativeInterop.readInt32(resultOut))
+        }
 }
+
+private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(type) != null
+
+private fun arrayElementType(type: KClass<*>): KClass<*>? = platformArrayElementType(type)
