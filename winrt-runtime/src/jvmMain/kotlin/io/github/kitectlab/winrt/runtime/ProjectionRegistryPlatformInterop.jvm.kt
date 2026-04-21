@@ -28,7 +28,7 @@ internal actual fun platformIsAssignableFrom(
 ): Boolean = targetType.registeredClass().isAssignableFrom(candidateType.registeredClass())
 
 internal actual fun platformBoxedRuntimeClassName(type: KClass<*>): String? =
-    WinRtValueBoxing.boxedRuntimeClassNameForType(type.registeredClass())
+    WinRtValueBoxing.boxedRuntimeClassNameForType(type)
 
 internal actual fun platformRuntimeClassNameForNonWinRtType(type: KClass<*>): String? =
     ComWrappersSupport.getRuntimeClassNameForNonWinRTTypeFromLookupTable(type)

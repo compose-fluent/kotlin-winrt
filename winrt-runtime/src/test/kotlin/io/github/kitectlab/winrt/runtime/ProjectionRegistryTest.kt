@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.reflect.KClass
 import kotlin.time.Duration
 import kotlin.time.Instant
 
@@ -16,33 +17,33 @@ class ProjectionRegistryTest {
 
         assertTrue(
             Projections.registerCustomAbiTypeMapping(
-                publicType = SampleMappedType::class.java,
-                helperType = SampleMappedTypeHelper::class.java,
+                publicType = SampleMappedType::class,
+                helperType = SampleMappedTypeHelper::class,
                 abiTypeName = "Contoso.IMappedType",
             ),
         )
         assertTrue(
             Projections.registerCustomAbiTypeMapping(
-                publicType = SampleRuntimeClass::class.java,
-                helperType = SampleRuntimeClassHelper::class.java,
+                publicType = SampleRuntimeClass::class,
+                helperType = SampleRuntimeClassHelper::class,
                 abiTypeName = "Contoso.SampleRuntimeClass",
                 isRuntimeClass = true,
             ),
         )
         assertTrue(
             Projections.registerDefaultInterfaceType(
-                runtimeClass = SampleRuntimeClass::class.java,
-                defaultInterface = SampleDefaultInterface::class.java,
+                runtimeClass = SampleRuntimeClass::class,
+                defaultInterface = SampleDefaultInterface::class,
             ),
         )
 
-        assertEquals(SampleMappedTypeHelper::class.java, Projections.findCustomHelperTypeMapping(SampleMappedType::class.java))
-        assertEquals(SampleMappedType::class.java, Projections.findCustomPublicTypeForAbiType(SampleMappedTypeHelper::class.java))
-        assertEquals(SampleMappedType::class.java, Projections.findCustomTypeForAbiTypeName("Contoso.IMappedType"))
-        assertEquals("Contoso.IMappedType", Projections.findCustomAbiTypeNameForType(SampleMappedType::class.java))
-        assertEquals(SampleDefaultInterface::class.java, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(SampleRuntimeClass::class.java))
-        assertTrue(Projections.isTypeWindowsRuntimeType(SampleRuntimeClass::class.java))
-        assertFalse(Projections.isTypeWindowsRuntimeType(PlainManagedType::class.java))
+        assertEquals(SampleMappedTypeHelper::class, Projections.findCustomHelperTypeMapping(SampleMappedType::class))
+        assertEquals(SampleMappedType::class, Projections.findCustomPublicTypeForAbiType(SampleMappedTypeHelper::class))
+        assertEquals(SampleMappedType::class, Projections.findCustomKClassForAbiTypeName("Contoso.IMappedType"))
+        assertEquals("Contoso.IMappedType", Projections.findCustomAbiTypeNameForType(SampleMappedType::class))
+        assertEquals(SampleDefaultInterface::class, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(SampleRuntimeClass::class))
+        assertTrue(Projections.isTypeWindowsRuntimeType(SampleRuntimeClass::class))
+        assertFalse(Projections.isTypeWindowsRuntimeType(PlainManagedType::class))
     }
 
     @Test
@@ -55,10 +56,10 @@ class ProjectionRegistryTest {
             mapOf("Contoso.DerivedRuntimeClass" to "Contoso.SampleRuntimeClass"),
         )
 
-        assertEquals(SampleRuntimeClass::class.java, TypeNameSupport.findRcwTypeByNameCached("Contoso.SampleRuntimeClass"))
-        assertEquals(SampleRuntimeClass::class.java, TypeNameSupport.findRcwTypeByNameCached("Contoso.DerivedRuntimeClass"))
-        assertEquals(String::class.java, TypeNameSupport.findTypeByNameCached("String"))
-        assertNull(TypeNameSupport.findRcwTypeByNameCached("Contoso.Missing"))
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findRcwKClassByNameCached("Contoso.SampleRuntimeClass"))
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findRcwKClassByNameCached("Contoso.DerivedRuntimeClass"))
+        assertEquals(String::class, TypeNameSupport.findKClassByNameCached("String"))
+        assertNull(TypeNameSupport.findRcwKClassByNameCached("Contoso.Missing"))
     }
 
     @Test
@@ -75,7 +76,7 @@ class ProjectionRegistryTest {
         assertEquals(
             "Contoso.LookupRegisteredRuntimeClass",
             TypeNameSupport.getNameForType(
-                PlainManagedType::class.java,
+                PlainManagedType::class,
                 setOf(TypeNameGenerationFlag.ForGetRuntimeClassName),
             ),
         )
@@ -87,27 +88,27 @@ class ProjectionRegistryTest {
         registerTestTypeDescriptors()
 
         Projections.registerCustomAbiTypeMapping(
-            publicType = SampleMappedType::class.java,
-            helperType = SampleMappedTypeHelper::class.java,
+            publicType = SampleMappedType::class,
+            helperType = SampleMappedTypeHelper::class,
             abiTypeName = "Contoso.IMappedType",
         )
         Projections.registerDefaultInterfaceType(
-            runtimeClass = SampleRuntimeClass::class.java,
-            defaultInterface = SampleDefaultInterface::class.java,
+            runtimeClass = SampleRuntimeClass::class,
+            defaultInterface = SampleDefaultInterface::class,
         )
 
-        assertEquals(SampleAnnotatedHelper::class.java, TypeExtensions.findHelperType(SampleAnnotatedPublicType::class.java))
-        assertEquals(SampleMappedTypeHelper::class.java, TypeExtensions.findHelperType(SampleMappedType::class.java))
-        assertEquals(Guid("11111111-1111-1111-1111-111111111111"), GuidGenerator.getGuid(SampleDefaultInterface::class.java))
-        assertEquals(Guid("22222222-2222-2222-2222-222222222222"), GuidGenerator.getIID(SampleMappedTypeHelper::class.java))
-        assertEquals("struct(Contoso.SampleStruct;i4;string)", GuidGenerator.getSignature(SampleStruct::class.java))
+        assertEquals(SampleAnnotatedHelper::class, TypeExtensions.findHelperType(SampleAnnotatedPublicType::class))
+        assertEquals(SampleMappedTypeHelper::class, TypeExtensions.findHelperType(SampleMappedType::class))
+        assertEquals(Guid("11111111-1111-1111-1111-111111111111"), GuidGenerator.getGuid(SampleDefaultInterface::class))
+        assertEquals(Guid("22222222-2222-2222-2222-222222222222"), GuidGenerator.getIID(SampleMappedTypeHelper::class))
+        assertEquals("struct(Contoso.SampleStruct;i4;string)", GuidGenerator.getSignature(SampleStruct::class))
         assertEquals(
             "rc(Contoso.SampleRuntimeClass;{11111111-1111-1111-1111-111111111111})",
-            GuidGenerator.getSignature(SampleRuntimeClass::class.java),
+            GuidGenerator.getSignature(SampleRuntimeClass::class),
         )
         assertEquals(
             ParameterizedInterfaceId.createFromSignature("rc(Contoso.SampleRuntimeClass;{11111111-1111-1111-1111-111111111111})"),
-            GuidGenerator.createIID(SampleRuntimeClass::class.java),
+            GuidGenerator.createIID(SampleRuntimeClass::class),
         )
     }
 
@@ -115,42 +116,42 @@ class ProjectionRegistryTest {
     fun intrinsic_type_classification_is_shared_across_runtime_helpers() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertEquals("Int8", TypeNameSupport.getNameForType(Byte::class.javaObjectType))
-        assertEquals(UByte::class.java, TypeNameSupport.findTypeByNameCached("UInt8"))
-        assertEquals(Byte::class.javaObjectType, TypeNameSupport.findTypeByNameCached("Int8"))
-        assertEquals(Any::class.java, TypeNameSupport.findTypeByNameCached("Object"))
-        assertTrue(Projections.isTypeWindowsRuntimeType(Char::class.javaPrimitiveType!!))
-        assertEquals("i1", GuidGenerator.getSignature(Byte::class.javaObjectType))
-        assertEquals("u1", GuidGenerator.getSignature(UByte::class.java))
-        assertEquals("cinterface(IInspectable)", GuidGenerator.getSignature(Any::class.java))
+        assertEquals("Int8", TypeNameSupport.getNameForType(Byte::class))
+        assertEquals(UByte::class, TypeNameSupport.findKClassByNameCached("UInt8"))
+        assertEquals(Byte::class, TypeNameSupport.findKClassByNameCached("Int8"))
+        assertEquals(Any::class, TypeNameSupport.findKClassByNameCached("Object"))
+        assertTrue(Projections.isTypeWindowsRuntimeType(Char::class))
+        assertEquals("i1", GuidGenerator.getSignature(Byte::class))
+        assertEquals("u1", GuidGenerator.getSignature(UByte::class))
+        assertEquals("cinterface(IInspectable)", GuidGenerator.getSignature(Any::class))
     }
 
     @Test
     fun runtime_117_system_projection_mappings_follow_cswinrt_owner_set() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertEquals(DateTimeProjection::class.java, TypeExtensions.findHelperType(Instant::class.java))
-        assertEquals(TimeSpanProjection::class.java, TypeExtensions.findHelperType(Duration::class.java))
-        assertEquals(UriProjection::class.java, TypeExtensions.findHelperType(WinRtUri::class.java))
-        assertEquals(IClosableProjection::class.java, TypeExtensions.findHelperType(AutoCloseable::class.java))
-        assertTrue(Projections.isTypeWindowsRuntimeType(Class::class.java))
-        assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class.java))
+        assertEquals(DateTimeProjection::class, TypeExtensions.findHelperType(Instant::class))
+        assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
+        assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRtUri::class))
+        assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
+        assertTrue(Projections.isTypeWindowsRuntimeType(Class::class))
+        assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class))
         assertEquals(
             WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
-            WinRtValueBoxing.boxedRuntimeClassNameForType(Class::class.java),
+            WinRtValueBoxing.boxedRuntimeClassNameForType(Class::class),
         )
-        assertEquals(WinRtTypeKind.Metadata.ordinal, TypeProjection.fromManaged(Class::class.java).kind)
+        assertEquals(WinRtTypeKind.Metadata.ordinal, TypeProjection.fromManaged(Class::class).kind)
         assertEquals(
             "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
-            GuidGenerator.getSignature(WinRtUri::class.java),
+            GuidGenerator.getSignature(WinRtUri::class),
         )
         assertEquals(
             "Windows.Foundation.IReference`1<Int32>",
-            TypeNameSupport.getNameForType(Int::class.javaObjectType, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
+            TypeNameSupport.getNameForType(Int::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
         )
         assertEquals(
             "Windows.Foundation.IReferenceArray`1<String>",
-            TypeNameSupport.getNameForType(Array<String>::class.java, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
+            TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
         )
     }
 
@@ -158,17 +159,17 @@ class ProjectionRegistryTest {
     fun windows_runtime_annotations_backfill_runtime_metadata_without_parallel_string_tables() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertTrue(Projections.isTypeWindowsRuntimeType(AnnotatedStruct::class.java))
-        assertEquals("Contoso.AnnotatedStruct", TypeNameSupport.getNameForType(AnnotatedStruct::class.java))
-        assertEquals("struct(Contoso.AnnotatedStruct;i4)", GuidGenerator.getSignature(AnnotatedStruct::class.java))
+        assertTrue(Projections.isTypeWindowsRuntimeType(AnnotatedStruct::class))
+        assertEquals("Contoso.AnnotatedStruct", TypeNameSupport.getNameForType(AnnotatedStruct::class))
+        assertEquals("struct(Contoso.AnnotatedStruct;i4)", GuidGenerator.getSignature(AnnotatedStruct::class))
 
-        assertEquals(AnnotatedRuntimeClassHelper::class.java, TypeExtensions.findHelperType(AnnotatedRuntimeClass::class.java))
-        assertEquals(AnnotatedDefaultInterface::class.java, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(AnnotatedRuntimeClass::class.java))
+        assertEquals(AnnotatedRuntimeClassHelper::class, TypeExtensions.findHelperType(AnnotatedRuntimeClass::class))
+        assertEquals(AnnotatedDefaultInterface::class, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(AnnotatedRuntimeClass::class))
         assertEquals(
             "rc(Contoso.AnnotatedRuntimeClass;{44444444-4444-4444-4444-444444444444})",
-            GuidGenerator.getSignature(AnnotatedRuntimeClass::class.java),
+            GuidGenerator.getSignature(AnnotatedRuntimeClass::class),
         )
-        assertEquals(Guid("44444444-4444-4444-4444-444444444444"), GuidGenerator.getGuid(AnnotatedDefaultInterface::class.java))
+        assertEquals(Guid("44444444-4444-4444-4444-444444444444"), GuidGenerator.getGuid(AnnotatedDefaultInterface::class))
     }
 
     @Test
@@ -177,12 +178,12 @@ class ProjectionRegistryTest {
         registerTestTypeDescriptors()
         ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class)
 
-        assertEquals(String::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<String>"))
-        assertEquals(Class::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>"))
-        assertEquals(Exception::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Windows.Foundation.HResult>"))
-        assertEquals(IntArray::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReferenceArray`1<Int32>"))
-        assertEquals(TestProjectedEnum::class.java, TypeNameSupport.findTypeByNameCached("Windows.Foundation.IReference`1<Contoso.Priority>"))
-        assertEquals("Contoso.Priority", TypeNameSupport.getNameForType(TestProjectedEnum::class.java))
+        assertEquals(String::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<String>"))
+        assertEquals(Class::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>"))
+        assertEquals(Exception::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Windows.Foundation.HResult>"))
+        assertEquals(IntArray::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReferenceArray`1<Int32>"))
+        assertEquals(TestProjectedEnum::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Contoso.Priority>"))
+        assertEquals("Contoso.Priority", TypeNameSupport.getNameForType(TestProjectedEnum::class))
     }
 
     private interface SampleDefaultInterface
@@ -225,7 +226,7 @@ class ProjectionRegistryTest {
 
     private fun registerTestTypeDescriptors() {
         WinRtTypeRegistry.register<SampleDefaultInterface>(
-            projectedTypeName = SampleDefaultInterface::class.java.name,
+            projectedTypeName = SampleDefaultInterface::class.qualifiedName ?: SampleDefaultInterface::class.toString(),
             guid = Guid("11111111-1111-1111-1111-111111111111"),
             iid = Guid("11111111-1111-1111-1111-111111111111"),
             isWindowsRuntimeType = true,
@@ -244,18 +245,18 @@ class ProjectionRegistryTest {
             isWindowsRuntimeType = true,
         )
         WinRtTypeRegistry.register<SampleMappedTypeHelper>(
-            projectedTypeName = SampleMappedTypeHelper::class.java.name,
+            projectedTypeName = SampleMappedTypeHelper::class.qualifiedName ?: SampleMappedTypeHelper::class.toString(),
             guid = Guid("22222222-2222-2222-2222-222222222222"),
             iid = Guid("22222222-2222-2222-2222-222222222222"),
             isWindowsRuntimeType = true,
         )
         WinRtTypeRegistry.register<SampleAnnotatedPublicType>(
-            projectedTypeName = SampleAnnotatedPublicType::class.java.name,
+            projectedTypeName = SampleAnnotatedPublicType::class.qualifiedName ?: SampleAnnotatedPublicType::class.toString(),
             helperType = SampleAnnotatedHelper::class,
             isWindowsRuntimeType = true,
         )
         WinRtTypeRegistry.register<SampleAnnotatedHelper>(
-            projectedTypeName = SampleAnnotatedHelper::class.java.name,
+            projectedTypeName = SampleAnnotatedHelper::class.qualifiedName ?: SampleAnnotatedHelper::class.toString(),
             guid = Guid("33333333-3333-3333-3333-333333333333"),
             iid = Guid("33333333-3333-3333-3333-333333333333"),
             isWindowsRuntimeType = true,
@@ -268,7 +269,7 @@ class ProjectionRegistryTest {
         WinRtTypeRegistry.register<TestProjectedEnum>(
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
-            enumAbiValue = { it.abiValue },
+            enumAbiValue = { value -> (value as TestProjectedEnum).abiValue },
             isWindowsRuntimeType = true,
         )
     }

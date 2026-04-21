@@ -2,7 +2,7 @@ package io.github.kitectlab.winrt.runtime
 
 internal actual object PlatformValueProjectionInterop {
     actual fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle =
-        WinRtTypeHandle(value.javaClass.name, interfaceId)
+        WinRtTypeHandle(value::class.qualifiedName ?: value::class.toString(), interfaceId)
 
     actual fun createReferenceHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
         WinRtValueBoxing.createReferenceHost(interfaceId, value)

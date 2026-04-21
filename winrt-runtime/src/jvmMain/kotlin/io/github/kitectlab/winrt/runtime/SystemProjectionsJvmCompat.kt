@@ -5,6 +5,7 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import kotlin.reflect.KClass
 
 internal enum class WinRtTypeKind {
     Primitive,
@@ -118,20 +119,22 @@ internal object TypeProjection {
         val kind =
             when {
                 value.isPrimitive -> WinRtTypeKind.Primitive
-                Projections.isTypeWindowsRuntimeType(value) -> WinRtTypeKind.Metadata
+                Projections.isTypeWindowsRuntimeType(value.kotlin) -> WinRtTypeKind.Metadata
                 else -> WinRtTypeKind.Custom
             }
         val typeName =
             if (kind == WinRtTypeKind.Custom) {
                 value.name
             } else {
-                TypeNameSupport.getNameForType(value)
+                TypeNameSupport.getNameForType(value.kotlin)
             }
         return TypeAbi(
             name = StringMarshaller.fromManaged(typeName)?.handle?.asMemorySegment() ?: MemorySegment.NULL,
             kind = kind.ordinal,
         )
     }
+
+    fun fromManaged(value: KClass<*>?): TypeAbi = fromManaged(value?.registeredClass())
 
     fun copyTo(value: Class<*>?, destination: MemorySegment) {
         val abi = fromManaged(value)
@@ -165,8 +168,8 @@ internal object WinRtBuiltInProjectionMappings {
         CommonWinRtBuiltInProjectionMappings.register()
 
         Projections.registerCustomAbiTypeMapping(
-            publicType = WinRtUri::class.java,
-            helperType = UriProjection::class.java,
+            publicType = WinRtUri::class,
+            helperType = UriProjection::class,
             abiTypeName = "Windows.Foundation.Uri",
             isRuntimeClass = true,
         )
@@ -181,8 +184,8 @@ internal object WinRtBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
         Projections.registerDefaultInterfaceType(
-            runtimeClass = WinRtUri::class.java,
-            defaultInterface = IUriRuntimeClassProjection::class.java,
+            runtimeClass = WinRtUri::class,
+            defaultInterface = IUriRuntimeClassProjection::class,
         )
         CommonWinRtBuiltInProjectionMappings.registerMetadata(
             type = IUriRuntimeClassProjection::class,
@@ -193,8 +196,8 @@ internal object WinRtBuiltInProjectionMappings {
         )
 
         Projections.registerCustomAbiTypeMapping(
-            publicType = Class::class.java,
-            helperType = TypeProjection::class.java,
+            publicType = Class::class,
+            helperType = TypeProjection::class,
             abiTypeName = "Windows.UI.Xaml.Interop.TypeName",
         )
         CommonWinRtBuiltInProjectionMappings.registerMetadata(

@@ -7,6 +7,7 @@ import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import kotlin.reflect.KClass
 import kotlin.time.Duration
 import kotlin.time.Instant
 
@@ -636,6 +637,8 @@ internal object WinRtValueBoxing {
 
     internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
 
+    internal fun boxedRuntimeClassNameForType(type: KClass<*>): String? = boxedRuntimeClassNameForType(type.jvmBoxedLookupClass())
+
     internal fun boxedRuntimeClassNameForType(type: Class<*>): String? {
         enumDescriptorForClass(type)?.let { descriptor ->
             return WinRtReferenceTypeNames.boxedReference(descriptor.projectedTypeName)
@@ -1190,7 +1193,7 @@ internal object WinRtValueBoxing {
         }
 
         val registeredType = type.registeredWinRtType() ?: return null
-        val signature = runCatching { GuidGenerator.getSignature(type) }.getOrNull() ?: return null
+        val signature = runCatching { GuidGenerator.getSignature(type.kotlin) }.getOrNull() ?: return null
         val match = enumSignaturePattern.matchEntire(signature) ?: return null
         val projectedTypeName = match.groupValues[1]
         val underlyingSignature = match.groupValues[2]
@@ -1240,6 +1243,19 @@ internal object WinRtValueBoxing {
         }
     }
 }
+
+private fun KClass<*>.jvmBoxedLookupClass(): Class<*> =
+    when (this) {
+        Byte::class -> Byte::class.javaObjectType
+        Short::class -> Short::class.javaObjectType
+        Int::class -> Int::class.javaObjectType
+        Long::class -> Long::class.javaObjectType
+        Boolean::class -> Boolean::class.javaObjectType
+        Char::class -> Char::class.javaObjectType
+        Float::class -> Float::class.javaObjectType
+        Double::class -> Double::class.javaObjectType
+        else -> registeredClass()
+    }
 
 internal class WinRtReferenceReference(
     pointer: NativePointer,
