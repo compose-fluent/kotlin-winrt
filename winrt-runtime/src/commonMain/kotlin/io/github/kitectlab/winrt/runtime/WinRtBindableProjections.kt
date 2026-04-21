@@ -1,9 +1,8 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.atomics.AtomicInt
 import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMutableList
 
@@ -18,7 +17,7 @@ typealias WinRtBindableProjectionMarshaler = WinRtProjectionMarshaler
 internal class WinRtBindableInspectableValue private constructor(
     private val inspectable: IInspectableReference,
 ) : IWinRTObject, AutoCloseable {
-    private val closed = AtomicBoolean(false)
+    private val closed = AtomicInt(0)
     private val cleanable = finalizationHook.register(this) { inspectable.close() }
 
     override val nativeObject: ComObjectReference
@@ -28,7 +27,7 @@ internal class WinRtBindableInspectableValue private constructor(
         get() = bindableInspectableTypeHandle
 
     override fun close() {
-        if (closed.compareAndSet(false, true)) {
+        if (closed.compareAndSet(0, 1)) {
             cleanable.close()
         }
     }
@@ -59,20 +58,20 @@ internal object WinRtBindableObjectMarshaller {
             return null
         }
         borrowInspectableReference(value)?.let { return WinRtBindableProjectionMarshaler.borrowed(it) }
-        val reference = ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
+        val reference = platformCreateInspectableReference(value)
         return WinRtBindableProjectionMarshaler.owned(reference)
     }
 
-    fun fromManaged(value: Any?): MemorySegment {
+    fun fromManaged(value: Any?): NativePointer {
         if (value == null) {
-            return MemorySegment.NULL
+            return NativeInterop.nullPointer
         }
-        borrowInspectableReference(value)?.use { return it.getRef() }
-        return ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef().asMemorySegment()
+        borrowInspectableReference(value)?.use { return it.getRefPointer() }
+        return platformCreateInspectableReference(value).useAndGetRef()
     }
 
-    fun fromOwnedAbi(pointer: MemorySegment): Any? {
-        if (pointer == MemorySegment.NULL) {
+    fun fromOwnedAbi(pointer: NativePointer): Any? {
+        if (NativeInterop.isNull(pointer)) {
             return null
         }
         return fromOwnedReference(IUnknownReference(pointer, IID.IInspectable))
@@ -82,23 +81,23 @@ internal object WinRtBindableObjectMarshaller {
         if (reference == null) {
             return null
         }
-        findManagedValue(reference.pointer.asMemorySegment())?.let { managed ->
+        findManagedValue(reference.pointer)?.let { managed ->
             reference.close()
             return managed
         }
-        WinRtValueBoxing.tryProjectBorrowedInspectable(reference.pointer.asMemorySegment())?.let { propertyValue ->
+        platformTryProjectBindableInspectable(reference.pointer)?.let { propertyValue ->
             reference.close()
             return propertyValue
         }
         return WinRtBindableInspectableValue.fromOwnedReference(reference)
     }
 
-    fun fromBorrowedAbi(pointer: MemorySegment): Any? {
-        if (pointer == MemorySegment.NULL) {
+    fun fromBorrowedAbi(pointer: NativePointer): Any? {
+        if (NativeInterop.isNull(pointer)) {
             return null
         }
         findManagedValue(pointer)?.let { return it }
-        WinRtValueBoxing.tryProjectBorrowedInspectable(pointer)?.let { return it }
+        platformTryProjectBindableInspectable(pointer)?.let { return it }
         val borrowed = IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
         val inspectable = try {
             borrowed.asInspectable()
@@ -108,19 +107,19 @@ internal object WinRtBindableObjectMarshaller {
         return WinRtBindableInspectableValue.fromOwnedReference(inspectable)
     }
 
-    private fun findManagedValue(pointer: MemorySegment): Any? =
-        WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())
+    private fun findManagedValue(pointer: NativePointer): Any? =
+        WinRtInspectableComObject.findManagedValue(pointer)
 
     private fun borrowInspectableReference(value: Any?): IInspectableReference? =
         when (value) {
             null -> null
-            is WinRtBindableInspectableValue -> IInspectableReference(value.inspectableRef().getRef(), IID.IInspectable)
-            is IInspectableReference -> IInspectableReference(value.getRef(), IID.IInspectable)
+            is WinRtBindableInspectableValue -> IInspectableReference(value.inspectableRef().getRefPointer(), IID.IInspectable)
+            is IInspectableReference -> IInspectableReference(value.getRefPointer(), IID.IInspectable)
             is IUnknownReference -> value.asInspectable()
             is ComObjectReference -> value.tryAsInspectable()
             is IWinRTObject -> if (value.hasUnwrappableNativeObject) value.nativeObject.tryAsInspectable() else null
-            is MemorySegment ->
-                if (value == MemorySegment.NULL) {
+            is NativePointer ->
+                if (NativeInterop.isNull(value)) {
                     null
                 } else {
                     IUnknownReference(value, IID.IInspectable, preventReleaseOnDispose = true).asInspectable()
@@ -160,13 +159,13 @@ object WinRtBindableIterableProjection {
                     interfaceId = WinRtBindableInterfaceIds.IBindableIterable,
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             resultOut.writeReturnedPointer(WinRtBindableIteratorProjection.detachReference(managed.iterator()))
                             KnownHResults.S_OK.value
                         },
@@ -178,7 +177,7 @@ object WinRtBindableIterableProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterable)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterable).asMemorySegment()
+        fun detachReference(): NativePointer = host.detachReference(WinRtBindableInterfaceIds.IBindableIterable)
     }
 
     fun createMarshaler(value: Iterable<Any?>?): WinRtBindableProjectionMarshaler? {
@@ -189,18 +188,18 @@ object WinRtBindableIterableProjection {
         return ToAbiHelper(value).createMarshaler()
     }
 
-    fun fromManaged(value: Iterable<Any?>?): MemorySegment =
+    fun fromManaged(value: Iterable<Any?>?): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, bindableIterableTypeHandle)?.asMemorySegment() ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableIterableTypeHandle) ?: ToAbiHelper(value).detachReference()
         }
 
-    fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
-        if (pointer == MemorySegment.NULL) {
+    fun fromAbi(pointer: NativePointer): FromAbiHelper? =
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            FromAbiHelper(WinRtBindableIterableReference(pointer.asNativePointer(), WinRtBindableInterfaceIds.IBindableIterable))
+            FromAbiHelper(WinRtBindableIterableReference(pointer, WinRtBindableInterfaceIds.IBindableIterable))
         }
 }
 
@@ -235,13 +234,13 @@ object WinRtBindableIteratorProjection {
                     interfaceId = WinRtBindableInterfaceIds.IBindableIterator,
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             if (!state.hasCurrent) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -249,33 +248,33 @@ object WinRtBindableIteratorProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeBoolean(state.hasCurrent)
+                            (rawArgs[0] as NativePointer).writeBoolean(state.hasCurrent)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             state.moveNext()
-                            (rawArgs[0] as MemorySegment).writeBoolean(state.hasCurrent)
+                            (rawArgs[0] as NativePointer).writeBoolean(state.hasCurrent)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) {
                             KnownHResults.E_NOTIMPL.value
@@ -288,10 +287,10 @@ object WinRtBindableIteratorProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterator)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterator).asMemorySegment()
+        fun detachReference(): NativePointer = host.detachReference(WinRtBindableInterfaceIds.IBindableIterator)
     }
 
-    internal fun detachReference(managed: Iterator<Any?>): MemorySegment =
+    internal fun detachReference(managed: Iterator<Any?>): NativePointer =
         ToAbiHelper(managed).detachReference()
 
     private class ManagedIteratorState(
@@ -370,15 +369,15 @@ object WinRtBindableVectorViewProjection {
                     interfaceId = WinRtBindableInterfaceIds.IBindableVectorView,
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val resultOut = rawArgs[1] as MemorySegment
+                            val resultOut = rawArgs[1] as NativePointer
                             if (index.toInt() !in managed.indices) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -387,27 +386,27 @@ object WinRtBindableVectorViewProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val value = WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[0] as MemorySegment)
-                            val indexOut = rawArgs[1] as MemorySegment
-                            val foundOut = rawArgs[2] as MemorySegment
+                            val value = WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[0] as NativePointer)
+                            val indexOut = rawArgs[1] as NativePointer
+                            val foundOut = rawArgs[2] as NativePointer
                             val index = managed.indexOf(value)
                             foundOut.writeBoolean(index >= 0)
                             indexOut.writeUInt32(if (index >= 0) index.toUInt() else 0u)
@@ -421,7 +420,7 @@ object WinRtBindableVectorViewProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVectorView)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVectorView).asMemorySegment()
+        fun detachReference(): NativePointer = host.detachReference(WinRtBindableInterfaceIds.IBindableVectorView)
     }
 
     fun createMarshaler(value: List<Any?>?): WinRtBindableProjectionMarshaler? {
@@ -432,18 +431,18 @@ object WinRtBindableVectorViewProjection {
         return ToAbiHelper(value).createMarshaler()
     }
 
-    fun fromManaged(value: List<Any?>?): MemorySegment =
+    fun fromManaged(value: List<Any?>?): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, bindableVectorViewTypeHandle)?.asMemorySegment() ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableVectorViewTypeHandle) ?: ToAbiHelper(value).detachReference()
         }
 
-    fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
-        if (pointer == MemorySegment.NULL) {
+    fun fromAbi(pointer: NativePointer): FromAbiHelper? =
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            FromAbiHelper(WinRtBindableVectorViewReference(pointer.asNativePointer(), WinRtBindableInterfaceIds.IBindableVectorView))
+            FromAbiHelper(WinRtBindableVectorViewReference(pointer, WinRtBindableInterfaceIds.IBindableVectorView))
         }
 }
 
@@ -509,15 +508,15 @@ object WinRtBindableVectorProjection {
                     interfaceId = WinRtBindableInterfaceIds.IBindableVector,
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val resultOut = rawArgs[1] as MemorySegment
+                            val resultOut = rawArgs[1] as NativePointer
                             if (index.toInt() !in managed.indices) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -526,78 +525,78 @@ object WinRtBindableVectorProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             resultOut.writeReturnedPointer(WinRtBindableVectorViewProjection.ToAbiHelper(managed).detachReference())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val value = WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[0] as MemorySegment)
-                            val indexOut = rawArgs[1] as MemorySegment
-                            val foundOut = rawArgs[2] as MemorySegment
+                            val value = WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[0] as NativePointer)
+                            val indexOut = rawArgs[1] as NativePointer
+                            val foundOut = rawArgs[2] as NativePointer
                             val index = managed.indexOf(value)
                             foundOut.writeBoolean(index >= 0)
                             indexOut.writeUInt32(if (index >= 0) index.toUInt() else 0u)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
                             if (index.toInt() !in managed.indices) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
-                            managed[index.toInt()] = WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[1] as MemorySegment)
+                            managed[index.toInt()] = WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[1] as NativePointer)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
                             if (index.toInt() > managed.size) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
-                            managed.add(index.toInt(), WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[1] as MemorySegment))
+                            managed.add(index.toInt(), WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[1] as NativePointer))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
@@ -608,19 +607,19 @@ object WinRtBindableVectorProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            managed.add(WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[0] as MemorySegment))
+                            managed.add(WinRtBindableObjectMarshaller.fromBorrowedAbi(rawArgs[0] as NativePointer))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) {
                             if (managed.isEmpty()) {
@@ -631,9 +630,9 @@ object WinRtBindableVectorProjection {
                             }
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) {
                             managed.clear()
@@ -647,7 +646,7 @@ object WinRtBindableVectorProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVector)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVector).asMemorySegment()
+        fun detachReference(): NativePointer = host.detachReference(WinRtBindableInterfaceIds.IBindableVector)
     }
 
     fun createMarshaler(value: MutableList<Any?>?): WinRtBindableProjectionMarshaler? {
@@ -658,18 +657,18 @@ object WinRtBindableVectorProjection {
         return ToAbiHelper(value).createMarshaler()
     }
 
-    fun fromManaged(value: MutableList<Any?>?): MemorySegment =
+    fun fromManaged(value: MutableList<Any?>?): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, bindableVectorTypeHandle)?.asMemorySegment() ?: ToAbiHelper(value).detachReference()
+            borrowedProjectionAbi(value, bindableVectorTypeHandle) ?: ToAbiHelper(value).detachReference()
         }
 
-    fun fromAbi(pointer: MemorySegment): FromAbiHelper? =
-        if (pointer == MemorySegment.NULL) {
+    fun fromAbi(pointer: NativePointer): FromAbiHelper? =
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            FromAbiHelper(WinRtBindableVectorReference(pointer.asNativePointer(), WinRtBindableInterfaceIds.IBindableVector))
+            FromAbiHelper(WinRtBindableVectorReference(pointer, WinRtBindableInterfaceIds.IBindableVector))
         }
 }
 
@@ -695,13 +694,13 @@ private fun bindableIterableDefinition(
         interfaceId = WinRtBindableInterfaceIds.IBindableIterable,
         methods = listOf(
             WinRtInspectableMethodDefinition(
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
             ) { rawArgs ->
-                val resultOut = rawArgs[0] as MemorySegment
+                val resultOut = rawArgs[0] as NativePointer
                 resultOut.writeReturnedPointer(WinRtBindableIteratorProjection.detachReference(iteratorFactory()))
                 KnownHResults.S_OK.value
             },
@@ -715,14 +714,14 @@ private fun UInt.toIntChecked(operation: String): Int {
     return toInt()
 }
 
-private fun MemorySegment.writeReturnedPointer(pointer: MemorySegment) {
-    reinterpret(ValueLayout.ADDRESS.byteSize()).set(ValueLayout.ADDRESS, 0, pointer)
+private fun NativePointer.writeReturnedPointer(pointer: NativePointer) {
+    NativeInterop.writePointer(this, pointer)
 }
 
-private fun MemorySegment.writeBoolean(value: Boolean) {
-    reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(ValueLayout.JAVA_BYTE, 0, if (value) 1 else 0)
+private fun NativePointer.writeBoolean(value: Boolean) {
+    NativeInterop.writeInt8(this, if (value) 1 else 0)
 }
 
-private fun MemorySegment.writeUInt32(value: UInt) {
-    reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, value.toInt())
+private fun NativePointer.writeUInt32(value: UInt) {
+    NativeInterop.writeInt32(this, value.toInt())
 }

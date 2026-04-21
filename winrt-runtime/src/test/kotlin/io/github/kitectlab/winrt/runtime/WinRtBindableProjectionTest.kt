@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,7 +17,7 @@ class WinRtBindableProjectionTest {
                 WinRtBindableInterfaceIds.IBindableIterable,
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRtBindableIterableProjection.fromAbi(borrowed.getRef())!!.use { projected ->
+                WinRtBindableIterableProjection.fromAbi(borrowed.getRefPointer())!!.use { projected ->
                     assertEquals(values, projected.toList())
                     assertEquals(
                         WinRtTypeHandle("kotlin.collections.Iterable<kotlin.Any?>", WinRtBindableInterfaceIds.IBindableIterable),
@@ -41,7 +40,7 @@ class WinRtBindableProjectionTest {
             WinRtBindableInterfaceIds.IBindableVector,
             preventReleaseOnDispose = true,
         ).use { borrowed ->
-            WinRtBindableVectorProjection.fromAbi(borrowed.getRef())!!.use { projected ->
+            WinRtBindableVectorProjection.fromAbi(borrowed.getRefPointer())!!.use { projected ->
                 projected[1] = "two"
                 projected.add("three")
                 assertEquals(listOf("one", "two", null, "three"), projected.toList())
@@ -67,7 +66,7 @@ class WinRtBindableProjectionTest {
         )
         val inspectablePointer = host.createReference(Guid("D8D45091-15A2-46A3-9177-84FAD8A5DE8A")).use { reference ->
             reference.asInspectable().use { inspectable ->
-                inspectable.getRef()
+                inspectable.getRefPointer()
             }
         }
 

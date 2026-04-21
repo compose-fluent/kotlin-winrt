@@ -846,8 +846,8 @@ internal object WinRtValueBoxing {
         return null
     }
 
-    internal fun tryProjectBorrowedInspectable(pointer: MemorySegment): Any? {
-        if (pointer == MemorySegment.NULL) {
+    internal fun tryProjectBorrowedInspectable(pointer: NativePointer): Any? {
+        if (NativeInterop.isNull(pointer)) {
             return null
         }
         val borrowed = IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
@@ -864,6 +864,9 @@ internal object WinRtValueBoxing {
             inspectable.close()
         }
     }
+
+    internal fun tryProjectBorrowedInspectable(pointer: MemorySegment): Any? =
+        tryProjectBorrowedInspectable(pointer.asNativePointer())
 
     private fun buildReferenceInterfaceDefinition(
         interfaceId: Guid,

@@ -134,7 +134,7 @@ class ValueBoxingTest {
 
         val pointer = ComWrappersSupport.createCCWForObject(9.seconds, IID.IInspectable).useAndGetRef()
         try {
-            assertEquals(9.seconds, WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer.asMemorySegment()))
+            assertEquals(9.seconds, WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer))
         } finally {
             IUnknownReference(pointer, IID.IInspectable).close()
         }
@@ -168,7 +168,7 @@ class ValueBoxingTest {
                 }
             }
             assertEquals(TestPriority.High, ComWrappersSupport.createRcwForComObject(priorityPointer))
-            assertEquals(TestPriority.High, WinRtBindableObjectMarshaller.fromBorrowedAbi(priorityPointer.asMemorySegment()))
+            assertEquals(TestPriority.High, WinRtBindableObjectMarshaller.fromBorrowedAbi(priorityPointer))
         } finally {
             IUnknownReference(priorityPointer, IID.IInspectable).close()
         }
@@ -183,7 +183,7 @@ class ValueBoxingTest {
                 }
             }
             assertEquals(TestVisibility.Visible, ComWrappersSupport.createRcwForComObject(visibilityPointer))
-            assertEquals(TestVisibility.Visible, WinRtBindableObjectMarshaller.fromBorrowedAbi(visibilityPointer.asMemorySegment()))
+            assertEquals(TestVisibility.Visible, WinRtBindableObjectMarshaller.fromBorrowedAbi(visibilityPointer))
         } finally {
             IUnknownReference(visibilityPointer, IID.IInspectable).close()
         }
