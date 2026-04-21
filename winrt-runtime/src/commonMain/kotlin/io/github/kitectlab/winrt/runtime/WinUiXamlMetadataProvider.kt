@@ -38,7 +38,7 @@ object WinUiXamlMetadataProvider {
     val providerRuntimeClassName: String
         get() = WinUiXamlMetadataProviderInfo.runtimeClassName
 
-    @Volatile
+    private val initializationLock = PlatformLock()
     private var initialized = false
 
     fun create(): WinUiXamlMetadataProviderReference {
@@ -66,9 +66,9 @@ object WinUiXamlMetadataProvider {
         if (initialized) {
             return
         }
-        synchronized(this) {
+        initializationLock.withLock {
             if (initialized) {
-                return
+                return@withLock
             }
             factory.queryInterface(WinUiXamlInterfaceIds.IXamlControlsXamlMetaDataProviderStatics)
                 .getOrThrow()

@@ -29,7 +29,7 @@ internal class WinRtInspectableComObject(
     private val runtimeClassName: String? = null,
     private val trustLevel: Int = 0,
     private val managedValue: Any? = null,
-) : AutoCloseable {
+) : ManagedReferenceHost, AutoCloseable {
     /**
      * `.cswinrt` owns CCW backing allocation through the broader ComWrappers/object-reference
      * infrastructure. The current JVM runtime has not landed that allocator/registration layer yet,
@@ -57,10 +57,12 @@ internal class WinRtInspectableComObject(
         releaseManagedReference()
     }
 
-    fun createReference(interfaceId: Guid = primaryInterfaceId): ComObjectReference {
+    override fun createReference(interfaceId: Guid): ComObjectReference {
         addReference()
         return ComObjectReference(interfacePointer(interfaceId), interfaceId)
     }
+
+    fun createPrimaryReference(): ComObjectReference = createReference(primaryInterfaceId)
 
     fun detachReference(interfaceId: Guid = primaryInterfaceId): MemorySegment =
         ManagedReferenceHostSupport.detachReference(
@@ -71,7 +73,7 @@ internal class WinRtInspectableComObject(
             releaseManagedReference = ::releaseManagedReference,
         )
 
-    fun releaseManagedReference() {
+    override fun releaseManagedReference() {
         releaseReference()
     }
 

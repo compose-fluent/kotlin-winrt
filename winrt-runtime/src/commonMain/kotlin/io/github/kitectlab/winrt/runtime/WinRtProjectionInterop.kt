@@ -23,7 +23,7 @@ class WinRtProjectionMarshaler internal constructor(
             )
 
         internal fun hosted(
-            host: WinRtInspectableComObject,
+            host: ManagedReferenceHost,
             interfaceId: Guid,
         ): WinRtProjectionMarshaler =
             WinRtProjectionMarshaler(
