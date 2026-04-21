@@ -14,6 +14,10 @@ internal actual fun isPlatformExceptionType(type: KClass<*>): Boolean = false
 
 internal actual fun platformArrayElementType(type: KClass<*>): KClass<*>? = null
 
+internal actual fun platformIsEnumType(type: KClass<*>): Boolean = false
+
+internal actual fun platformEnumConstants(type: KClass<*>): Array<Any>? = null
+
 internal actual fun platformTypeCanonicalName(type: KClass<*>): String? = type.qualifiedName
 
 internal actual fun platformTypeName(type: KClass<*>): String = type.typeDisplayName()

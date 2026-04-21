@@ -17,6 +17,10 @@ internal expect fun isPlatformExceptionType(type: KClass<*>): Boolean
 
 internal expect fun platformArrayElementType(type: KClass<*>): KClass<*>?
 
+internal expect fun platformIsEnumType(type: KClass<*>): Boolean
+
+internal expect fun platformEnumConstants(type: KClass<*>): Array<Any>?
+
 internal expect fun platformTypeCanonicalName(type: KClass<*>): String?
 
 internal expect fun platformTypeName(type: KClass<*>): String

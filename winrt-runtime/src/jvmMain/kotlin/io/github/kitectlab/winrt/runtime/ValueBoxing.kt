@@ -180,11 +180,11 @@ private object TransferredArrayOwnership {
         pointer: MemorySegment,
         cleanup: () -> Unit,
     ) {
-        cleanups[pointer.address()] = cleanup
+        cleanups[NativeInterop.pointerKey(pointer.asNativePointer())] = cleanup
     }
 
     fun release(pointer: MemorySegment): Boolean =
-        cleanups.remove(pointer.address())?.let {
+        cleanups.remove(NativeInterop.pointerKey(pointer.asNativePointer()))?.let {
             it()
             true
         } ?: false
@@ -1082,7 +1082,7 @@ internal object WinRtValueBoxing {
     private fun normalizeManagedArray(value: Any): ManagedArrayBox? =
         when (value) {
             is Array<*> -> {
-                val componentType = value.javaClass.componentType?.kotlin ?: Any::class
+                val componentType = platformArrayElementType(value::class) ?: Any::class
                 val adapter =
                     adapterForClass(componentType)
                         ?: if (componentType == Any::class) {
@@ -1186,8 +1186,7 @@ internal object WinRtValueBoxing {
     private fun enumDescriptorForClass(
         type: KClass<*>,
     ): WinRtEnumBoxingDescriptor? {
-        val javaType = type.registeredClass()
-        if (!javaType.isEnum) {
+        if (!platformIsEnumType(type)) {
             return null
         }
 
@@ -1196,14 +1195,15 @@ internal object WinRtValueBoxing {
         val match = enumSignaturePattern.matchEntire(signature) ?: return null
         val projectedTypeName = match.groupValues[1]
         val underlyingSignature = match.groupValues[2]
-        if (registeredType.enumAbiValue == null) {
+        val enumAbiValue = registeredType.enumAbiValue as? (Any) -> Int
+        if (enumAbiValue == null) {
             return null
         }
 
         fun readBits(enumValue: Any): Int =
-            registeredType.readEnumAbiValue(enumValue)
+            enumAbiValue(enumValue)
 
-        val constants = javaType.enumConstants ?: return null
+        val constants = platformEnumConstants(type) ?: return null
 
         return when (underlyingSignature) {
             "i4" ->
@@ -1243,9 +1243,9 @@ internal object WinRtValueBoxing {
     }
 }
 
-private fun isArrayKClass(type: KClass<*>): Boolean = type.registeredClass().isArray
+private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(type) != null
 
-private fun arrayElementType(type: KClass<*>): KClass<*>? = type.registeredClass().componentType?.kotlin
+private fun arrayElementType(type: KClass<*>): KClass<*>? = platformArrayElementType(type)
 
 internal class WinRtReferenceReference(
     pointer: NativePointer,
@@ -1432,7 +1432,7 @@ private fun coerceString(value: Any): String =
     when (value) {
         is String -> value
         is Guid -> value.toString()
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value.javaClass.name} to String.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to String.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 private fun coerceGuid(value: Any): Guid =
@@ -1441,19 +1441,19 @@ private fun coerceGuid(value: Any): Guid =
         is String -> runCatching { Guid(value) }.getOrElse {
             throw WinRtInvalidCastException("Cannot parse Guid from '$value'.", HResult(TYPE_E_TYPEMISMATCH))
         }
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value.javaClass.name} to Guid.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Guid.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 private fun coerceBoolean(value: Any): Boolean =
     when (value) {
         is Boolean -> value
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value.javaClass.name} to Boolean.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Boolean.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 private fun coerceChar(value: Any): Char =
     when (value) {
         is Char -> value
-        else -> throw WinRtInvalidCastException("Cannot coerce ${value.javaClass.name} to Char.", HResult(TYPE_E_TYPEMISMATCH))
+        else -> throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to Char.", HResult(TYPE_E_TYPEMISMATCH))
     }
 
 private fun coerceUByte(value: Any): UByte = numericCoerce("UByte", value) { (it as Number).toLong().toUByte() }
@@ -1491,7 +1491,7 @@ private fun <T> numericCoerce(
             value is Float ||
             value is Double
     if (!coercible) {
-        throw WinRtInvalidCastException("Cannot coerce ${value.javaClass.name} to $label.", HResult(TYPE_E_TYPEMISMATCH))
+        throw WinRtInvalidCastException("Cannot coerce ${value::class.typeDisplayName()} to $label.", HResult(TYPE_E_TYPEMISMATCH))
     }
     return try {
         convert(value)

@@ -132,10 +132,10 @@ internal class ManagedErrorInfoComObject(
     }
 
     private fun getSource(resultPointer: MemorySegment): Int =
-        writeBstr(resultPointer, error.javaClass.name)
+        writeBstr(resultPointer, error::class.typeDisplayName())
 
     private fun getDescription(resultPointer: MemorySegment): Int =
-        writeBstr(resultPointer, error.message ?: error.javaClass.name)
+        writeBstr(resultPointer, error.message ?: error::class.typeDisplayName())
 
     private fun getHelpFile(resultPointer: MemorySegment): Int =
         writeBstr(resultPointer, null)
@@ -316,6 +316,6 @@ internal class ManagedErrorInfoComObject(
                 sharedArena,
             )
 
-        private fun pointerKey(pointer: MemorySegment): Long = pointer.address()
+        private fun pointerKey(pointer: MemorySegment): Long = NativeInterop.pointerKey(pointer.asNativePointer())
     }
 }
