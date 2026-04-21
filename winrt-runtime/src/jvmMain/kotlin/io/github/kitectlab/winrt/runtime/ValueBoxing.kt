@@ -7,25 +7,12 @@ import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import kotlin.reflect.KClass
-import kotlin.time.Duration
-import kotlin.time.Instant
 
 private const val DISP_E_OVERFLOW: Int = 0x8002000A.toInt()
-private const val IREFERENCE_GENERIC_INTERFACE = "61C17706-2D65-11E0-9AE8-D48564015472"
-private val enumSignaturePattern = Regex("^enum\\((.+);(i4|u4)\\)$")
 
 private data class ManagedArrayBox(
     val elements: Array<*>,
     val adapter: WinRtValueAdapter<*>,
-)
-
-private data class WinRtEnumBoxingDescriptor(
-    val enumType: KClass<*>,
-    val projectedTypeName: String,
-    val propertyType: PropertyType,
-    val nullableInterfaceId: Guid,
-    val toAbiBits: (Any) -> Int,
-    val fromAbiBits: (Int) -> Any,
 )
 
 internal class WinRtValueAdapter<T : Any>(
@@ -421,26 +408,26 @@ internal object PlatformValueBoxingInterop {
                 writeTransferredValue = GuidMarshaller::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Instant::class,
+                projectedClass = kotlin.time.Instant::class,
                 nullableInterfaceId = IID.NullableDateTimeOffset,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfDateTimeOffset,
                 propertyType = PropertyType.DateTime,
                 propertyTypeArray = PropertyType.DateTimeArray,
                 abiLayout = ValueLayout.JAVA_LONG,
-                exactUnbox = { it as Instant },
+                exactUnbox = { it as kotlin.time.Instant },
                 readOwnedValue = { source -> DateTimeProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0)) },
                 writeTransferredValue = { value, destination ->
                     DateTimeProjection.copyTo(value, destination)
                 },
             ),
             directValueAdapter(
-                projectedClass = Duration::class,
+                projectedClass = kotlin.time.Duration::class,
                 nullableInterfaceId = IID.NullableTimeSpan,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfTimeSpan,
                 propertyType = PropertyType.TimeSpan,
                 propertyTypeArray = PropertyType.TimeSpanArray,
                 abiLayout = ValueLayout.JAVA_LONG,
-                exactUnbox = { it as Duration },
+                exactUnbox = { it as kotlin.time.Duration },
                 readOwnedValue = { source -> TimeSpanProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0)) },
                 writeTransferredValue = { value, destination ->
                     TimeSpanProjection.copyTo(value, destination)
@@ -567,9 +554,6 @@ internal object PlatformValueBoxingInterop {
     private val adaptersByPropertyType = adapters.mapNotNull { adapter -> adapter.propertyType?.let { it to adapter } }.toMap()
     private val adaptersByPropertyTypeArray = adapters.mapNotNull { adapter -> adapter.propertyTypeArray?.let { it to adapter } }.toMap()
 
-    fun isPropertyValueCompatible(value: Any): Boolean =
-        propertyTypeOf(value).let { it != PropertyType.OtherType && it != PropertyType.OtherTypeArray }
-
     fun adapterForReferenceInterface(interfaceId: Guid): WinRtValueAdapter<*>? = adaptersByNullableIid[interfaceId]
 
     fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRtValueAdapter<*>? = adaptersByReferenceArrayIid[interfaceId]
@@ -580,61 +564,12 @@ internal object PlatformValueBoxingInterop {
 
     internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
 
-    internal fun boxedRuntimeClassNameForType(type: KClass<*>): String? {
-        enumDescriptorForClass(type)?.let { descriptor ->
-            return WinRtReferenceTypeNames.boxedReference(descriptor.projectedTypeName)
-        }
-        WinRtTypeClassifier.primitiveArrayElementType(type)?.let { elementType ->
-            val adapter = adapterForClass(elementType) ?: return null
-            val interfaceId = adapter.referenceArrayInterfaceId ?: return null
-            return boxedReferenceArrayRuntimeClassName(interfaceId, adapter)
-        }
-        if (isArrayKClass(type)) {
-            val adapter = arrayElementType(type)?.let(::adapterForClass) ?: return null
-            val interfaceId = adapter.referenceArrayInterfaceId ?: return null
-            return boxedReferenceArrayRuntimeClassName(interfaceId, adapter)
-        }
-
-        val adapter = adapterForClass(type) ?: return null
-        val interfaceId = adapter.nullableInterfaceId ?: return null
-        return boxedReferenceRuntimeClassName(interfaceId, adapter)
-    }
-
-    fun propertyTypeOf(value: Any): PropertyType {
-        val managedArray = normalizeManagedArray(value)
-        if (managedArray != null) {
-            val adapter = classifyPropertyValueAdapter(managedArray.elements.firstOrNull(), managedArray.adapter)
-            return adapter.propertyTypeArray
-                ?: if (managedArray.adapter == objectAdapter) {
-                    PropertyType.InspectableArray
-                } else {
-                    PropertyType.OtherTypeArray
-                }
-        }
-
-        if (isSupportedArrayValue(value)) {
-            return PropertyType.OtherTypeArray
-        }
-
-        enumDescriptorForClass(value::class)?.let { return it.propertyType }
-
-        val adapter = classifyPropertyValue(value)
-        if (adapter != null) {
-            return adapter.propertyType ?: PropertyType.OtherType
-        }
-        return PropertyType.OtherType
-    }
-
-    fun isNumericScalar(value: Any): Boolean =
-        normalizeManagedArray(value) == null &&
-            (classifyPropertyValue(value)?.isNumericScalar == true || enumDescriptorForClass(value::class) != null)
-
     fun writePropertyValue(
         expectedType: PropertyType,
         value: Any,
         destination: MemorySegment,
     ) {
-        val enumDescriptor = enumDescriptorForClass(value::class)
+        val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
         if (enumDescriptor != null && enumDescriptor.propertyType == expectedType) {
             destination.reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, enumDescriptor.toAbiBits(value))
             return
@@ -717,7 +652,7 @@ internal object PlatformValueBoxingInterop {
         value: Any,
     ): WinRtInspectableInterfaceDefinition {
         val adapter = adapterForReferenceInterface(interfaceId)
-        val enumDescriptor = enumDescriptorForClass(value::class)
+        val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
         if (adapter == null && (enumDescriptor == null || enumDescriptor.nullableInterfaceId != interfaceId)) {
             throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
         }
@@ -776,24 +711,6 @@ internal object PlatformValueBoxingInterop {
         )
     }
 
-    private fun classifyPropertyValue(value: Any): WinRtValueAdapter<*>? {
-        val adapter = adapterForValue(value)
-        if (adapter?.propertyType != null) {
-            return adapter
-        }
-        return null
-    }
-
-    private fun classifyPropertyValueAdapter(
-        sampleElement: Any?,
-        defaultAdapter: WinRtValueAdapter<*>,
-    ): WinRtValueAdapter<*> =
-        when {
-            sampleElement == null -> defaultAdapter
-            defaultAdapter == objectAdapter -> objectAdapter
-            else -> adapterForValue(sampleElement) ?: defaultAdapter
-        }
-
     private fun adapterForValue(value: Any): WinRtValueAdapter<*>? = adapterForClass(value::class)
 
     private fun adapterForClass(type: KClass<*>): WinRtValueAdapter<*>? =
@@ -830,32 +747,16 @@ internal object PlatformValueBoxingInterop {
     }
 
     private fun referenceInterfaceIdForValue(value: Any): Guid? =
-        adapterForValue(value)?.nullableInterfaceId ?: enumDescriptorForClass(value::class)?.nullableInterfaceId
+        ValueBoxingMetadata.referenceInterfaceIdForValue(value)
 
     private fun referenceArrayInterfaceIdForValue(value: Any): Guid? =
-        normalizeManagedArray(value)?.adapter?.referenceArrayInterfaceId
-
-    private fun boxedReferenceRuntimeClassName(
-        interfaceId: Guid,
-        adapter: WinRtValueAdapter<*>,
-    ): String {
-        check(adapter.nullableInterfaceId == interfaceId)
-        return WinRtReferenceTypeNames.boxedReference(TypeNameSupport.getNameForType(adapter.projectedClass))
-    }
-
-    private fun boxedReferenceArrayRuntimeClassName(
-        interfaceId: Guid,
-        adapter: WinRtValueAdapter<*>,
-    ): String {
-        check(adapter.referenceArrayInterfaceId == interfaceId)
-        return WinRtReferenceTypeNames.boxedReferenceArray(TypeNameSupport.getNameForType(adapter.projectedClass))
-    }
+        ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)
 
     internal fun tryProjectInspectableAsType(
         inspectable: IInspectableReference,
         projectedType: KClass<*>,
     ): Any? {
-        enumDescriptorForClass(projectedType)?.let { descriptor ->
+        ValueBoxingMetadata.enumMetadataForClass(projectedType)?.let { descriptor ->
             return queryReferencePointer(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
                 readEnumReferenceValue(
                     WinRtReferenceReference(
@@ -923,7 +824,7 @@ internal object PlatformValueBoxingInterop {
 
     private fun readEnumReferenceValue(
         reference: WinRtReferenceReference,
-        descriptor: WinRtEnumBoxingDescriptor,
+        descriptor: WinRtEnumBoxingMetadata,
     ): Any =
         NativeInterop.confinedScope().use { scope ->
             val resultOut = NativeInterop.allocateInt32Slot(scope)
@@ -940,64 +841,6 @@ internal object PlatformValueBoxingInterop {
             descriptor.fromAbiBits(NativeInterop.readInt32(resultOut))
         }
 
-    private fun enumDescriptorForClass(
-        type: KClass<*>,
-    ): WinRtEnumBoxingDescriptor? {
-        if (!platformIsEnumType(type)) {
-            return null
-        }
-
-        val registeredType = type.registeredWinRtType() ?: return null
-        val signature = runCatching { GuidGenerator.getSignature(type) }.getOrNull() ?: return null
-        val match = enumSignaturePattern.matchEntire(signature) ?: return null
-        val projectedTypeName = match.groupValues[1]
-        val underlyingSignature = match.groupValues[2]
-        val enumAbiValue = registeredType.enumAbiValue as? (Any) -> Int
-        if (enumAbiValue == null) {
-            return null
-        }
-
-        fun readBits(enumValue: Any): Int =
-            enumAbiValue(enumValue)
-
-        val constants = platformEnumConstants(type) ?: return null
-
-        return when (underlyingSignature) {
-            "i4" ->
-                WinRtEnumBoxingDescriptor(
-                    enumType = type,
-                    projectedTypeName = projectedTypeName,
-                    propertyType = PropertyType.Int32,
-                    nullableInterfaceId = ParameterizedInterfaceId.createFromSignature("pinterface({${IREFERENCE_GENERIC_INTERFACE.lowercase()}};$signature)"),
-                    toAbiBits = ::readBits,
-                    fromAbiBits = { abiValue ->
-                        constants.firstOrNull { readBits(it) == abiValue }
-                            ?: throw WinRtInvalidCastException(
-                                "Unknown enum value $abiValue for ${type.typeDisplayName()}.",
-                                HResult(TYPE_E_TYPEMISMATCH),
-                            )
-                    },
-                )
-
-            "u4" ->
-                WinRtEnumBoxingDescriptor(
-                    enumType = type,
-                    projectedTypeName = projectedTypeName,
-                    propertyType = PropertyType.UInt32,
-                    nullableInterfaceId = ParameterizedInterfaceId.createFromSignature("pinterface({${IREFERENCE_GENERIC_INTERFACE.lowercase()}};$signature)"),
-                    toAbiBits = ::readBits,
-                    fromAbiBits = { abiValue ->
-                        constants.firstOrNull { readBits(it) == abiValue }
-                            ?: throw WinRtInvalidCastException(
-                                "Unknown enum value ${abiValue.toUInt()} for ${type.typeDisplayName()}.",
-                                HResult(TYPE_E_TYPEMISMATCH),
-                            )
-                    },
-                )
-
-            else -> null
-        }
-    }
 }
 
 private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(type) != null
