@@ -77,6 +77,9 @@ actual object NativeInterop {
     actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer =
         scope.arena.allocate(sizeBytes).asNativePointer()
 
+    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): NativePointer =
+        scope.arena.allocate(sizeBytes, alignmentBytes).asNativePointer()
+
     actual fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer =
         scope.arena.allocate(ValueLayout.ADDRESS, size.toLong()).asNativePointer()
 

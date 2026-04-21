@@ -61,6 +61,8 @@ expect object NativeInterop {
 
     fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer
 
+    fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): NativePointer
+
     fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer
 
     fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean = false): NativePointer

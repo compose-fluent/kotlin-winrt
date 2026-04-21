@@ -1,8 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
@@ -20,8 +18,8 @@ class MarshalersTest {
         Arena.ofConfined().use { arena ->
             val guidMemory = arena.allocate(NativeLayoutsJvmCompat.GUID)
             val guid = Guid("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90")
-            Marshaler.guid().copyManaged(guid, guidMemory)
-            assertEquals(guid, Marshaler.guid().fromAbi(guidMemory))
+            Marshaler.guid().copyManaged(guid, guidMemory.asNativePointer())
+            assertEquals(guid, Marshaler.guid().fromAbi(guidMemory.asNativePointer()))
         }
     }
 
@@ -30,7 +28,7 @@ class MarshalersTest {
         assumeTrue(PlatformRuntime.isWindows)
 
         val stringMarshaler = Marshaler.string()
-        val abi = stringMarshaler.fromManaged("projection-runtime") as MemorySegment
+        val abi = stringMarshaler.fromManaged("projection-runtime") as NativePointer
         try {
             assertEquals("projection-runtime", stringMarshaler.fromAbi(abi))
         } finally {
@@ -39,7 +37,7 @@ class MarshalersTest {
 
         stringMarshaler.fromManagedArray(arrayOf("one", "two")).use { abiArray ->
             assertNotNull(abiArray)
-            assertEquals(listOf("one", "two"), stringMarshaler.fromAbiArray(abiArray!!.length, abiArray.data)?.toList())
+            assertEquals(listOf("one", "two"), stringMarshaler.fromAbiArray(abiArray!!.length, abiArray.data))
         }
     }
 
@@ -47,7 +45,7 @@ class MarshalersTest {
     fun interface_marshaler_reuses_unwrapped_projected_objects() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle("test.IFoo", Guid("66666666-6666-6666-6666-666666666666"))
-        val marshaler = Marshaler.interfaceType(typeHandle, TestProjectedWrapper::class.java) { it as TestProjectedWrapper }
+        val marshaler = Marshaler.interfaceType(typeHandle, TestProjectedWrapper::class) { it as TestProjectedWrapper }
         val host = WinRtInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
         val projected = TestProjectedWrapper(
             primaryTypeHandle = typeHandle,
@@ -56,7 +54,7 @@ class MarshalersTest {
 
         val reference = marshaler.createMarshaler(projected) as ComObjectReference
         try {
-            assertEquals(projected.nativeObject.pointer.asMemorySegment(), marshaler.getAbi(reference))
+            assertEquals(projected.nativeObject.pointer, marshaler.getAbi(reference))
         } finally {
             marshaler.disposeMarshaler(reference)
             projected.nativeObject.close()
@@ -81,9 +79,9 @@ class MarshalersTest {
             )
         }
 
-        val marshaler = Marshaler.interfaceType(typeHandle, TestManagedInterfaceImpl::class.java)
+        val marshaler = Marshaler.interfaceType(typeHandle, TestManagedInterfaceImpl::class)
         val managed = TestManagedInterfaceImpl("payload")
-        val abi = marshaler.fromManaged(managed) as MemorySegment
+        val abi = marshaler.fromManaged(managed) as NativePointer
         try {
             assertSame(managed, marshaler.fromAbi(abi))
         } finally {
@@ -95,7 +93,7 @@ class MarshalersTest {
     fun inspectable_marshaler_round_trips_managed_values_and_external_inspectables() {
         val marshaler = Marshaler.inspectableAny()
 
-        val managedAbi = marshaler.fromManaged(42) as MemorySegment
+        val managedAbi = marshaler.fromManaged(42) as NativePointer
         try {
             assertEquals(42, marshaler.fromAbi(managedAbi))
         } finally {
@@ -113,7 +111,7 @@ class MarshalersTest {
         )
         val inspectablePointer = host.createReference(Guid("88888888-8888-8888-8888-888888888888")).use { reference ->
             reference.asInspectable().use { inspectable ->
-                inspectable.getRef()
+                inspectable.getRefPointer()
             }
         }
 

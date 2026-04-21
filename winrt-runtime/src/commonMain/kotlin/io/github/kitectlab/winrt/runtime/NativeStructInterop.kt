@@ -2,6 +2,7 @@ package io.github.kitectlab.winrt.runtime
 
 enum class NativeStructScalarKind(
     val sizeBytes: Long,
+    val alignmentBytes: Long = sizeBytes,
 ) {
     ADDRESS(8),
     INT8(1),
@@ -10,7 +11,7 @@ enum class NativeStructScalarKind(
     DOUBLE(8),
     FLOAT32(4),
     CHAR16(2),
-    GUID(Guid.BYTE_SIZE.toLong()),
+    GUID(Guid.BYTE_SIZE.toLong(), 1),
 }
 
 sealed interface NativeStructMemberSpec {
@@ -85,4 +86,3 @@ interface NativeStructAdapter<T> {
         destination: NativePointer,
     )
 }
-

@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -119,7 +118,7 @@ class ValueBoxingTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     closeablePointer,
-                    WinRtTypeHandle(AutoCloseable::class.java.name, IID.IDisposable),
+                    WinRtTypeHandle(AutoCloseable::class.qualifiedName ?: "kotlin.AutoCloseable", IID.IDisposable),
                 ) as AutoCloseable
             projected.close()
             assertTrue(closeable.closed)
@@ -163,7 +162,7 @@ class ValueBoxingTest {
             IUnknownReference(priorityPointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(priorityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asMemorySegment(), preventReleaseOnDispose = true)
+                    val projected = WinRtPropertyValueReference(propertyValue.pointer, preventReleaseOnDispose = true)
                     assertEquals(2, projected.getValue())
                 }
             }
@@ -178,7 +177,7 @@ class ValueBoxingTest {
             IUnknownReference(visibilityPointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(visibilityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asMemorySegment(), preventReleaseOnDispose = true)
+                    val projected = WinRtPropertyValueReference(propertyValue.pointer, preventReleaseOnDispose = true)
                     assertEquals(1u, projected.getValue())
                 }
             }
@@ -194,7 +193,7 @@ class ValueBoxingTest {
         value: T,
         assertRoundTrip: (T, T) -> Unit,
     ) {
-        val abi = marshaler.fromManaged(value) as MemorySegment
+        val abi = marshaler.fromManaged(value) as NativePointer
         try {
             @Suppress("UNCHECKED_CAST")
             assertRoundTrip(value, marshaler.fromAbi(abi) as T)

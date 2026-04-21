@@ -37,6 +37,8 @@ actual object NativeInterop {
 
     actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer = TODO()
 
+    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): NativePointer = TODO()
+
     actual fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer = TODO()
 
     actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): NativePointer = TODO()
