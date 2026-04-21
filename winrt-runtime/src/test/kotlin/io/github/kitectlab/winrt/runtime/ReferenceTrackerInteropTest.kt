@@ -143,7 +143,7 @@ class ReferenceTrackerInteropTest {
             @JvmStatic
             private fun queryInterfaceBridge(thisPointer: MemorySegment, iidPointer: MemorySegment, resultPointer: MemorySegment): Int {
                 val host = registry[thisPointer.address()] ?: return KnownHResults.RO_E_CLOSED.value
-                val iid = Guid.readFrom(iidPointer.reinterpret(AbiLayouts.GUID_SIZE_BYTES))
+                val iid = Guid.readFrom(iidPointer.reinterpret(NativeLayoutsJvmCompat.GUID_SIZE_BYTES))
                 val resultOut = resultPointer.reinterpret(ValueLayout.ADDRESS.byteSize())
                 val resolved = when (iid) {
                     IID.IUnknown,

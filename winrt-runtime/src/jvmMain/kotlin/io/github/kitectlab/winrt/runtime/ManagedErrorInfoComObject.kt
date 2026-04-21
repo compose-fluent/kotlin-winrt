@@ -126,7 +126,7 @@ internal class ManagedErrorInfoComObject(
 
     private fun getGuid(resultPointer: MemorySegment): Int {
         guidOf("00000000-0000-0000-0000-000000000000").writeTo(
-            resultPointer.reinterpret(AbiLayouts.GUID.byteSize()),
+            resultPointer.reinterpret(NativeLayoutsJvmCompat.GUID_SIZE_BYTES),
         )
         return KnownHResults.S_OK.value
     }

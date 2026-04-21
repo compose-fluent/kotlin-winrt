@@ -219,7 +219,7 @@ object MarshalBlittable {
     fun char16(): Marshaler<Char> = scalar(
         category = WinRtAbiCategory.BLITTABLE,
         componentClass = Char::class.javaObjectType,
-        layout = AbiLayouts.CHAR16,
+        layout = NativeLayoutsJvmCompat.CHAR16,
         toAbi = CharMarshaller::toAbi,
         fromAbi = { abi ->
             when (abi) {
@@ -340,7 +340,7 @@ object MarshalBlittable {
     fun guid(): Marshaler<Guid> = scalar(
         category = WinRtAbiCategory.BLITTABLE,
         componentClass = Guid::class.java,
-        layout = AbiLayouts.GUID,
+        layout = NativeLayoutsJvmCompat.GUID,
         toAbi = { it },
         fromAbi = { abi ->
             when (abi) {

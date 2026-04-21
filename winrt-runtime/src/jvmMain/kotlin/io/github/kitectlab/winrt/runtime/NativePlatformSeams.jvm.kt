@@ -45,7 +45,7 @@ actual object NativeInterop {
         get() = NativePointer(MemorySegment.NULL)
 
     actual val hStringHeaderSizeBytes: Long
-        get() = AbiLayouts.HSTRING_HEADER.byteSize()
+        get() = NativeLayoutsJvmCompat.HSTRING_HEADER_SIZE_BYTES
 
     actual fun confinedScope(): NativeScope =
         Arena.ofConfined().let { arena ->
@@ -186,7 +186,7 @@ actual object NativeInterop {
         vararg args: Any?,
     ): Int {
         val method = linker.downcallHandle(
-            RawVtableCallSupport.entry(instance.segment, slot),
+            RawVtableCallJvmCompat.entry(instance.segment, slot),
             descriptor.asJavaFunctionDescriptor(),
         )
         return method.invokeWithArguments(

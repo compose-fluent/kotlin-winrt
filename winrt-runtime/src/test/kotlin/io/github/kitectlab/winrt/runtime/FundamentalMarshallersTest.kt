@@ -1,6 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
+import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import org.junit.Assert.assertEquals
@@ -35,7 +36,7 @@ class FundamentalMarshallersTest {
     @Test
     fun guid_marshaller_round_trips() {
         Arena.ofConfined().use { arena ->
-            val memory = arena.allocate(AbiLayouts.GUID)
+            val memory = arena.allocate(NativeLayoutsJvmCompat.GUID)
             val guid = Guid("AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90")
             GuidMarshaller.copyTo(guid, memory)
             assertEquals(guid, GuidMarshaller.readFrom(memory))
@@ -44,9 +45,9 @@ class FundamentalMarshallersTest {
 
     @Test
     fun abi_layouts_match_expected_primitive_sizes() {
-        assertEquals(AbiLayouts.GUID_SIZE_BYTES, AbiLayouts.GUID.byteSize())
-        assertEquals(24L, AbiLayouts.HSTRING_HEADER.byteSize())
-        assertEquals(24L, AbiLayouts.IUNKNOWN_VFTBL.byteSize())
+        assertEquals(NativeLayoutsJvmCompat.GUID_SIZE_BYTES, NativeLayoutsJvmCompat.GUID.byteSize())
+        assertEquals(24L, NativeLayoutsJvmCompat.HSTRING_HEADER_SIZE_BYTES)
+        assertEquals(24L, NativeLayoutsJvmCompat.IUNKNOWN_VFTBL_SIZE_BYTES)
     }
 
     @Test
@@ -122,16 +123,16 @@ class FundamentalMarshallersTest {
             val queryInterface = arena.allocate(1)
             val addRef = arena.allocate(1)
             val release = arena.allocate(1)
-            val vtable = arena.allocate(AbiLayouts.IUNKNOWN_VFTBL)
+            val vtable = arena.allocate(MemoryLayout.sequenceLayout(3, ValueLayout.ADDRESS))
             vtable.setAtIndex(ValueLayout.ADDRESS, 0, queryInterface)
             vtable.setAtIndex(ValueLayout.ADDRESS, 1, addRef)
             vtable.setAtIndex(ValueLayout.ADDRESS, 2, release)
             val instance = arena.allocate(ValueLayout.ADDRESS)
             instance.set(ValueLayout.ADDRESS, 0, vtable)
 
-            assertEquals(queryInterface, RawVtableCallSupport.entry(instance, IUnknownVftblSlots.QueryInterface))
-            assertEquals(addRef, RawVtableCallSupport.entry(instance, IUnknownVftblSlots.AddRef))
-            assertEquals(release, RawVtableCallSupport.entry(instance, IUnknownVftblSlots.Release))
+            assertEquals(queryInterface, RawVtableCallJvmCompat.entry(instance, IUnknownVftblSlots.QueryInterface))
+            assertEquals(addRef, RawVtableCallJvmCompat.entry(instance, IUnknownVftblSlots.AddRef))
+            assertEquals(release, RawVtableCallJvmCompat.entry(instance, IUnknownVftblSlots.Release))
         }
     }
 }

@@ -411,7 +411,7 @@ actual object WinRtPlatformApi {
             interfaceId.writeTo(iidMemory)
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
             val queryInterface = linker.downcallHandle(
-                RawVtableCallSupport.entry(unknown.asMemorySegment(), IUnknownVftblSlots.QueryInterface),
+                RawVtableCallJvmCompat.entry(unknown.asMemorySegment(), IUnknownVftblSlots.QueryInterface),
                 FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS,
@@ -977,7 +977,7 @@ actual object WinRtPlatformApi {
             return 0u
         }
         val method = linker.downcallHandle(
-            RawVtableCallSupport.entry(unknown.asMemorySegment(), slot),
+            RawVtableCallJvmCompat.entry(unknown.asMemorySegment(), slot),
             FunctionDescriptor.of(
                 ValueLayout.JAVA_INT,
                 ValueLayout.ADDRESS,
