@@ -1,15 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.io.EOFException
-import java.io.FileNotFoundException
-import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.ValueLayout
-import java.nio.file.InvalidPathException
-import java.nio.file.NoSuchFileException
-import java.util.concurrent.CancellationException
-import java.util.concurrent.TimeoutException
-
 object ExceptionHelpers {
     val S_OK = KnownHResults.S_OK
     val S_FALSE = KnownHResults.S_FALSE
@@ -45,12 +35,6 @@ object ExceptionHelpers {
     val ERROR_TIMEOUT = KnownHResults.ERROR_TIMEOUT
     val APPMODEL_ERROR_NO_PACKAGE = KnownHResults.APPMODEL_ERROR_NO_PACKAGE
     val WEB_E_JSON_VALUE_NOT_FOUND = KnownHResults.WEB_E_JSON_VALUE_NOT_FOUND
-
-    private val COR_E_OBJECTDISPOSED = HResult(0x80131622.toInt())
-    private val COR_E_OPERATIONCANCELED = HResult(0x8013153B.toInt())
-    private val COR_E_ARGUMENTOUTOFRANGE = HResult(0x80131502.toInt())
-    private val COR_E_INDEXOUTOFRANGE = HResult(0x80131508.toInt())
-    private val COR_E_TIMEOUT = HResult(0x80131505.toInt())
 
     fun throwExceptionForHR(
         hResult: Int,
@@ -119,36 +103,14 @@ object ExceptionHelpers {
             HResult((errorCode and 0x0000FFFF) or 0x80070000.toInt())
         }
 
-    fun hResultFromException(error: Throwable): HResult =
-        when (error) {
-            is WinRtRuntimeException -> error.hResult ?: E_FAIL
-            is CancellationException -> ERROR_CANCELLED
-            is TimeoutException -> ERROR_TIMEOUT
-            is NotImplementedError -> E_NOTIMPL
-            is InvalidPathException -> ERROR_PATH_NOT_FOUND
-            is FileNotFoundException,
-            is NoSuchFileException,
-            -> ERROR_FILE_NOT_FOUND
-            is EOFException -> ERROR_HANDLE_EOF
-            is NullPointerException -> E_POINTER
-            is IllegalArgumentException -> E_INVALIDARG
-            is IndexOutOfBoundsException -> E_BOUNDS
-            is UnsupportedOperationException -> E_NOTSUPPORTED
-            is ArithmeticException -> ERROR_ARITHMETIC_OVERFLOW
-            is OutOfMemoryError -> E_OUTOFMEMORY
-            else -> E_FAIL
-        }
+    fun hResultFromException(error: Throwable): HResult = platformHResultFromThrowable(error)
 
     fun setErrorInfo(error: Throwable) {
         if (!PlatformRuntime.isWindows) {
             return
         }
         runCatching {
-            ManagedErrorInfoComObject(error).detachReference().use { errorInfo ->
-                HResult(
-                    WinRtPlatformApi.setErrorInfoRaw(errorInfo.pointer),
-                ).requireSuccess("SetErrorInfo")
-            }
+            platformSetErrorInfo(error)
         }
     }
 
@@ -164,7 +126,7 @@ object ExceptionHelpers {
                     ?.let(::HResult)
                     ?.requireSuccess("RoReportUnhandledError")
             } finally {
-                IUnknownReference(restrictedErrorInfo.asMemorySegment(), IID.IRestrictedErrorInfo).close()
+                IUnknownReference(restrictedErrorInfo, IID.IRestrictedErrorInfo).close()
             }
         }
     }
@@ -217,7 +179,7 @@ object ExceptionHelpers {
         }
         return runCatching {
             val borrowedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return null
-            IUnknownReference(borrowedErrorInfo.asMemorySegment(), IID.IRestrictedErrorInfo).use { errorInfo ->
+            IUnknownReference(borrowedErrorInfo, IID.IRestrictedErrorInfo).use { errorInfo ->
                 val details = readRestrictedErrorInfo(errorInfo) ?: return null
                 if (details.hResult != expectedHResult) {
                     return null
@@ -229,22 +191,22 @@ object ExceptionHelpers {
 
     private fun readRestrictedErrorInfo(
         errorInfo: IUnknownReference,
-    ): RestrictedErrorInfoDetails? {
-        Arena.ofConfined().use { arena ->
-            val descriptionOut = arena.allocate(ValueLayout.ADDRESS)
-            val errorOut = arena.allocate(ValueLayout.JAVA_INT)
-            val restrictedDescriptionOut = arena.allocate(ValueLayout.ADDRESS)
-            val capabilitySidOut = arena.allocate(ValueLayout.ADDRESS)
+    ): RestrictedErrorInfoDetails? =
+        NativeInterop.confinedScope().use { scope ->
+            val descriptionOut = NativeInterop.allocatePointerSlot(scope)
+            val errorOut = NativeInterop.allocateInt32Slot(scope)
+            val restrictedDescriptionOut = NativeInterop.allocatePointerSlot(scope)
+            val capabilitySidOut = NativeInterop.allocatePointerSlot(scope)
             throwExceptionForHR(
                 errorInfo.invokeAbi(
                     slot = 3,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                     descriptionOut,
                     errorOut,
@@ -254,42 +216,37 @@ object ExceptionHelpers {
                 operation = "IRestrictedErrorInfo.GetErrorDetails",
             )
 
-            val referenceOut = arena.allocate(ValueLayout.ADDRESS)
+            val referenceOut = NativeInterop.allocatePointerSlot(scope)
             val referenceResult = HResult(
                 errorInfo.invokeAbi(
                     slot = 4,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                     referenceOut,
                 ),
             )
 
-            return RestrictedErrorInfoDetails(
-                hResult = HResult(errorOut.get(ValueLayout.JAVA_INT, 0)),
+            RestrictedErrorInfoDetails(
+                hResult = HResult(NativeInterop.readInt32(errorOut)),
                 info = WinRtRestrictedErrorInfo(
                     description = readAndFreeBstr(descriptionOut).ifBlank { null },
-                    restrictedDescription =
-                        readAndFreeBstr(restrictedDescriptionOut).ifBlank { null },
+                    restrictedDescription = readAndFreeBstr(restrictedDescriptionOut).ifBlank { null },
                     reference =
                         if (referenceResult.isSuccess) {
                             readAndFreeBstr(referenceOut).ifBlank { null }
                         } else {
                             null
                         },
-                    capabilitySid =
-                        readAndFreeBstr(capabilitySidOut).ifBlank { null },
+                    capabilitySid = readAndFreeBstr(capabilitySidOut).ifBlank { null },
                 ),
             )
         }
-    }
 
-    private fun readAndFreeBstr(slot: java.lang.foreign.MemorySegment): String =
-        WinRtPlatformApi.readAndFreeBstrRaw(
-            slot.get(ValueLayout.ADDRESS, 0).asNativePointer(),
-        )
+    private fun readAndFreeBstr(slot: NativePointer): String =
+        WinRtPlatformApi.readAndFreeBstrRaw(NativeInterop.readPointer(slot))
 
     private data class RestrictedErrorInfoDetails(
         val hResult: HResult,

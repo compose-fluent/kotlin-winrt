@@ -4,14 +4,9 @@ internal object WinRtExceptionTranslator {
     fun exceptionFor(
         hResult: HResult,
         operation: String = "WinRT call",
-    ): WinRtRuntimeException = platformExceptionFor(hResult, operation)
+    ): WinRtRuntimeException = ExceptionHelpers.exceptionFor(hResult, operation)
 
-    fun hResultFromWin32(errorCode: Int): HResult =
-        if (errorCode <= 0) {
-            HResult(errorCode)
-        } else {
-            HResult((errorCode and 0x0000FFFF) or 0x80070000.toInt())
-        }
+    fun hResultFromWin32(errorCode: Int): HResult = ExceptionHelpers.hResultFromWin32(errorCode)
 
-    fun hResultFromException(error: Throwable): HResult = platformHResultFromThrowable(error)
+    fun hResultFromException(error: Throwable): HResult = ExceptionHelpers.hResultFromException(error)
 }
