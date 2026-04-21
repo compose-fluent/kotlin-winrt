@@ -17,7 +17,7 @@ internal fun WinRtTypeId<*>.readEnumAbiValue(enumValue: Any): Int =
     (enumAbiValue as? (Any) -> Int)?.invoke(enumValue)
         ?: error("Type '${kClass.qualifiedName ?: kClass.simpleName}' is missing enum ABI metadata.")
 
-private fun Class<*>.registerAnnotatedWinRtType(): WinRtTypeId<*>? {
+internal fun Class<*>.registerAnnotatedWinRtType(): WinRtTypeId<*>? {
     val windowsRuntimeType = getAnnotation(WindowsRuntimeType::class.java)
     val winRtGuid = getAnnotation(WinRtGuid::class.java)
     val helperType = getAnnotation(WindowsRuntimeHelperType::class.java)

@@ -1,32 +1,31 @@
 package io.github.kitectlab.winrt.runtime
 
+import kotlin.reflect.KClass
+
 /**
- * JVM-side signature/GUID lookup corresponding to `.cswinrt/src/WinRT.Runtime/GuidGenerator.cs`.
- *
- * The JVM path uses annotations and explicit helper registration where the .NET runtime would use
- * `Type.GUID`, helper metadata, or generated static fields.
+ * Shared signature/GUID lookup corresponding to `.cswinrt/src/WinRT.Runtime/GuidGenerator.cs`.
  */
 object GuidGenerator {
     fun getGuid(
-        type: Class<*>,
+        type: KClass<*>,
     ): Guid {
         type.registeredWinRtType()?.guid?.let { return it }
         type.registeredWinRtType()?.iid?.let { return it }
         val guidType = TypeExtensions.getGuidType(type)
         guidType.registeredWinRtType()?.guid?.let { return it }
         guidType.registeredWinRtType()?.iid?.let { return it }
-        throw IllegalStateException("Unable to determine WinRT GUID for '${type.name}'.")
+        throw IllegalStateException("Unable to determine WinRT GUID for '${type.typeDisplayName()}'.")
     }
 
     fun getIID(
-        type: Class<*>,
+        type: KClass<*>,
     ): Guid {
         type.registeredWinRtType()?.iid?.let { return it }
         return getGuid(type)
     }
 
     fun getSignature(
-        type: Class<*>,
+        type: KClass<*>,
     ): String {
         WinRtTypeClassifier.classify(type)?.let { return it.signature.render() }
         type.registeredWinRtType()?.signature?.let { return it }
@@ -39,8 +38,9 @@ object GuidGenerator {
         }
 
         Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(type)?.let { defaultInterface ->
-            val runtimeClassName = TypeNameSupport.inferRuntimeClassName(type)
-                ?: throw IllegalStateException("Runtime class '${type.name}' is missing a registered runtime class name.")
+            val runtimeClassName = type.registeredWinRtType()?.runtimeClassName
+                ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
+                ?: throw IllegalStateException("Runtime class '${type.typeDisplayName()}' is missing a registered runtime class name.")
             return WinRtTypeSignature.runtimeClass(
                 runtimeClassName = runtimeClassName,
                 defaultInterface = WinRtTypeSignature.guid(getGuid(defaultInterface)),
@@ -51,7 +51,7 @@ object GuidGenerator {
     }
 
     fun createIID(
-        type: Class<*>,
+        type: KClass<*>,
     ): Guid {
         val signature = getSignature(type)
         return if (signature.startsWith("{") && signature.endsWith("}")) {

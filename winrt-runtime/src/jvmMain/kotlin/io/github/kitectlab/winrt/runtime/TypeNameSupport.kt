@@ -218,14 +218,14 @@ object TypeNameSupport {
             return resolveTypeByName(elementTypeName)?.let { arrayClassForElementType(it.registeredClass())?.kotlin }
         }
 
-        Projections.findCustomTypeForAbiTypeName(runtimeClassName)?.let { return it.kotlin }
+        Projections.findCustomKClassForAbiTypeName(runtimeClassName)?.let { return it }
         WinRtTypeRegistry.findByName(runtimeClassName)?.let { return it.kClass }
         registeredProjectionTypes[runtimeClassName]?.let { return it }
         WinRtTypeClassifier.resolve(runtimeClassName)?.let { return it.representativeClass.kotlin }
 
         val genericBaseName = runtimeClassName.substringBefore('<')
         if (genericBaseName != runtimeClassName) {
-            Projections.findCustomTypeForAbiTypeName(genericBaseName)?.let { return it.kotlin }
+            Projections.findCustomKClassForAbiTypeName(genericBaseName)?.let { return it }
             WinRtTypeRegistry.findByName(genericBaseName)?.let { return it.kClass }
             registeredProjectionTypes[genericBaseName]?.let { return it }
             WinRtTypeClassifier.resolve(genericBaseName)?.let { return it.representativeClass.kotlin }
