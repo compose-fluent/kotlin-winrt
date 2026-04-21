@@ -1,5 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
+import kotlin.reflect.KClass
+
 internal expect object PlatformValueProjectionInterop {
     fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle
 
@@ -12,6 +14,16 @@ internal expect object PlatformValueProjectionInterop {
     fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>?
 
     fun isPropertyValueCompatible(value: Any): Boolean
+
+    fun propertyTypeOf(value: Any): PropertyType
+
+    fun isNumericScalar(value: Any): Boolean
+
+    fun boxedRuntimeClassNameForType(type: KClass<*>): String?
+
+    fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer)
+
+    fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer)
 
     fun createPropertyValueReference(value: Any): ComObjectReference
 

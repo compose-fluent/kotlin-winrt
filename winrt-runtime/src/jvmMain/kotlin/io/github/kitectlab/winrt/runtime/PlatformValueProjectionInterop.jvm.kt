@@ -28,8 +28,25 @@ internal actual object PlatformValueProjectionInterop {
     actual fun isPropertyValueCompatible(value: Any): Boolean =
         WinRtValueBoxing.isPropertyValueCompatible(value)
 
+    actual fun propertyTypeOf(value: Any): PropertyType =
+        WinRtValueBoxing.propertyTypeOf(value)
+
+    actual fun isNumericScalar(value: Any): Boolean =
+        WinRtValueBoxing.isNumericScalar(value)
+
+    actual fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
+        WinRtValueBoxing.boxedRuntimeClassNameForType(type)
+
+    actual fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
+        WinRtValueBoxing.writePropertyValue(expectedType, value, destination.asMemorySegment())
+    }
+
+    actual fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer) {
+        WinRtValueBoxing.writePropertyValueArray(expectedType, value, countOut.asMemorySegment(), dataOut.asMemorySegment())
+    }
+
     actual fun createPropertyValueReference(value: Any): ComObjectReference =
-        ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue)
+        createPropertyValueHost(value).createPrimaryReference()
 
     actual fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any? {
         val scalarAdapter = WinRtValueBoxing.adapterForPropertyType(propertyType)

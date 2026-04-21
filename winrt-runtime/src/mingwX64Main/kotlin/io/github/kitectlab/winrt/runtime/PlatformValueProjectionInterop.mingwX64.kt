@@ -1,5 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
+import kotlin.reflect.KClass
+
 internal actual object PlatformValueProjectionInterop {
     actual fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle =
         WinRtTypeHandle(value::class.qualifiedName ?: "kotlin.Any", interfaceId)
@@ -17,6 +19,23 @@ internal actual object PlatformValueProjectionInterop {
         throw NotImplementedError("IReferenceArray<T> projection is not implemented for mingwX64 yet.")
 
     actual fun isPropertyValueCompatible(value: Any): Boolean = false
+
+    actual fun propertyTypeOf(value: Any): PropertyType =
+        throw NotImplementedError("Property value classification is not implemented for mingwX64 yet.")
+
+    actual fun isNumericScalar(value: Any): Boolean =
+        throw NotImplementedError("Property value classification is not implemented for mingwX64 yet.")
+
+    actual fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
+        throw NotImplementedError("Boxed runtime-class-name lookup is not implemented for mingwX64 yet.")
+
+    actual fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
+        throw NotImplementedError("IPropertyValue host ABI writing is not implemented for mingwX64 yet.")
+    }
+
+    actual fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer) {
+        throw NotImplementedError("IPropertyValue array host ABI writing is not implemented for mingwX64 yet.")
+    }
 
     actual fun createPropertyValueReference(value: Any): ComObjectReference =
         throw NotImplementedError("IPropertyValue host creation is not implemented for mingwX64 yet.")

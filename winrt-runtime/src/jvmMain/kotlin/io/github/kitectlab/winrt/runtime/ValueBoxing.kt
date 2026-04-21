@@ -604,12 +604,7 @@ internal object WinRtValueBoxing {
         val interfaceDefinitions =
             buildList {
                 if (isPropertyValueCompatible(value)) {
-                    add(
-                        WinRtInspectableInterfaceDefinition(
-                            interfaceId = IID.IPropertyValue,
-                            methods = buildPropertyValueMethods(value),
-                        ),
-                    )
+                    add(createPropertyValueInterfaceDefinition(value))
                 }
 
                 referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
@@ -760,19 +755,6 @@ internal object WinRtValueBoxing {
         )
     }
 
-    fun createPropertyValueHost(value: Any): WinRtInspectableComObject {
-        return WinRtInspectableComObject(
-            interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
-                    interfaceId = IID.IPropertyValue,
-                    methods = buildPropertyValueMethods(value),
-                ),
-            ),
-            runtimeClassName = boxedRuntimeClassNameForType(value::class),
-            managedValue = value,
-        )
-    }
-
     internal fun tryProjectInspectable(
         inspectable: IInspectableReference,
         runtimeClassName: String? = inspectable.tryGetRuntimeClassName(),
@@ -894,112 +876,6 @@ internal object WinRtValueBoxing {
                 },
             ),
         )
-    }
-
-    private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDefinition> {
-        val scalarGetters =
-            listOf(
-                PropertyType.UInt8,
-                PropertyType.Int16,
-                PropertyType.UInt16,
-                PropertyType.Int32,
-                PropertyType.UInt32,
-                PropertyType.Int64,
-                PropertyType.UInt64,
-                PropertyType.Single,
-                PropertyType.Double,
-                PropertyType.Char16,
-                PropertyType.Boolean,
-                PropertyType.String,
-                PropertyType.Guid,
-                PropertyType.DateTime,
-                PropertyType.TimeSpan,
-                PropertyType.Point,
-                PropertyType.Size,
-                PropertyType.Rect,
-            )
-        val arrayGetters =
-            listOf(
-                PropertyType.UInt8Array,
-                PropertyType.Int16Array,
-                PropertyType.UInt16Array,
-                PropertyType.Int32Array,
-                PropertyType.UInt32Array,
-                PropertyType.Int64Array,
-                PropertyType.UInt64Array,
-                PropertyType.SingleArray,
-                PropertyType.DoubleArray,
-                PropertyType.Char16Array,
-                PropertyType.BooleanArray,
-                PropertyType.StringArray,
-                PropertyType.InspectableArray,
-                PropertyType.GuidArray,
-                PropertyType.DateTimeArray,
-                PropertyType.TimeSpanArray,
-                PropertyType.PointArray,
-                PropertyType.SizeArray,
-                PropertyType.RectArray,
-            )
-        return buildList {
-            add(
-                WinRtInspectableMethodDefinition(
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                ) { rawArgs ->
-                    NativeInterop.writeInt32(rawArgs[0] as NativePointer, propertyTypeOf(value).code)
-                    KnownHResults.S_OK.value
-                },
-            )
-            add(
-                WinRtInspectableMethodDefinition(
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                ) { rawArgs ->
-                    NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (isNumericScalar(value)) 1 else 0)
-                    KnownHResults.S_OK.value
-                },
-            )
-            scalarGetters.forEach { propertyType ->
-                add(
-                    WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
-                    ) { rawArgs ->
-                        writePropertyValue(propertyType, value, (rawArgs[0] as NativePointer).asMemorySegment())
-                        KnownHResults.S_OK.value
-                    },
-                )
-            }
-            arrayGetters.forEach { propertyType ->
-                add(
-                    WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
-                    ) { rawArgs ->
-                        writePropertyValueArray(
-                            propertyType,
-                            value,
-                            (rawArgs[0] as NativePointer).asMemorySegment(),
-                            (rawArgs[1] as NativePointer).asMemorySegment(),
-                        )
-                        KnownHResults.S_OK.value
-                    },
-                )
-            }
-        }
     }
 
     private fun classifyPropertyValue(value: Any): WinRtValueAdapter<*>? {
