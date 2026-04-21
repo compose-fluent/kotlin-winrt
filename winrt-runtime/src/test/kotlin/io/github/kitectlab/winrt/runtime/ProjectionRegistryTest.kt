@@ -134,13 +134,13 @@ class ProjectionRegistryTest {
         assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
         assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRtUri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
-        assertTrue(Projections.isTypeWindowsRuntimeType(Class::class))
+        assertTrue(Projections.isTypeWindowsRuntimeType(KClass::class))
         assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class))
         assertEquals(
             WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
-            WinRtValueBoxing.boxedRuntimeClassNameForType(Class::class),
+            WinRtValueBoxing.boxedRuntimeClassNameForType(KClass::class),
         )
-        assertEquals(WinRtTypeKind.Metadata.ordinal, TypeProjection.fromManaged(Class::class).kind)
+        assertEquals(WinRtTypeKind.Metadata.ordinal, TypeProjection.fromManaged(KClass::class).kind)
         assertEquals(
             "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
             GuidGenerator.getSignature(WinRtUri::class),
@@ -179,7 +179,7 @@ class ProjectionRegistryTest {
         ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class)
 
         assertEquals(String::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<String>"))
-        assertEquals(Class::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>"))
+        assertEquals(KClass::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>"))
         assertEquals(Exception::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Windows.Foundation.HResult>"))
         assertEquals(IntArray::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReferenceArray`1<Int32>"))
         assertEquals(TestProjectedEnum::class, TypeNameSupport.findKClassByNameCached("Windows.Foundation.IReference`1<Contoso.Priority>"))

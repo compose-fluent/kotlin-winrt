@@ -1,8 +1,13 @@
 package io.github.kitectlab.winrt.runtime
 
+import kotlin.reflect.KClass
+
 internal actual object PlatformValueProjectionInterop {
     actual fun referenceTypeHandle(value: Any, interfaceId: Guid): WinRtTypeHandle =
-        WinRtTypeHandle(value::class.qualifiedName ?: value::class.toString(), interfaceId)
+        WinRtTypeHandle(
+            if (value is KClass<*>) KClass::class.typeDisplayName() else value::class.typeDisplayName(),
+            interfaceId,
+        )
 
     actual fun createReferenceHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
         WinRtValueBoxing.createReferenceHost(interfaceId, value)

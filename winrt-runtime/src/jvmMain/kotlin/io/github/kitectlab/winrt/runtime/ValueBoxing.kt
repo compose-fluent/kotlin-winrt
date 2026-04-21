@@ -77,7 +77,7 @@ private data class ManagedArrayBox(
 )
 
 private data class WinRtEnumBoxingDescriptor(
-    val enumType: Class<*>,
+    val enumType: KClass<*>,
     val projectedTypeName: String,
     val propertyType: PropertyType,
     val nullableInterfaceId: Guid,
@@ -86,7 +86,7 @@ private data class WinRtEnumBoxingDescriptor(
 )
 
 internal class WinRtValueAdapter<T : Any>(
-    val projectedClass: Class<*>,
+    val projectedClass: KClass<*>,
     val nullableInterfaceId: Guid?,
     val referenceArrayInterfaceId: Guid?,
     val propertyType: PropertyType?,
@@ -191,7 +191,7 @@ private object TransferredArrayOwnership {
 }
 
 private fun <T : Any> directValueAdapter(
-    projectedClass: Class<*>,
+    projectedClass: KClass<*>,
     nullableInterfaceId: Guid?,
     referenceArrayInterfaceId: Guid?,
     propertyType: PropertyType?,
@@ -220,7 +220,7 @@ private fun <T : Any> directValueAdapter(
     )
 
 private fun <T : Any> pointerValueAdapter(
-    projectedClass: Class<*>,
+    projectedClass: KClass<*>,
     nullableInterfaceId: Guid?,
     referenceArrayInterfaceId: Guid?,
     propertyType: PropertyType?,
@@ -255,7 +255,7 @@ private fun <T : Any> pointerValueAdapter(
 internal object WinRtValueBoxing {
     private val stringAdapter =
         pointerValueAdapter(
-            projectedClass = String::class.java,
+            projectedClass = String::class,
             nullableInterfaceId = IID.NullableString,
             referenceArrayInterfaceId = IID.IReferenceArrayOfString,
             propertyType = PropertyType.String,
@@ -269,7 +269,7 @@ internal object WinRtValueBoxing {
 
     private val objectAdapter =
         pointerValueAdapter(
-            projectedClass = Any::class.java,
+            projectedClass = Any::class,
             nullableInterfaceId = IID.NullableObject,
             referenceArrayInterfaceId = IID.IReferenceArrayOfObject,
             propertyType = null,
@@ -281,17 +281,17 @@ internal object WinRtValueBoxing {
         )
 
     private val classAdapter =
-        directValueAdapter<Class<*>>(
-            projectedClass = Class::class.java,
+        directValueAdapter<KClass<*>>(
+            projectedClass = KClass::class,
             nullableInterfaceId = IID.NullableType,
             referenceArrayInterfaceId = IID.IReferenceArrayOfType,
             propertyType = null,
             propertyTypeArray = null,
             abiLayout = TypeProjection.ABI_LAYOUT,
-            exactUnbox = { it as Class<*> },
+            exactUnbox = { it as KClass<*> },
             readOwnedValue = { source ->
                 TypeProjection.fromAbi(source)
-                    ?: throw WinRtInvalidCastException("Expected non-null projected Class value.", HResult(TYPE_E_TYPEMISMATCH))
+                    ?: throw WinRtInvalidCastException("Expected non-null projected KClass value.", HResult(TYPE_E_TYPEMISMATCH))
             },
             writeTransferredValue = TypeProjection::copyTo,
             disposeTransferredValue = TypeProjection::disposeAbi,
@@ -299,7 +299,7 @@ internal object WinRtValueBoxing {
 
     private val exceptionAdapter =
         directValueAdapter(
-            projectedClass = Exception::class.java,
+            projectedClass = Exception::class,
             nullableInterfaceId = IID.NullableException,
             referenceArrayInterfaceId = IID.IReferenceArrayOfException,
             propertyType = null,
@@ -313,7 +313,7 @@ internal object WinRtValueBoxing {
     private val adapters: List<WinRtValueAdapter<*>> =
         listOf<WinRtValueAdapter<*>>(
             directValueAdapter(
-                projectedClass = Byte::class.javaObjectType,
+                projectedClass = Byte::class,
                 nullableInterfaceId = IID.NullableSByte,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfSByte,
                 propertyType = null,
@@ -324,7 +324,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_BYTE, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = UByte::class.java,
+                projectedClass = UByte::class,
                 nullableInterfaceId = IID.NullableByte,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfByte,
                 propertyType = PropertyType.UInt8,
@@ -337,7 +337,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_BYTE, 0, value.toByte()) },
             ),
             directValueAdapter(
-                projectedClass = Short::class.javaObjectType,
+                projectedClass = Short::class,
                 nullableInterfaceId = IID.NullableShort,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfInt16,
                 propertyType = PropertyType.Int16,
@@ -350,7 +350,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_SHORT, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = UShort::class.java,
+                projectedClass = UShort::class,
                 nullableInterfaceId = IID.NullableUShort,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfUInt16,
                 propertyType = PropertyType.UInt16,
@@ -363,7 +363,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_SHORT, 0, value.toShort()) },
             ),
             directValueAdapter(
-                projectedClass = Int::class.javaObjectType,
+                projectedClass = Int::class,
                 nullableInterfaceId = IID.NullableInt,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfInt32,
                 propertyType = PropertyType.Int32,
@@ -376,7 +376,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_INT, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = UInt::class.java,
+                projectedClass = UInt::class,
                 nullableInterfaceId = IID.NullableUInt,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfUInt32,
                 propertyType = PropertyType.UInt32,
@@ -389,7 +389,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_INT, 0, value.toInt()) },
             ),
             directValueAdapter(
-                projectedClass = Long::class.javaObjectType,
+                projectedClass = Long::class,
                 nullableInterfaceId = IID.NullableLong,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfInt64,
                 propertyType = PropertyType.Int64,
@@ -402,7 +402,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_LONG, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = ULong::class.java,
+                projectedClass = ULong::class,
                 nullableInterfaceId = IID.NullableULong,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfUInt64,
                 propertyType = PropertyType.UInt64,
@@ -415,7 +415,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_LONG, 0, value.toLong()) },
             ),
             directValueAdapter(
-                projectedClass = Float::class.javaObjectType,
+                projectedClass = Float::class,
                 nullableInterfaceId = IID.NullableFloat,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfSingle,
                 propertyType = PropertyType.Single,
@@ -428,7 +428,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_FLOAT, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = Double::class.javaObjectType,
+                projectedClass = Double::class,
                 nullableInterfaceId = IID.NullableDouble,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfDouble,
                 propertyType = PropertyType.Double,
@@ -441,7 +441,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_DOUBLE, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = Char::class.javaObjectType,
+                projectedClass = Char::class,
                 nullableInterfaceId = IID.NullableChar,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfChar,
                 propertyType = PropertyType.Char16,
@@ -453,7 +453,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = { value, destination -> destination.set(NativeLayoutsJvmCompat.CHAR16, 0, value) },
             ),
             directValueAdapter(
-                projectedClass = Boolean::class.javaObjectType,
+                projectedClass = Boolean::class,
                 nullableInterfaceId = IID.NullableBool,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfBoolean,
                 propertyType = PropertyType.Boolean,
@@ -466,7 +466,7 @@ internal object WinRtValueBoxing {
             ),
             stringAdapter,
             directValueAdapter(
-                projectedClass = Guid::class.java,
+                projectedClass = Guid::class,
                 nullableInterfaceId = IID.NullableGuid,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfGuid,
                 propertyType = PropertyType.Guid,
@@ -478,7 +478,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = GuidMarshaller::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Instant::class.java,
+                projectedClass = Instant::class,
                 nullableInterfaceId = IID.NullableDateTimeOffset,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfDateTimeOffset,
                 propertyType = PropertyType.DateTime,
@@ -491,7 +491,7 @@ internal object WinRtValueBoxing {
                 },
             ),
             directValueAdapter(
-                projectedClass = Duration::class.java,
+                projectedClass = Duration::class,
                 nullableInterfaceId = IID.NullableTimeSpan,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfTimeSpan,
                 propertyType = PropertyType.TimeSpan,
@@ -504,7 +504,7 @@ internal object WinRtValueBoxing {
                 },
             ),
             directValueAdapter(
-                projectedClass = Point::class.java,
+                projectedClass = Point::class,
                 nullableInterfaceId = IID.IReferenceOfPoint,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfPoint,
                 propertyType = PropertyType.Point,
@@ -515,7 +515,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Point.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Size::class.java,
+                projectedClass = Size::class,
                 nullableInterfaceId = IID.IReferenceOfSize,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfSize,
                 propertyType = PropertyType.Size,
@@ -526,7 +526,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Size.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Rect::class.java,
+                projectedClass = Rect::class,
                 nullableInterfaceId = IID.IReferenceOfRect,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfRect,
                 propertyType = PropertyType.Rect,
@@ -537,7 +537,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Rect.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Matrix3x2::class.java,
+                projectedClass = Matrix3x2::class,
                 nullableInterfaceId = IID.IReferenceMatrix3x2,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfMatrix3x2,
                 propertyType = null,
@@ -548,7 +548,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Matrix3x2.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Matrix4x4::class.java,
+                projectedClass = Matrix4x4::class,
                 nullableInterfaceId = IID.IReferenceMatrix4x4,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfMatrix4x4,
                 propertyType = null,
@@ -559,7 +559,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Matrix4x4.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Plane::class.java,
+                projectedClass = Plane::class,
                 nullableInterfaceId = IID.IReferencePlane,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfPlane,
                 propertyType = null,
@@ -570,7 +570,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Plane.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Quaternion::class.java,
+                projectedClass = Quaternion::class,
                 nullableInterfaceId = IID.IReferenceQuaternion,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfQuaternion,
                 propertyType = null,
@@ -581,7 +581,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Quaternion.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Vector2::class.java,
+                projectedClass = Vector2::class,
                 nullableInterfaceId = IID.IReferenceVector2,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfVector2,
                 propertyType = null,
@@ -592,7 +592,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Vector2.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Vector3::class.java,
+                projectedClass = Vector3::class,
                 nullableInterfaceId = IID.IReferenceVector3,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfVector3,
                 propertyType = null,
@@ -603,7 +603,7 @@ internal object WinRtValueBoxing {
                 writeTransferredValue = Vector3.Metadata::copyTo,
             ),
             directValueAdapter(
-                projectedClass = Vector4::class.java,
+                projectedClass = Vector4::class,
                 nullableInterfaceId = IID.IReferenceVector4,
                 referenceArrayInterfaceId = IID.IReferenceArrayOfVector4,
                 propertyType = null,
@@ -637,9 +637,7 @@ internal object WinRtValueBoxing {
 
     internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
 
-    internal fun boxedRuntimeClassNameForType(type: KClass<*>): String? = boxedRuntimeClassNameForType(type.jvmBoxedLookupClass())
-
-    internal fun boxedRuntimeClassNameForType(type: Class<*>): String? {
+    internal fun boxedRuntimeClassNameForType(type: KClass<*>): String? {
         enumDescriptorForClass(type)?.let { descriptor ->
             return WinRtReferenceTypeNames.boxedReference(descriptor.projectedTypeName)
         }
@@ -648,8 +646,8 @@ internal object WinRtValueBoxing {
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return boxedReferenceArrayRuntimeClassName(interfaceId, adapter)
         }
-        if (type.isArray) {
-            val adapter = adapterForClass(type.componentType) ?: return null
+        if (isArrayKClass(type)) {
+            val adapter = arrayElementType(type)?.let(::adapterForClass) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return boxedReferenceArrayRuntimeClassName(interfaceId, adapter)
         }
@@ -691,7 +689,7 @@ internal object WinRtValueBoxing {
         return WinRtCcwDefinition(
             interfaceDefinitions = interfaceDefinitions,
             defaultInterfaceId = defaultInterfaceId,
-            runtimeClassName = boxedRuntimeClassNameForType(value.javaClass),
+            runtimeClassName = boxedRuntimeClassNameForType(value::class),
         )
     }
 
@@ -711,7 +709,7 @@ internal object WinRtValueBoxing {
             return PropertyType.OtherTypeArray
         }
 
-        enumDescriptorForClass(value.javaClass)?.let { return it.propertyType }
+        enumDescriptorForClass(value::class)?.let { return it.propertyType }
 
         val adapter = classifyPropertyValue(value)
         if (adapter != null) {
@@ -722,14 +720,14 @@ internal object WinRtValueBoxing {
 
     fun isNumericScalar(value: Any): Boolean =
         normalizeManagedArray(value) == null &&
-            (classifyPropertyValue(value)?.isNumericScalar == true || enumDescriptorForClass(value.javaClass) != null)
+            (classifyPropertyValue(value)?.isNumericScalar == true || enumDescriptorForClass(value::class) != null)
 
     fun writePropertyValue(
         expectedType: PropertyType,
         value: Any,
         destination: MemorySegment,
     ) {
-        val enumDescriptor = enumDescriptorForClass(value.javaClass)
+        val enumDescriptor = enumDescriptorForClass(value::class)
         if (enumDescriptor != null && enumDescriptor.propertyType == expectedType) {
             destination.reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, enumDescriptor.toAbiBits(value))
             return
@@ -795,7 +793,7 @@ internal object WinRtValueBoxing {
     ): WinRtInspectableComObject {
         return WinRtInspectableComObject(
             interfaceDefinitions = listOf(buildReferenceInterfaceDefinition(interfaceId, value)),
-            runtimeClassName = boxedRuntimeClassNameForType(value.javaClass),
+            runtimeClassName = boxedRuntimeClassNameForType(value::class),
             managedValue = value,
         )
     }
@@ -806,7 +804,7 @@ internal object WinRtValueBoxing {
     ): WinRtInspectableComObject {
         return WinRtInspectableComObject(
             interfaceDefinitions = listOf(buildReferenceArrayInterfaceDefinition(interfaceId, value)),
-            runtimeClassName = boxedRuntimeClassNameForType(value.javaClass),
+            runtimeClassName = boxedRuntimeClassNameForType(value::class),
             managedValue = normalizeManagedArray(value),
         )
     }
@@ -819,7 +817,7 @@ internal object WinRtValueBoxing {
                     methods = buildPropertyValueMethods(value),
                 ),
             ),
-            runtimeClassName = boxedRuntimeClassNameForType(value.javaClass),
+            runtimeClassName = boxedRuntimeClassNameForType(value::class),
             managedValue = value,
         )
     }
@@ -829,7 +827,7 @@ internal object WinRtValueBoxing {
         runtimeClassName: String? = inspectable.tryGetRuntimeClassName(),
     ): Any? {
         if (!runtimeClassName.isNullOrBlank()) {
-            TypeNameSupport.findRcwTypeByNameCached(runtimeClassName)?.let { projectedType ->
+            TypeNameSupport.findRcwKClassByNameCached(runtimeClassName)?.let { projectedType ->
                 tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
             }
         }
@@ -880,7 +878,7 @@ internal object WinRtValueBoxing {
         value: Any,
     ): WinRtInspectableInterfaceDefinition {
         val adapter = adapterForReferenceInterface(interfaceId)
-        val enumDescriptor = enumDescriptorForClass(value.javaClass)
+        val enumDescriptor = enumDescriptorForClass(value::class)
         if (adapter == null && (enumDescriptor == null || enumDescriptor.nullableInterfaceId != interfaceId)) {
             throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
         }
@@ -1071,11 +1069,11 @@ internal object WinRtValueBoxing {
             else -> adapterForValue(sampleElement) ?: defaultAdapter
         }
 
-    private fun adapterForValue(value: Any): WinRtValueAdapter<*>? = adapterForClass(value.javaClass)
+    private fun adapterForValue(value: Any): WinRtValueAdapter<*>? = adapterForClass(value::class)
 
-    private fun adapterForClass(type: Class<*>): WinRtValueAdapter<*>? =
+    private fun adapterForClass(type: KClass<*>): WinRtValueAdapter<*>? =
         adaptersByClass[type]
-            ?: if (Exception::class.java.isAssignableFrom(type)) {
+            ?: if (platformIsAssignableFrom(Exception::class, type)) {
                 exceptionAdapter
             } else {
                 null
@@ -1084,10 +1082,10 @@ internal object WinRtValueBoxing {
     private fun normalizeManagedArray(value: Any): ManagedArrayBox? =
         when (value) {
             is Array<*> -> {
-                val componentType = value.javaClass.componentType ?: Any::class.java
+                val componentType = value.javaClass.componentType?.kotlin ?: Any::class
                 val adapter =
                     adapterForClass(componentType)
-                        ?: if (componentType == Any::class.java) {
+                        ?: if (componentType == Any::class) {
                             objectAdapter
                         } else {
                             null
@@ -1097,17 +1095,17 @@ internal object WinRtValueBoxing {
             else -> normalizePrimitiveManagedArray(value)
         }
 
-    private fun isSupportedArrayValue(value: Any): Boolean = value.javaClass.isArray
+    private fun isSupportedArrayValue(value: Any): Boolean = isArrayKClass(value::class)
 
     private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayBox? {
-        val elementType = WinRtTypeClassifier.primitiveArrayElementType(value.javaClass) ?: return null
+        val elementType = WinRtTypeClassifier.primitiveArrayElementType(value::class) ?: return null
         val adapter = adaptersByClass[elementType] ?: return null
         val boxedElements = WinRtTypeClassifier.boxPrimitiveArray(value) ?: return null
         return ManagedArrayBox(boxedElements, adapter)
     }
 
     private fun referenceInterfaceIdForValue(value: Any): Guid? =
-        adapterForValue(value)?.nullableInterfaceId ?: enumDescriptorForClass(value.javaClass)?.nullableInterfaceId
+        adapterForValue(value)?.nullableInterfaceId ?: enumDescriptorForClass(value::class)?.nullableInterfaceId
 
     private fun referenceArrayInterfaceIdForValue(value: Any): Guid? =
         normalizeManagedArray(value)?.adapter?.referenceArrayInterfaceId
@@ -1130,7 +1128,7 @@ internal object WinRtValueBoxing {
 
     private fun tryProjectInspectableAsType(
         inspectable: IInspectableReference,
-        projectedType: Class<*>,
+        projectedType: KClass<*>,
     ): Any? {
         enumDescriptorForClass(projectedType)?.let { descriptor ->
             return queryReferencePointer(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
@@ -1145,8 +1143,8 @@ internal object WinRtValueBoxing {
             }
         }
 
-        if (projectedType.isArray || WinRtTypeClassifier.primitiveArrayElementType(projectedType) != null) {
-            val elementType = WinRtTypeClassifier.primitiveArrayElementType(projectedType) ?: projectedType.componentType ?: return null
+        if (isArrayKClass(projectedType) || WinRtTypeClassifier.primitiveArrayElementType(projectedType) != null) {
+            val elementType = WinRtTypeClassifier.primitiveArrayElementType(projectedType) ?: arrayElementType(projectedType) ?: return null
             val adapter = adapterForClass(elementType) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
@@ -1186,14 +1184,15 @@ internal object WinRtValueBoxing {
         }
 
     private fun enumDescriptorForClass(
-        type: Class<*>,
+        type: KClass<*>,
     ): WinRtEnumBoxingDescriptor? {
-        if (!type.isEnum) {
+        val javaType = type.registeredClass()
+        if (!javaType.isEnum) {
             return null
         }
 
         val registeredType = type.registeredWinRtType() ?: return null
-        val signature = runCatching { GuidGenerator.getSignature(type.kotlin) }.getOrNull() ?: return null
+        val signature = runCatching { GuidGenerator.getSignature(type) }.getOrNull() ?: return null
         val match = enumSignaturePattern.matchEntire(signature) ?: return null
         val projectedTypeName = match.groupValues[1]
         val underlyingSignature = match.groupValues[2]
@@ -1204,7 +1203,7 @@ internal object WinRtValueBoxing {
         fun readBits(enumValue: Any): Int =
             registeredType.readEnumAbiValue(enumValue)
 
-        val constants = type.enumConstants ?: return null
+        val constants = javaType.enumConstants ?: return null
 
         return when (underlyingSignature) {
             "i4" ->
@@ -1217,7 +1216,7 @@ internal object WinRtValueBoxing {
                     fromAbiBits = { abiValue ->
                         constants.firstOrNull { readBits(it) == abiValue }
                             ?: throw WinRtInvalidCastException(
-                                "Unknown enum value $abiValue for ${type.name}.",
+                                "Unknown enum value $abiValue for ${type.typeDisplayName()}.",
                                 HResult(TYPE_E_TYPEMISMATCH),
                             )
                     },
@@ -1233,7 +1232,7 @@ internal object WinRtValueBoxing {
                     fromAbiBits = { abiValue ->
                         constants.firstOrNull { readBits(it) == abiValue }
                             ?: throw WinRtInvalidCastException(
-                                "Unknown enum value ${abiValue.toUInt()} for ${type.name}.",
+                                "Unknown enum value ${abiValue.toUInt()} for ${type.typeDisplayName()}.",
                                 HResult(TYPE_E_TYPEMISMATCH),
                             )
                     },
@@ -1244,18 +1243,9 @@ internal object WinRtValueBoxing {
     }
 }
 
-private fun KClass<*>.jvmBoxedLookupClass(): Class<*> =
-    when (this) {
-        Byte::class -> Byte::class.javaObjectType
-        Short::class -> Short::class.javaObjectType
-        Int::class -> Int::class.javaObjectType
-        Long::class -> Long::class.javaObjectType
-        Boolean::class -> Boolean::class.javaObjectType
-        Char::class -> Char::class.javaObjectType
-        Float::class -> Float::class.javaObjectType
-        Double::class -> Double::class.javaObjectType
-        else -> registeredClass()
-    }
+private fun isArrayKClass(type: KClass<*>): Boolean = type.registeredClass().isArray
+
+private fun arrayElementType(type: KClass<*>): KClass<*>? = type.registeredClass().componentType?.kotlin
 
 internal class WinRtReferenceReference(
     pointer: NativePointer,

@@ -94,8 +94,8 @@ internal object UriProjection {
         }
 }
 
-private val uriTypeHandle = WinRtTypeHandle(WinRtUri::class.java.name, Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
-private val closableTypeHandle = WinRtTypeHandle(AutoCloseable::class.java.name, IID.IDisposable)
+private val uriTypeHandle = WinRtTypeHandle(WinRtUri::class.typeDisplayName(), Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
+private val closableTypeHandle = WinRtTypeHandle(AutoCloseable::class.typeDisplayName(), IID.IDisposable)
 
 @WindowsRuntimeType("struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))")
 internal object TypeProjection {
@@ -104,29 +104,29 @@ internal object TypeProjection {
         ValueLayout.JAVA_INT.withName("kind"),
     )
 
-    fun fromAbi(value: TypeAbi): Class<*>? {
+    fun fromAbi(value: TypeAbi): KClass<*>? {
         val name = StringMarshaller.fromAbi(value.name)
         if (name.isBlank()) {
             return null
         }
-        return TypeNameSupport.findTypeByNameCached(name)
+        return TypeNameSupport.findKClassByNameCached(name)
     }
 
-    fun fromManaged(value: Class<*>?): TypeAbi {
+    fun fromManaged(value: KClass<*>?): TypeAbi {
         if (value == null) {
             return TypeAbi()
         }
         val kind =
             when {
-                value.isPrimitive -> WinRtTypeKind.Primitive
-                Projections.isTypeWindowsRuntimeType(value.kotlin) -> WinRtTypeKind.Metadata
+                value.javaPrimitiveType != null -> WinRtTypeKind.Primitive
+                Projections.isTypeWindowsRuntimeType(value) -> WinRtTypeKind.Metadata
                 else -> WinRtTypeKind.Custom
             }
         val typeName =
             if (kind == WinRtTypeKind.Custom) {
-                value.name
+                value.qualifiedName ?: value.simpleName ?: "<anonymous>"
             } else {
-                TypeNameSupport.getNameForType(value.kotlin)
+                TypeNameSupport.getNameForType(value)
             }
         return TypeAbi(
             name = StringMarshaller.fromManaged(typeName)?.handle?.asMemorySegment() ?: MemorySegment.NULL,
@@ -134,15 +134,13 @@ internal object TypeProjection {
         )
     }
 
-    fun fromManaged(value: KClass<*>?): TypeAbi = fromManaged(value?.registeredClass())
-
-    fun copyTo(value: Class<*>?, destination: MemorySegment) {
+    fun copyTo(value: KClass<*>?, destination: MemorySegment) {
         val abi = fromManaged(value)
         destination.set(ValueLayout.ADDRESS, 0, abi.name)
         destination.set(ValueLayout.JAVA_INT, ValueLayout.ADDRESS.byteSize(), abi.kind)
     }
 
-    fun fromAbi(source: MemorySegment): Class<*>? =
+    fun fromAbi(source: MemorySegment): KClass<*>? =
         fromAbi(
             TypeAbi(
                 name = source.get(ValueLayout.ADDRESS, 0),
@@ -196,12 +194,12 @@ internal object WinRtBuiltInProjectionMappings {
         )
 
         Projections.registerCustomAbiTypeMapping(
-            publicType = Class::class,
+            publicType = KClass::class,
             helperType = TypeProjection::class,
             abiTypeName = "Windows.UI.Xaml.Interop.TypeName",
         )
         CommonWinRtBuiltInProjectionMappings.registerMetadata(
-            type = Class::class,
+            type = KClass::class,
             projectedTypeName = "Windows.UI.Xaml.Interop.TypeName",
             helperType = TypeProjection::class,
             signature = "struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))",
@@ -209,8 +207,8 @@ internal object WinRtBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
         CommonWinRtBuiltInProjectionMappings.registerReferenceArrayType(
-            elementType = Class::class,
-            arrayType = emptyArray<Class<*>>()::class,
+            elementType = KClass::class,
+            arrayType = emptyArray<KClass<*>>()::class,
         )
     }
 }
@@ -265,12 +263,12 @@ internal object WinRtBuiltInProjectionRuntimeHooks {
     }
 
     fun runtimeClassNameFor(value: Any): String? {
-        WinRtValueBoxing.boxedRuntimeClassNameForType(value.javaClass)?.let { return it }
+        WinRtValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
         val lookupName =
             TypeNameSupport.getNameForType(
-                value.javaClass,
+                value::class,
                 setOf(TypeNameGenerationFlag.ForGetRuntimeClassName),
             )
-        return lookupName.takeIf(String::isNotBlank) ?: value::class.qualifiedName ?: value.javaClass.name
+        return lookupName.takeIf(String::isNotBlank) ?: value::class.qualifiedName ?: value::class.toString()
     }
 }

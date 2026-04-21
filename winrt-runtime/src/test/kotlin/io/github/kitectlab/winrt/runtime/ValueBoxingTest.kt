@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import kotlin.reflect.KClass
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -145,7 +146,7 @@ class ValueBoxingTest {
         registerEnumDescriptors()
         ComWrappersSupport.registerProjectionAssembly(TestPriority::class, TestVisibility::class)
 
-        roundTripInspectable(Marshaler.inspectableAny(), String::class.java) { expected, actual ->
+        roundTripInspectable(Marshaler.inspectableAny(), String::class) { expected, actual ->
             assertEquals(expected, actual)
         }
 
