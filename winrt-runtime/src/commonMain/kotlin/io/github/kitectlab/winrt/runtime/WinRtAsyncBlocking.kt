@@ -7,7 +7,7 @@ import kotlinx.coroutines.runBlocking
  *
  * `.cswinrt` exposes synchronous result retrieval above the async ABI owner; on Kotlin the
  * shared coroutine-based `await()` owner already exists in `commonMain`, so the blocking bridge
- * belongs here as well instead of staying attached to the JVM `CompletableFuture` facade.
+ * belongs here as part of the coroutine-facing runtime surface rather than a JVM-only future facade.
  */
 fun WinRtAsyncActionReference.join() {
     runBlocking {

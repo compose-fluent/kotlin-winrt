@@ -9,7 +9,8 @@ import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.atomic.AtomicLong
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 actual class NativePointer internal constructor(
     internal val segment: MemorySegment,
@@ -33,6 +34,7 @@ actual class NativeCallbackHandle internal constructor(
     }
 }
 
+@OptIn(ExperimentalAtomicApi::class)
 actual object NativeInterop {
     private val linker = Linker.nativeLinker()
     private val lookup = MethodHandles.lookup()
@@ -232,7 +234,7 @@ actual object NativeInterop {
         require(descriptor.returnLayout == NativeValueLayout.JAVA_INT) {
             "Only INT32-return callbacks are currently supported."
         }
-        val callbackId = nextCallbackId.getAndIncrement()
+        val callbackId = nextCallbackId()
         callbacks[callbackId] = RegisteredCallback(descriptor, callback)
         val baseHandle = lookup.findStatic(
             NativeInterop::class.java,
@@ -256,6 +258,16 @@ actual object NativeInterop {
             pointer = stub.asNativePointer(),
             onClose = { callbacks.remove(callbackId) },
         )
+    }
+
+    private fun nextCallbackId(): Long {
+        while (true) {
+            val current = nextCallbackId.load()
+            val updated = current + 1
+            if (nextCallbackId.compareAndSet(current, updated)) {
+                return current
+            }
+        }
     }
 
     @JvmStatic

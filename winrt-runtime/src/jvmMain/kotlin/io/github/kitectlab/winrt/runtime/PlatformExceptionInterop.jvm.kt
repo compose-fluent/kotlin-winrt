@@ -4,14 +4,12 @@ import java.io.EOFException
 import java.io.FileNotFoundException
 import java.nio.file.InvalidPathException
 import java.nio.file.NoSuchFileException
-import java.util.concurrent.CancellationException
-import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.CancellationException
 
 internal actual fun platformHResultFromThrowable(error: Throwable): HResult =
     when (error) {
         is WinRtRuntimeException -> error.hResult ?: ExceptionHelpers.E_FAIL
         is CancellationException -> ExceptionHelpers.ERROR_CANCELLED
-        is TimeoutException -> ExceptionHelpers.ERROR_TIMEOUT
         is NotImplementedError -> ExceptionHelpers.E_NOTIMPL
         is InvalidPathException -> ExceptionHelpers.ERROR_PATH_NOT_FOUND
         is FileNotFoundException,

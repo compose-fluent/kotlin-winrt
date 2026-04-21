@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -34,8 +35,11 @@ class WindowsRuntimePlatformTest {
         assertEquals(KnownHResults.E_INVALIDARG, WinRtExceptionTranslator.hResultFromException(IllegalArgumentException("bad arg")))
         assertEquals(KnownHResults.E_BOUNDS, WinRtExceptionTranslator.hResultFromException(IndexOutOfBoundsException("bad index")))
         assertEquals(KnownHResults.E_NOTSUPPORTED, WinRtExceptionTranslator.hResultFromException(UnsupportedOperationException("unsupported")))
-        assertEquals(KnownHResults.ERROR_CANCELLED, WinRtExceptionTranslator.hResultFromException(java.util.concurrent.CancellationException("cancelled")))
-        assertEquals(KnownHResults.ERROR_TIMEOUT, WinRtExceptionTranslator.hResultFromException(java.util.concurrent.TimeoutException("timeout")))
+        assertEquals(KnownHResults.ERROR_CANCELLED, WinRtExceptionTranslator.hResultFromException(CancellationException("cancelled")))
+        assertEquals(
+            KnownHResults.ERROR_TIMEOUT,
+            WinRtExceptionTranslator.hResultFromException(WinRtTimeoutException("timeout", KnownHResults.ERROR_TIMEOUT)),
+        )
         assertEquals(KnownHResults.E_ACCESSDENIED, WinRtExceptionTranslator.hResultFromException(WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)))
         assertEquals(ExceptionHelpers.ERROR_FILE_NOT_FOUND, WinRtExceptionTranslator.hResultFromException(java.io.FileNotFoundException("missing")))
     }

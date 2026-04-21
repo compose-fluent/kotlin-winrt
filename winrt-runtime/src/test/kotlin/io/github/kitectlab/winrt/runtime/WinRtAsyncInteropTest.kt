@@ -1,7 +1,9 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
-import java.util.concurrent.CompletionException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,35 +36,37 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
-    fun async_action_future_completes_immediately_when_already_completed() {
+    fun async_action_await_completes_immediately_when_already_completed() {
         Arena.ofConfined().use { arena ->
             val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Completed)
 
-            val future = action.toCompletableFuture()
+            runBlocking {
+                action.await()
+            }
 
-            assertTrue(future.isDone)
-            assertFalse(future.isCompletedExceptionally)
             assertTrue(action.resultsCalled)
         }
     }
 
     @Test
-    fun async_action_future_registers_completed_callback_and_cancels_underlying_info() {
+    fun async_action_await_registers_completed_callback_and_cancels_underlying_info() {
         Arena.ofConfined().use { arena ->
             val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started)
 
-            val future = action.toCompletableFuture()
-            assertFalse(future.isDone)
+            runBlocking {
+                val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) { action.await() }
+                assertFalse(awaitJob.isCompleted)
 
-            action.complete(WinRtAsyncStatus.Completed)
+                action.complete(WinRtAsyncStatus.Completed)
+                awaitJob.join()
+                assertTrue(action.resultsCalled)
 
-            assertTrue(future.isDone)
-            assertTrue(action.resultsCalled)
-
-            val cancelledAction = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started)
-            val cancelledFuture = cancelledAction.toCompletableFuture()
-            assertTrue(cancelledFuture.cancel(true))
-            assertTrue(cancelledAction.cancelCalled)
+                val cancelledAction = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started)
+                val cancelledJob = launch(start = CoroutineStart.UNDISPATCHED) { cancelledAction.await() }
+                cancelledJob.cancel()
+                cancelledJob.join()
+                assertTrue(cancelledAction.cancelCalled)
+            }
         }
     }
 
@@ -84,30 +88,36 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
-    fun async_operation_future_completes_with_result_and_maps_error_status() {
+    fun async_operation_await_completes_with_result_and_maps_error_status() {
         Arena.ofConfined().use { arena ->
-            val operation = FakeAsyncOperationReference(
-                arena = arena,
-                statusState = WinRtAsyncStatus.Started,
-                result = "done",
-            )
+            runBlocking {
+                val operation = FakeAsyncOperationReference(
+                    arena = arena,
+                    statusState = WinRtAsyncStatus.Started,
+                    result = "done",
+                )
 
-            val future = operation.toCompletableFuture()
-            operation.complete(WinRtAsyncStatus.Completed)
-            assertEquals("done", future.join())
-            assertTrue(operation.resultsCalled)
+                val awaitJob = launch {
+                    assertEquals("done", operation.await())
+                }
+                operation.complete(WinRtAsyncStatus.Completed)
+                awaitJob.join()
+                assertTrue(operation.resultsCalled)
 
-            val failedOperation = FakeAsyncOperationReference(
-                arena = arena,
-                statusState = WinRtAsyncStatus.Error,
-                result = "ignored",
-                errorCode = KnownHResults.E_ACCESSDENIED,
-            )
+                val failedOperation = FakeAsyncOperationReference(
+                    arena = arena,
+                    statusState = WinRtAsyncStatus.Error,
+                    result = "ignored",
+                    errorCode = KnownHResults.E_ACCESSDENIED,
+                )
 
-            try {
-                failedOperation.toCompletableFuture().join()
-            } catch (error: CompletionException) {
-                assertTrue(error.cause is WinRtAccessDeniedException)
+                try {
+                    failedOperation.await()
+                } catch (error: WinRtAccessDeniedException) {
+                    return@runBlocking
+                }
+
+                throw AssertionError("Expected WinRtAccessDeniedException from await().")
             }
         }
     }
