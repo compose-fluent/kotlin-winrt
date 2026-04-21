@@ -286,7 +286,7 @@ internal object WinRtValueBoxing {
             referenceArrayInterfaceId = IID.IReferenceArrayOfType,
             propertyType = null,
             propertyTypeArray = null,
-            abiLayout = TYPE_PROJECTION_ABI_LAYOUT,
+            abiLayout = NativeLayoutsJvmCompat.TYPE_NAME,
             exactUnbox = { it as KClass<*> },
             readOwnedValue = { source ->
                 TypeProjection.fromAbi(source)
