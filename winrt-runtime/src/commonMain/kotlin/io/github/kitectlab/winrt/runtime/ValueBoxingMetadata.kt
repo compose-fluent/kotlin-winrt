@@ -131,6 +131,9 @@ internal object ValueBoxingMetadata {
     fun referenceArrayInterfaceIdForValue(value: Any): Guid? =
         normalizeManagedArray(value)?.metadata?.referenceArrayInterfaceId
 
+    fun normalizedManagedArrayElements(value: Any): Array<*>? =
+        normalizeManagedArray(value)?.elements
+
     fun descriptorForPropertyType(propertyType: PropertyType): WinRtValueTypeMetadata? =
         descriptors.firstOrNull { it.propertyType == propertyType }
 

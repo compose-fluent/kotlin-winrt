@@ -10,11 +10,6 @@ import java.lang.foreign.ValueLayout
 import kotlin.jvm.JvmName
 import kotlin.reflect.KClass
 
-private data class ManagedArrayBox(
-    val elements: Array<*>,
-    val adapter: WinRtValueAdapter<*>,
-)
-
 internal class WinRtValueAdapter<T : Any>(
     val projectedClass: KClass<*>,
     val nullableInterfaceId: Guid?,
@@ -590,7 +585,7 @@ internal object PlatformValueBoxingInterop {
         countOut: MemorySegment,
         dataOut: MemorySegment,
     ) {
-        val box = normalizeManagedArray(value)
+        val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
             ?: throw WinRtInvalidCastException("Value is not an array for $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         val adapter =
             when (expectedType) {
@@ -598,7 +593,7 @@ internal object PlatformValueBoxingInterop {
                 else -> adaptersByPropertyTypeArray[expectedType]
             } ?: throw WinRtInvalidCastException("Unsupported property value array getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         val coerced =
-            box.elements.map { element ->
+            boxedElements.map { element ->
                 if (element == null) {
                     null
                 } else {
@@ -676,7 +671,7 @@ internal object PlatformValueBoxingInterop {
     ): WinRtInspectableInterfaceDefinition {
         val adapter = adapterForReferenceArrayInterface(interfaceId)
             ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
-        val box = normalizeManagedArray(value)
+        val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
             ?: throw WinRtInvalidCastException("IReferenceArray host requires an array value.", HResult(TYPE_E_TYPEMISMATCH))
         return WinRtInspectableInterfaceDefinition(
             interfaceId = interfaceId,
@@ -692,48 +687,13 @@ internal object PlatformValueBoxingInterop {
                     if (rawArgs.size != 2) {
                         throw IllegalStateException("IReferenceArray host requires count and data out-arguments.")
                     }
-                    val (length, data) = adapter.createTransferredArray(box.elements)
+                    val (length, data) = adapter.createTransferredArray(boxedElements)
                     NativeInterop.writeInt32(rawArgs[0] as NativePointer, length)
                     NativeInterop.writePointer(rawArgs[1] as NativePointer, data)
                     KnownHResults.S_OK.value
                 },
             ),
         )
-    }
-
-    private fun adapterForValue(value: Any): WinRtValueAdapter<*>? = adapterForClass(value::class)
-
-    private fun adapterForClass(type: KClass<*>): WinRtValueAdapter<*>? =
-        adaptersByClass[type]
-            ?: if (platformIsAssignableFrom(Exception::class, type)) {
-                exceptionAdapter
-            } else {
-                null
-            }
-
-    private fun normalizeManagedArray(value: Any): ManagedArrayBox? =
-        when (value) {
-            is Array<*> -> {
-                val componentType = platformArrayElementType(value::class) ?: Any::class
-                val adapter =
-                    adapterForClass(componentType)
-                        ?: if (componentType == Any::class) {
-                            objectAdapter
-                        } else {
-                            null
-                        }
-                adapter?.let { ManagedArrayBox(value, it) }
-            }
-            else -> normalizePrimitiveManagedArray(value)
-        }
-
-    private fun isSupportedArrayValue(value: Any): Boolean = platformArrayElementType(value::class) != null
-
-    private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayBox? {
-        val elementType = WinRtTypeClassifier.primitiveArrayElementType(value::class) ?: return null
-        val adapter = adaptersByClass[elementType] ?: return null
-        val boxedElements = WinRtTypeClassifier.boxPrimitiveArray(value) ?: return null
-        return ManagedArrayBox(boxedElements, adapter)
     }
 
 }
