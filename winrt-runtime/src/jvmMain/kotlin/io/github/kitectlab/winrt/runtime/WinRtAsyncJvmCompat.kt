@@ -109,10 +109,3 @@ fun <T> WinRtAsyncOperationReference<T>.toCompletableFuture(): CompletableFuture
 
     return future
 }
-
-fun WinRtAsyncActionReference.join() {
-    toCompletableFuture().join()
-}
-
-fun <T> WinRtAsyncOperationReference<T>.join(): T =
-    toCompletableFuture().join()

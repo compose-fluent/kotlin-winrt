@@ -67,6 +67,23 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_join_uses_common_await_owner() {
+        Arena.ofConfined().use { arena ->
+            val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Completed)
+            action.join()
+            assertTrue(action.resultsCalled)
+
+            val operation = FakeAsyncOperationReference(
+                arena = arena,
+                statusState = WinRtAsyncStatus.Completed,
+                result = "joined",
+            )
+            assertEquals("joined", operation.join())
+            assertTrue(operation.resultsCalled)
+        }
+    }
+
+    @Test
     fun async_operation_future_completes_with_result_and_maps_error_status() {
         Arena.ofConfined().use { arena ->
             val operation = FakeAsyncOperationReference(
