@@ -286,14 +286,14 @@ internal object WinRtValueBoxing {
             referenceArrayInterfaceId = IID.IReferenceArrayOfType,
             propertyType = null,
             propertyTypeArray = null,
-            abiLayout = TypeProjection.ABI_LAYOUT,
+            abiLayout = TYPE_PROJECTION_ABI_LAYOUT,
             exactUnbox = { it as KClass<*> },
             readOwnedValue = { source ->
-                TypeProjection.fromAbi(source.asMemorySegment())
+                TypeProjection.fromAbi(source)
                     ?: throw WinRtInvalidCastException("Expected non-null projected KClass value.", HResult(TYPE_E_TYPEMISMATCH))
             },
-            writeTransferredValue = { value, destination -> TypeProjection.copyTo(value, destination.asMemorySegment()) },
-            disposeTransferredValue = { source -> TypeProjection.disposeAbi(source.asMemorySegment()) },
+            writeTransferredValue = TypeProjection::copyTo,
+            disposeTransferredValue = TypeProjection::disposeAbi,
         )
 
     private val exceptionAdapter =

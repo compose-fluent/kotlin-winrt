@@ -22,6 +22,8 @@ internal actual fun platformTypeCanonicalName(type: KClass<*>): String? = type.q
 
 internal actual fun platformTypeName(type: KClass<*>): String = type.typeDisplayName()
 
+internal actual fun platformIsPrimitiveType(type: KClass<*>): Boolean = false
+
 internal actual fun platformIsAssignableFrom(
     targetType: KClass<*>,
     candidateType: KClass<*>,

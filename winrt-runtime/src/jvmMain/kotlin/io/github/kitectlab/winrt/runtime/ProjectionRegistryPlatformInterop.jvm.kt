@@ -30,6 +30,8 @@ internal actual fun platformTypeCanonicalName(type: KClass<*>): String? = type.j
 
 internal actual fun platformTypeName(type: KClass<*>): String = type.java.name
 
+internal actual fun platformIsPrimitiveType(type: KClass<*>): Boolean = type.javaPrimitiveType != null
+
 internal actual fun platformIsAssignableFrom(
     targetType: KClass<*>,
     candidateType: KClass<*>,

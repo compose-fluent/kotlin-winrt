@@ -9,6 +9,10 @@ internal object NativeLayoutsJvmCompat {
     val CHAR16: ValueLayout.OfChar = ValueLayout.JAVA_CHAR_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN)
     const val GUID_SIZE_BYTES: Long = Guid.BYTE_SIZE.toLong()
     val GUID: MemoryLayout = MemoryLayout.sequenceLayout(GUID_SIZE_BYTES, ValueLayout.JAVA_BYTE)
+    val TYPE_NAME: MemoryLayout = MemoryLayout.structLayout(
+        ValueLayout.ADDRESS.withName("name"),
+        ValueLayout.JAVA_INT.withName("kind"),
+    )
     const val HSTRING_HEADER_SIZE_BYTES: Long = 24
     const val IUNKNOWN_VFTBL_SIZE_BYTES: Long = 24
 }

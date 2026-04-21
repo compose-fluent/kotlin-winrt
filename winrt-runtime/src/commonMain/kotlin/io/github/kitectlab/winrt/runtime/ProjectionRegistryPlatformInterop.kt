@@ -25,6 +25,8 @@ internal expect fun platformTypeCanonicalName(type: KClass<*>): String?
 
 internal expect fun platformTypeName(type: KClass<*>): String
 
+internal expect fun platformIsPrimitiveType(type: KClass<*>): Boolean
+
 internal expect fun platformIsAssignableFrom(
     targetType: KClass<*>,
     candidateType: KClass<*>,
