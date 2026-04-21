@@ -15,6 +15,12 @@ internal actual object PlatformValueProjectionInterop {
     actual fun createReferenceArrayHost(interfaceId: Guid, value: Any): ManagedReferenceHost =
         WinRtValueBoxing.createReferenceArrayHost(interfaceId, value)
 
+    actual fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+        WinRtValueBoxing.createReferenceInterfaceDefinition(value)
+
+    actual fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+        WinRtValueBoxing.createReferenceArrayInterfaceDefinition(value)
+
     actual fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
         WinRtReferenceReference(pointer, interfaceId).use { reference ->
             WinRtValueBoxing.readReferenceValue(interfaceId, reference)
@@ -111,6 +117,15 @@ internal actual object PlatformValueProjectionInterop {
 
     actual fun readOwnedPropertyValue(pointer: NativePointer): Any? =
         WinRtPropertyValueReference(pointer).use { it.getValue() }
+
+    actual fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? =
+        WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType)
+
+    actual fun tryProjectInspectableReference(inspectable: IInspectableReference): Any? =
+        WinRtValueBoxing.tryProjectInspectableReference(inspectable)
+
+    actual fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any? =
+        WinRtValueBoxing.tryProjectInspectableReferenceArray(inspectable)
 
     actual fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any? {
         val propertyValue =

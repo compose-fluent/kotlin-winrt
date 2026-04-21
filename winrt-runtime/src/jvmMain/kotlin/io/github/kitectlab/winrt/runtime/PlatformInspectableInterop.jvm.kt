@@ -4,7 +4,7 @@ internal actual fun platformCreateInspectableReference(value: Any): ComObjectRef
     ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
 
 internal actual fun platformTryProjectBindableInspectable(pointer: NativePointer): Any? =
-    WinRtValueBoxing.tryProjectBorrowedInspectable(pointer)
+    tryProjectBorrowedInspectableValue(pointer)
 
 internal actual fun platformEnsureInspectableProjectionInteropRegistered() {
     WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
@@ -13,7 +13,7 @@ internal actual fun platformEnsureInspectableProjectionInteropRegistered() {
 internal actual fun platformTryProjectInspectable(
     inspectable: IInspectableReference,
     runtimeClassName: String?,
-): Any? = WinRtValueBoxing.tryProjectInspectable(inspectable, runtimeClassName)
+): Any? = tryProjectInspectableValue(inspectable, runtimeClassName)
 
 internal actual fun platformTryCreateProjectedReference(
     value: Any,
@@ -21,7 +21,7 @@ internal actual fun platformTryCreateProjectedReference(
 ): ComObjectReference? = WinRtBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)
 
 internal actual fun platformCreateSyntheticCcwDefinition(value: Any): WinRtCcwDefinition? {
-    WinRtValueBoxing.createInspectableBoxDefinition(value)?.let { return it }
+    createSyntheticValueCcwDefinition(value)?.let { return it }
     if (value is AutoCloseable) {
         return WinRtCcwDefinition(
             interfaceDefinitions = listOf(
@@ -48,7 +48,7 @@ internal actual fun platformCreateSyntheticCcwDefinition(value: Any): WinRtCcwDe
 }
 
 internal actual fun platformRuntimeClassNameFor(value: Any): String? {
-    WinRtValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
+    PlatformValueProjectionInterop.boxedRuntimeClassNameForType(value::class)?.let { return it }
     val lookupName =
         TypeNameSupport.getNameForType(
             value::class,

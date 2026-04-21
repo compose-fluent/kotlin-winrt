@@ -600,37 +600,6 @@ internal object WinRtValueBoxing {
         return boxedReferenceRuntimeClassName(interfaceId, adapter)
     }
 
-    internal fun createInspectableBoxDefinition(value: Any): WinRtCcwDefinition? {
-        val interfaceDefinitions =
-            buildList {
-                if (isPropertyValueCompatible(value)) {
-                    add(createPropertyValueInterfaceDefinition(value))
-                }
-
-                referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
-                    add(buildReferenceArrayInterfaceDefinition(interfaceId, value))
-                } ?: referenceInterfaceIdForValue(value)?.let { interfaceId ->
-                    add(buildReferenceInterfaceDefinition(interfaceId, value))
-                }
-            }
-        if (interfaceDefinitions.isEmpty()) {
-            return null
-        }
-
-        val defaultInterfaceId =
-            if (interfaceDefinitions.any { it.interfaceId == IID.IPropertyValue }) {
-                IID.IPropertyValue
-            } else {
-                interfaceDefinitions.first().interfaceId
-            }
-
-        return WinRtCcwDefinition(
-            interfaceDefinitions = interfaceDefinitions,
-            defaultInterfaceId = defaultInterfaceId,
-            runtimeClassName = boxedRuntimeClassNameForType(value::class),
-        )
-    }
-
     fun propertyTypeOf(value: Any): PropertyType {
         val managedArray = normalizeManagedArray(value)
         if (managedArray != null) {
@@ -738,7 +707,7 @@ internal object WinRtValueBoxing {
         value: Any,
     ): WinRtInspectableComObject {
         return WinRtInspectableComObject(
-            interfaceDefinitions = listOf(buildReferenceInterfaceDefinition(interfaceId, value)),
+            interfaceDefinitions = listOf(createReferenceInterfaceDefinition(interfaceId, value)),
             runtimeClassName = boxedRuntimeClassNameForType(value::class),
             managedValue = value,
         )
@@ -749,72 +718,23 @@ internal object WinRtValueBoxing {
         value: Any,
     ): WinRtInspectableComObject {
         return WinRtInspectableComObject(
-            interfaceDefinitions = listOf(buildReferenceArrayInterfaceDefinition(interfaceId, value)),
+            interfaceDefinitions = listOf(createReferenceArrayInterfaceDefinition(interfaceId, value)),
             runtimeClassName = boxedRuntimeClassNameForType(value::class),
             managedValue = normalizeManagedArray(value),
         )
     }
 
-    internal fun tryProjectInspectable(
-        inspectable: IInspectableReference,
-        runtimeClassName: String? = inspectable.tryGetRuntimeClassName(),
-    ): Any? {
-        if (!runtimeClassName.isNullOrBlank()) {
-            TypeNameSupport.findRcwKClassByNameCached(runtimeClassName)?.let { projectedType ->
-                tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
-            }
+    internal fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+        referenceInterfaceIdForValue(value)?.let { interfaceId ->
+            createReferenceInterfaceDefinition(interfaceId, value)
         }
 
-        WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer)?.let { return it }
-
-        adapters.firstNotNullOfOrNull { adapter ->
-            val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
-            queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
-                    sizeBytes = adapter.abiLayout.byteSize(),
-                    alignmentBytes = adapter.abiLayout.byteAlignment(),
-                    readValue = adapter::readValue,
-                    disposeValue = adapter::disposeValue,
-                )
-            }
-        }?.let { return it }
-
-        adapters.firstNotNullOfOrNull { adapter ->
-            val interfaceId = adapter.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
-            queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
-                    readArray = adapter::readOwnedArray,
-                    disposeArray = adapter::disposeOwnedArray,
-                )
-            }
-        }?.let { return it }
-
-        return null
-    }
-
-    internal fun tryProjectBorrowedInspectable(pointer: NativePointer): Any? {
-        if (NativeInterop.isNull(pointer)) {
-            return null
+    internal fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
+        referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
+            createReferenceArrayInterfaceDefinition(interfaceId, value)
         }
-        val borrowed = IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
-        val inspectable =
-            try {
-                borrowed.asInspectable()
-            } catch (_: Throwable) {
-                borrowed.close()
-                return null
-            }
-        return try {
-            tryProjectInspectable(inspectable)
-        } finally {
-            inspectable.close()
-        }
-    }
 
-    internal fun tryProjectBorrowedInspectable(pointer: MemorySegment): Any? =
-        tryProjectBorrowedInspectable(pointer.asNativePointer())
-
-    private fun buildReferenceInterfaceDefinition(
+    internal fun createReferenceInterfaceDefinition(
         interfaceId: Guid,
         value: Any,
     ): WinRtInspectableInterfaceDefinition {
@@ -847,7 +767,7 @@ internal object WinRtValueBoxing {
         )
     }
 
-    private fun buildReferenceArrayInterfaceDefinition(
+    internal fun createReferenceArrayInterfaceDefinition(
         interfaceId: Guid,
         value: Any,
     ): WinRtInspectableInterfaceDefinition {
@@ -953,7 +873,7 @@ internal object WinRtValueBoxing {
         return WinRtReferenceTypeNames.boxedReferenceArray(TypeNameSupport.getNameForType(adapter.projectedClass))
     }
 
-    private fun tryProjectInspectableAsType(
+    internal fun tryProjectInspectableAsType(
         inspectable: IInspectableReference,
         projectedType: KClass<*>,
     ): Any? {
@@ -993,6 +913,30 @@ internal object WinRtValueBoxing {
             )
         }
     }
+
+    internal fun tryProjectInspectableReference(inspectable: IInspectableReference): Any? =
+        adapters.firstNotNullOfOrNull { adapter ->
+            val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
+            queryReferencePointer(inspectable, interfaceId)?.use { reference ->
+                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
+                    sizeBytes = adapter.abiLayout.byteSize(),
+                    alignmentBytes = adapter.abiLayout.byteAlignment(),
+                    readValue = adapter::readValue,
+                    disposeValue = adapter::disposeValue,
+                )
+            }
+        }
+
+    internal fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any? =
+        adapters.firstNotNullOfOrNull { adapter ->
+            val interfaceId = adapter.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
+            queryReferencePointer(inspectable, interfaceId)?.use { reference ->
+                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).readValue(
+                    readArray = adapter::readOwnedArray,
+                    disposeArray = adapter::disposeOwnedArray,
+                )
+            }
+        }
 
     private fun queryReferencePointer(
         inspectable: IInspectableReference,
@@ -1104,7 +1048,7 @@ internal fun WinRtPropertyValueReference(
 
 private fun unboxInspectablePointer(pointer: MemorySegment): Any {
     WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())?.let { return it }
-    WinRtValueBoxing.tryProjectBorrowedInspectable(pointer)?.let { return it }
+    tryProjectBorrowedInspectableValue(pointer.asNativePointer())?.let { return it }
     return ComWrappersSupport.createRcwForComObject(pointer.asNativePointer())
         ?: WinRtInvalidCastException("Unable to project inspectable value.", HResult(TYPE_E_TYPEMISMATCH))
 }

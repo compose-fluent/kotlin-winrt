@@ -9,6 +9,10 @@ internal expect object PlatformValueProjectionInterop {
 
     fun createReferenceArrayHost(interfaceId: Guid, value: Any): ManagedReferenceHost
 
+    fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition?
+
+    fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition?
+
     fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any?
 
     fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>?
@@ -30,6 +34,12 @@ internal expect object PlatformValueProjectionInterop {
     fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any?
 
     fun readOwnedPropertyValue(pointer: NativePointer): Any?
+
+    fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any?
+
+    fun tryProjectInspectableReference(inspectable: IInspectableReference): Any?
+
+    fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any?
 
     fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any?
 }
