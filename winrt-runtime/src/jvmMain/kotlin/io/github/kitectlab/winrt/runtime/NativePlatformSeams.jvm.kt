@@ -379,7 +379,7 @@ private fun fromJvmCarrier(
     value: Any?,
 ): Any? =
     when (layout) {
-        NativeValueLayout.ADDRESS -> (value as MemorySegment).asNativePointer()
+        NativeValueLayout.ADDRESS -> (value as MemorySegment).reinterpret(Long.MAX_VALUE).asNativePointer()
         NativeValueLayout.JAVA_BYTE,
         NativeValueLayout.JAVA_INT,
         NativeValueLayout.JAVA_LONG,

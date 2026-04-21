@@ -94,43 +94,43 @@ internal class WinRtValueAdapter<T : Any>(
     val isNumericScalar: Boolean = false,
     private val exactUnbox: (Any) -> T,
     private val propertyValueCoerce: (Any) -> T = exactUnbox,
-    private val writeTransferredValue: (T, MemorySegment) -> Unit,
-    private val readOwnedValue: (MemorySegment) -> T,
-    private val disposeTransferredValue: (MemorySegment) -> Unit = {},
+    private val writeTransferredValue: (T, NativePointer) -> Unit,
+    private val readOwnedValue: (NativePointer) -> T,
+    private val disposeTransferredValue: (NativePointer) -> Unit = {},
 ) {
     fun unboxExact(value: Any): T = exactUnbox(value)
 
     fun coercePropertyValue(value: Any): T = propertyValueCoerce(value)
 
-    fun writeValue(value: Any, destination: MemorySegment) {
-        writeTransferredValue(unboxExact(value), destination.reinterpret(abiLayout.byteSize()))
+    fun writeValue(value: Any, destination: NativePointer) {
+        writeTransferredValue(unboxExact(value), NativeInterop.slice(destination, 0, abiLayout.byteSize()))
     }
 
-    fun writeCoercedPropertyValue(value: Any, destination: MemorySegment) {
-        writeTransferredValue(coercePropertyValue(value), destination.reinterpret(abiLayout.byteSize()))
+    fun writeCoercedPropertyValue(value: Any, destination: NativePointer) {
+        writeTransferredValue(coercePropertyValue(value), NativeInterop.slice(destination, 0, abiLayout.byteSize()))
     }
 
-    fun readValue(source: MemorySegment): T = readOwnedValue(source)
+    fun readValue(source: NativePointer): T = readOwnedValue(source)
 
-    fun disposeValue(source: MemorySegment) {
+    fun disposeValue(source: NativePointer) {
         disposeTransferredValue(source)
     }
 
-    fun createTransferredArray(elements: Array<*>): Pair<Int, MemorySegment> {
+    fun createTransferredArray(elements: Array<*>): Pair<Int, NativePointer> {
         val arena = Arena.ofShared()
-        val data = arena.allocate(abiLayout.byteSize() * elements.size.toLong(), abiLayout.byteAlignment())
+        val data = arena.allocate(abiLayout.byteSize() * elements.size.toLong(), abiLayout.byteAlignment()).asNativePointer()
         return try {
             elements.forEachIndexed { index, element ->
-                val slice = data.asSlice(index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+                val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
                 if (element != null) {
                     writeTransferredValue(unboxExact(element), slice)
                 } else {
-                    slice.fill(0)
+                    slice.asMemorySegment().fill(0)
                 }
             }
             TransferredArrayOwnership.transfer(data) {
                 elements.indices.forEach { index ->
-                    val slice = data.asSlice(index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+                    val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
                     disposeTransferredValue(slice)
                 }
                 arena.close()
@@ -138,7 +138,7 @@ internal class WinRtValueAdapter<T : Any>(
             elements.size to data
         } catch (error: Throwable) {
             elements.indices.forEach { index ->
-                val slice = data.asSlice(index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+                val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
                 disposeTransferredValue(slice)
             }
             arena.close()
@@ -146,27 +146,27 @@ internal class WinRtValueAdapter<T : Any>(
         }
     }
 
-    fun readOwnedArray(length: Int, data: MemorySegment): Array<Any?>? {
-        if (data == MemorySegment.NULL) {
+    fun readOwnedArray(length: Int, data: NativePointer): Array<Any?>? {
+        if (NativeInterop.isNull(data)) {
             return null
         }
-        val readable = data.reinterpret(abiLayout.byteSize() * length.toLong())
+        val readable = data.asMemorySegment().reinterpret(abiLayout.byteSize() * length.toLong()).asNativePointer()
         return Array(length) { index ->
-            val slice = readable.asSlice(index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+            val slice = NativeInterop.slice(readable, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
             readOwnedValue(slice)
         }
     }
 
-    fun disposeOwnedArray(length: Int, data: MemorySegment) {
-        if (data == MemorySegment.NULL) {
+    fun disposeOwnedArray(length: Int, data: NativePointer) {
+        if (NativeInterop.isNull(data)) {
             return
         }
         if (TransferredArrayOwnership.release(data)) {
             return
         }
-        val readable = data.reinterpret(abiLayout.byteSize() * length.toLong())
+        val readable = data.asMemorySegment().reinterpret(abiLayout.byteSize() * length.toLong()).asNativePointer()
         repeat(length) { index ->
-            val slice = readable.asSlice(index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+            val slice = NativeInterop.slice(readable, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
             disposeTransferredValue(slice)
         }
     }
@@ -176,14 +176,14 @@ private object TransferredArrayOwnership {
     private val cleanups = ConcurrentCacheMap<Long, () -> Unit>()
 
     fun transfer(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         cleanup: () -> Unit,
     ) {
-        cleanups[NativeInterop.pointerKey(pointer.asNativePointer())] = cleanup
+        cleanups[NativeInterop.pointerKey(pointer)] = cleanup
     }
 
-    fun release(pointer: MemorySegment): Boolean =
-        cleanups.remove(NativeInterop.pointerKey(pointer.asNativePointer()))?.let {
+    fun release(pointer: NativePointer): Boolean =
+        cleanups.remove(NativeInterop.pointerKey(pointer))?.let {
             it()
             true
         } ?: false
@@ -199,9 +199,9 @@ private fun <T : Any> directValueAdapter(
     isNumericScalar: Boolean = false,
     exactUnbox: (Any) -> T,
     propertyValueCoerce: (Any) -> T = exactUnbox,
-    readOwnedValue: (MemorySegment) -> T,
-    writeTransferredValue: (T, MemorySegment) -> Unit,
-    disposeTransferredValue: (MemorySegment) -> Unit = {},
+    readOwnedValue: (NativePointer) -> T,
+    writeTransferredValue: (T, NativePointer) -> Unit,
+    disposeTransferredValue: (NativePointer) -> Unit = {},
 ): WinRtValueAdapter<T> =
     WinRtValueAdapter(
         projectedClass = projectedClass,
@@ -226,9 +226,9 @@ private fun <T : Any> pointerValueAdapter(
     propertyTypeArray: PropertyType?,
     exactUnbox: (Any) -> T,
     propertyValueCoerce: (Any) -> T = exactUnbox,
-    createPointer: (T) -> MemorySegment,
-    readOwnedPointer: (MemorySegment) -> T,
-    disposeOwnedPointer: (MemorySegment) -> Unit,
+    createPointer: (T) -> NativePointer,
+    readOwnedPointer: (NativePointer) -> T,
+    disposeOwnedPointer: (NativePointer) -> Unit,
 ): WinRtValueAdapter<T> =
     directValueAdapter(
         projectedClass = projectedClass,
@@ -239,13 +239,13 @@ private fun <T : Any> pointerValueAdapter(
         abiLayout = ValueLayout.ADDRESS,
         exactUnbox = exactUnbox,
         propertyValueCoerce = propertyValueCoerce,
-        readOwnedValue = { source -> readOwnedPointer(source.get(ValueLayout.ADDRESS, 0)) },
+        readOwnedValue = { source -> readOwnedPointer(NativeInterop.readPointer(source)) },
         writeTransferredValue = { value, destination ->
-            destination.set(ValueLayout.ADDRESS, 0, createPointer(value))
+            NativeInterop.writePointer(destination, createPointer(value))
         },
         disposeTransferredValue = { source ->
-            val pointer = source.get(ValueLayout.ADDRESS, 0)
-            if (pointer != MemorySegment.NULL) {
+            val pointer = NativeInterop.readPointer(source)
+            if (!NativeInterop.isNull(pointer)) {
                 disposeOwnedPointer(pointer)
             }
         },
@@ -261,9 +261,9 @@ internal object WinRtValueBoxing {
             propertyTypeArray = PropertyType.StringArray,
             exactUnbox = { it as String },
             propertyValueCoerce = ::coerceString,
-            createPointer = { value -> StringMarshaller.fromManaged(value)?.handle?.asMemorySegment() ?: MemorySegment.NULL },
-            readOwnedPointer = StringMarshaller::fromAbi,
-            disposeOwnedPointer = StringMarshaller::disposeAbi,
+            createPointer = { value -> StringMarshaller.fromManaged(value)?.handle ?: NativeInterop.nullPointer },
+            readOwnedPointer = { pointer -> StringMarshaller.fromAbi(pointer.asMemorySegment()) },
+            disposeOwnedPointer = { pointer -> StringMarshaller.disposeAbi(pointer.asMemorySegment()) },
         )
 
     private val objectAdapter =
@@ -274,8 +274,8 @@ internal object WinRtValueBoxing {
             propertyType = null,
             propertyTypeArray = PropertyType.InspectableArray,
             exactUnbox = { it },
-            createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef().asMemorySegment() },
-            readOwnedPointer = ::unboxInspectablePointer,
+            createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef() },
+            readOwnedPointer = { pointer -> unboxInspectablePointer(pointer.asMemorySegment()) },
             disposeOwnedPointer = { pointer -> IUnknownReference(pointer, IID.IInspectable).close() },
         )
 
@@ -289,11 +289,11 @@ internal object WinRtValueBoxing {
             abiLayout = TypeProjection.ABI_LAYOUT,
             exactUnbox = { it as KClass<*> },
             readOwnedValue = { source ->
-                TypeProjection.fromAbi(source)
+                TypeProjection.fromAbi(source.asMemorySegment())
                     ?: throw WinRtInvalidCastException("Expected non-null projected KClass value.", HResult(TYPE_E_TYPEMISMATCH))
             },
-            writeTransferredValue = TypeProjection::copyTo,
-            disposeTransferredValue = TypeProjection::disposeAbi,
+            writeTransferredValue = { value, destination -> TypeProjection.copyTo(value, destination.asMemorySegment()) },
+            disposeTransferredValue = { source -> TypeProjection.disposeAbi(source.asMemorySegment()) },
         )
 
     private val exceptionAdapter =
@@ -305,8 +305,8 @@ internal object WinRtValueBoxing {
             propertyTypeArray = null,
             abiLayout = ValueLayout.JAVA_INT,
             exactUnbox = { it as Exception },
-            readOwnedValue = { source -> ExceptionProjection.fromAbi(source.get(ValueLayout.JAVA_INT, 0)) },
-            writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_INT, 0, ExceptionProjection.toAbi(value)) },
+            readOwnedValue = { source -> ExceptionProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_INT, 0)) },
+            writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_INT, 0, ExceptionProjection.toAbi(value)) },
         )
 
     private val adapters: List<WinRtValueAdapter<*>> =
@@ -319,8 +319,8 @@ internal object WinRtValueBoxing {
                 propertyTypeArray = null,
                 abiLayout = ValueLayout.JAVA_BYTE,
                 exactUnbox = { it as Byte },
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_BYTE, 0) },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_BYTE, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_BYTE, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_BYTE, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = UByte::class,
@@ -332,8 +332,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as UByte },
                 propertyValueCoerce = ::coerceUByte,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_BYTE, 0).toUByte() },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_BYTE, 0, value.toByte()) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_BYTE, 0).toUByte() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_BYTE, 0, value.toByte()) },
             ),
             directValueAdapter(
                 projectedClass = Short::class,
@@ -345,8 +345,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as Short },
                 propertyValueCoerce = ::coerceShort,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_SHORT, 0) },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_SHORT, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_SHORT, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_SHORT, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = UShort::class,
@@ -358,8 +358,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as UShort },
                 propertyValueCoerce = ::coerceUShort,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_SHORT, 0).toUShort() },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_SHORT, 0, value.toShort()) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_SHORT, 0).toUShort() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_SHORT, 0, value.toShort()) },
             ),
             directValueAdapter(
                 projectedClass = Int::class,
@@ -371,8 +371,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as Int },
                 propertyValueCoerce = ::coerceInt,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_INT, 0) },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_INT, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_INT, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_INT, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = UInt::class,
@@ -384,8 +384,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as UInt },
                 propertyValueCoerce = ::coerceUInt,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_INT, 0).toUInt() },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_INT, 0, value.toInt()) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_INT, 0).toUInt() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_INT, 0, value.toInt()) },
             ),
             directValueAdapter(
                 projectedClass = Long::class,
@@ -397,8 +397,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as Long },
                 propertyValueCoerce = ::coerceLong,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_LONG, 0) },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_LONG, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_LONG, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = ULong::class,
@@ -410,8 +410,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as ULong },
                 propertyValueCoerce = ::coerceULong,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_LONG, 0).toULong() },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_LONG, 0, value.toLong()) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0).toULong() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_LONG, 0, value.toLong()) },
             ),
             directValueAdapter(
                 projectedClass = Float::class,
@@ -423,8 +423,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as Float },
                 propertyValueCoerce = ::coerceFloat,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_FLOAT, 0) },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_FLOAT, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_FLOAT, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_FLOAT, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = Double::class,
@@ -436,8 +436,8 @@ internal object WinRtValueBoxing {
                 isNumericScalar = true,
                 exactUnbox = { it as Double },
                 propertyValueCoerce = ::coerceDouble,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_DOUBLE, 0) },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_DOUBLE, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_DOUBLE, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_DOUBLE, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = Char::class,
@@ -448,8 +448,8 @@ internal object WinRtValueBoxing {
                 abiLayout = NativeLayoutsJvmCompat.CHAR16,
                 exactUnbox = { it as Char },
                 propertyValueCoerce = ::coerceChar,
-                readOwnedValue = { source -> source.get(NativeLayoutsJvmCompat.CHAR16, 0) },
-                writeTransferredValue = { value, destination -> destination.set(NativeLayoutsJvmCompat.CHAR16, 0, value) },
+                readOwnedValue = { source -> source.asMemorySegment().get(NativeLayoutsJvmCompat.CHAR16, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(NativeLayoutsJvmCompat.CHAR16, 0, value) },
             ),
             directValueAdapter(
                 projectedClass = Boolean::class,
@@ -460,8 +460,8 @@ internal object WinRtValueBoxing {
                 abiLayout = ValueLayout.JAVA_BYTE,
                 exactUnbox = { it as Boolean },
                 propertyValueCoerce = ::coerceBoolean,
-                readOwnedValue = { source -> source.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0 },
-                writeTransferredValue = { value, destination -> destination.set(ValueLayout.JAVA_BYTE, 0, if (value) 1 else 0) },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_BYTE, 0).toInt() != 0 },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_BYTE, 0, if (value) 1 else 0) },
             ),
             stringAdapter,
             directValueAdapter(
@@ -484,9 +484,9 @@ internal object WinRtValueBoxing {
                 propertyTypeArray = PropertyType.DateTimeArray,
                 abiLayout = ValueLayout.JAVA_LONG,
                 exactUnbox = { it as Instant },
-                readOwnedValue = { source -> DateTimeProjection.fromAbi(source.get(ValueLayout.JAVA_LONG, 0)) },
+                readOwnedValue = { source -> DateTimeProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0)) },
                 writeTransferredValue = { value, destination ->
-                    DateTimeProjection.copyTo(value, destination.asNativePointer())
+                    DateTimeProjection.copyTo(value, destination)
                 },
             ),
             directValueAdapter(
@@ -497,9 +497,9 @@ internal object WinRtValueBoxing {
                 propertyTypeArray = PropertyType.TimeSpanArray,
                 abiLayout = ValueLayout.JAVA_LONG,
                 exactUnbox = { it as Duration },
-                readOwnedValue = { source -> TimeSpanProjection.fromAbi(source.get(ValueLayout.JAVA_LONG, 0)) },
+                readOwnedValue = { source -> TimeSpanProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0)) },
                 writeTransferredValue = { value, destination ->
-                    TimeSpanProjection.copyTo(value, destination.asNativePointer())
+                    TimeSpanProjection.copyTo(value, destination)
                 },
             ),
             directValueAdapter(
@@ -734,7 +734,7 @@ internal object WinRtValueBoxing {
 
         val adapter = adaptersByPropertyType[expectedType]
         if (adapter != null) {
-            adapter.writeCoercedPropertyValue(value, destination)
+            adapter.writeCoercedPropertyValue(value, destination.asNativePointer())
             return
         }
 
@@ -765,7 +765,7 @@ internal object WinRtValueBoxing {
             }.toTypedArray()
         val (length, data) = adapter.createTransferredArray(coerced)
         countOut.set(ValueLayout.JAVA_INT, 0, length)
-        dataOut.set(ValueLayout.ADDRESS, 0, data)
+        dataOut.set(ValueLayout.ADDRESS, 0, data.asMemorySegment())
     }
 
     fun readReferenceValue(
@@ -836,14 +836,14 @@ internal object WinRtValueBoxing {
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
             queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
             }
         }?.let { return it }
 
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
             queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
             }
         }?.let { return it }
 
@@ -895,7 +895,7 @@ internal object WinRtValueBoxing {
                         rawArgs.singleOrNull() as? NativePointer
                             ?: throw IllegalStateException("IReference host requires one out-argument.")
                     if (adapter != null) {
-                        adapter.writeValue(value, destination.asMemorySegment())
+                        requireNotNull(adapter).writeValue(value, destination)
                     } else {
                         NativeInterop.writeInt32(destination, requireNotNull(enumDescriptor).toAbiBits(value))
                     }
@@ -929,7 +929,7 @@ internal object WinRtValueBoxing {
                     }
                     val (length, data) = adapter.createTransferredArray(box.elements)
                     NativeInterop.writeInt32(rawArgs[0] as NativePointer, length)
-                    NativeInterop.writePointer(rawArgs[1] as NativePointer, data.asNativePointer())
+                    NativeInterop.writePointer(rawArgs[1] as NativePointer, data)
                     KnownHResults.S_OK.value
                 },
             ),
@@ -1139,14 +1139,14 @@ internal object WinRtValueBoxing {
             val adapter = adapterForClass(elementType) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-                WinRtReferenceArrayReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+                WinRtReferenceArrayReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
             }
         }
 
         val adapter = adapterForClass(projectedType) ?: return null
         val interfaceId = adapter.nullableInterfaceId ?: return null
         return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
-            WinRtReferenceReference(reference.pointer.asMemorySegment(), interfaceId, preventReleaseOnDispose = true).getValue(adapter)
+            WinRtReferenceReference(reference.pointer, interfaceId, preventReleaseOnDispose = true).getValue(adapter)
         }
     }
 
@@ -1257,9 +1257,9 @@ internal class WinRtReferenceReference(
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
             try {
-                adapter.readValue(resultOut.asMemorySegment())
+                adapter.readValue(resultOut)
             } finally {
-                adapter.disposeValue(resultOut.asMemorySegment())
+                adapter.disposeValue(resultOut)
             }
         }
 }
@@ -1295,9 +1295,9 @@ internal class WinRtReferenceArrayReference(
             val length = NativeInterop.readInt32(countOut)
             val data = NativeInterop.readPointer(dataOut)
             try {
-                return adapter.readOwnedArray(length, data.asMemorySegment())
+                return adapter.readOwnedArray(length, data)
             } finally {
-                adapter.disposeOwnedArray(length, data.asMemorySegment())
+                adapter.disposeOwnedArray(length, data)
             }
         }
 }
@@ -1363,9 +1363,9 @@ internal class WinRtPropertyValueReference(
                 )
                 WinRtPlatformApi.checkSucceededRaw(hr)
                 try {
-                    scalarAdapter.readValue(resultOut.asMemorySegment())
+                    requireNotNull(scalarAdapter).readValue(resultOut)
                 } finally {
-                    scalarAdapter.disposeValue(resultOut.asMemorySegment())
+                    requireNotNull(scalarAdapter).disposeValue(resultOut)
                 }
             }
         }
@@ -1395,9 +1395,9 @@ internal class WinRtPropertyValueReference(
                 val length = NativeInterop.readInt32(countOut)
                 val data = NativeInterop.readPointer(dataOut)
                 try {
-                    arrayAdapter.readOwnedArray(length, data.asMemorySegment())
+                    requireNotNull(arrayAdapter).readOwnedArray(length, data)
                 } finally {
-                    arrayAdapter.disposeOwnedArray(length, data.asMemorySegment())
+                    requireNotNull(arrayAdapter).disposeOwnedArray(length, data)
                 }
             }
         }
