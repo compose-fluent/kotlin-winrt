@@ -7,6 +7,7 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
+import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicLong
 
@@ -38,6 +39,7 @@ actual object NativeInterop {
     private val sharedArena = Arena.global()
     private val callbacks = ConcurrentCacheMap<Long, RegisteredCallback>()
     private val nextCallbackId = AtomicLong(1)
+    private val char16Layout = ValueLayout.JAVA_CHAR_UNALIGNED.withOrder(ByteOrder.LITTLE_ENDIAN)
 
     actual val nullPointer: NativePointer
         get() = NativePointer(MemorySegment.NULL)
@@ -85,6 +87,9 @@ actual object NativeInterop {
             scope.arena.allocateFrom(ValueLayout.JAVA_CHAR, *value.toCharArray()).asNativePointer()
         }
 
+    actual fun slice(pointer: NativePointer, offsetBytes: Long, sizeBytes: Long): NativePointer =
+        pointer.segment.asSlice(offsetBytes, sizeBytes).asNativePointer()
+
     actual fun readPointer(slot: NativePointer): NativePointer =
         slot.segment.reinterpret(ValueLayout.ADDRESS.byteSize()).get(ValueLayout.ADDRESS, 0).asNativePointer()
 
@@ -102,6 +107,12 @@ actual object NativeInterop {
 
     actual fun readDouble(slot: NativePointer): Double =
         slot.segment.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize()).get(ValueLayout.JAVA_DOUBLE, 0)
+
+    actual fun readFloat(slot: NativePointer): Float =
+        slot.segment.reinterpret(ValueLayout.JAVA_FLOAT.byteSize()).get(ValueLayout.JAVA_FLOAT, 0)
+
+    actual fun readChar16(slot: NativePointer): Char =
+        slot.segment.reinterpret(char16Layout.byteSize()).get(char16Layout, 0)
 
     actual fun readUtf16(pointer: NativePointer, length: Int): String {
         if (length == 0) {
@@ -143,6 +154,14 @@ actual object NativeInterop {
 
     actual fun writeDouble(slot: NativePointer, value: Double) {
         slot.segment.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize()).set(ValueLayout.JAVA_DOUBLE, 0, value)
+    }
+
+    actual fun writeFloat(slot: NativePointer, value: Float) {
+        slot.segment.reinterpret(ValueLayout.JAVA_FLOAT.byteSize()).set(ValueLayout.JAVA_FLOAT, 0, value)
+    }
+
+    actual fun writeChar16(slot: NativePointer, value: Char) {
+        slot.segment.reinterpret(char16Layout.byteSize()).set(char16Layout, 0, value)
     }
 
     actual fun writeGuid(pointer: NativePointer, value: Guid) {

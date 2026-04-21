@@ -65,6 +65,8 @@ expect object NativeInterop {
 
     fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean = false): NativePointer
 
+    fun slice(pointer: NativePointer, offsetBytes: Long, sizeBytes: Long): NativePointer
+
     fun readPointer(slot: NativePointer): NativePointer
 
     fun readPointerAt(array: NativePointer, index: Int): NativePointer
@@ -76,6 +78,10 @@ expect object NativeInterop {
     fun readInt64(slot: NativePointer): Long
 
     fun readDouble(slot: NativePointer): Double
+
+    fun readFloat(slot: NativePointer): Float
+
+    fun readChar16(slot: NativePointer): Char
 
     fun readUtf16(pointer: NativePointer, length: Int): String
 
@@ -94,6 +100,10 @@ expect object NativeInterop {
     fun writeInt64(slot: NativePointer, value: Long)
 
     fun writeDouble(slot: NativePointer, value: Double)
+
+    fun writeFloat(slot: NativePointer, value: Float)
+
+    fun writeChar16(slot: NativePointer, value: Char)
 
     fun writeGuid(pointer: NativePointer, value: Guid)
 

@@ -41,6 +41,8 @@ actual object NativeInterop {
 
     actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): NativePointer = TODO()
 
+    actual fun slice(pointer: NativePointer, offsetBytes: Long, sizeBytes: Long): NativePointer = TODO()
+
     actual fun readPointer(slot: NativePointer): NativePointer = TODO()
 
     actual fun readPointerAt(array: NativePointer, index: Int): NativePointer = TODO()
@@ -52,6 +54,10 @@ actual object NativeInterop {
     actual fun readInt64(slot: NativePointer): Long = TODO()
 
     actual fun readDouble(slot: NativePointer): Double = TODO()
+
+    actual fun readFloat(slot: NativePointer): Float = TODO()
+
+    actual fun readChar16(slot: NativePointer): Char = TODO()
 
     actual fun readUtf16(pointer: NativePointer, length: Int): String = TODO()
 
@@ -70,6 +76,10 @@ actual object NativeInterop {
     actual fun writeInt64(slot: NativePointer, value: Long): Unit = TODO()
 
     actual fun writeDouble(slot: NativePointer, value: Double): Unit = TODO()
+
+    actual fun writeFloat(slot: NativePointer, value: Float): Unit = TODO()
+
+    actual fun writeChar16(slot: NativePointer, value: Char): Unit = TODO()
 
     actual fun writeGuid(pointer: NativePointer, value: Guid): Unit = TODO()
 
