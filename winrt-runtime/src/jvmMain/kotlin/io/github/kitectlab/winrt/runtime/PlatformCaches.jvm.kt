@@ -4,7 +4,6 @@ import java.lang.ref.Cleaner
 import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 
 actual class ConcurrentCacheMap<K, V> actual constructor() {
     private val delegate = ConcurrentHashMap<K, V>()
@@ -108,20 +107,28 @@ actual class WeakKeyStateMap<K : Any, V : Any> actual constructor() {
 }
 
 actual class SnapshotList<T> actual constructor() {
-    private val delegate = CopyOnWriteArrayList<T>()
+    private val lock = PlatformLock()
+    private val delegate = mutableListOf<T>()
 
     actual fun add(value: T) {
-        delegate.add(value)
+        lock.withLock {
+            delegate += value
+        }
     }
 
     actual fun clear() {
-        delegate.clear()
+        lock.withLock {
+            delegate.clear()
+        }
     }
 
     actual fun <R : Any> firstNotNullOfOrNull(transform: (T) -> R?): R? =
-        delegate.firstNotNullOfOrNull(transform)
+        toList().firstNotNullOfOrNull(transform)
 
-    actual fun toList(): List<T> = delegate.toList()
+    actual fun toList(): List<T> =
+        lock.withLock {
+            delegate.toList()
+        }
 }
 
 actual class FinalizationHook actual constructor() {

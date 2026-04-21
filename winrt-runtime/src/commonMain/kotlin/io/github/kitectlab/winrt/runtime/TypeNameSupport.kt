@@ -58,7 +58,7 @@ object TypeNameSupport {
         typeNameToBaseTypeNameMapping: Map<String, String>,
     ) {
         projectionTypeNameToBaseTypeNameMappingsLock.withLock {
-            projectionTypeNameToBaseTypeNameMappings += LinkedHashMap(typeNameToBaseTypeNameMapping)
+            projectionTypeNameToBaseTypeNameMappings += typeNameToBaseTypeNameMapping.toMap()
         }
         baseRcwTypeCache.clear()
     }
