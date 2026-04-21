@@ -16,9 +16,10 @@ actual class NativePointer internal constructor(
 
 actual class NativeScope internal constructor(
     internal val arena: Arena,
+    private val onClose: () -> Unit,
 ) : AutoCloseable {
     actual override fun close() {
-        arena.close()
+        onClose()
     }
 }
 
@@ -44,9 +45,12 @@ actual object NativeInterop {
     actual val hStringHeaderSizeBytes: Long
         get() = AbiLayouts.HSTRING_HEADER.byteSize()
 
-    actual fun confinedScope(): NativeScope = NativeScope(Arena.ofConfined())
+    actual fun confinedScope(): NativeScope =
+        Arena.ofConfined().let { arena ->
+            NativeScope(arena = arena, onClose = arena::close)
+        }
 
-    actual fun sharedScope(): NativeScope = NativeScope(Arena.ofShared())
+    actual fun sharedScope(): NativeScope = NativeScope(arena = Arena.global(), onClose = {})
 
     actual fun isNull(pointer: NativePointer): Boolean = pointer.segment == MemorySegment.NULL
 
@@ -144,6 +148,10 @@ actual object NativeInterop {
     actual fun writeGuid(pointer: NativePointer, value: Guid) {
         val bytes = value.toLittleEndianBytes()
         pointer.segment.reinterpret(bytes.size.toLong()).copyFrom(MemorySegment.ofArray(bytes))
+    }
+
+    actual fun writeGuid(pointer: NativePointer, offsetBytes: Long, value: Guid) {
+        writeGuid(pointer.segment.asSlice(offsetBytes, Guid.BYTE_SIZE.toLong()).asNativePointer(), value)
     }
 
     actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer) {

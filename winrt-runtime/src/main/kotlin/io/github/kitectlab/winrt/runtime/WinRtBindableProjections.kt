@@ -178,7 +178,7 @@ object WinRtBindableIterableProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterable)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterable)
+        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterable).asMemorySegment()
     }
 
     fun createMarshaler(value: Iterable<Any?>?): WinRtBindableProjectionMarshaler? {
@@ -288,7 +288,7 @@ object WinRtBindableIteratorProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableIterator)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterator)
+        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableIterator).asMemorySegment()
     }
 
     internal fun detachReference(managed: Iterator<Any?>): MemorySegment =
@@ -421,7 +421,7 @@ object WinRtBindableVectorViewProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVectorView)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVectorView)
+        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVectorView).asMemorySegment()
     }
 
     fun createMarshaler(value: List<Any?>?): WinRtBindableProjectionMarshaler? {
@@ -647,7 +647,7 @@ object WinRtBindableVectorProjection {
         fun createMarshaler(): WinRtBindableProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, WinRtBindableInterfaceIds.IBindableVector)
 
-        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVector)
+        fun detachReference(): MemorySegment = host.detachReference(WinRtBindableInterfaceIds.IBindableVector).asMemorySegment()
     }
 
     fun createMarshaler(value: MutableList<Any?>?): WinRtBindableProjectionMarshaler? {

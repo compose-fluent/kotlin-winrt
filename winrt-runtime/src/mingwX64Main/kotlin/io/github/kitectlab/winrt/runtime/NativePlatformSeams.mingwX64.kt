@@ -73,6 +73,8 @@ actual object NativeInterop {
 
     actual fun writeGuid(pointer: NativePointer, value: Guid): Unit = TODO()
 
+    actual fun writeGuid(pointer: NativePointer, offsetBytes: Long, value: Guid): Unit = TODO()
+
     actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer): Unit = TODO()
 
     actual fun pointerKey(pointer: NativePointer): Long = TODO()

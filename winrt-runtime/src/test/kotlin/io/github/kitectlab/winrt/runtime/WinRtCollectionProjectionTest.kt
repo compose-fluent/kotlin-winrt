@@ -1,6 +1,4 @@
 package io.github.kitectlab.winrt.runtime
-
-import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,7 +17,7 @@ class WinRtCollectionProjectionTest {
                 iterableInterfaceIdFor(adapter),
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRtIterableProjection.fromAbi(borrowed.getRefPointer().asMemorySegment(), adapter)!!.use { projected ->
+                WinRtIterableProjection.fromAbi(borrowed.getRefPointer(), adapter)!!.use { projected ->
                     assertEquals(listOf("one", "two"), projected.toList())
                     assertEquals(iterableTypeHandleFor(adapter), projected.primaryTypeHandle)
                 }
@@ -51,7 +49,7 @@ class WinRtCollectionProjectionTest {
                             }
                         }
                     }
-                    WinRtReadOnlyListProjection.fromAbi(borrowed.getRefPointer().asMemorySegment(), adapter)!!.use { projected ->
+                    WinRtReadOnlyListProjection.fromAbi(borrowed.getRefPointer(), adapter)!!.use { projected ->
                         assertEquals(listOf("one", "two"), projected.toList())
                     }
                 }
@@ -83,7 +81,7 @@ class WinRtCollectionProjectionTest {
 
                     assertEquals(listOf("updated", "three"), managed)
 
-                    WinRtListProjection.fromAbi(borrowed.getRefPointer().asMemorySegment(), adapter)!!.use { projected ->
+                    WinRtListProjection.fromAbi(borrowed.getRefPointer(), adapter)!!.use { projected ->
                         projected.add("four")
                         assertEquals(listOf("updated", "three", "four"), projected.toList())
                     }
@@ -111,7 +109,7 @@ class WinRtCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRtReadOnlyDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asMemorySegment(),
+                        borrowed.getRefPointer(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->
@@ -144,7 +142,7 @@ class WinRtCollectionProjectionTest {
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRtDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer().asMemorySegment(),
+                        borrowed.getRefPointer(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->

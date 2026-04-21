@@ -1463,7 +1463,7 @@ internal object WinRtReferenceProjection {
             MemorySegment.NULL
         } else {
             borrowedProjectionAbi(value, WinRtTypeHandle(value.javaClass.name, interfaceId))?.asMemorySegment()
-                ?: WinRtValueBoxing.createReferenceHost(interfaceId, value).detachReference(interfaceId)
+                ?: WinRtValueBoxing.createReferenceHost(interfaceId, value).detachReference(interfaceId).asMemorySegment()
         }
 
     fun fromAbi(
@@ -1504,7 +1504,7 @@ internal object WinRtReferenceArrayProjection {
         if (value == null) {
             MemorySegment.NULL
         } else {
-            WinRtValueBoxing.createReferenceArrayHost(interfaceId, value).detachReference(interfaceId)
+            WinRtValueBoxing.createReferenceArrayHost(interfaceId, value).detachReference(interfaceId).asMemorySegment()
         }
 
     fun fromAbi(

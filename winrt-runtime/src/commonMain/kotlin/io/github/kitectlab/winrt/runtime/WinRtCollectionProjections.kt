@@ -1,8 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.FunctionDescriptor
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
 import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.collections.AbstractMutableList
@@ -58,13 +55,13 @@ object WinRtIterableProjection {
                     interfaceId = iterableInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             resultOut.writeReturnedPointer(
                                 WinRtIteratorProjection.detachReference(managed.iterator(), elementAdapter),
                             )
@@ -78,7 +75,7 @@ object WinRtIterableProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, iterableInterfaceId(elementAdapter))
 
-        fun detachReference(): MemorySegment = host.detachReference(iterableInterfaceId(elementAdapter))
+        fun detachReference(): NativePointer = host.detachReference(iterableInterfaceId(elementAdapter))
     }
 
     fun <T> createMarshaler(
@@ -95,23 +92,23 @@ object WinRtIterableProjection {
     fun <T> fromManaged(
         value: Iterable<T>?,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): MemorySegment =
+    ): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, iterableTypeHandle(elementAdapter))?.asMemorySegment()
+            borrowedProjectionAbi(value, iterableTypeHandle(elementAdapter))
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
     fun <T> fromAbi(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): FromAbiHelper<T>? =
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
-                iterable = WinRtIterableReference(pointer.asNativePointer(), iterableInterfaceId(elementAdapter)),
+                iterable = WinRtIterableReference(pointer, iterableInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
             )
         }
@@ -183,51 +180,51 @@ object WinRtIteratorProjection {
                     interfaceId = iteratorInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             val current = state.currentOrNull()
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(current, elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeBoolean(state.hasCurrent)
+                            (rawArgs[0] as NativePointer).writeBoolean(state.hasCurrent)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             state.moveNext()
-                            (rawArgs[0] as MemorySegment).writeBoolean(state.hasCurrent)
+                            (rawArgs[0] as NativePointer).writeBoolean(state.hasCurrent)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val capacity = rawArgs[0] as Int
-                            val itemsOut = rawArgs[1] as MemorySegment
-                            val countOut = rawArgs[2] as MemorySegment
+                            val itemsOut = rawArgs[1] as NativePointer
+                            val countOut = rawArgs[2] as NativePointer
                             val written = state.getMany(capacity)
                             itemsOut.writeManagedValues(written, elementAdapter)
                             countOut.writeUInt32(written.size.toUInt())
@@ -241,13 +238,13 @@ object WinRtIteratorProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, iteratorInterfaceId(elementAdapter))
 
-        fun detachReference(): MemorySegment = host.detachReference(iteratorInterfaceId(elementAdapter))
+        fun detachReference(): NativePointer = host.detachReference(iteratorInterfaceId(elementAdapter))
     }
 
     internal fun <T> detachReference(
         managed: Iterator<T>,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): MemorySegment = ToAbiHelper(managed, elementAdapter).detachReference()
+    ): NativePointer = ToAbiHelper(managed, elementAdapter).detachReference()
 
     private class IteratorState<T>(
         managed: Iterator<T>,
@@ -329,61 +326,61 @@ object WinRtReadOnlyListProjection {
                     interfaceId = vectorViewInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val resultOut = rawArgs[1] as MemorySegment
+                            val resultOut = rawArgs[1] as NativePointer
                             val value = managed.getOrNull(index.toInt())
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val value = decodeBorrowedValue(rawArgs[0] as MemorySegment, elementAdapter)
-                            val indexOut = rawArgs[1] as MemorySegment
-                            val foundOut = rawArgs[2] as MemorySegment
+                            val value = decodeBorrowedValue(rawArgs[0] as NativePointer, elementAdapter)
+                            val indexOut = rawArgs[1] as NativePointer
+                            val foundOut = rawArgs[2] as NativePointer
                             val index = managed.indexOf(value)
                             foundOut.writeBoolean(index >= 0)
                             indexOut.writeUInt32(if (index >= 0) index.toUInt() else 0u)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val startIndex = (rawArgs[0] as Int).toUInt()
                             val capacity = rawArgs[1] as Int
-                            val itemsOut = rawArgs[2] as MemorySegment
-                            val countOut = rawArgs[3] as MemorySegment
+                            val itemsOut = rawArgs[2] as NativePointer
+                            val countOut = rawArgs[3] as NativePointer
                             val written = managed.drop(startIndex.toInt()).take(capacity)
                             itemsOut.writeManagedValues(written, elementAdapter)
                             countOut.writeUInt32(written.size.toUInt())
@@ -397,7 +394,7 @@ object WinRtReadOnlyListProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, vectorViewInterfaceId(elementAdapter))
 
-        fun detachReference(): MemorySegment = host.detachReference(vectorViewInterfaceId(elementAdapter))
+        fun detachReference(): NativePointer = host.detachReference(vectorViewInterfaceId(elementAdapter))
     }
 
     fun <T> createMarshaler(
@@ -414,23 +411,23 @@ object WinRtReadOnlyListProjection {
     fun <T> fromManaged(
         value: List<T>?,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): MemorySegment =
+    ): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, vectorViewTypeHandle(elementAdapter))?.asMemorySegment()
+            borrowedProjectionAbi(value, vectorViewTypeHandle(elementAdapter))
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
     fun <T> fromAbi(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): FromAbiHelper<T>? =
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
-                vectorView = WinRtVectorViewReference(pointer.asNativePointer(), vectorViewInterfaceId(elementAdapter)),
+                vectorView = WinRtVectorViewReference(pointer, vectorViewInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
             )
         }
@@ -495,70 +492,70 @@ object WinRtListProjection {
                     interfaceId = vectorInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val resultOut = rawArgs[1] as MemorySegment
+                            val resultOut = rawArgs[1] as NativePointer
                             val value = managed.getOrNull(index.toInt())
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             resultOut.writeReturnedPointer(
                                 WinRtReadOnlyListProjection.ToAbiHelper(managed.toList(), elementAdapter).detachReference(),
                             )
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val value = decodeBorrowedValue(rawArgs[0] as MemorySegment, elementAdapter)
-                            val indexOut = rawArgs[1] as MemorySegment
-                            val foundOut = rawArgs[2] as MemorySegment
+                            val value = decodeBorrowedValue(rawArgs[0] as NativePointer, elementAdapter)
+                            val indexOut = rawArgs[1] as NativePointer
+                            val foundOut = rawArgs[2] as NativePointer
                             val index = managed.indexOf(value)
                             foundOut.writeBoolean(index >= 0)
                             indexOut.writeUInt32(if (index >= 0) index.toUInt() else 0u)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val value = decodeBorrowedValue(rawArgs[1] as MemorySegment, elementAdapter)
+                            val value = decodeBorrowedValue(rawArgs[1] as NativePointer, elementAdapter)
                             if (index.toInt() !in managed.indices) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -566,15 +563,15 @@ object WinRtListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val value = decodeBorrowedValue(rawArgs[1] as MemorySegment, elementAdapter)
+                            val value = decodeBorrowedValue(rawArgs[1] as NativePointer, elementAdapter)
                             if (index.toInt() > managed.size) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -582,10 +579,10 @@ object WinRtListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
                             ),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
@@ -596,19 +593,19 @@ object WinRtListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            managed.add(decodeBorrowedValue(rawArgs[0] as MemorySegment, elementAdapter))
+                            managed.add(decodeBorrowedValue(rawArgs[0] as NativePointer, elementAdapter))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) {
                             if (managed.isEmpty()) {
@@ -619,47 +616,47 @@ object WinRtListProjection {
                             }
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) {
                             managed.clear()
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val startIndex = (rawArgs[0] as Int).toUInt()
                             val capacity = rawArgs[1] as Int
-                            val itemsOut = rawArgs[2] as MemorySegment
-                            val countOut = rawArgs[3] as MemorySegment
+                            val itemsOut = rawArgs[2] as NativePointer
+                            val countOut = rawArgs[3] as NativePointer
                             val written = managed.drop(startIndex.toInt()).take(capacity)
                             itemsOut.writeManagedValues(written, elementAdapter)
                             countOut.writeUInt32(written.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
                             val size = rawArgs[0] as Int
-                            val itemsIn = rawArgs[1] as MemorySegment
+                            val itemsIn = rawArgs[1] as NativePointer
                             managed.clear()
                             repeat(size) { index ->
                                 managed += decodeBorrowedValue(
-                                    itemsIn.getAtIndex(ValueLayout.ADDRESS, index.toLong()),
+                                    NativeInterop.readPointerAt(itemsIn, index),
                                     elementAdapter,
                                 )
                             }
@@ -673,7 +670,7 @@ object WinRtListProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, vectorInterfaceId(elementAdapter))
 
-        fun detachReference(): MemorySegment = host.detachReference(vectorInterfaceId(elementAdapter))
+        fun detachReference(): NativePointer = host.detachReference(vectorInterfaceId(elementAdapter))
     }
 
     fun <T> createMarshaler(
@@ -690,23 +687,23 @@ object WinRtListProjection {
     fun <T> fromManaged(
         value: MutableList<T>?,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): MemorySegment =
+    ): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, vectorTypeHandle(elementAdapter))?.asMemorySegment()
+            borrowedProjectionAbi(value, vectorTypeHandle(elementAdapter))
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
     fun <T> fromAbi(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): FromAbiHelper<T>? =
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
-                vector = WinRtVectorReference(pointer.asNativePointer(), vectorInterfaceId(elementAdapter)),
+                vector = WinRtVectorReference(pointer, vectorInterfaceId(elementAdapter)),
                 elementAdapter = elementAdapter,
             )
         }
@@ -767,52 +764,52 @@ object WinRtReadOnlyDictionaryProjection {
                     interfaceId = mapViewInterfaceId(keyAdapter, valueAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as MemorySegment, keyAdapter)
-                            val resultOut = rawArgs[1] as MemorySegment
+                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
+                            val resultOut = rawArgs[1] as NativePointer
                             val value = managed[key]
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, valueAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as MemorySegment, keyAdapter)
-                            (rawArgs[1] as MemorySegment).writeBoolean(managed.containsKey(key))
+                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
+                            (rawArgs[1] as NativePointer).writeBoolean(managed.containsKey(key))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val firstOut = rawArgs[0] as MemorySegment
-                            val secondOut = rawArgs[1] as MemorySegment
+                            val firstOut = rawArgs[0] as NativePointer
+                            val secondOut = rawArgs[1] as NativePointer
                             val entries = managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }
                             val midpoint = entries.size / 2
                             val first = entries.take(midpoint).associate { it.key to it.value }
@@ -833,7 +830,7 @@ object WinRtReadOnlyDictionaryProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, mapViewInterfaceId(keyAdapter, valueAdapter))
 
-        fun detachReference(): MemorySegment = host.detachReference(mapViewInterfaceId(keyAdapter, valueAdapter))
+        fun detachReference(): NativePointer = host.detachReference(mapViewInterfaceId(keyAdapter, valueAdapter))
     }
 
     fun <K, V> createMarshaler(
@@ -852,24 +849,24 @@ object WinRtReadOnlyDictionaryProjection {
         value: Map<K, V>?,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
-    ): MemorySegment =
+    ): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter))?.asMemorySegment()
+            borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter))
                 ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
         }
 
     fun <K, V> fromAbi(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
     ): FromAbiHelper<K, V>? =
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
-                mapView = WinRtMapViewReference(pointer.asNativePointer(), mapViewInterfaceId(keyAdapter, valueAdapter)),
+                mapView = WinRtMapViewReference(pointer, mapViewInterfaceId(keyAdapter, valueAdapter)),
                 keyAdapter = keyAdapter,
                 valueAdapter = valueAdapter,
             )
@@ -939,50 +936,50 @@ object WinRtDictionaryProjection {
                     interfaceId = mapInterfaceId(keyAdapter, valueAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as MemorySegment, keyAdapter)
-                            val resultOut = rawArgs[1] as MemorySegment
+                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
+                            val resultOut = rawArgs[1] as NativePointer
                             val value = managed[key]
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, valueAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            (rawArgs[0] as MemorySegment).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as MemorySegment, keyAdapter)
-                            (rawArgs[1] as MemorySegment).writeBoolean(managed.containsKey(key))
+                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
+                            (rawArgs[1] as NativePointer).writeBoolean(managed.containsKey(key))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as MemorySegment
+                            val resultOut = rawArgs[0] as NativePointer
                             resultOut.writeReturnedPointer(
                                 WinRtReadOnlyDictionaryProjection.ToAbiHelper(
                                     managed.toMap(),
@@ -993,28 +990,28 @@ object WinRtDictionaryProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as MemorySegment, keyAdapter)
-                            val value = decodeBorrowedValue(rawArgs[1] as MemorySegment, valueAdapter)
+                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
+                            val value = decodeBorrowedValue(rawArgs[1] as NativePointer, valueAdapter)
                             val replaced = managed.put(key, value) != null
-                            (rawArgs[2] as MemorySegment).writeBoolean(replaced)
+                            (rawArgs[2] as NativePointer).writeBoolean(replaced)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as MemorySegment, keyAdapter)
+                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
                             if (managed.remove(key) == null) {
                                 KnownHResults.E_BOUNDS.value
                             } else {
@@ -1022,9 +1019,9 @@ object WinRtDictionaryProjection {
                             }
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = FunctionDescriptor.of(
-                                ValueLayout.JAVA_INT,
-                                ValueLayout.ADDRESS,
+                            descriptor = NativeFunctionDescriptor.of(
+                                NativeValueLayout.JAVA_INT,
+                                NativeValueLayout.ADDRESS,
                             ),
                         ) {
                             managed.clear()
@@ -1038,7 +1035,7 @@ object WinRtDictionaryProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, mapInterfaceId(keyAdapter, valueAdapter))
 
-        fun detachReference(): MemorySegment = host.detachReference(mapInterfaceId(keyAdapter, valueAdapter))
+        fun detachReference(): NativePointer = host.detachReference(mapInterfaceId(keyAdapter, valueAdapter))
     }
 
     fun <K, V> createMarshaler(
@@ -1057,24 +1054,24 @@ object WinRtDictionaryProjection {
         value: MutableMap<K, V>?,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
-    ): MemorySegment =
+    ): NativePointer =
         if (value == null) {
-            MemorySegment.NULL
+            NativeInterop.nullPointer
         } else {
-            borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter))?.asMemorySegment()
+            borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter))
                 ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
         }
 
     fun <K, V> fromAbi(
-        pointer: MemorySegment,
+        pointer: NativePointer,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
     ): FromAbiHelper<K, V>? =
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
-                map = WinRtMapReference(pointer.asNativePointer(), mapInterfaceId(keyAdapter, valueAdapter)),
+                map = WinRtMapReference(pointer, mapInterfaceId(keyAdapter, valueAdapter)),
                 keyAdapter = keyAdapter,
                 valueAdapter = valueAdapter,
             )
@@ -1170,23 +1167,23 @@ private fun <K, V> keyValuePairAdapter(
                         interfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                         methods = listOf(
                             WinRtInspectableMethodDefinition(
-                                descriptor = FunctionDescriptor.of(
-                                    ValueLayout.JAVA_INT,
-                                    ValueLayout.ADDRESS,
-                                    ValueLayout.ADDRESS,
+                                descriptor = NativeFunctionDescriptor.of(
+                                    NativeValueLayout.JAVA_INT,
+                                    NativeValueLayout.ADDRESS,
+                                    NativeValueLayout.ADDRESS,
                                 ),
                             ) { rawArgs ->
-                                (rawArgs[0] as MemorySegment).writeManagedValue(entry.key, keyAdapter)
+                                (rawArgs[0] as NativePointer).writeManagedValue(entry.key, keyAdapter)
                                 KnownHResults.S_OK.value
                             },
                             WinRtInspectableMethodDefinition(
-                                descriptor = FunctionDescriptor.of(
-                                    ValueLayout.JAVA_INT,
-                                    ValueLayout.ADDRESS,
-                                    ValueLayout.ADDRESS,
+                                descriptor = NativeFunctionDescriptor.of(
+                                    NativeValueLayout.JAVA_INT,
+                                    NativeValueLayout.ADDRESS,
+                                    NativeValueLayout.ADDRESS,
                                 ),
                             ) { rawArgs ->
-                                (rawArgs[0] as MemorySegment).writeManagedValue(entry.value, valueAdapter)
+                                (rawArgs[0] as NativePointer).writeManagedValue(entry.value, valueAdapter)
                                 KnownHResults.S_OK.value
                             },
                         ),
@@ -1208,13 +1205,13 @@ private fun iterableInterfaceDefinition(
         interfaceId = iterableInterfaceId(elementAdapter),
         methods = listOf(
             WinRtInspectableMethodDefinition(
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
             ) { rawArgs ->
-                val resultOut = rawArgs[0] as MemorySegment
+                val resultOut = rawArgs[0] as NativePointer
                 @Suppress("UNCHECKED_CAST")
                 resultOut.writeReturnedPointer(
                     WinRtIteratorProjection.detachReference(
@@ -1237,11 +1234,11 @@ private fun <T> projectBorrowed(
 }
 
 private fun <T> decodeBorrowedValue(
-    pointer: MemorySegment,
+    pointer: NativePointer,
     adapter: WinRtReferenceValueAdapter<T>,
 ): T =
     projectBorrowed(
-        if (pointer == MemorySegment.NULL) {
+        if (NativeInterop.isNull(pointer)) {
             null
         } else {
             IUnknownReference(pointer, preventReleaseOnDispose = true)
@@ -1249,36 +1246,32 @@ private fun <T> decodeBorrowedValue(
         adapter,
     )
 
-private fun MemorySegment.writeReturnedPointer(pointer: MemorySegment) {
-    reinterpret(ValueLayout.ADDRESS.byteSize()).set(ValueLayout.ADDRESS, 0, pointer)
+private fun NativePointer.writeReturnedPointer(pointer: NativePointer) {
+    NativeInterop.writePointer(this, pointer)
 }
 
-private fun <T> MemorySegment.writeManagedValues(
+private fun <T> NativePointer.writeManagedValues(
     values: List<T>,
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
     values.forEachIndexed { index, value ->
-        setAtIndex(ValueLayout.ADDRESS, index.toLong(), adapter.marshaller(value).useAndGetRef().asMemorySegment())
+        NativeInterop.writePointerAt(this, index, adapter.marshaller(value).useAndGetRef())
     }
 }
 
-private fun <T> MemorySegment.writeManagedValue(
+private fun <T> NativePointer.writeManagedValue(
     value: T,
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
-    reinterpret(ValueLayout.ADDRESS.byteSize()).set(
-        ValueLayout.ADDRESS,
-        0,
-        adapter.marshaller(value).useAndGetRef().asMemorySegment(),
-    )
+    NativeInterop.writePointer(this, adapter.marshaller(value).useAndGetRef())
 }
 
-private fun MemorySegment.writeBoolean(value: Boolean) {
-    reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(ValueLayout.JAVA_BYTE, 0, if (value) 1 else 0)
+private fun NativePointer.writeBoolean(value: Boolean) {
+    NativeInterop.writeInt8(this, if (value) 1 else 0)
 }
 
-private fun MemorySegment.writeUInt32(value: UInt) {
-    reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, value.toInt())
+private fun NativePointer.writeUInt32(value: UInt) {
+    NativeInterop.writeInt32(this, value.toInt())
 }
 
 

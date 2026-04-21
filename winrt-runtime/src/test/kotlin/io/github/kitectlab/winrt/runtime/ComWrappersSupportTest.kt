@@ -1,6 +1,4 @@
 package io.github.kitectlab.winrt.runtime
-
-import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -21,7 +19,7 @@ class ComWrappersSupportTest {
             value = "payload",
             runtimeClassName = "test.RuntimeClass",
         )
-        val pointer = host.detachReference(IID.IInspectable).asNativePointer()
+        val pointer = host.detachReference(IID.IInspectable)
 
         val first = ComWrappersSupport.createRcwForComObject(pointer) as TestRuntimeClassWrapper
         val second = ComWrappersSupport.createRcwForComObject(pointer) as TestRuntimeClassWrapper
@@ -46,7 +44,7 @@ class ComWrappersSupportTest {
             value = "payload",
             runtimeClassName = "test.RuntimeClass",
         )
-        val pointer = host.detachReference(IID.IInspectable).asNativePointer()
+        val pointer = host.detachReference(IID.IInspectable)
         val wrapper = ComWrappersSupport.createRcwForComObject(pointer, interfaceType) as TestTypedWrapper
 
         assertEquals(helperType, wrapper.primaryTypeHandle)
@@ -69,7 +67,7 @@ class ComWrappersSupportTest {
             runtimeClassName = "test.Fallback",
         )
 
-        val pointer = host.detachReference(interfaceId).asNativePointer()
+        val pointer = host.detachReference(interfaceId)
         val wrapper = ComWrappersSupport.createRcwForComObject(pointer, typeHandle) as SingleInterfaceOptimizedObject
 
         assertEquals(typeHandle, wrapper.primaryTypeHandle)
@@ -119,7 +117,6 @@ class ComWrappersSupportTest {
         val projected = ProjectedInspectableObject(
             pointer = WinRtInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
                 .detachReference(IID.IInspectable)
-                .asNativePointer(),
         )
 
         val cast = projected.winrtAs(interfaceType) as TestTypedWrapper

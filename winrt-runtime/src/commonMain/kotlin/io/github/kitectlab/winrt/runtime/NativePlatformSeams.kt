@@ -97,6 +97,8 @@ expect object NativeInterop {
 
     fun writeGuid(pointer: NativePointer, value: Guid)
 
+    fun writeGuid(pointer: NativePointer, offsetBytes: Long, value: Guid)
+
     fun writePointerAt(array: NativePointer, index: Int, value: NativePointer)
 
     fun pointerKey(pointer: NativePointer): Long
