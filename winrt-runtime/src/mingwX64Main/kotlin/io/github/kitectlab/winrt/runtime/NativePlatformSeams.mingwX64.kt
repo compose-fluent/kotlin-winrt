@@ -19,6 +19,8 @@ actual object NativeInterop {
 
     actual fun confinedScope(): NativeScope = NativeScope()
 
+    actual fun sharedScope(): NativeScope = NativeScope()
+
     actual fun isNull(pointer: NativePointer): Boolean = pointer === nullPointer
 
     actual fun samePointer(first: NativePointer, second: NativePointer): Boolean = first === second

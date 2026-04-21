@@ -43,6 +43,8 @@ expect object NativeInterop {
 
     fun confinedScope(): NativeScope
 
+    fun sharedScope(): NativeScope
+
     fun isNull(pointer: NativePointer): Boolean
 
     fun samePointer(first: NativePointer, second: NativePointer): Boolean

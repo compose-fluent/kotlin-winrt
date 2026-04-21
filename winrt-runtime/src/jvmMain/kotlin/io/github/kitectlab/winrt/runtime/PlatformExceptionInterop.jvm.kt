@@ -6,3 +6,8 @@ internal actual fun platformHResultFromThrowable(error: Throwable): HResult =
 internal actual fun platformSetErrorInfo(error: Throwable) {
     ExceptionHelpers.setErrorInfo(error)
 }
+
+internal actual fun platformExceptionFor(
+    hResult: HResult,
+    operation: String,
+): WinRtRuntimeException = WinRtExceptionTranslator.exceptionFor(hResult, operation)

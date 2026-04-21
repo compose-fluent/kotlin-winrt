@@ -46,6 +46,8 @@ actual object NativeInterop {
 
     actual fun confinedScope(): NativeScope = NativeScope(Arena.ofConfined())
 
+    actual fun sharedScope(): NativeScope = NativeScope(Arena.ofShared())
+
     actual fun isNull(pointer: NativePointer): Boolean = pointer.segment == MemorySegment.NULL
 
     actual fun samePointer(first: NativePointer, second: NativePointer): Boolean =
@@ -80,22 +82,22 @@ actual object NativeInterop {
         }
 
     actual fun readPointer(slot: NativePointer): NativePointer =
-        slot.segment.get(ValueLayout.ADDRESS, 0).asNativePointer()
+        slot.segment.reinterpret(ValueLayout.ADDRESS.byteSize()).get(ValueLayout.ADDRESS, 0).asNativePointer()
 
     actual fun readPointerAt(array: NativePointer, index: Int): NativePointer =
         array.segment.getAtIndex(ValueLayout.ADDRESS, index.toLong()).asNativePointer()
 
     actual fun readInt8(slot: NativePointer): Byte =
-        slot.segment.get(ValueLayout.JAVA_BYTE, 0)
+        slot.segment.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).get(ValueLayout.JAVA_BYTE, 0)
 
     actual fun readInt32(slot: NativePointer): Int =
-        slot.segment.get(ValueLayout.JAVA_INT, 0)
+        slot.segment.reinterpret(ValueLayout.JAVA_INT.byteSize()).get(ValueLayout.JAVA_INT, 0)
 
     actual fun readInt64(slot: NativePointer): Long =
-        slot.segment.get(ValueLayout.JAVA_LONG, 0)
+        slot.segment.reinterpret(ValueLayout.JAVA_LONG.byteSize()).get(ValueLayout.JAVA_LONG, 0)
 
     actual fun readDouble(slot: NativePointer): Double =
-        slot.segment.get(ValueLayout.JAVA_DOUBLE, 0)
+        slot.segment.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize()).get(ValueLayout.JAVA_DOUBLE, 0)
 
     actual fun readUtf16(pointer: NativePointer, length: Int): String {
         if (length == 0) {
@@ -112,31 +114,31 @@ actual object NativeInterop {
     }
 
     actual fun writePointer(slot: NativePointer, value: NativePointer) {
-        slot.segment.set(ValueLayout.ADDRESS, 0, value.segment)
+        slot.segment.reinterpret(ValueLayout.ADDRESS.byteSize()).set(ValueLayout.ADDRESS, 0, value.segment)
     }
 
     actual fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer) {
-        slot.segment.set(ValueLayout.ADDRESS, offsetBytes, value.segment)
+        slot.segment.reinterpret(offsetBytes + ValueLayout.ADDRESS.byteSize()).set(ValueLayout.ADDRESS, offsetBytes, value.segment)
     }
 
     actual fun writeInt8(slot: NativePointer, value: Byte) {
-        slot.segment.set(ValueLayout.JAVA_BYTE, 0, value)
+        slot.segment.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(ValueLayout.JAVA_BYTE, 0, value)
     }
 
     actual fun writeInt32(slot: NativePointer, value: Int) {
-        slot.segment.set(ValueLayout.JAVA_INT, 0, value)
+        slot.segment.reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, value)
     }
 
     actual fun writeInt32(slot: NativePointer, offsetBytes: Long, value: Int) {
-        slot.segment.set(ValueLayout.JAVA_INT, offsetBytes, value)
+        slot.segment.reinterpret(offsetBytes + ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, offsetBytes, value)
     }
 
     actual fun writeInt64(slot: NativePointer, value: Long) {
-        slot.segment.set(ValueLayout.JAVA_LONG, 0, value)
+        slot.segment.reinterpret(ValueLayout.JAVA_LONG.byteSize()).set(ValueLayout.JAVA_LONG, 0, value)
     }
 
     actual fun writeDouble(slot: NativePointer, value: Double) {
-        slot.segment.set(ValueLayout.JAVA_DOUBLE, 0, value)
+        slot.segment.reinterpret(ValueLayout.JAVA_DOUBLE.byteSize()).set(ValueLayout.JAVA_DOUBLE, 0, value)
     }
 
     actual fun writeGuid(pointer: NativePointer, value: Guid) {

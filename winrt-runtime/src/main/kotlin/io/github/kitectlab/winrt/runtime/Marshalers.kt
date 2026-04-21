@@ -578,12 +578,12 @@ object MarshalInspectable {
 
 object MarshalDelegate {
     fun createMarshaler(value: WinRtDelegateReference?): WinRtDelegateReference? =
-        value?.let { WinRtDelegateReference.fromAbi(it.getRef(), it.descriptor) }
+        value?.let { WinRtDelegateReference.fromAbi(it.getRefPointer(), it.descriptor) }
 
     fun getAbi(value: WinRtDelegateReference?): MemorySegment = value?.pointer?.asMemorySegment() ?: MemorySegment.NULL
 
     fun fromAbi(pointer: MemorySegment, descriptor: WinRtDelegateDescriptor): WinRtDelegateReference? =
-        WinRtDelegateReference.fromAbi(pointer, descriptor)
+        WinRtDelegateReference.fromAbi(pointer.asNativePointer(), descriptor)
 
     fun fromManaged(value: WinRtDelegateHandle?): MemorySegment =
         value?.createReference()?.useAndGetRef()?.asMemorySegment() ?: MemorySegment.NULL
@@ -596,8 +596,9 @@ object MarshalDelegate {
         if (pointer == MemorySegment.NULL) {
             return
         }
-        if (!WinRtDelegateComObject.releaseLocalReference(pointer)) {
-            WinRtDelegateReference.fromAbi(pointer, descriptor)?.close()
+        val nativePointer = pointer.asNativePointer()
+        if (!WinRtDelegateComObject.releaseLocalReference(nativePointer)) {
+            WinRtDelegateReference.fromAbi(nativePointer, descriptor)?.close()
         }
     }
 

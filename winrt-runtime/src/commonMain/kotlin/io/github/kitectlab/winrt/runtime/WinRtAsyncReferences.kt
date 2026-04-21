@@ -114,7 +114,7 @@ open class WinRtAsyncActionReference(
             WinRtAsyncStatus.Canceled ->
                 onCancelled()
             WinRtAsyncStatus.Error ->
-                onError(WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async action"))
+                onError(platformExceptionFor(errorCode(), "WinRT async action"))
         }
     }
 }
@@ -163,7 +163,7 @@ open class WinRtAsyncOperationReference<T>(
             WinRtAsyncStatus.Canceled ->
                 onCancelled()
             WinRtAsyncStatus.Error ->
-                onError(WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async operation"))
+                onError(platformExceptionFor(errorCode(), "WinRT async operation"))
         }
     }
 
@@ -286,7 +286,7 @@ fun WinRtAsyncActionReference.ensureCompleted(status: WinRtAsyncStatus = this.st
         WinRtAsyncStatus.Started -> throw IllegalStateException("Async action is still running.")
         WinRtAsyncStatus.Completed -> getResults()
         WinRtAsyncStatus.Canceled -> throw WinRtCancelledException("WinRT async action was canceled.", KnownHResults.ERROR_CANCELLED)
-        WinRtAsyncStatus.Error -> throw WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async action")
+        WinRtAsyncStatus.Error -> throw platformExceptionFor(errorCode(), "WinRT async action")
     }
 }
 
@@ -296,5 +296,5 @@ fun <T> WinRtAsyncOperationReference<T>.completeOperation(status: WinRtAsyncStat
         WinRtAsyncStatus.Completed -> getResults()
         WinRtAsyncStatus.Canceled ->
             throw WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED)
-        WinRtAsyncStatus.Error -> throw WinRtExceptionTranslator.exceptionFor(errorCode(), "WinRT async operation")
+        WinRtAsyncStatus.Error -> throw platformExceptionFor(errorCode(), "WinRT async operation")
     }

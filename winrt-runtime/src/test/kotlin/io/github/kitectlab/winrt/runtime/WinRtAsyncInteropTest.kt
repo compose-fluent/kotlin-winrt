@@ -1,7 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
-import java.lang.foreign.MemorySegment
 import java.util.concurrent.CompletionException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,7 +27,7 @@ class WinRtAsyncInteropTest {
         }
 
         handle.use {
-            it.invokeAbiForTesting(listOf(MemorySegment.NULL, WinRtAsyncStatus.Completed.abiValue))
+            it.invokeAbiForTesting(listOf(NativeInterop.nullPointer, WinRtAsyncStatus.Completed.abiValue))
         }
 
         assertEquals(WinRtAsyncStatus.Completed, capturedStatus)
@@ -124,7 +123,7 @@ class WinRtAsyncInteropTest {
 
         fun complete(newStatus: WinRtAsyncStatus) {
             statusState = newStatus
-            completedHandle?.invokeAbiForTesting(listOf(MemorySegment.NULL, newStatus.abiValue))
+            completedHandle?.invokeAbiForTesting(listOf(NativeInterop.nullPointer, newStatus.abiValue))
         }
 
         override fun close() = Unit
@@ -159,7 +158,7 @@ class WinRtAsyncInteropTest {
 
         fun complete(newStatus: WinRtAsyncStatus) {
             statusState = newStatus
-            completedHandle?.invokeAbiForTesting(listOf(MemorySegment.NULL, newStatus.abiValue))
+            completedHandle?.invokeAbiForTesting(listOf(NativeInterop.nullPointer, newStatus.abiValue))
         }
 
         override fun close() = Unit

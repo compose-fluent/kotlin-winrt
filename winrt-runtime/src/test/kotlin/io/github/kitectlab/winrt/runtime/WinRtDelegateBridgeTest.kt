@@ -1,6 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -44,7 +43,7 @@ class WinRtDelegateBridgeTest {
 
         HString.create("payload").use { hString ->
             handle.use {
-                it.invokeAbiForTesting(listOf(MemorySegment.NULL, 42L, hString.handle.asMemorySegment()))
+                it.invokeAbiForTesting(listOf(NativeInterop.nullPointer, 42L, hString.handle))
             }
         }
 
@@ -68,7 +67,7 @@ class WinRtDelegateBridgeTest {
         HString.create("message").use { payload ->
             handle.use {
                 it.createReference().use { reference ->
-                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(listOf(payload.handle.asMemorySegment())))
+                    assertEquals(KnownHResults.S_OK, reference.invokeAbi(listOf(payload.handle)))
                 }
             }
         }
@@ -91,7 +90,7 @@ class WinRtDelegateBridgeTest {
         handle.close()
 
         reference.use {
-            assertEquals(KnownHResults.S_OK, it.invokeAbi(listOf(MemorySegment.NULL)))
+            assertEquals(KnownHResults.S_OK, it.invokeAbi(listOf(NativeInterop.nullPointer)))
             assertTrue(it.queryInterface(IID.IUnknown).getOrThrow().sameIdentity(it))
         }
 
@@ -109,7 +108,7 @@ class WinRtDelegateBridgeTest {
 
         handle.use {
             it.createReference().use { reference ->
-                assertEquals(KnownHResults.E_ACCESSDENIED, reference.invokeAbi(listOf(MemorySegment.NULL)))
+                assertEquals(KnownHResults.E_ACCESSDENIED, reference.invokeAbi(listOf(NativeInterop.nullPointer)))
             }
         }
     }
@@ -125,7 +124,7 @@ class WinRtDelegateBridgeTest {
 
         handle.use {
             it.createReference().use { reference ->
-                assertEquals(KnownHResults.E_FAIL, reference.invokeAbi(listOf(MemorySegment.NULL)))
+                assertEquals(KnownHResults.E_FAIL, reference.invokeAbi(listOf(NativeInterop.nullPointer)))
             }
         }
     }
