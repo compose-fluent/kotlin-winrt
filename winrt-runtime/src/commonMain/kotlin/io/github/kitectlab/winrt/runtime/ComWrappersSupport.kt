@@ -16,13 +16,6 @@ class SingleInterfaceOptimizedObject(
         get() = false
 }
 
-/**
- * Kotlin runtime ownership layer corresponding to `.cswinrt/src/WinRT.Runtime/ComWrappersSupport*`.
- *
- * This slice owns typed RCW factory registration, runtime-class-name-based wrapper lookup, managed CCW
- * factory registration, unwrap helpers, and the Kotlin equivalent of `SingleInterfaceOptimizedObject`.
- * Universal marshaling policy still belongs to Runtime 1.14+.
- */
 object ComWrappersSupport {
     private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
@@ -32,7 +25,7 @@ object ComWrappersSupport {
     private val runtimeClassNameLookups = SnapshotList<(KClass<*>) -> String?>()
 
     init {
-        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
+        platformEnsureInspectableProjectionInteropRegistered()
     }
 
     fun registerTypedRcwFactory(
@@ -55,11 +48,6 @@ object ComWrappersSupport {
         factory: (Any) -> WinRtCcwDefinition,
     ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
 
-    fun registerCcwFactory(
-        implementationType: Class<*>,
-        factory: (Any) -> WinRtCcwDefinition,
-    ): Boolean = registerCcwFactory(implementationType.kotlin, factory)
-
     fun registerProjectionType(
         type: KClass<*>,
         runtimeClassName: String? = null,
@@ -67,23 +55,10 @@ object ComWrappersSupport {
         TypeNameSupport.registerProjectionType(type, runtimeClassName)
     }
 
-    fun registerProjectionType(
-        type: Class<*>,
-        runtimeClassName: String? = null,
-    ) {
-        registerProjectionType(type.kotlin, runtimeClassName)
-    }
-
     fun registerProjectionAssembly(
         vararg projectionTypes: KClass<*>,
     ) {
         TypeNameSupport.registerProjectionAssembly(*projectionTypes)
-    }
-
-    fun registerProjectionAssembly(
-        vararg projectionTypes: Class<*>,
-    ) {
-        registerProjectionAssembly(*projectionTypes.map { it.kotlin }.toTypedArray())
     }
 
     fun registerProjectionTypeBaseTypeMapping(
@@ -98,26 +73,22 @@ object ComWrappersSupport {
         runtimeClassNameLookups.add(lookup)
     }
 
-    fun registerJavaTypeRuntimeClassNameLookup(
-        lookup: (Class<*>) -> String?,
-    ) {
-        runtimeClassNameLookups.add { type: KClass<*> -> lookup(type.registeredClass()) }
-    }
-
     fun getInspectableInfo(pointer: NativePointer): WinRtInspectableInfo? =
         WinRtInspectableComObject.findInspectableInfo(pointer)?.let {
             WinRtInspectableInfo(it.runtimeClassName, it.interfaceIds)
         }
 
+    @Suppress("UNCHECKED_CAST")
     fun <T : Any> findObject(
         pointer: NativePointer,
         expectedType: KClass<T>,
-    ): T? = WinRtInspectableComObject.findManagedValue(pointer)?.takeIf(expectedType::isInstance) as? T
-
-    fun <T : Any> findObject(
-        pointer: NativePointer,
-        expectedType: Class<T>,
-    ): T? = findObject(pointer, expectedType.kotlin)
+    ): T? {
+        val managedValue = WinRtInspectableComObject.findManagedValue(pointer) ?: return null
+        if (!expectedType.isInstance(managedValue)) {
+            return null
+        }
+        return managedValue as T
+    }
 
     inline fun <reified T : Any> findObject(pointer: NativePointer): T? = findObject(pointer, T::class)
 
@@ -137,7 +108,7 @@ object ComWrappersSupport {
         staticallyDeterminedType: WinRtTypeHandle? = null,
         tryUseCache: Boolean = true,
     ): Any? {
-        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
+        platformEnsureInspectableProjectionInteropRegistered()
         if (NativeInterop.isNull(pointer)) {
             return null
         }
@@ -170,7 +141,7 @@ object ComWrappersSupport {
         value: Any,
         interfaceId: Guid? = null,
     ): ComObjectReference {
-        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
+        platformEnsureInspectableProjectionInteropRegistered()
         tryUnwrapObject(value)?.use { unwrapped ->
             return if (interfaceId == null || interfaceId == unwrapped.interfaceId) {
                 cloneComReference(unwrapped)
@@ -179,7 +150,7 @@ object ComWrappersSupport {
             }
         }
 
-        WinRtBuiltInProjectionRuntimeHooks.tryCreateProjectedReference(value, interfaceId)?.let { return it }
+        platformTryCreateProjectedReference(value, interfaceId)?.let { return it }
 
         val definition = createCcwDefinition(value)
         val host = WinRtInspectableComObject(
@@ -201,7 +172,7 @@ object ComWrappersSupport {
         Projections.clearRegistriesForTests()
         TypeNameSupport.clearRegistriesForTests()
         TypeExtensions.clearRegistriesForTests()
-        WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
+        platformEnsureInspectableProjectionInteropRegistered()
     }
 
     internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
@@ -209,10 +180,6 @@ object ComWrappersSupport {
     ): String? = runtimeClassNameLookups.firstNotNullOfOrNull { lookup ->
         lookup(type)?.takeIf { it.isNotBlank() }
     }
-
-    internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
-        type: Class<*>,
-    ): String? = getRuntimeClassNameForNonWinRTTypeFromLookupTable(type.kotlin)
 
     private fun createRcwCore(
         pointer: NativePointer,
@@ -225,7 +192,7 @@ object ComWrappersSupport {
                 return factory(inspectable)
             }
             if (staticallyDeterminedType == null) {
-                WinRtValueBoxing.tryProjectInspectable(inspectable, runtimeClassName)?.let { projectedValue ->
+                platformTryProjectInspectable(inspectable, runtimeClassName)?.let { projectedValue ->
                     inspectable.close()
                     return projectedValue
                 }
@@ -291,7 +258,7 @@ object ComWrappersSupport {
         findCcwFactory(value)?.let { factory ->
             return factory(value)
         }
-        WinRtBuiltInProjectionRuntimeHooks.createSyntheticCcwDefinition(value)?.let { return it }
+        platformCreateSyntheticCcwDefinition(value)?.let { return it }
         return WinRtCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
@@ -300,7 +267,7 @@ object ComWrappersSupport {
                 ),
             ),
             defaultInterfaceId = IID.IInspectable,
-            runtimeClassName = WinRtBuiltInProjectionRuntimeHooks.runtimeClassNameFor(value),
+            runtimeClassName = platformRuntimeClassNameFor(value),
         )
     }
 
