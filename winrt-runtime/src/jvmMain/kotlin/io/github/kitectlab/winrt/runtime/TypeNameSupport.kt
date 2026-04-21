@@ -15,9 +15,6 @@ enum class TypeNameGenerationFlag {
  * instead, which is the narrow platform-specific deviation required to keep the same responsibility split.
  */
 object TypeNameSupport {
-    private const val REFERENCE_RUNTIME_NAME_PREFIX = "Windows.Foundation.IReference`1<"
-    private const val REFERENCE_ARRAY_RUNTIME_NAME_PREFIX = "Windows.Foundation.IReferenceArray`1<"
-
     private sealed interface TypeLookupResult {
         data class Found(val type: KClass<*>) : TypeLookupResult
         data object Missing : TypeLookupResult
@@ -214,10 +211,10 @@ object TypeNameSupport {
     private fun resolveTypeByName(
         runtimeClassName: String,
     ): KClass<*>? {
-        parseSingleGenericArgument(runtimeClassName, REFERENCE_RUNTIME_NAME_PREFIX)?.let { elementTypeName ->
+        WinRtReferenceTypeNames.parseReferenceElement(runtimeClassName)?.let { elementTypeName ->
             return resolveTypeByName(elementTypeName)
         }
-        parseSingleGenericArgument(runtimeClassName, REFERENCE_ARRAY_RUNTIME_NAME_PREFIX)?.let { elementTypeName ->
+        WinRtReferenceTypeNames.parseReferenceArrayElement(runtimeClassName)?.let { elementTypeName ->
             return resolveTypeByName(elementTypeName)?.let { arrayClassForElementType(it.registeredClass())?.kotlin }
         }
 
@@ -237,61 +234,9 @@ object TypeNameSupport {
         return null
     }
 
-    private fun parseSingleGenericArgument(
-        runtimeClassName: String,
-        prefix: String,
-    ): String? =
-        if (runtimeClassName.startsWith(prefix) && runtimeClassName.endsWith(">")) {
-            runtimeClassName.substring(prefix.length, runtimeClassName.length - 1)
-        } else {
-            null
-        }
-
-    @OptIn(ExperimentalUnsignedTypes::class)
     private fun arrayClassForElementType(
         elementType: Class<*>,
     ): Class<*>? =
-        when (elementType) {
-            java.lang.Byte.TYPE,
-            java.lang.Byte::class.java,
-            -> ByteArray::class.java
-
-            UByte::class.java -> UByteArray::class.java
-
-            java.lang.Short.TYPE,
-            java.lang.Short::class.java,
-            -> ShortArray::class.java
-
-            UShort::class.java -> UShortArray::class.java
-
-            java.lang.Integer.TYPE,
-            java.lang.Integer::class.java,
-            -> IntArray::class.java
-
-            UInt::class.java -> UIntArray::class.java
-
-            java.lang.Long.TYPE,
-            java.lang.Long::class.java,
-            -> LongArray::class.java
-
-            ULong::class.java -> ULongArray::class.java
-
-            java.lang.Float.TYPE,
-            java.lang.Float::class.java,
-            -> FloatArray::class.java
-
-            java.lang.Double.TYPE,
-            java.lang.Double::class.java,
-            -> DoubleArray::class.java
-
-            java.lang.Boolean.TYPE,
-            java.lang.Boolean::class.java,
-            -> BooleanArray::class.java
-
-            java.lang.Character.TYPE,
-            java.lang.Character::class.java,
-            -> CharArray::class.java
-
-            else -> registeredReferenceArrayTypes[elementType.kotlin]?.registeredClass()
-        }
+        WinRtTypeClassifier.primitiveArrayClassForElementType(elementType)
+            ?: registeredReferenceArrayTypes[elementType.kotlin]?.registeredClass()
 }

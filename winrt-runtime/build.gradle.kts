@@ -26,9 +26,6 @@ kotlin {
             implementation(kotlin("test"))
         }
 
-        jvmMain {
-            kotlin.srcDirs("src/main/kotlin", "src/jvmMain/kotlin")
-        }
         jvmTest {
             kotlin.srcDirs("src/test/kotlin", "src/jvmTest/kotlin")
             dependencies {

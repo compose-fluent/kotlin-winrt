@@ -634,9 +634,9 @@ internal object WinRtValueBoxing {
 
     internal fun boxedRuntimeClassNameForType(type: Class<*>): String? {
         enumDescriptorForClass(type)?.let { descriptor ->
-            return "Windows.Foundation.IReference`1<${descriptor.projectedTypeName}>"
+            return WinRtReferenceTypeNames.boxedReference(descriptor.projectedTypeName)
         }
-        primitiveArrayElementType(type)?.let { elementType ->
+        WinRtTypeClassifier.primitiveArrayElementType(type)?.let { elementType ->
             val adapter = adapterForClass(elementType) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return boxedReferenceArrayRuntimeClassName(interfaceId, adapter)
@@ -827,7 +827,7 @@ internal object WinRtValueBoxing {
             }
         }
 
-        WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asMemorySegment())?.let { return it }
+        WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer)?.let { return it }
 
         adapters.firstNotNullOfOrNull { adapter ->
             val interfaceId = adapter.nullableInterfaceId ?: return@firstNotNullOfOrNull null
@@ -1087,57 +1087,17 @@ internal object WinRtValueBoxing {
                         }
                 adapter?.let { ManagedArrayBox(value, it) }
             }
-            is ByteArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Byte::class.javaObjectType]!!)
-            is UByteArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[UByte::class.java]!!)
-            is ShortArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Short::class.javaObjectType]!!)
-            is UShortArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[UShort::class.java]!!)
-            is IntArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Int::class.javaObjectType]!!)
-            is UIntArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[UInt::class.java]!!)
-            is LongArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Long::class.javaObjectType]!!)
-            is ULongArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[ULong::class.java]!!)
-            is FloatArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Float::class.javaObjectType]!!)
-            is DoubleArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Double::class.javaObjectType]!!)
-            is BooleanArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Boolean::class.javaObjectType]!!)
-            is CharArray -> ManagedArrayBox(value.toTypedArray(), adaptersByClass[Char::class.javaObjectType]!!)
-            else -> null
+            else -> normalizePrimitiveManagedArray(value)
         }
 
-    private fun isSupportedArrayValue(value: Any): Boolean =
-        when (value) {
-            is Array<*>,
-            is ByteArray,
-            is UByteArray,
-            is ShortArray,
-            is UShortArray,
-            is IntArray,
-            is UIntArray,
-            is LongArray,
-            is ULongArray,
-            is FloatArray,
-            is DoubleArray,
-            is BooleanArray,
-            is CharArray,
-            -> true
+    private fun isSupportedArrayValue(value: Any): Boolean = value.javaClass.isArray
 
-            else -> false
-        }
-
-    private fun primitiveArrayElementType(type: Class<*>): Class<*>? =
-        when (type) {
-            ByteArray::class.java -> Byte::class.javaObjectType
-            UByteArray::class.java -> UByte::class.java
-            ShortArray::class.java -> Short::class.javaObjectType
-            UShortArray::class.java -> UShort::class.java
-            IntArray::class.java -> Int::class.javaObjectType
-            UIntArray::class.java -> UInt::class.java
-            LongArray::class.java -> Long::class.javaObjectType
-            ULongArray::class.java -> ULong::class.java
-            FloatArray::class.java -> Float::class.javaObjectType
-            DoubleArray::class.java -> Double::class.javaObjectType
-            BooleanArray::class.java -> Boolean::class.javaObjectType
-            CharArray::class.java -> Char::class.javaObjectType
-            else -> null
-        }
+    private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayBox? {
+        val elementType = WinRtTypeClassifier.primitiveArrayElementType(value.javaClass) ?: return null
+        val adapter = adaptersByClass[elementType] ?: return null
+        val boxedElements = WinRtTypeClassifier.boxPrimitiveArray(value) ?: return null
+        return ManagedArrayBox(boxedElements, adapter)
+    }
 
     private fun referenceInterfaceIdForValue(value: Any): Guid? =
         adapterForValue(value)?.nullableInterfaceId ?: enumDescriptorForClass(value.javaClass)?.nullableInterfaceId
@@ -1150,7 +1110,7 @@ internal object WinRtValueBoxing {
         adapter: WinRtValueAdapter<*>,
     ): String {
         check(adapter.nullableInterfaceId == interfaceId)
-        return "Windows.Foundation.IReference`1<${TypeNameSupport.getNameForType(adapter.projectedClass)}>"
+        return WinRtReferenceTypeNames.boxedReference(TypeNameSupport.getNameForType(adapter.projectedClass))
     }
 
     private fun boxedReferenceArrayRuntimeClassName(
@@ -1158,7 +1118,7 @@ internal object WinRtValueBoxing {
         adapter: WinRtValueAdapter<*>,
     ): String {
         check(adapter.referenceArrayInterfaceId == interfaceId)
-        return "Windows.Foundation.IReferenceArray`1<${TypeNameSupport.getNameForType(adapter.projectedClass)}>"
+        return WinRtReferenceTypeNames.boxedReferenceArray(TypeNameSupport.getNameForType(adapter.projectedClass))
     }
 
     private fun tryProjectInspectableAsType(
@@ -1178,8 +1138,8 @@ internal object WinRtValueBoxing {
             }
         }
 
-        if (projectedType.isArray || primitiveArrayElementType(projectedType) != null) {
-            val elementType = primitiveArrayElementType(projectedType) ?: projectedType.componentType ?: return null
+        if (projectedType.isArray || WinRtTypeClassifier.primitiveArrayElementType(projectedType) != null) {
+            val elementType = WinRtTypeClassifier.primitiveArrayElementType(projectedType) ?: projectedType.componentType ?: return null
             val adapter = adapterForClass(elementType) ?: return null
             val interfaceId = adapter.referenceArrayInterfaceId ?: return null
             return queryReferencePointer(inspectable, interfaceId)?.use { reference ->
@@ -1445,126 +1405,11 @@ internal class WinRtPropertyValueReference(
     }
 }
 
-internal object WinRtReferenceProjection {
-    fun createMarshaler(
-        value: Any?,
-        interfaceId: Guid,
-    ): WinRtProjectionMarshaler? {
-        if (value == null) {
-            return null
-        }
-        borrowedProjectionMarshaler(value, WinRtTypeHandle(value.javaClass.name, interfaceId))?.let { return it }
-        val host = WinRtValueBoxing.createReferenceHost(interfaceId, value)
-        return WinRtProjectionMarshaler.hosted(host, interfaceId)
-    }
-
-    fun fromManaged(
-        value: Any?,
-        interfaceId: Guid,
-    ): MemorySegment =
-        if (value == null) {
-            MemorySegment.NULL
-        } else {
-            borrowedProjectionAbi(value, WinRtTypeHandle(value.javaClass.name, interfaceId))?.asMemorySegment()
-                ?: WinRtValueBoxing.createReferenceHost(interfaceId, value).detachReference(interfaceId).asMemorySegment()
-        }
-
-    fun fromAbi(
-        pointer: MemorySegment,
-        interfaceId: Guid,
-    ): Any? =
-        if (pointer == MemorySegment.NULL) {
-            null
-        } else {
-            WinRtReferenceReference(pointer, interfaceId).use { reference ->
-                WinRtValueBoxing.readReferenceValue(interfaceId, reference)
-            }
-        }
-}
-
 internal fun WinRtPropertyValueReference(
     pointer: MemorySegment,
     preventReleaseOnDispose: Boolean = false,
 ): WinRtPropertyValueReference =
     WinRtPropertyValueReference(pointer.asNativePointer(), preventReleaseOnDispose)
-
-internal object WinRtReferenceArrayProjection {
-    fun createMarshaler(
-        value: Any?,
-        interfaceId: Guid,
-    ): WinRtProjectionMarshaler? {
-        if (value == null) {
-            return null
-        }
-        val host = WinRtValueBoxing.createReferenceArrayHost(interfaceId, value)
-        return WinRtProjectionMarshaler.hosted(host, interfaceId)
-    }
-
-    fun fromManaged(
-        value: Any?,
-        interfaceId: Guid,
-    ): MemorySegment =
-        if (value == null) {
-            MemorySegment.NULL
-        } else {
-            WinRtValueBoxing.createReferenceArrayHost(interfaceId, value).detachReference(interfaceId).asMemorySegment()
-        }
-
-    fun fromAbi(
-        pointer: MemorySegment,
-        interfaceId: Guid,
-    ): Array<Any?>? =
-        if (pointer == MemorySegment.NULL) {
-            null
-        } else {
-            WinRtReferenceArrayReference(pointer, interfaceId).use { reference ->
-                WinRtValueBoxing.readReferenceArrayValue(interfaceId, reference)
-            }
-        }
-}
-
-internal object WinRtPropertyValueProjection {
-    fun createMarshaler(value: Any?): WinRtProjectionMarshaler? {
-        if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
-            return null
-        }
-        val reference = ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue)
-        return WinRtProjectionMarshaler.owned(reference)
-    }
-
-    fun fromManaged(value: Any?): MemorySegment =
-        if (value == null) {
-            MemorySegment.NULL
-        } else {
-            if (WinRtValueBoxing.isPropertyValueCompatible(value)) {
-                ComWrappersSupport.createCCWForObject(value, IID.IPropertyValue).useAndGetRef().asMemorySegment()
-            } else {
-                MemorySegment.NULL
-            }
-        }
-
-    fun fromOwnedAbi(pointer: MemorySegment): Any? {
-        if (pointer == MemorySegment.NULL) {
-            return null
-        }
-        return WinRtPropertyValueReference(pointer).use { it.getValue() }
-    }
-
-    fun tryFromBorrowedAbi(pointer: MemorySegment): Any? {
-        if (pointer == MemorySegment.NULL) {
-            return null
-        }
-        val propertyValue =
-            runCatching {
-                IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
-                    .queryInterface(IID.IPropertyValue)
-                    .getOrThrow()
-            }.getOrNull() ?: return null
-        return propertyValue.use { reference ->
-            WinRtPropertyValueReference(reference.pointer.asMemorySegment(), preventReleaseOnDispose = true).getValue()
-        }
-    }
-}
 
 private fun unboxInspectablePointer(pointer: MemorySegment): Any {
     WinRtInspectableComObject.findManagedValue(pointer.asNativePointer())?.let { return it }

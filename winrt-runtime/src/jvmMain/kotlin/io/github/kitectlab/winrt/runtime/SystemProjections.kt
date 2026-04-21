@@ -197,7 +197,7 @@ internal object TypeProjection {
         val kind =
             when {
                 value.isPrimitive -> WinRtTypeKind.Primitive
-                Projections.isTypeWindowsRuntimeType(value) || value == Any::class.java || value == String::class.java || value == Guid::class.java || value == Class::class.java ->
+                Projections.isTypeWindowsRuntimeType(value) ->
                     WinRtTypeKind.Metadata
                 else -> WinRtTypeKind.Custom
             }
@@ -333,39 +333,19 @@ internal object WinRtBuiltInProjectionMappings {
             projectedTypeName = "Windows.UI.Xaml.Interop.TypeName",
             helperType = TypeProjection::class.java,
             signature = "struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))",
-            boxedName = "Windows.Foundation.IReference`1<Windows.UI.Xaml.Interop.TypeName>",
+            boxedName = WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
             isWindowsRuntimeType = true,
         )
-        registerStruct(Point::class.java, "Windows.Foundation.Point", "struct(Windows.Foundation.Point;f4;f4)")
-        registerStruct(Size::class.java, "Windows.Foundation.Size", "struct(Windows.Foundation.Size;f4;f4)")
-        registerStruct(Rect::class.java, "Windows.Foundation.Rect", "struct(Windows.Foundation.Rect;f4;f4;f4;f4)")
-        registerStruct(
-            Matrix3x2::class.java,
-            "Windows.Foundation.Numerics.Matrix3x2",
-            "struct(Windows.Foundation.Numerics.Matrix3x2;f4;f4;f4;f4;f4;f4)",
-        )
-        registerStruct(
-            Matrix4x4::class.java,
-            "Windows.Foundation.Numerics.Matrix4x4",
-            "struct(Windows.Foundation.Numerics.Matrix4x4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4)",
-        )
-        registerStruct(
-            Plane::class.java,
-            "Windows.Foundation.Numerics.Plane",
-            "struct(Windows.Foundation.Numerics.Plane;struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4);f4)",
-        )
-        registerStruct(
-            Quaternion::class.java,
-            "Windows.Foundation.Numerics.Quaternion",
-            "struct(Windows.Foundation.Numerics.Quaternion;f4;f4;f4;f4)",
-        )
-        registerStruct(Vector2::class.java, "Windows.Foundation.Numerics.Vector2", "struct(Windows.Foundation.Numerics.Vector2;f4;f4)")
-        registerStruct(Vector3::class.java, "Windows.Foundation.Numerics.Vector3", "struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4)")
-        registerStruct(
-            Vector4::class.java,
-            "Windows.Foundation.Numerics.Vector4",
-            "struct(Windows.Foundation.Numerics.Vector4;f4;f4;f4;f4)",
-        )
+        registerStruct(Point::class.java)
+        registerStruct(Size::class.java)
+        registerStruct(Rect::class.java)
+        registerStruct(Matrix3x2::class.java)
+        registerStruct(Matrix4x4::class.java)
+        registerStruct(Plane::class.java)
+        registerStruct(Quaternion::class.java)
+        registerStruct(Vector2::class.java)
+        registerStruct(Vector3::class.java)
+        registerStruct(Vector4::class.java)
 
         registerReferenceArrayType(String::class.java, Array<String>::class.java)
         registerReferenceArrayType(Guid::class.java, Array<Guid>::class.java)
@@ -385,19 +365,21 @@ internal object WinRtBuiltInProjectionMappings {
         registerReferenceArrayType(Vector4::class.java, Array<Vector4>::class.java)
     }
 
-    private fun registerStruct(
-        publicType: Class<*>,
-        abiTypeName: String,
-        signature: String,
-    ) {
+    private fun registerStruct(publicType: Class<*>) {
+        val registeredType =
+            publicType.registeredWinRtType()
+                ?: error("Struct type '${publicType.name}' is missing WindowsRuntimeType metadata.")
+        val signature =
+            registeredType.signature
+                ?: error("Struct type '${publicType.name}' is missing a WinRT signature.")
         Projections.registerCustomAbiTypeMapping(
             publicType = publicType,
             helperType = publicType,
-            abiTypeName = abiTypeName,
+            abiTypeName = registeredType.projectedTypeName,
         )
         registerMetadata(
             type = publicType,
-            projectedTypeName = abiTypeName,
+            projectedTypeName = registeredType.projectedTypeName,
             helperType = publicType,
             signature = signature,
             isWindowsRuntimeType = true,

@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalUnsignedTypes::class)
+
 package io.github.kitectlab.winrt.runtime
 
 internal data class WinRtKnownType(
@@ -6,6 +8,8 @@ internal data class WinRtKnownType(
     val signature: WinRtTypeSignature,
     val classAliases: Set<Class<*>>,
     val runtimeNameAliases: Set<String> = setOf(canonicalRuntimeName),
+    val primitiveArrayClass: Class<*>? = null,
+    val boxPrimitiveArray: ((Any) -> Array<*>)? = null,
 )
 
 /**
@@ -17,81 +21,105 @@ internal object WinRtTypeClassifier {
     private val knownTypes =
         listOf(
             WinRtKnownType(
-                representativeClass = java.lang.Byte::class.java,
+                representativeClass = Byte::class.javaObjectType,
                 canonicalRuntimeName = "Int8",
                 signature = WinRtTypeSignature.int8(),
-                classAliases = setOf(java.lang.Byte.TYPE, java.lang.Byte::class.java),
+                classAliases = setOf(Byte::class.javaPrimitiveType!!, Byte::class.javaObjectType),
                 runtimeNameAliases = setOf("Int8"),
+                primitiveArrayClass = ByteArray::class.java,
+                boxPrimitiveArray = { (it as ByteArray).toTypedArray() },
             ),
             WinRtKnownType(
                 representativeClass = UByte::class.java,
                 canonicalRuntimeName = "UInt8",
                 signature = WinRtTypeSignature.uint8(),
                 classAliases = setOf(UByte::class.java),
+                primitiveArrayClass = UByteArray::class.java,
+                boxPrimitiveArray = { (it as UByteArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Short::class.java,
+                representativeClass = Short::class.javaObjectType,
                 canonicalRuntimeName = "Int16",
                 signature = WinRtTypeSignature.int16(),
-                classAliases = setOf(java.lang.Short.TYPE, java.lang.Short::class.java),
+                classAliases = setOf(Short::class.javaPrimitiveType!!, Short::class.javaObjectType),
                 runtimeNameAliases = setOf("Int16"),
+                primitiveArrayClass = ShortArray::class.java,
+                boxPrimitiveArray = { (it as ShortArray).toTypedArray() },
             ),
             WinRtKnownType(
                 representativeClass = UShort::class.java,
                 canonicalRuntimeName = "UInt16",
                 signature = WinRtTypeSignature.uint16(),
                 classAliases = setOf(UShort::class.java),
+                primitiveArrayClass = UShortArray::class.java,
+                boxPrimitiveArray = { (it as UShortArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Integer::class.java,
+                representativeClass = Int::class.javaObjectType,
                 canonicalRuntimeName = "Int32",
                 signature = WinRtTypeSignature.int32(),
-                classAliases = setOf(java.lang.Integer.TYPE, java.lang.Integer::class.java),
+                classAliases = setOf(Int::class.javaPrimitiveType!!, Int::class.javaObjectType),
                 runtimeNameAliases = setOf("Int32"),
+                primitiveArrayClass = IntArray::class.java,
+                boxPrimitiveArray = { (it as IntArray).toTypedArray() },
             ),
             WinRtKnownType(
                 representativeClass = UInt::class.java,
                 canonicalRuntimeName = "UInt32",
                 signature = WinRtTypeSignature.uint32(),
                 classAliases = setOf(UInt::class.java),
+                primitiveArrayClass = UIntArray::class.java,
+                boxPrimitiveArray = { (it as UIntArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Long::class.java,
+                representativeClass = Long::class.javaObjectType,
                 canonicalRuntimeName = "Int64",
                 signature = WinRtTypeSignature.int64(),
-                classAliases = setOf(java.lang.Long.TYPE, java.lang.Long::class.java),
+                classAliases = setOf(Long::class.javaPrimitiveType!!, Long::class.javaObjectType),
                 runtimeNameAliases = setOf("Int64"),
+                primitiveArrayClass = LongArray::class.java,
+                boxPrimitiveArray = { (it as LongArray).toTypedArray() },
             ),
             WinRtKnownType(
                 representativeClass = ULong::class.java,
                 canonicalRuntimeName = "UInt64",
                 signature = WinRtTypeSignature.uint64(),
                 classAliases = setOf(ULong::class.java),
+                primitiveArrayClass = ULongArray::class.java,
+                boxPrimitiveArray = { (it as ULongArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Boolean::class.java,
+                representativeClass = Boolean::class.javaObjectType,
                 canonicalRuntimeName = "Boolean",
                 signature = WinRtTypeSignature.boolean(),
-                classAliases = setOf(java.lang.Boolean.TYPE, java.lang.Boolean::class.java),
+                classAliases = setOf(Boolean::class.javaPrimitiveType!!, Boolean::class.javaObjectType),
+                primitiveArrayClass = BooleanArray::class.java,
+                boxPrimitiveArray = { (it as BooleanArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Character::class.java,
+                representativeClass = Char::class.javaObjectType,
                 canonicalRuntimeName = "Char16",
                 signature = WinRtTypeSignature.char16(),
-                classAliases = setOf(java.lang.Character.TYPE, java.lang.Character::class.java),
+                classAliases = setOf(Char::class.javaPrimitiveType!!, Char::class.javaObjectType),
                 runtimeNameAliases = setOf("Char16", "Char"),
+                primitiveArrayClass = CharArray::class.java,
+                boxPrimitiveArray = { (it as CharArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Float::class.java,
+                representativeClass = Float::class.javaObjectType,
                 canonicalRuntimeName = "Single",
                 signature = WinRtTypeSignature.float32(),
-                classAliases = setOf(java.lang.Float.TYPE, java.lang.Float::class.java),
+                classAliases = setOf(Float::class.javaPrimitiveType!!, Float::class.javaObjectType),
+                primitiveArrayClass = FloatArray::class.java,
+                boxPrimitiveArray = { (it as FloatArray).toTypedArray() },
             ),
             WinRtKnownType(
-                representativeClass = java.lang.Double::class.java,
+                representativeClass = Double::class.javaObjectType,
                 canonicalRuntimeName = "Double",
                 signature = WinRtTypeSignature.float64(),
-                classAliases = setOf(java.lang.Double.TYPE, java.lang.Double::class.java),
+                classAliases = setOf(Double::class.javaPrimitiveType!!, Double::class.javaObjectType),
+                primitiveArrayClass = DoubleArray::class.java,
+                boxPrimitiveArray = { (it as DoubleArray).toTypedArray() },
             ),
             WinRtKnownType(
                 representativeClass = String::class.java,
@@ -131,9 +159,24 @@ internal object WinRtTypeClassifier {
             }
         }
 
+    private val knownTypesByPrimitiveArrayClass: Map<Class<*>, WinRtKnownType> =
+        buildMap {
+            knownTypes.forEach { knownType ->
+                knownType.primitiveArrayClass?.let { arrayClass ->
+                    put(arrayClass, knownType)
+                }
+            }
+        }
+
     fun classify(type: Class<*>): WinRtKnownType? = knownTypesByClass[type]
 
     fun resolve(runtimeName: String): WinRtKnownType? = knownTypesByRuntimeName[runtimeName]
+
+    fun primitiveArrayElementType(arrayType: Class<*>): Class<*>? = knownTypesByPrimitiveArrayClass[arrayType]?.representativeClass
+
+    fun primitiveArrayClassForElementType(elementType: Class<*>): Class<*>? = classify(elementType)?.primitiveArrayClass
+
+    fun boxPrimitiveArray(value: Any): Array<*>? = knownTypesByPrimitiveArrayClass[value.javaClass]?.boxPrimitiveArray?.invoke(value)
 
     fun isIntrinsicWindowsRuntimeType(type: Class<*>): Boolean = classify(type) != null
 }

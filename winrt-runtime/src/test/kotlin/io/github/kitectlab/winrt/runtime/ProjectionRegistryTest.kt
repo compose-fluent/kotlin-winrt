@@ -115,12 +115,12 @@ class ProjectionRegistryTest {
     fun intrinsic_type_classification_is_shared_across_runtime_helpers() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        assertEquals("Int8", TypeNameSupport.getNameForType(java.lang.Byte::class.java))
+        assertEquals("Int8", TypeNameSupport.getNameForType(Byte::class.javaObjectType))
         assertEquals(UByte::class.java, TypeNameSupport.findTypeByNameCached("UInt8"))
-        assertEquals(java.lang.Byte::class.java, TypeNameSupport.findTypeByNameCached("Int8"))
+        assertEquals(Byte::class.javaObjectType, TypeNameSupport.findTypeByNameCached("Int8"))
         assertEquals(Any::class.java, TypeNameSupport.findTypeByNameCached("Object"))
-        assertTrue(Projections.isTypeWindowsRuntimeType(java.lang.Character.TYPE))
-        assertEquals("i1", GuidGenerator.getSignature(java.lang.Byte::class.java))
+        assertTrue(Projections.isTypeWindowsRuntimeType(Char::class.javaPrimitiveType!!))
+        assertEquals("i1", GuidGenerator.getSignature(Byte::class.javaObjectType))
         assertEquals("u1", GuidGenerator.getSignature(UByte::class.java))
         assertEquals("cinterface(IInspectable)", GuidGenerator.getSignature(Any::class.java))
     }
@@ -133,7 +133,13 @@ class ProjectionRegistryTest {
         assertEquals(TimeSpanProjection::class.java, TypeExtensions.findHelperType(Duration::class.java))
         assertEquals(UriProjection::class.java, TypeExtensions.findHelperType(WinRtUri::class.java))
         assertEquals(IClosableProjection::class.java, TypeExtensions.findHelperType(AutoCloseable::class.java))
+        assertTrue(Projections.isTypeWindowsRuntimeType(Class::class.java))
         assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class.java))
+        assertEquals(
+            WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
+            WinRtValueBoxing.boxedRuntimeClassNameForType(Class::class.java),
+        )
+        assertEquals(WinRtTypeKind.Metadata.ordinal, TypeProjection.fromManaged(Class::class.java).kind)
         assertEquals(
             "rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})",
             GuidGenerator.getSignature(WinRtUri::class.java),
@@ -146,6 +152,23 @@ class ProjectionRegistryTest {
             "Windows.Foundation.IReferenceArray`1<String>",
             TypeNameSupport.getNameForType(Array<String>::class.java, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
         )
+    }
+
+    @Test
+    fun windows_runtime_annotations_backfill_runtime_metadata_without_parallel_string_tables() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertTrue(Projections.isTypeWindowsRuntimeType(AnnotatedStruct::class.java))
+        assertEquals("Contoso.AnnotatedStruct", TypeNameSupport.getNameForType(AnnotatedStruct::class.java))
+        assertEquals("struct(Contoso.AnnotatedStruct;i4)", GuidGenerator.getSignature(AnnotatedStruct::class.java))
+
+        assertEquals(AnnotatedRuntimeClassHelper::class.java, TypeExtensions.findHelperType(AnnotatedRuntimeClass::class.java))
+        assertEquals(AnnotatedDefaultInterface::class.java, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(AnnotatedRuntimeClass::class.java))
+        assertEquals(
+            "rc(Contoso.AnnotatedRuntimeClass;{44444444-4444-4444-4444-444444444444})",
+            GuidGenerator.getSignature(AnnotatedRuntimeClass::class.java),
+        )
+        assertEquals(Guid("44444444-4444-4444-4444-444444444444"), GuidGenerator.getGuid(AnnotatedDefaultInterface::class.java))
     }
 
     @Test
@@ -179,6 +202,19 @@ class ProjectionRegistryTest {
     private class SampleStruct
 
     private class PlainManagedType
+
+    @WinRtGuid("44444444-4444-4444-4444-444444444444")
+    private interface AnnotatedDefaultInterface
+
+    private class AnnotatedRuntimeClassHelper
+
+    @WindowsRuntimeType("rc(Contoso.AnnotatedRuntimeClass;{44444444-4444-4444-4444-444444444444})")
+    @WindowsRuntimeHelperType(AnnotatedRuntimeClassHelper::class)
+    @WinRtDefaultInterface(AnnotatedDefaultInterface::class)
+    private class AnnotatedRuntimeClass
+
+    @WindowsRuntimeType("struct(Contoso.AnnotatedStruct;i4)")
+    private class AnnotatedStruct
 
     private enum class TestProjectedEnum(
         val abiValue: Int,
