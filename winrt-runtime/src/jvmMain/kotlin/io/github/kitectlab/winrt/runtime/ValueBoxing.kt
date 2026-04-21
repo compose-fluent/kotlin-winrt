@@ -3,7 +3,6 @@
 package io.github.kitectlab.winrt.runtime
 
 import java.lang.foreign.Arena
-import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
@@ -886,23 +885,19 @@ internal object WinRtValueBoxing {
             interfaceId = interfaceId,
             methods = listOf(
                 WinRtInspectableMethodDefinition(
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                 ) { rawArgs ->
                     val destination =
-                        rawArgs.singleOrNull() as? MemorySegment
+                        rawArgs.singleOrNull() as? NativePointer
                             ?: throw IllegalStateException("IReference host requires one out-argument.")
                     if (adapter != null) {
-                        adapter.writeValue(value, destination)
+                        adapter.writeValue(value, destination.asMemorySegment())
                     } else {
-                        destination.reinterpret(ValueLayout.JAVA_INT.byteSize()).set(
-                            ValueLayout.JAVA_INT,
-                            0,
-                            requireNotNull(enumDescriptor).toAbiBits(value),
-                        )
+                        NativeInterop.writeInt32(destination, requireNotNull(enumDescriptor).toAbiBits(value))
                     }
                     KnownHResults.S_OK.value
                 },
@@ -922,19 +917,19 @@ internal object WinRtValueBoxing {
             interfaceId = interfaceId,
             methods = listOf(
                 WinRtInspectableMethodDefinition(
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                 ) { rawArgs ->
                     if (rawArgs.size != 2) {
                         throw IllegalStateException("IReferenceArray host requires count and data out-arguments.")
                     }
                     val (length, data) = adapter.createTransferredArray(box.elements)
-                    (rawArgs[0] as MemorySegment).reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, length)
-                    (rawArgs[1] as MemorySegment).reinterpret(ValueLayout.ADDRESS.byteSize()).set(ValueLayout.ADDRESS, 0, data)
+                    NativeInterop.writeInt32(rawArgs[0] as NativePointer, length)
+                    NativeInterop.writePointer(rawArgs[1] as NativePointer, data.asNativePointer())
                     KnownHResults.S_OK.value
                 },
             ),
@@ -988,42 +983,38 @@ internal object WinRtValueBoxing {
         return buildList {
             add(
                 WinRtInspectableMethodDefinition(
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                 ) { rawArgs ->
-                    (rawArgs[0] as MemorySegment).reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, propertyTypeOf(value).code)
+                    NativeInterop.writeInt32(rawArgs[0] as NativePointer, propertyTypeOf(value).code)
                     KnownHResults.S_OK.value
                 },
             )
             add(
                 WinRtInspectableMethodDefinition(
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                 ) { rawArgs ->
-                    (rawArgs[0] as MemorySegment).reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(
-                        ValueLayout.JAVA_BYTE,
-                        0,
-                        if (isNumericScalar(value)) 1 else 0,
-                    )
+                    NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (isNumericScalar(value)) 1 else 0)
                     KnownHResults.S_OK.value
                 },
             )
             scalarGetters.forEach { propertyType ->
                 add(
                     WinRtInspectableMethodDefinition(
-                        descriptor = FunctionDescriptor.of(
-                            ValueLayout.JAVA_INT,
-                            ValueLayout.ADDRESS,
-                            ValueLayout.ADDRESS,
+                        descriptor = NativeFunctionDescriptor.of(
+                            NativeValueLayout.JAVA_INT,
+                            NativeValueLayout.ADDRESS,
+                            NativeValueLayout.ADDRESS,
                         ),
                     ) { rawArgs ->
-                        writePropertyValue(propertyType, value, rawArgs[0] as MemorySegment)
+                        writePropertyValue(propertyType, value, (rawArgs[0] as NativePointer).asMemorySegment())
                         KnownHResults.S_OK.value
                     },
                 )
@@ -1031,18 +1022,18 @@ internal object WinRtValueBoxing {
             arrayGetters.forEach { propertyType ->
                 add(
                     WinRtInspectableMethodDefinition(
-                        descriptor = FunctionDescriptor.of(
-                            ValueLayout.JAVA_INT,
-                            ValueLayout.ADDRESS,
-                            ValueLayout.ADDRESS,
-                            ValueLayout.ADDRESS,
+                        descriptor = NativeFunctionDescriptor.of(
+                            NativeValueLayout.JAVA_INT,
+                            NativeValueLayout.ADDRESS,
+                            NativeValueLayout.ADDRESS,
+                            NativeValueLayout.ADDRESS,
                         ),
                     ) { rawArgs ->
                         writePropertyValueArray(
                             propertyType,
                             value,
-                            rawArgs[0] as MemorySegment,
-                            rawArgs[1] as MemorySegment,
+                            (rawArgs[0] as NativePointer).asMemorySegment(),
+                            (rawArgs[1] as NativePointer).asMemorySegment(),
                         )
                         KnownHResults.S_OK.value
                     },
@@ -1168,19 +1159,19 @@ internal object WinRtValueBoxing {
         reference: WinRtReferenceReference,
         descriptor: WinRtEnumBoxingDescriptor,
     ): Any =
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateInt32Slot(scope)
             val hr = reference.invokeAbi(
                 slot = 6,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 resultOut,
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
-            descriptor.fromAbiBits(resultOut.get(ValueLayout.JAVA_INT, 0))
+            descriptor.fromAbiBits(NativeInterop.readInt32(resultOut))
         }
 
     private fun enumDescriptorForClass(
@@ -1253,22 +1244,22 @@ internal class WinRtReferenceReference(
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun getValue(adapter: WinRtValueAdapter<*>): Any? =
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(adapter.abiLayout)
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateBytes(scope, adapter.abiLayout.byteSize(), adapter.abiLayout.byteAlignment())
             val hr = invokeAbi(
                 slot = 6,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 resultOut,
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
             try {
-                adapter.readValue(resultOut)
+                adapter.readValue(resultOut.asMemorySegment())
             } finally {
-                adapter.disposeValue(resultOut)
+                adapter.disposeValue(resultOut.asMemorySegment())
             }
         }
 }
@@ -1286,27 +1277,27 @@ internal class WinRtReferenceArrayReference(
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun getValue(adapter: WinRtValueAdapter<*>): Array<Any?>? =
-        Arena.ofConfined().use { arena ->
-            val countOut = arena.allocate(ValueLayout.JAVA_INT)
-            val dataOut = arena.allocate(ValueLayout.ADDRESS)
+        NativeInterop.confinedScope().use { scope ->
+            val countOut = NativeInterop.allocateInt32Slot(scope)
+            val dataOut = NativeInterop.allocatePointerSlot(scope)
             val hr = invokeAbi(
                 slot = 6,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 countOut,
                 dataOut,
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
-            val length = countOut.get(ValueLayout.JAVA_INT, 0)
-            val data = dataOut.get(ValueLayout.ADDRESS, 0)
+            val length = NativeInterop.readInt32(countOut)
+            val data = NativeInterop.readPointer(dataOut)
             try {
-                return adapter.readOwnedArray(length, data)
+                return adapter.readOwnedArray(length, data.asMemorySegment())
             } finally {
-                adapter.disposeOwnedArray(length, data)
+                adapter.disposeOwnedArray(length, data.asMemorySegment())
             }
         }
 }
@@ -1323,58 +1314,58 @@ internal class WinRtPropertyValueReference(
     preventReleaseOnDispose: Boolean = false,
 ) : IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun type(): PropertyType =
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_INT)
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateInt32Slot(scope)
             val hr = invokeAbi(
                 slot = 6,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 resultOut,
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
-            PropertyType.fromCode(resultOut.get(ValueLayout.JAVA_INT, 0))
+            PropertyType.fromCode(NativeInterop.readInt32(resultOut))
         }
 
     fun isNumericScalar(): Boolean =
-        Arena.ofConfined().use { arena ->
-            val resultOut = arena.allocate(ValueLayout.JAVA_BYTE)
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocateInt8Slot(scope)
             val hr = invokeAbi(
                 slot = 7,
-                descriptor = FunctionDescriptor.of(
-                    ValueLayout.JAVA_INT,
-                    ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS,
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                    NativeValueLayout.ADDRESS,
                 ),
                 resultOut,
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
-            resultOut.get(ValueLayout.JAVA_BYTE, 0).toInt() != 0
+            NativeInterop.readInt8(resultOut).toInt() != 0
         }
 
     fun getValue(): Any? {
         val propertyType = type()
         val scalarAdapter = WinRtValueBoxing.adapterForPropertyType(propertyType)
         if (scalarAdapter != null) {
-            return Arena.ofConfined().use { arena ->
-                val resultOut = arena.allocate(scalarAdapter.abiLayout)
+            return NativeInterop.confinedScope().use { scope ->
+                val resultOut = NativeInterop.allocateBytes(scope, scalarAdapter.abiLayout.byteSize(), scalarAdapter.abiLayout.byteAlignment())
                 val slot = 8 + (propertyType.code - PropertyType.UInt8.code)
                 val hr = invokeAbi(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                     resultOut,
                 )
                 WinRtPlatformApi.checkSucceededRaw(hr)
                 try {
-                    scalarAdapter.readValue(resultOut)
+                    scalarAdapter.readValue(resultOut.asMemorySegment())
                 } finally {
-                    scalarAdapter.disposeValue(resultOut)
+                    scalarAdapter.disposeValue(resultOut.asMemorySegment())
                 }
             }
         }
@@ -1385,28 +1376,28 @@ internal class WinRtPropertyValueReference(
                 else -> WinRtValueBoxing.adapterForPropertyTypeArray(propertyType)
             }
         if (arrayAdapter != null) {
-            return Arena.ofConfined().use { arena ->
-                val countOut = arena.allocate(ValueLayout.JAVA_INT)
-                val dataOut = arena.allocate(ValueLayout.ADDRESS)
+            return NativeInterop.confinedScope().use { scope ->
+                val countOut = NativeInterop.allocateInt32Slot(scope)
+                val dataOut = NativeInterop.allocatePointerSlot(scope)
                 val slot = 26 + (propertyType.code - PropertyType.UInt8Array.code)
                 val hr = invokeAbi(
                     slot = slot,
-                    descriptor = FunctionDescriptor.of(
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
                     ),
                     countOut,
                     dataOut,
                 )
                 WinRtPlatformApi.checkSucceededRaw(hr)
-                val length = countOut.get(ValueLayout.JAVA_INT, 0)
-                val data = dataOut.get(ValueLayout.ADDRESS, 0)
+                val length = NativeInterop.readInt32(countOut)
+                val data = NativeInterop.readPointer(dataOut)
                 try {
-                    arrayAdapter.readOwnedArray(length, data)
+                    arrayAdapter.readOwnedArray(length, data.asMemorySegment())
                 } finally {
-                    arrayAdapter.disposeOwnedArray(length, data)
+                    arrayAdapter.disposeOwnedArray(length, data.asMemorySegment())
                 }
             }
         }
