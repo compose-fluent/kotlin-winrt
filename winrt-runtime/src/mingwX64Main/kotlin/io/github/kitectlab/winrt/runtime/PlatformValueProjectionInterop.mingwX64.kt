@@ -18,17 +18,6 @@ internal actual object PlatformValueProjectionInterop {
     actual fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>? =
         throw NotImplementedError("IReferenceArray<T> projection is not implemented for mingwX64 yet.")
 
-    actual fun isPropertyValueCompatible(value: Any): Boolean = false
-
-    actual fun propertyTypeOf(value: Any): PropertyType =
-        throw NotImplementedError("Property value classification is not implemented for mingwX64 yet.")
-
-    actual fun isNumericScalar(value: Any): Boolean =
-        throw NotImplementedError("Property value classification is not implemented for mingwX64 yet.")
-
-    actual fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
-        throw NotImplementedError("Boxed runtime-class-name lookup is not implemented for mingwX64 yet.")
-
     actual fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
         throw NotImplementedError("IPropertyValue host ABI writing is not implemented for mingwX64 yet.")
     }

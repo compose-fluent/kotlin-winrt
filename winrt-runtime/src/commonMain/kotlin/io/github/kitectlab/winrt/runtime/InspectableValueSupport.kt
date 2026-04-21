@@ -3,11 +3,11 @@ package io.github.kitectlab.winrt.runtime
 internal fun createSyntheticValueCcwDefinition(value: Any): WinRtCcwDefinition? {
     val interfaceDefinitions =
         buildList {
-            if (PlatformValueProjectionInterop.isPropertyValueCompatible(value)) {
+            if (WinRtValueBoxing.isPropertyValueCompatible(value)) {
                 add(createPropertyValueInterfaceDefinition(value))
             }
-            PlatformValueProjectionInterop.createReferenceArrayInterfaceDefinition(value)?.let(::add)
-                ?: PlatformValueProjectionInterop.createReferenceInterfaceDefinition(value)?.let(::add)
+            WinRtValueBoxing.createReferenceArrayInterfaceDefinition(value)?.let(::add)
+                ?: WinRtValueBoxing.createReferenceInterfaceDefinition(value)?.let(::add)
         }
     if (interfaceDefinitions.isEmpty()) {
         return null
@@ -21,7 +21,7 @@ internal fun createSyntheticValueCcwDefinition(value: Any): WinRtCcwDefinition? 
     return WinRtCcwDefinition(
         interfaceDefinitions = interfaceDefinitions,
         defaultInterfaceId = defaultInterfaceId,
-        runtimeClassName = PlatformValueProjectionInterop.boxedRuntimeClassNameForType(value::class),
+        runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
     )
 }
 
@@ -31,13 +31,13 @@ internal fun tryProjectInspectableValue(
 ): Any? {
     if (!runtimeClassName.isNullOrBlank()) {
         TypeNameSupport.findRcwKClassByNameCached(runtimeClassName)?.let { projectedType ->
-            PlatformValueProjectionInterop.tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
+            WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType)?.let { return it }
         }
     }
 
     WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer)?.let { return it }
-    PlatformValueProjectionInterop.tryProjectInspectableReference(inspectable)?.let { return it }
-    PlatformValueProjectionInterop.tryProjectInspectableReferenceArray(inspectable)?.let { return it }
+    WinRtValueBoxing.tryProjectInspectableReference(inspectable)?.let { return it }
+    WinRtValueBoxing.tryProjectInspectableReferenceArray(inspectable)?.let { return it }
     return null
 }
 

@@ -13,14 +13,6 @@ internal expect object PlatformValueProjectionInterop {
 
     fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>?
 
-    fun isPropertyValueCompatible(value: Any): Boolean
-
-    fun propertyTypeOf(value: Any): PropertyType
-
-    fun isNumericScalar(value: Any): Boolean
-
-    fun boxedRuntimeClassNameForType(type: KClass<*>): String?
-
     fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer)
 
     fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer)

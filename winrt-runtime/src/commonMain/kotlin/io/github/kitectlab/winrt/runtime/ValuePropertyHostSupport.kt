@@ -5,7 +5,7 @@ internal fun createPropertyValueHost(value: Any): WinRtInspectableComObject =
         interfaceDefinitions = listOf(
             createPropertyValueInterfaceDefinition(value),
         ),
-        runtimeClassName = PlatformValueProjectionInterop.boxedRuntimeClassNameForType(value::class),
+        runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
         managedValue = value,
     )
 
@@ -68,7 +68,7 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
                     NativeValueLayout.ADDRESS,
                 ),
             ) { rawArgs ->
-                NativeInterop.writeInt32(rawArgs[0] as NativePointer, PlatformValueProjectionInterop.propertyTypeOf(value).code)
+                NativeInterop.writeInt32(rawArgs[0] as NativePointer, WinRtValueBoxing.propertyTypeOf(value).code)
                 KnownHResults.S_OK.value
             },
         )
@@ -80,7 +80,7 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
                     NativeValueLayout.ADDRESS,
                 ),
             ) { rawArgs ->
-                NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (PlatformValueProjectionInterop.isNumericScalar(value)) 1 else 0)
+                NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (WinRtValueBoxing.isNumericScalar(value)) 1 else 0)
                 KnownHResults.S_OK.value
             },
         )

@@ -25,18 +25,6 @@ internal actual object PlatformValueProjectionInterop {
             PlatformValueBoxingInterop.readReferenceArrayValue(interfaceId, reference)
         }
 
-    actual fun isPropertyValueCompatible(value: Any): Boolean =
-        PlatformValueBoxingInterop.isPropertyValueCompatible(value)
-
-    actual fun propertyTypeOf(value: Any): PropertyType =
-        PlatformValueBoxingInterop.propertyTypeOf(value)
-
-    actual fun isNumericScalar(value: Any): Boolean =
-        PlatformValueBoxingInterop.isNumericScalar(value)
-
-    actual fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
-        PlatformValueBoxingInterop.boxedRuntimeClassNameForType(type)
-
     actual fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
         PlatformValueBoxingInterop.writePropertyValue(expectedType, value, destination.asMemorySegment())
     }

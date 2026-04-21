@@ -94,7 +94,7 @@ internal object WinRtReferenceArrayProjection {
 
 internal object WinRtPropertyValueProjection {
     fun createMarshaler(value: Any?): WinRtProjectionMarshaler? {
-        if (value == null || !PlatformValueProjectionInterop.isPropertyValueCompatible(value)) {
+        if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
             return null
         }
         return WinRtProjectionMarshaler.owned(
@@ -103,7 +103,7 @@ internal object WinRtPropertyValueProjection {
     }
 
     fun fromManaged(value: Any?): NativePointer =
-        if (value == null || !PlatformValueProjectionInterop.isPropertyValueCompatible(value)) {
+        if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
             NativeInterop.nullPointer
         } else {
             PlatformValueProjectionInterop.createPropertyValueReference(value).useAndGetRef()

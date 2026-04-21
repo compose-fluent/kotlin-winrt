@@ -6,10 +6,10 @@ internal fun createReferenceHost(
 ): ManagedReferenceHost =
     WinRtInspectableComObject(
         interfaceDefinitions = listOf(
-            PlatformValueProjectionInterop.createReferenceInterfaceDefinition(value)
+            WinRtValueBoxing.createReferenceInterfaceDefinition(value)
                 ?: throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
         ),
-        runtimeClassName = PlatformValueProjectionInterop.boxedRuntimeClassNameForType(value::class),
+        runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
         managedValue = value,
     )
 
@@ -19,9 +19,9 @@ internal fun createReferenceArrayHost(
 ): ManagedReferenceHost =
     WinRtInspectableComObject(
         interfaceDefinitions = listOf(
-            PlatformValueProjectionInterop.createReferenceArrayInterfaceDefinition(value)
+            WinRtValueBoxing.createReferenceArrayInterfaceDefinition(value)
                 ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH)),
         ),
-        runtimeClassName = PlatformValueProjectionInterop.boxedRuntimeClassNameForType(value::class),
+        runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
         managedValue = value,
     )

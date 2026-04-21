@@ -48,7 +48,7 @@ internal actual fun platformCreateSyntheticCcwDefinition(value: Any): WinRtCcwDe
 }
 
 internal actual fun platformRuntimeClassNameFor(value: Any): String? {
-    PlatformValueProjectionInterop.boxedRuntimeClassNameForType(value::class)?.let { return it }
+    WinRtValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
     val lookupName =
         TypeNameSupport.getNameForType(
             value::class,

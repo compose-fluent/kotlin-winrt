@@ -4,16 +4,16 @@ import kotlin.reflect.KClass
 
 internal object WinRtValueBoxing {
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
-        PlatformValueProjectionInterop.boxedRuntimeClassNameForType(type)
+        ValueBoxingMetadata.boxedRuntimeClassNameForType(type)
 
     fun isPropertyValueCompatible(value: Any): Boolean =
-        PlatformValueProjectionInterop.isPropertyValueCompatible(value)
+        ValueBoxingMetadata.isPropertyValueCompatible(value)
 
     fun propertyTypeOf(value: Any): PropertyType =
-        PlatformValueProjectionInterop.propertyTypeOf(value)
+        ValueBoxingMetadata.propertyTypeOf(value)
 
     fun isNumericScalar(value: Any): Boolean =
-        PlatformValueProjectionInterop.isNumericScalar(value)
+        ValueBoxingMetadata.isNumericScalar(value)
 
     fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
         PlatformValueProjectionInterop.createReferenceInterfaceDefinition(value)
