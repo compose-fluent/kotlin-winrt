@@ -1,0 +1,691 @@
+@file:OptIn(ExperimentalUnsignedTypes::class)
+
+package io.github.kitectlab.winrt.runtime
+
+import java.lang.foreign.Arena
+import java.lang.foreign.MemoryLayout
+import java.lang.foreign.MemorySegment
+import java.lang.foreign.ValueLayout
+import kotlin.reflect.KClass
+
+internal class WinRtValueAdapter<T : Any>(
+    val projectedClass: KClass<*>,
+    val nullableInterfaceId: Guid?,
+    val referenceArrayInterfaceId: Guid?,
+    val propertyType: PropertyType?,
+    val propertyTypeArray: PropertyType?,
+    val abiLayout: MemoryLayout,
+    val isNumericScalar: Boolean = false,
+    private val exactUnbox: (Any) -> T,
+    private val propertyValueCoerce: (Any) -> T = exactUnbox,
+    private val writeTransferredValue: (T, NativePointer) -> Unit,
+    private val readOwnedValue: (NativePointer) -> T,
+    private val disposeTransferredValue: (NativePointer) -> Unit = {},
+) {
+    fun unboxExact(value: Any): T = exactUnbox(value)
+
+    fun coercePropertyValue(value: Any): T = propertyValueCoerce(value)
+
+    fun writeValue(value: Any, destination: NativePointer) {
+        writeTransferredValue(unboxExact(value), NativeInterop.slice(destination, 0, abiLayout.byteSize()))
+    }
+
+    fun writeCoercedPropertyValue(value: Any, destination: NativePointer) {
+        writeTransferredValue(coercePropertyValue(value), NativeInterop.slice(destination, 0, abiLayout.byteSize()))
+    }
+
+    fun readValue(source: NativePointer): T = readOwnedValue(source)
+
+    fun disposeValue(source: NativePointer) {
+        disposeTransferredValue(source)
+    }
+
+    fun createTransferredArray(elements: Array<*>): Pair<Int, NativePointer> {
+        val arena = Arena.ofShared()
+        val data = arena.allocate(abiLayout.byteSize() * elements.size.toLong(), abiLayout.byteAlignment()).asNativePointer()
+        return try {
+            elements.forEachIndexed { index, element ->
+                val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+                if (element != null) {
+                    writeTransferredValue(unboxExact(element), slice)
+                } else {
+                    slice.asMemorySegment().fill(0)
+                }
+            }
+            TransferredArrayOwnership.transfer(data) {
+                elements.indices.forEach { index ->
+                    val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+                    disposeTransferredValue(slice)
+                }
+                arena.close()
+            }
+            elements.size to data
+        } catch (error: Throwable) {
+            elements.indices.forEach { index ->
+                val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+                disposeTransferredValue(slice)
+            }
+            arena.close()
+            throw error
+        }
+    }
+
+    fun readOwnedArray(length: Int, data: NativePointer): Array<Any?>? {
+        if (NativeInterop.isNull(data)) {
+            return null
+        }
+        val readable = data.asMemorySegment().reinterpret(abiLayout.byteSize() * length.toLong()).asNativePointer()
+        return Array(length) { index ->
+            val slice = NativeInterop.slice(readable, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+            readOwnedValue(slice)
+        }
+    }
+
+    fun disposeOwnedArray(length: Int, data: NativePointer) {
+        if (NativeInterop.isNull(data)) {
+            return
+        }
+        if (TransferredArrayOwnership.release(data)) {
+            return
+        }
+        val readable = data.asMemorySegment().reinterpret(abiLayout.byteSize() * length.toLong()).asNativePointer()
+        repeat(length) { index ->
+            val slice = NativeInterop.slice(readable, index.toLong() * abiLayout.byteSize(), abiLayout.byteSize())
+            disposeTransferredValue(slice)
+        }
+    }
+}
+
+private object TransferredArrayOwnership {
+    private val cleanups = ConcurrentCacheMap<Long, () -> Unit>()
+
+    fun transfer(
+        pointer: NativePointer,
+        cleanup: () -> Unit,
+    ) {
+        cleanups[NativeInterop.pointerKey(pointer)] = cleanup
+    }
+
+    fun release(pointer: NativePointer): Boolean =
+        cleanups.remove(NativeInterop.pointerKey(pointer))?.let {
+            it()
+            true
+        } ?: false
+}
+
+private fun <T : Any> directValueAdapter(
+    projectedClass: KClass<*>,
+    nullableInterfaceId: Guid?,
+    referenceArrayInterfaceId: Guid?,
+    propertyType: PropertyType?,
+    propertyTypeArray: PropertyType?,
+    abiLayout: MemoryLayout,
+    isNumericScalar: Boolean = false,
+    exactUnbox: (Any) -> T,
+    propertyValueCoerce: (Any) -> T = exactUnbox,
+    readOwnedValue: (NativePointer) -> T,
+    writeTransferredValue: (T, NativePointer) -> Unit,
+    disposeTransferredValue: (NativePointer) -> Unit = {},
+): WinRtValueAdapter<T> =
+    WinRtValueAdapter(
+        projectedClass = projectedClass,
+        nullableInterfaceId = nullableInterfaceId,
+        referenceArrayInterfaceId = referenceArrayInterfaceId,
+        propertyType = propertyType,
+        propertyTypeArray = propertyTypeArray,
+        abiLayout = abiLayout,
+        isNumericScalar = isNumericScalar,
+        exactUnbox = exactUnbox,
+        propertyValueCoerce = propertyValueCoerce,
+        writeTransferredValue = writeTransferredValue,
+        readOwnedValue = readOwnedValue,
+        disposeTransferredValue = disposeTransferredValue,
+    )
+
+private fun <T : Any> pointerValueAdapter(
+    projectedClass: KClass<*>,
+    nullableInterfaceId: Guid?,
+    referenceArrayInterfaceId: Guid?,
+    propertyType: PropertyType?,
+    propertyTypeArray: PropertyType?,
+    exactUnbox: (Any) -> T,
+    propertyValueCoerce: (Any) -> T = exactUnbox,
+    createPointer: (T) -> NativePointer,
+    readOwnedPointer: (NativePointer) -> T,
+    disposeOwnedPointer: (NativePointer) -> Unit,
+): WinRtValueAdapter<T> =
+    directValueAdapter(
+        projectedClass = projectedClass,
+        nullableInterfaceId = nullableInterfaceId,
+        referenceArrayInterfaceId = referenceArrayInterfaceId,
+        propertyType = propertyType,
+        propertyTypeArray = propertyTypeArray,
+        abiLayout = ValueLayout.ADDRESS,
+        exactUnbox = exactUnbox,
+        propertyValueCoerce = propertyValueCoerce,
+        readOwnedValue = { source -> readOwnedPointer(NativeInterop.readPointer(source)) },
+        writeTransferredValue = { value, destination ->
+            NativeInterop.writePointer(destination, createPointer(value))
+        },
+        disposeTransferredValue = { source ->
+            val pointer = NativeInterop.readPointer(source)
+            if (!NativeInterop.isNull(pointer)) {
+                disposeOwnedPointer(pointer)
+            }
+        },
+    )
+
+internal object PlatformValueBoxingInterop {
+    private val stringAdapter =
+        pointerValueAdapter(
+            projectedClass = String::class,
+            nullableInterfaceId = IID.NullableString,
+            referenceArrayInterfaceId = IID.IReferenceArrayOfString,
+            propertyType = PropertyType.String,
+            propertyTypeArray = PropertyType.StringArray,
+            exactUnbox = { it as String },
+            propertyValueCoerce = ::coerceString,
+            createPointer = { value -> StringMarshaller.fromManaged(value)?.handle ?: NativeInterop.nullPointer },
+            readOwnedPointer = { pointer -> StringMarshaller.fromAbi(pointer.asMemorySegment()) },
+            disposeOwnedPointer = { pointer -> StringMarshaller.disposeAbi(pointer.asMemorySegment()) },
+        )
+
+    private val objectAdapter =
+        pointerValueAdapter(
+            projectedClass = Any::class,
+            nullableInterfaceId = IID.NullableObject,
+            referenceArrayInterfaceId = IID.IReferenceArrayOfObject,
+            propertyType = null,
+            propertyTypeArray = PropertyType.InspectableArray,
+            exactUnbox = { it },
+            createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef() },
+            readOwnedPointer = ::unboxInspectablePointer,
+            disposeOwnedPointer = { pointer -> IUnknownReference(pointer, IID.IInspectable).close() },
+        )
+
+    private val classAdapter =
+        directValueAdapter<KClass<*>>(
+            projectedClass = KClass::class,
+            nullableInterfaceId = IID.NullableType,
+            referenceArrayInterfaceId = IID.IReferenceArrayOfType,
+            propertyType = null,
+            propertyTypeArray = null,
+            abiLayout = NativeLayoutsJvmCompat.TYPE_NAME,
+            exactUnbox = { it as KClass<*> },
+            readOwnedValue = { source ->
+                TypeProjection.fromAbi(source)
+                    ?: throw WinRtInvalidCastException("Expected non-null projected KClass value.", HResult(TYPE_E_TYPEMISMATCH))
+            },
+            writeTransferredValue = TypeProjection::copyTo,
+            disposeTransferredValue = TypeProjection::disposeAbi,
+        )
+
+    private val exceptionAdapter =
+        directValueAdapter(
+            projectedClass = Exception::class,
+            nullableInterfaceId = IID.NullableException,
+            referenceArrayInterfaceId = IID.IReferenceArrayOfException,
+            propertyType = null,
+            propertyTypeArray = null,
+            abiLayout = ValueLayout.JAVA_INT,
+            exactUnbox = { it as Exception },
+            readOwnedValue = { source -> ExceptionProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_INT, 0)) },
+            writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_INT, 0, ExceptionProjection.toAbi(value)) },
+        )
+
+    private val adapters: List<WinRtValueAdapter<*>> =
+        listOf<WinRtValueAdapter<*>>(
+            directValueAdapter(
+                projectedClass = Byte::class,
+                nullableInterfaceId = IID.NullableSByte,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfSByte,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = ValueLayout.JAVA_BYTE,
+                exactUnbox = { it as Byte },
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_BYTE, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_BYTE, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = UByte::class,
+                nullableInterfaceId = IID.NullableByte,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfByte,
+                propertyType = PropertyType.UInt8,
+                propertyTypeArray = PropertyType.UInt8Array,
+                abiLayout = ValueLayout.JAVA_BYTE,
+                isNumericScalar = true,
+                exactUnbox = { it as UByte },
+                propertyValueCoerce = ::coerceUByte,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_BYTE, 0).toUByte() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_BYTE, 0, value.toByte()) },
+            ),
+            directValueAdapter(
+                projectedClass = Short::class,
+                nullableInterfaceId = IID.NullableShort,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfInt16,
+                propertyType = PropertyType.Int16,
+                propertyTypeArray = PropertyType.Int16Array,
+                abiLayout = ValueLayout.JAVA_SHORT,
+                isNumericScalar = true,
+                exactUnbox = { it as Short },
+                propertyValueCoerce = ::coerceShort,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_SHORT, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_SHORT, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = UShort::class,
+                nullableInterfaceId = IID.NullableUShort,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfUInt16,
+                propertyType = PropertyType.UInt16,
+                propertyTypeArray = PropertyType.UInt16Array,
+                abiLayout = ValueLayout.JAVA_SHORT,
+                isNumericScalar = true,
+                exactUnbox = { it as UShort },
+                propertyValueCoerce = ::coerceUShort,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_SHORT, 0).toUShort() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_SHORT, 0, value.toShort()) },
+            ),
+            directValueAdapter(
+                projectedClass = Int::class,
+                nullableInterfaceId = IID.NullableInt,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfInt32,
+                propertyType = PropertyType.Int32,
+                propertyTypeArray = PropertyType.Int32Array,
+                abiLayout = ValueLayout.JAVA_INT,
+                isNumericScalar = true,
+                exactUnbox = { it as Int },
+                propertyValueCoerce = ::coerceInt,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_INT, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_INT, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = UInt::class,
+                nullableInterfaceId = IID.NullableUInt,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfUInt32,
+                propertyType = PropertyType.UInt32,
+                propertyTypeArray = PropertyType.UInt32Array,
+                abiLayout = ValueLayout.JAVA_INT,
+                isNumericScalar = true,
+                exactUnbox = { it as UInt },
+                propertyValueCoerce = ::coerceUInt,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_INT, 0).toUInt() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_INT, 0, value.toInt()) },
+            ),
+            directValueAdapter(
+                projectedClass = Long::class,
+                nullableInterfaceId = IID.NullableLong,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfInt64,
+                propertyType = PropertyType.Int64,
+                propertyTypeArray = PropertyType.Int64Array,
+                abiLayout = ValueLayout.JAVA_LONG,
+                isNumericScalar = true,
+                exactUnbox = { it as Long },
+                propertyValueCoerce = ::coerceLong,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_LONG, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = ULong::class,
+                nullableInterfaceId = IID.NullableULong,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfUInt64,
+                propertyType = PropertyType.UInt64,
+                propertyTypeArray = PropertyType.UInt64Array,
+                abiLayout = ValueLayout.JAVA_LONG,
+                isNumericScalar = true,
+                exactUnbox = { it as ULong },
+                propertyValueCoerce = ::coerceULong,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0).toULong() },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_LONG, 0, value.toLong()) },
+            ),
+            directValueAdapter(
+                projectedClass = Float::class,
+                nullableInterfaceId = IID.NullableFloat,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfSingle,
+                propertyType = PropertyType.Single,
+                propertyTypeArray = PropertyType.SingleArray,
+                abiLayout = ValueLayout.JAVA_FLOAT,
+                isNumericScalar = true,
+                exactUnbox = { it as Float },
+                propertyValueCoerce = ::coerceFloat,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_FLOAT, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_FLOAT, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = Double::class,
+                nullableInterfaceId = IID.NullableDouble,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfDouble,
+                propertyType = PropertyType.Double,
+                propertyTypeArray = PropertyType.DoubleArray,
+                abiLayout = ValueLayout.JAVA_DOUBLE,
+                isNumericScalar = true,
+                exactUnbox = { it as Double },
+                propertyValueCoerce = ::coerceDouble,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_DOUBLE, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_DOUBLE, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = Char::class,
+                nullableInterfaceId = IID.NullableChar,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfChar,
+                propertyType = PropertyType.Char16,
+                propertyTypeArray = PropertyType.Char16Array,
+                abiLayout = NativeLayoutsJvmCompat.CHAR16,
+                exactUnbox = { it as Char },
+                propertyValueCoerce = ::coerceChar,
+                readOwnedValue = { source -> source.asMemorySegment().get(NativeLayoutsJvmCompat.CHAR16, 0) },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(NativeLayoutsJvmCompat.CHAR16, 0, value) },
+            ),
+            directValueAdapter(
+                projectedClass = Boolean::class,
+                nullableInterfaceId = IID.NullableBool,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfBoolean,
+                propertyType = PropertyType.Boolean,
+                propertyTypeArray = PropertyType.BooleanArray,
+                abiLayout = ValueLayout.JAVA_BYTE,
+                exactUnbox = { it as Boolean },
+                propertyValueCoerce = ::coerceBoolean,
+                readOwnedValue = { source -> source.asMemorySegment().get(ValueLayout.JAVA_BYTE, 0).toInt() != 0 },
+                writeTransferredValue = { value, destination -> destination.asMemorySegment().set(ValueLayout.JAVA_BYTE, 0, if (value) 1 else 0) },
+            ),
+            stringAdapter,
+            directValueAdapter(
+                projectedClass = Guid::class,
+                nullableInterfaceId = IID.NullableGuid,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfGuid,
+                propertyType = PropertyType.Guid,
+                propertyTypeArray = PropertyType.GuidArray,
+                abiLayout = NativeLayoutsJvmCompat.GUID,
+                exactUnbox = { it as Guid },
+                propertyValueCoerce = ::coerceGuid,
+                readOwnedValue = GuidMarshaller::readFrom,
+                writeTransferredValue = GuidMarshaller::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = kotlin.time.Instant::class,
+                nullableInterfaceId = IID.NullableDateTimeOffset,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfDateTimeOffset,
+                propertyType = PropertyType.DateTime,
+                propertyTypeArray = PropertyType.DateTimeArray,
+                abiLayout = ValueLayout.JAVA_LONG,
+                exactUnbox = { it as kotlin.time.Instant },
+                readOwnedValue = { source -> DateTimeProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0)) },
+                writeTransferredValue = { value, destination -> DateTimeProjection.copyTo(value, destination) },
+            ),
+            directValueAdapter(
+                projectedClass = kotlin.time.Duration::class,
+                nullableInterfaceId = IID.NullableTimeSpan,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfTimeSpan,
+                propertyType = PropertyType.TimeSpan,
+                propertyTypeArray = PropertyType.TimeSpanArray,
+                abiLayout = ValueLayout.JAVA_LONG,
+                exactUnbox = { it as kotlin.time.Duration },
+                readOwnedValue = { source -> TimeSpanProjection.fromAbi(source.asMemorySegment().get(ValueLayout.JAVA_LONG, 0)) },
+                writeTransferredValue = { value, destination -> TimeSpanProjection.copyTo(value, destination) },
+            ),
+            directValueAdapter(
+                projectedClass = Point::class,
+                nullableInterfaceId = IID.IReferenceOfPoint,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfPoint,
+                propertyType = PropertyType.Point,
+                propertyTypeArray = PropertyType.PointArray,
+                abiLayout = Point.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Point },
+                readOwnedValue = Point.Metadata::fromAbi,
+                writeTransferredValue = Point.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Size::class,
+                nullableInterfaceId = IID.IReferenceOfSize,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfSize,
+                propertyType = PropertyType.Size,
+                propertyTypeArray = PropertyType.SizeArray,
+                abiLayout = Size.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Size },
+                readOwnedValue = Size.Metadata::fromAbi,
+                writeTransferredValue = Size.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Rect::class,
+                nullableInterfaceId = IID.IReferenceOfRect,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfRect,
+                propertyType = PropertyType.Rect,
+                propertyTypeArray = PropertyType.RectArray,
+                abiLayout = Rect.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Rect },
+                readOwnedValue = Rect.Metadata::fromAbi,
+                writeTransferredValue = Rect.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Matrix3x2::class,
+                nullableInterfaceId = IID.IReferenceMatrix3x2,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfMatrix3x2,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Matrix3x2.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Matrix3x2 },
+                readOwnedValue = Matrix3x2.Metadata::fromAbi,
+                writeTransferredValue = Matrix3x2.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Matrix4x4::class,
+                nullableInterfaceId = IID.IReferenceMatrix4x4,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfMatrix4x4,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Matrix4x4.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Matrix4x4 },
+                readOwnedValue = Matrix4x4.Metadata::fromAbi,
+                writeTransferredValue = Matrix4x4.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Plane::class,
+                nullableInterfaceId = IID.IReferencePlane,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfPlane,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Plane.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Plane },
+                readOwnedValue = Plane.Metadata::fromAbi,
+                writeTransferredValue = Plane.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Quaternion::class,
+                nullableInterfaceId = IID.IReferenceQuaternion,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfQuaternion,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Quaternion.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Quaternion },
+                readOwnedValue = Quaternion.Metadata::fromAbi,
+                writeTransferredValue = Quaternion.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Vector2::class,
+                nullableInterfaceId = IID.IReferenceVector2,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfVector2,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Vector2.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Vector2 },
+                readOwnedValue = Vector2.Metadata::fromAbi,
+                writeTransferredValue = Vector2.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Vector3::class,
+                nullableInterfaceId = IID.IReferenceVector3,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfVector3,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Vector3.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Vector3 },
+                readOwnedValue = Vector3.Metadata::fromAbi,
+                writeTransferredValue = Vector3.Metadata::copyTo,
+            ),
+            directValueAdapter(
+                projectedClass = Vector4::class,
+                nullableInterfaceId = IID.IReferenceVector4,
+                referenceArrayInterfaceId = IID.IReferenceArrayOfVector4,
+                propertyType = null,
+                propertyTypeArray = null,
+                abiLayout = Vector4.Metadata.ABI_LAYOUT,
+                exactUnbox = { it as Vector4 },
+                readOwnedValue = Vector4.Metadata::fromAbi,
+                writeTransferredValue = Vector4.Metadata::copyTo,
+            ),
+            classAdapter,
+            exceptionAdapter,
+            objectAdapter,
+        )
+
+    private val adaptersByNullableIid = adapters.mapNotNull { adapter -> adapter.nullableInterfaceId?.let { it to adapter } }.toMap()
+    private val adaptersByReferenceArrayIid = adapters.mapNotNull { adapter -> adapter.referenceArrayInterfaceId?.let { it to adapter } }.toMap()
+    private val adaptersByPropertyType = adapters.mapNotNull { adapter -> adapter.propertyType?.let { it to adapter } }.toMap()
+    private val adaptersByPropertyTypeArray = adapters.mapNotNull { adapter -> adapter.propertyTypeArray?.let { it to adapter } }.toMap()
+
+    fun adapterForReferenceInterface(interfaceId: Guid): WinRtValueAdapter<*>? = adaptersByNullableIid[interfaceId]
+
+    fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRtValueAdapter<*>? = adaptersByReferenceArrayIid[interfaceId]
+
+    internal fun adapterForPropertyType(propertyType: PropertyType): WinRtValueAdapter<*>? = adaptersByPropertyType[propertyType]
+
+    internal fun adapterForPropertyTypeArray(propertyType: PropertyType): WinRtValueAdapter<*>? = adaptersByPropertyTypeArray[propertyType]
+
+    internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
+
+    fun writePropertyValue(
+        expectedType: PropertyType,
+        value: Any,
+        destination: MemorySegment,
+    ) {
+        val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
+        if (enumDescriptor != null && enumDescriptor.propertyType == expectedType) {
+            destination.reinterpret(ValueLayout.JAVA_INT.byteSize()).set(ValueLayout.JAVA_INT, 0, enumDescriptor.toAbiBits(value))
+            return
+        }
+
+        val adapter = adaptersByPropertyType[expectedType]
+        if (adapter != null) {
+            adapter.writeCoercedPropertyValue(value, destination.asNativePointer())
+            return
+        }
+
+        throw WinRtInvalidCastException("Unsupported property value getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
+    }
+
+    fun writePropertyValueArray(
+        expectedType: PropertyType,
+        value: Any,
+        countOut: MemorySegment,
+        dataOut: MemorySegment,
+    ) {
+        val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
+            ?: throw WinRtInvalidCastException("Value is not an array for $expectedType", HResult(TYPE_E_TYPEMISMATCH))
+        val adapter =
+            when (expectedType) {
+                PropertyType.InspectableArray -> objectAdapter
+                else -> adaptersByPropertyTypeArray[expectedType]
+            } ?: throw WinRtInvalidCastException("Unsupported property value array getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
+        val coerced =
+            boxedElements.map { element ->
+                if (element == null) {
+                    null
+                } else {
+                    @Suppress("UNCHECKED_CAST")
+                    (adapter as WinRtValueAdapter<Any>).coercePropertyValue(element)
+                }
+            }.toTypedArray()
+        val (length, data) = adapter.createTransferredArray(coerced)
+        countOut.set(ValueLayout.JAVA_INT, 0, length)
+        dataOut.set(ValueLayout.ADDRESS, 0, data.asMemorySegment())
+    }
+
+    fun readReferenceValue(
+        interfaceId: Guid,
+        reference: WinRtReferenceReference,
+    ): Any? {
+        val adapter = adapterForReferenceInterface(interfaceId)
+            ?: throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        return reference.readValue(
+            sizeBytes = adapter.abiLayout.byteSize(),
+            alignmentBytes = adapter.abiLayout.byteAlignment(),
+            readValue = adapter::readValue,
+            disposeValue = adapter::disposeValue,
+        )
+    }
+
+    fun readReferenceArrayValue(
+        interfaceId: Guid,
+        reference: WinRtReferenceArrayReference,
+    ): Array<Any?>? {
+        val adapter = adapterForReferenceArrayInterface(interfaceId)
+            ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        return reference.readValue(
+            readArray = adapter::readOwnedArray,
+            disposeArray = adapter::disposeOwnedArray,
+        )
+    }
+
+    internal fun createReferenceInterfaceDefinition(
+        interfaceId: Guid,
+        value: Any,
+    ): WinRtInspectableInterfaceDefinition {
+        val adapter = adapterForReferenceInterface(interfaceId)
+        val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
+        if (adapter == null && (enumDescriptor == null || enumDescriptor.nullableInterfaceId != interfaceId)) {
+            throw WinRtInvalidCastException("Unsupported IReference interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        }
+        return WinRtInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = listOf(
+                WinRtInspectableMethodDefinition(
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                    ),
+                ) { rawArgs ->
+                    val destination =
+                        rawArgs.singleOrNull() as? NativePointer
+                            ?: throw IllegalStateException("IReference host requires one out-argument.")
+                    if (adapter != null) {
+                        requireNotNull(adapter).writeValue(value, destination)
+                    } else {
+                        NativeInterop.writeInt32(destination, requireNotNull(enumDescriptor).toAbiBits(value))
+                    }
+                    KnownHResults.S_OK.value
+                },
+            ),
+        )
+    }
+
+    internal fun createReferenceArrayInterfaceDefinition(
+        interfaceId: Guid,
+        value: Any,
+    ): WinRtInspectableInterfaceDefinition {
+        val adapter = adapterForReferenceArrayInterface(interfaceId)
+            ?: throw WinRtInvalidCastException("Unsupported IReferenceArray interface id: $interfaceId", HResult(TYPE_E_TYPEMISMATCH))
+        val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
+            ?: throw WinRtInvalidCastException("IReferenceArray host requires an array value.", HResult(TYPE_E_TYPEMISMATCH))
+        return WinRtInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = listOf(
+                WinRtInspectableMethodDefinition(
+                    descriptor = NativeFunctionDescriptor.of(
+                        NativeValueLayout.JAVA_INT,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                        NativeValueLayout.ADDRESS,
+                    ),
+                ) { rawArgs ->
+                    if (rawArgs.size != 2) {
+                        throw IllegalStateException("IReferenceArray host requires count and data out-arguments.")
+                    }
+                    val (length, data) = adapter.createTransferredArray(boxedElements)
+                    NativeInterop.writeInt32(rawArgs[0] as NativePointer, length)
+                    NativeInterop.writePointer(rawArgs[1] as NativePointer, data)
+                    KnownHResults.S_OK.value
+                },
+            ),
+        )
+    }
+}
