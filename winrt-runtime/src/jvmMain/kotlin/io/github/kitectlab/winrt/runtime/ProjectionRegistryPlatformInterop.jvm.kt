@@ -18,6 +18,21 @@ internal actual fun isPlatformExceptionType(type: KClass<*>): Boolean =
 internal actual fun platformArrayElementType(type: KClass<*>): KClass<*>? =
     type.registeredClass().componentType?.kotlin
 
+internal actual fun platformTypeCanonicalName(type: KClass<*>): String? = type.registeredClass().canonicalName
+
+internal actual fun platformTypeName(type: KClass<*>): String = type.registeredClass().name
+
+internal actual fun platformIsAssignableFrom(
+    targetType: KClass<*>,
+    candidateType: KClass<*>,
+): Boolean = targetType.registeredClass().isAssignableFrom(candidateType.registeredClass())
+
+internal actual fun platformBoxedRuntimeClassName(type: KClass<*>): String? =
+    WinRtValueBoxing.boxedRuntimeClassNameForType(type.registeredClass())
+
+internal actual fun platformRuntimeClassNameForNonWinRtType(type: KClass<*>): String? =
+    ComWrappersSupport.getRuntimeClassNameForNonWinRTTypeFromLookupTable(type)
+
 private object JvmProjectionMappingsBootstrap {
     private var registered = false
     private var registering = false

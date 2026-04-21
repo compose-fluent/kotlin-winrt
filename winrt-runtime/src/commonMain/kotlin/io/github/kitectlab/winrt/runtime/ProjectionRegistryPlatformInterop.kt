@@ -16,3 +16,16 @@ internal expect fun clearPlatformProjectionMappingsForTests()
 internal expect fun isPlatformExceptionType(type: KClass<*>): Boolean
 
 internal expect fun platformArrayElementType(type: KClass<*>): KClass<*>?
+
+internal expect fun platformTypeCanonicalName(type: KClass<*>): String?
+
+internal expect fun platformTypeName(type: KClass<*>): String
+
+internal expect fun platformIsAssignableFrom(
+    targetType: KClass<*>,
+    candidateType: KClass<*>,
+): Boolean
+
+internal expect fun platformBoxedRuntimeClassName(type: KClass<*>): String?
+
+internal expect fun platformRuntimeClassNameForNonWinRtType(type: KClass<*>): String?
