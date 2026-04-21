@@ -485,7 +485,9 @@ internal object WinRtValueBoxing {
                 abiLayout = ValueLayout.JAVA_LONG,
                 exactUnbox = { it as Instant },
                 readOwnedValue = { source -> DateTimeProjection.fromAbi(source.get(ValueLayout.JAVA_LONG, 0)) },
-                writeTransferredValue = DateTimeProjection::copyTo,
+                writeTransferredValue = { value, destination ->
+                    DateTimeProjection.copyTo(value, destination.asNativePointer())
+                },
             ),
             directValueAdapter(
                 projectedClass = Duration::class.java,
@@ -496,7 +498,9 @@ internal object WinRtValueBoxing {
                 abiLayout = ValueLayout.JAVA_LONG,
                 exactUnbox = { it as Duration },
                 readOwnedValue = { source -> TimeSpanProjection.fromAbi(source.get(ValueLayout.JAVA_LONG, 0)) },
-                writeTransferredValue = TimeSpanProjection::copyTo,
+                writeTransferredValue = { value, destination ->
+                    TimeSpanProjection.copyTo(value, destination.asNativePointer())
+                },
             ),
             directValueAdapter(
                 projectedClass = Point::class.java,
