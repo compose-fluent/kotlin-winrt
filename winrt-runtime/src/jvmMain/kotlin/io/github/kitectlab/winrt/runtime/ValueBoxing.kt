@@ -195,7 +195,7 @@ private fun <T : Any> pointerValueAdapter(
         },
     )
 
-internal object WinRtValueBoxing {
+internal object PlatformValueBoxingInterop {
     private val stringAdapter =
         pointerValueAdapter(
             projectedClass = String::class,

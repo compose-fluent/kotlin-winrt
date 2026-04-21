@@ -10,46 +10,46 @@ internal actual object PlatformValueProjectionInterop {
         )
 
     actual fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
-        WinRtValueBoxing.createReferenceInterfaceDefinition(value)
+        PlatformValueBoxingInterop.createReferenceInterfaceDefinition(value)
 
     actual fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
-        WinRtValueBoxing.createReferenceArrayInterfaceDefinition(value)
+        PlatformValueBoxingInterop.createReferenceArrayInterfaceDefinition(value)
 
     actual fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
         WinRtReferenceReference(pointer, interfaceId).use { reference ->
-            WinRtValueBoxing.readReferenceValue(interfaceId, reference)
+            PlatformValueBoxingInterop.readReferenceValue(interfaceId, reference)
         }
 
     actual fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>? =
         WinRtReferenceArrayReference(pointer, interfaceId).use { reference ->
-            WinRtValueBoxing.readReferenceArrayValue(interfaceId, reference)
+            PlatformValueBoxingInterop.readReferenceArrayValue(interfaceId, reference)
         }
 
     actual fun isPropertyValueCompatible(value: Any): Boolean =
-        WinRtValueBoxing.isPropertyValueCompatible(value)
+        PlatformValueBoxingInterop.isPropertyValueCompatible(value)
 
     actual fun propertyTypeOf(value: Any): PropertyType =
-        WinRtValueBoxing.propertyTypeOf(value)
+        PlatformValueBoxingInterop.propertyTypeOf(value)
 
     actual fun isNumericScalar(value: Any): Boolean =
-        WinRtValueBoxing.isNumericScalar(value)
+        PlatformValueBoxingInterop.isNumericScalar(value)
 
     actual fun boxedRuntimeClassNameForType(type: KClass<*>): String? =
-        WinRtValueBoxing.boxedRuntimeClassNameForType(type)
+        PlatformValueBoxingInterop.boxedRuntimeClassNameForType(type)
 
     actual fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
-        WinRtValueBoxing.writePropertyValue(expectedType, value, destination.asMemorySegment())
+        PlatformValueBoxingInterop.writePropertyValue(expectedType, value, destination.asMemorySegment())
     }
 
     actual fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer) {
-        WinRtValueBoxing.writePropertyValueArray(expectedType, value, countOut.asMemorySegment(), dataOut.asMemorySegment())
+        PlatformValueBoxingInterop.writePropertyValueArray(expectedType, value, countOut.asMemorySegment(), dataOut.asMemorySegment())
     }
 
     actual fun createPropertyValueReference(value: Any): ComObjectReference =
         createPropertyValueHost(value).createPrimaryReference()
 
     actual fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any? {
-        val scalarAdapter = WinRtValueBoxing.adapterForPropertyType(propertyType)
+        val scalarAdapter = PlatformValueBoxingInterop.adapterForPropertyType(propertyType)
         if (scalarAdapter != null) {
             return NativeInterop.confinedScope().use { scope ->
                 val resultOut = NativeInterop.allocateBytes(scope, scalarAdapter.abiLayout.byteSize(), scalarAdapter.abiLayout.byteAlignment())
@@ -75,8 +75,8 @@ internal actual object PlatformValueProjectionInterop {
 
         val arrayAdapter =
             when (propertyType) {
-                PropertyType.InspectableArray -> WinRtValueBoxing.inspectableArrayAdapter()
-                else -> WinRtValueBoxing.adapterForPropertyTypeArray(propertyType)
+                PropertyType.InspectableArray -> PlatformValueBoxingInterop.inspectableArrayAdapter()
+                else -> PlatformValueBoxingInterop.adapterForPropertyTypeArray(propertyType)
             }
         if (arrayAdapter != null) {
             return NativeInterop.confinedScope().use { scope ->
@@ -113,13 +113,13 @@ internal actual object PlatformValueProjectionInterop {
         WinRtPropertyValueReference(pointer).use { it.getValue() }
 
     actual fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? =
-        WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType)
+        PlatformValueBoxingInterop.tryProjectInspectableAsType(inspectable, projectedType)
 
     actual fun tryProjectInspectableReference(inspectable: IInspectableReference): Any? =
-        WinRtValueBoxing.tryProjectInspectableReference(inspectable)
+        PlatformValueBoxingInterop.tryProjectInspectableReference(inspectable)
 
     actual fun tryProjectInspectableReferenceArray(inspectable: IInspectableReference): Any? =
-        WinRtValueBoxing.tryProjectInspectableReferenceArray(inspectable)
+        PlatformValueBoxingInterop.tryProjectInspectableReferenceArray(inspectable)
 
     actual fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any? {
         val propertyValue =
