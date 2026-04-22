@@ -2,7 +2,7 @@ package io.github.kitectlab.winrt.runtime
 
 import kotlin.reflect.KClass
 
-data class WinRtCcwDefinition(
+internal data class WinRtCcwDefinition(
     val interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
     val defaultInterfaceId: Guid,
     val runtimeClassName: String? = null,
@@ -43,7 +43,7 @@ object ComWrappersSupport {
         helperType: WinRtTypeHandle,
     ): Boolean = helperTypeRegistry.putIfAbsent(projectedType, helperType) == null
 
-    fun registerCcwFactory(
+    internal fun registerCcwFactory(
         implementationType: KClass<*>,
         factory: (Any) -> WinRtCcwDefinition,
     ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
@@ -169,6 +169,7 @@ object ComWrappersSupport {
         ccwFactories.clear()
         rcwCache.clear()
         runtimeClassNameLookups.clear()
+        FreeThreadedMarshalerSupport.clearForTests()
         Projections.clearRegistriesForTests()
         TypeNameSupport.clearRegistriesForTests()
         TypeExtensions.clearRegistriesForTests()
@@ -256,22 +257,31 @@ object ComWrappersSupport {
 
     private fun createCcwDefinition(value: Any): WinRtCcwDefinition {
         findCcwFactory(value)?.let { factory ->
-            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, factory(value))
+            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
+                value,
+                InteropRuntimeHooks.augmentInspectableDefinition(value, factory(value)),
+            )
         }
         platformCreateSyntheticCcwDefinition(value)?.let {
-            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, it)
+            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
+                value,
+                InteropRuntimeHooks.augmentInspectableDefinition(value, it),
+            )
         }
         return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
             value,
-            WinRtCcwDefinition(
-            interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
-                    interfaceId = IID.IInspectable,
-                    methods = emptyList(),
+            InteropRuntimeHooks.augmentInspectableDefinition(
+                value,
+                WinRtCcwDefinition(
+                    interfaceDefinitions = listOf(
+                        WinRtInspectableInterfaceDefinition(
+                            interfaceId = IID.IInspectable,
+                            methods = emptyList(),
+                        ),
+                    ),
+                    defaultInterfaceId = IID.IInspectable,
+                    runtimeClassName = platformRuntimeClassNameFor(value),
                 ),
-            ),
-            defaultInterfaceId = IID.IInspectable,
-            runtimeClassName = platformRuntimeClassNameFor(value),
             ),
         )
     }

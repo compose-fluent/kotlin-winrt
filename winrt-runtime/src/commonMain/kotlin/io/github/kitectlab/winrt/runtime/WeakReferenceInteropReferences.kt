@@ -1,12 +1,12 @@
 package io.github.kitectlab.winrt.runtime
 
-private val getWeakReferenceDescriptor = NativeFunctionDescriptor.of(
+internal val getWeakReferenceDescriptor = NativeFunctionDescriptor.of(
     NativeValueLayout.JAVA_INT,
     NativeValueLayout.ADDRESS,
     NativeValueLayout.ADDRESS,
 )
 
-private val resolveWeakReferenceDescriptor = NativeFunctionDescriptor.of(
+internal val resolveWeakReferenceDescriptor = NativeFunctionDescriptor.of(
     NativeValueLayout.JAVA_INT,
     NativeValueLayout.ADDRESS,
     NativeValueLayout.ADDRESS,

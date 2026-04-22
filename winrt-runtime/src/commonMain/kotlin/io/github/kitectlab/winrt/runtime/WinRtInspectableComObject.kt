@@ -1,13 +1,19 @@
 package io.github.kitectlab.winrt.runtime
 
-data class WinRtInspectableMethodDefinition(
+internal data class WinRtInspectableMethodDefinition(
     val descriptor: NativeFunctionDescriptor,
     val handler: (List<Any?>) -> Int,
 )
 
-data class WinRtInspectableInterfaceDefinition(
+internal enum class WinRtComInterfaceBaseKind {
+    IUnknown,
+    IInspectable,
+}
+
+internal data class WinRtInspectableInterfaceDefinition(
     val interfaceId: Guid,
     val methods: List<WinRtInspectableMethodDefinition>,
+    val baseKind: WinRtComInterfaceBaseKind = WinRtComInterfaceBaseKind.IInspectable,
 )
 
 internal data class WinRtInspectableInfoSnapshot(
@@ -28,7 +34,10 @@ internal class WinRtInspectableComObject(
         definition.interfaceId to createInterfaceEntry(definition)
     }
     private val interfaceIdsMemory = allocateInterfaceIds(interfaceDefinitions)
-    private val primaryInterfaceId = interfaceDefinitions.firstOrNull()?.interfaceId
+    private val primaryInspectableInterfaceId = interfaceDefinitions.firstOrNull {
+        it.baseKind == WinRtComInterfaceBaseKind.IInspectable
+    }?.interfaceId
+    private val primaryInterfaceId = primaryInspectableInterfaceId ?: interfaceDefinitions.firstOrNull()?.interfaceId
         ?: error("Inspectable COM object must expose at least one interface.")
 
     init {
@@ -63,7 +72,8 @@ internal class WinRtInspectableComObject(
 
     private fun interfacePointer(interfaceId: Guid): NativePointer =
         when (interfaceId) {
-            IID.IUnknown, IID.IInspectable -> interfaceEntries.getValue(primaryInterfaceId).objectMemory
+            IID.IUnknown -> interfaceEntries.getValue(primaryInterfaceId).objectMemory
+            IID.IInspectable -> primaryInspectableInterfaceId?.let { interfaceEntries.getValue(it).objectMemory }
             else -> interfaceEntries[interfaceId]?.objectMemory
         } ?: throw WinRtUnsupportedOperationException(
             "Managed COM object does not implement interface '$interfaceId'.",
@@ -74,7 +84,11 @@ internal class WinRtInspectableComObject(
         definition: WinRtInspectableInterfaceDefinition,
     ): WinRtInspectableInterfaceEntry {
         val objectMemory = NativeInterop.allocatePointerSlot(scope)
-        val vtableMemory = NativeInterop.allocatePointerArray(scope, IInspectableVftblSlots.FirstCustom + definition.methods.size)
+        val firstCustomSlot = when (definition.baseKind) {
+            WinRtComInterfaceBaseKind.IUnknown -> IUnknownVftblSlots.Release + 1
+            WinRtComInterfaceBaseKind.IInspectable -> IInspectableVftblSlots.FirstCustom
+        }
+        val vtableMemory = NativeInterop.allocatePointerArray(scope, firstCustomSlot + definition.methods.size)
         val queryInterfaceCallback = callbackOf(
             descriptor = NativeFunctionDescriptor.of(
                 NativeValueLayout.JAVA_INT,
@@ -140,23 +154,28 @@ internal class WinRtInspectableComObject(
         NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
         NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
         NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetIids, getIidsCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetRuntimeClassName, getRuntimeClassNameCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetTrustLevel, getTrustLevelCallback.pointer)
+        if (definition.baseKind == WinRtComInterfaceBaseKind.IInspectable) {
+            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetIids, getIidsCallback.pointer)
+            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetRuntimeClassName, getRuntimeClassNameCallback.pointer)
+            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetTrustLevel, getTrustLevelCallback.pointer)
+        }
         methodCallbacks.forEachIndexed { index, callback ->
-            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.FirstCustom + index, callback.pointer)
+            NativeInterop.writePointerAt(vtableMemory, firstCustomSlot + index, callback.pointer)
         }
         NativeInterop.writePointer(objectMemory, vtableMemory)
         return WinRtInspectableInterfaceEntry(
             objectMemory = objectMemory,
-            callbacks = listOf(
-                queryInterfaceCallback,
-                addRefCallback,
-                releaseCallback,
-                getIidsCallback,
-                getRuntimeClassNameCallback,
-                getTrustLevelCallback,
-            ) + methodCallbacks,
+            callbacks = buildList {
+                add(queryInterfaceCallback)
+                add(addRefCallback)
+                add(releaseCallback)
+                if (definition.baseKind == WinRtComInterfaceBaseKind.IInspectable) {
+                    add(getIidsCallback)
+                    add(getRuntimeClassNameCallback)
+                    add(getTrustLevelCallback)
+                }
+                addAll(methodCallbacks)
+            },
         )
     }
 
@@ -165,7 +184,8 @@ internal class WinRtInspectableComObject(
         resultPointer: NativePointer,
     ): Int {
         val targetPointer = when (requestedInterfaceId) {
-            IID.IUnknown, IID.IInspectable -> interfacePointer(primaryInterfaceId)
+            IID.IUnknown -> interfacePointer(primaryInterfaceId)
+            IID.IInspectable -> primaryInspectableInterfaceId?.let(::interfacePointer)
             else -> interfaceEntries[requestedInterfaceId]?.objectMemory
         }
         val queryResult = state.queryInterface(requestedInterfaceId) { _ -> targetPointer }
