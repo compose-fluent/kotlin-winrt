@@ -1,4 +1,24 @@
-package io.github.kitectlab.winrt.runtime
+package io.github.kitectlab.winrt.runtime.exception
+
+import io.github.kitectlab.winrt.runtime.ConcurrentCacheMap
+import io.github.kitectlab.winrt.runtime.Guid
+import io.github.kitectlab.winrt.runtime.HResult
+import io.github.kitectlab.winrt.runtime.IID
+import io.github.kitectlab.winrt.runtime.IUnknownReference
+import io.github.kitectlab.winrt.runtime.IUnknownVftblSlots
+import io.github.kitectlab.winrt.runtime.KnownHResults
+import io.github.kitectlab.winrt.runtime.ManagedComHostState
+import io.github.kitectlab.winrt.runtime.ManagedReferenceHostSupport
+import io.github.kitectlab.winrt.runtime.NativeCallbackHandle
+import io.github.kitectlab.winrt.runtime.NativeFunctionDescriptor
+import io.github.kitectlab.winrt.runtime.NativeInterop
+import io.github.kitectlab.winrt.runtime.NativePointer
+import io.github.kitectlab.winrt.runtime.NativeValueLayout
+import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
+import io.github.kitectlab.winrt.runtime.WinRtUnsupportedOperationException
+import io.github.kitectlab.winrt.runtime.guidOf
+import io.github.kitectlab.winrt.runtime.platformHResultFromThrowable
+import io.github.kitectlab.winrt.runtime.typeDisplayName
 
 /**
  * Shared fallback for `.cswinrt/src/WinRT.Runtime/Interop/ExceptionErrorInfo*`.

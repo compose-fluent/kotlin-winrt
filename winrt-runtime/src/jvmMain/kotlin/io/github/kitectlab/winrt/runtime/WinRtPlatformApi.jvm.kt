@@ -502,6 +502,10 @@ actual object WinRtPlatformApi {
     actual fun setErrorInfoRaw(errorInfo: NativePointer): Int =
         setErrorInfo(errorInfo.asMemorySegment()).value
 
+    actual fun setRestrictedErrorInfoRaw(errorInfo: NativePointer): Int? =
+        setRestrictedErrorInfoHandle
+            ?.invokeWithArguments(errorInfo.asMemorySegment()) as? Int
+
     actual fun borrowRestrictedErrorInfoRaw(): NativePointer? =
         borrowRestrictedErrorInfo()?.asNativePointer()
 

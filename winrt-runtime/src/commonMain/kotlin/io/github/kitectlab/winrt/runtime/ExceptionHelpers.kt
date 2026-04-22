@@ -1,5 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
+import io.github.kitectlab.winrt.runtime.exception.ManagedExceptionInterop
+
 object ExceptionHelpers {
     val S_OK = KnownHResults.S_OK
     val S_FALSE = KnownHResults.S_FALSE
@@ -274,7 +276,5 @@ internal fun platformHResultFromThrowable(error: Throwable): HResult =
 
 internal fun platformSetErrorInfo(error: Throwable) {
     if (!PlatformRuntime.isWindows) return
-    ManagedErrorInfoComObject(error).detachReference().use { errorInfo ->
-        HResult(WinRtPlatformApi.setErrorInfoRaw(errorInfo.pointer)).requireSuccess("SetErrorInfo")
-    }
+    ManagedExceptionInterop.setErrorInfo(error)
 }

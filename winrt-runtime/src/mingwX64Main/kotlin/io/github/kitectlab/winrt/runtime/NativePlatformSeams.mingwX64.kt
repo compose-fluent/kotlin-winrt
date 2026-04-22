@@ -160,6 +160,8 @@ actual object WinRtPlatformApi {
 
     actual fun setErrorInfoRaw(errorInfo: NativePointer): Int = TODO()
 
+    actual fun setRestrictedErrorInfoRaw(errorInfo: NativePointer): Int? = TODO()
+
     actual fun borrowRestrictedErrorInfoRaw(): NativePointer? = TODO()
 
     actual fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int? = TODO()

@@ -200,6 +200,8 @@ expect object WinRtPlatformApi {
 
     fun setErrorInfoRaw(errorInfo: NativePointer): Int
 
+    fun setRestrictedErrorInfoRaw(errorInfo: NativePointer): Int?
+
     fun borrowRestrictedErrorInfoRaw(): NativePointer?
 
     fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int?
