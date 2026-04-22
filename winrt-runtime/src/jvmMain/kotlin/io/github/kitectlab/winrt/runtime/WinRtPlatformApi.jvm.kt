@@ -987,10 +987,10 @@ actual object WinRtPlatformApi {
     }
 
     fun resolveModulePath(fileName: String): String =
-        PlatformFileSystem.resolve(
-            PlatformFileSystem.systemProperty("user.dir") ?: ".",
+        kotlinx.io.files.Path(
+            System.getProperty("user.dir") ?: ".",
             fileName,
-        )
+        ).toString()
 
     private fun readUtf16Message(pointer: MemorySegment, charCount: Int): String {
         val sized = pointer.reinterpret(charCount.toLong() * ValueLayout.JAVA_CHAR.byteSize())

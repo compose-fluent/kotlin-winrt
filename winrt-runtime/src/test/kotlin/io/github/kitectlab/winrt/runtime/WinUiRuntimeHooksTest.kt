@@ -16,8 +16,7 @@ class WinUiRuntimeHooksTest {
     @Test
     fun xaml_metadata_provider_can_activate_when_windows_app_sdk_is_configured() {
         assumeTrue(PlatformRuntime.isWindows)
-        val bootstrapDll = System.getProperty("io.github.kitectlab.winrt.bootstrapDll").orEmpty()
-        if (bootstrapDll.isBlank()) {
+        if (WindowsAppSdkBootstrap.discoverBootstrapLibrary() == null) {
             return
         }
 
