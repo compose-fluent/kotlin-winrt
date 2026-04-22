@@ -43,6 +43,26 @@ internal class WeakReferenceSourceReference(
         }
 }
 
+internal fun ComObjectReference.tryGetWeakReference(): WeakReferenceReference? =
+    tryQueryInterface(IID.IWeakReferenceSource)?.use { weakReferenceSource ->
+        NativeInterop.confinedScope().use { scope ->
+            val resultOut = NativeInterop.allocatePointerSlot(scope)
+            HResult(
+                weakReferenceSource.invokeAbi(
+                    slot = 3,
+                    descriptor = getWeakReferenceDescriptor,
+                    resultOut,
+                ),
+            ).requireSuccess("IWeakReferenceSource.GetWeakReference")
+            val resolvedPointer = NativeInterop.readPointer(resultOut)
+            if (NativeInterop.isNull(resolvedPointer)) {
+                null
+            } else {
+                WeakReferenceReference(resolvedPointer, IID.IWeakReference)
+            }
+        }
+    }
+
 internal class WeakReferenceReference(
     pointer: NativePointer,
     interfaceId: Guid = IID.IWeakReference,

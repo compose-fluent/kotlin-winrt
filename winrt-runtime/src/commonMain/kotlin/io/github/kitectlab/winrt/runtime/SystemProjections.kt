@@ -142,6 +142,7 @@ internal object CommonWinRtBuiltInProjectionMappings {
         registerStruct(Point::class)
         registerStruct(Size::class)
         registerStruct(Rect::class)
+        registerStruct(EventRegistrationToken::class)
         registerStruct(Matrix3x2::class)
         registerStruct(Matrix4x4::class)
         registerStruct(Plane::class)

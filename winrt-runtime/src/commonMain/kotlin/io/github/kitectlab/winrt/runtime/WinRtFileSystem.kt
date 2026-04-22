@@ -20,7 +20,7 @@ internal val Path.fileName: String get() = name
 
 /** Returns the canonical (absolute, normalized) string for deduplication. */
 internal fun Path.canonicalString(): String =
-    runCatching { SystemFileSystem.canonicalize(this).toString() }.getOrElse { toString() }
+    runCatching { SystemFileSystem.resolve(this).toString() }.getOrElse { toString() }
 
 /** Resolves a string path to its canonical absolute form when possible. */
 internal fun absolutePath(path: String): String = Path(path).canonicalString()
