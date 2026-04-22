@@ -16,6 +16,9 @@ internal object RawActivationFactoryLookup {
             if (activationResult.isSuccess || activationResult.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
                 return activationResult
             }
+            if (!FeatureSwitches.enableManifestFreeActivation) {
+                return activationResult
+            }
         }
 
         return ManifestFreeActivation.tryGet(runtimeClassName, interfaceId)

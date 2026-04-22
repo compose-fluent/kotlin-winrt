@@ -78,9 +78,37 @@ internal object TypeProjection {
 
 internal object WinRtBuiltInProjectionMappings {
     fun register() {
+        registerAlwaysOnMappings()
+        if (!FeatureSwitches.enableDefaultCustomTypeMappings) {
+            return
+        }
+
         CommonWinRtBuiltInProjectionMappings.register()
         XamlSystemProjectionMappings.register()
+        registerUriProjection()
+    }
 
+    private fun registerAlwaysOnMappings() {
+        Projections.registerCustomAbiTypeMapping(
+            publicType = KClass::class,
+            helperType = TypeProjection::class,
+            abiTypeName = "Windows.UI.Xaml.Interop.TypeName",
+        )
+        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+            type = KClass::class,
+            projectedTypeName = "Windows.UI.Xaml.Interop.TypeName",
+            helperType = TypeProjection::class,
+            signature = "struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))",
+            boxedName = WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
+            isWindowsRuntimeType = true,
+        )
+        CommonWinRtBuiltInProjectionMappings.registerReferenceArrayType(
+            elementType = KClass::class,
+            arrayType = emptyArray<KClass<*>>()::class,
+        )
+    }
+
+    private fun registerUriProjection() {
         Projections.registerCustomAbiTypeMapping(
             publicType = WinRtUri::class,
             helperType = UriProjection::class,
@@ -107,24 +135,6 @@ internal object WinRtBuiltInProjectionMappings {
             guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
             iid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
             isWindowsRuntimeType = true,
-        )
-
-        Projections.registerCustomAbiTypeMapping(
-            publicType = KClass::class,
-            helperType = TypeProjection::class,
-            abiTypeName = "Windows.UI.Xaml.Interop.TypeName",
-        )
-        CommonWinRtBuiltInProjectionMappings.registerMetadata(
-            type = KClass::class,
-            projectedTypeName = "Windows.UI.Xaml.Interop.TypeName",
-            helperType = TypeProjection::class,
-            signature = "struct(Windows.UI.Xaml.Interop.TypeName;string;enum(Windows.UI.Xaml.Interop.TypeKind;i4))",
-            boxedName = WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
-            isWindowsRuntimeType = true,
-        )
-        CommonWinRtBuiltInProjectionMappings.registerReferenceArrayType(
-            elementType = KClass::class,
-            arrayType = emptyArray<KClass<*>>()::class,
         )
     }
 }

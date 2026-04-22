@@ -5,6 +5,9 @@ private val closableTypeHandle = WinRtTypeHandle(AutoCloseable::class.typeDispla
 
 internal object WinRtBuiltInProjectionRuntimeHooks {
     fun ensureRegistered() {
+        if (!FeatureSwitches.enableDefaultCustomTypeMappings) {
+            return
+        }
         XamlSystemProjectionRuntimeHooks.ensureRegistered()
         ComWrappersSupport.registerRuntimeClassFactory("Windows.Foundation.Uri") { inspectable ->
             inspectable.use(UriProjection::fromInspectable)
