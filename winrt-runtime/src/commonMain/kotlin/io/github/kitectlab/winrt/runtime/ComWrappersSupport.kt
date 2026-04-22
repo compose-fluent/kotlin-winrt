@@ -256,10 +256,14 @@ object ComWrappersSupport {
 
     private fun createCcwDefinition(value: Any): WinRtCcwDefinition {
         findCcwFactory(value)?.let { factory ->
-            return factory(value)
+            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, factory(value))
         }
-        platformCreateSyntheticCcwDefinition(value)?.let { return it }
-        return WinRtCcwDefinition(
+        platformCreateSyntheticCcwDefinition(value)?.let {
+            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, it)
+        }
+        return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
+            value,
+            WinRtCcwDefinition(
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
                     interfaceId = IID.IInspectable,
@@ -268,6 +272,7 @@ object ComWrappersSupport {
             ),
             defaultInterfaceId = IID.IInspectable,
             runtimeClassName = platformRuntimeClassNameFor(value),
+            ),
         )
     }
 

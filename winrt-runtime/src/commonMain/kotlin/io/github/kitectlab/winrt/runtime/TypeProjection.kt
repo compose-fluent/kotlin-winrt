@@ -79,6 +79,7 @@ internal object TypeProjection {
 internal object WinRtBuiltInProjectionMappings {
     fun register() {
         CommonWinRtBuiltInProjectionMappings.register()
+        XamlSystemProjectionMappings.register()
 
         Projections.registerCustomAbiTypeMapping(
             publicType = WinRtUri::class,
