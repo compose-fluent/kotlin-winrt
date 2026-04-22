@@ -314,7 +314,7 @@ private class MetadataTables private constructor(
         var cursor = tableOffsets[TABLE_TYPE_REF]
         repeat(rowCount) { rowIndex ->
             cursor += codedIndexSize(CODED_RESOLUTION_SCOPE)
-            val name = readStringAt(cursor)
+            val (name, _) = splitGenericArity(readStringAt(cursor))
             cursor += stringIndexSize
             val namespace = readStringAt(cursor)
             cursor += stringIndexSize
@@ -981,7 +981,7 @@ private class MetadataTables private constructor(
     ): ParsedMethodSignature {
         val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
         if (bytes.isEmpty()) {
-            return ParsedMethodSignature(ParsedTypeSignature("Unit"), emptyList())
+            return ParsedMethodSignature(ParsedTypeSignature(WinRtTypeRef.named("Unit")), emptyList())
         }
 
         val reader = SignatureReader(bytes, typeDefNames, typeRefNames)
@@ -1006,7 +1006,7 @@ private class MetadataTables private constructor(
     ): ParsedPropertySignature {
         val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
         if (bytes.isEmpty()) {
-            return ParsedPropertySignature(ParsedTypeSignature("Any"))
+            return ParsedPropertySignature(ParsedTypeSignature(WinRtTypeRef.unknown()))
         }
 
         val reader = SignatureReader(bytes, typeDefNames, typeRefNames)
@@ -1026,7 +1026,7 @@ private class MetadataTables private constructor(
     ): ParsedTypeSignature {
         val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
         if (bytes.isEmpty()) {
-            return ParsedTypeSignature("Any")
+            return ParsedTypeSignature(WinRtTypeRef.unknown())
         }
         val reader = SignatureReader(bytes, typeDefNames, typeRefNames)
         reader.readByte()
@@ -1367,9 +1367,14 @@ private data class MethodSemanticsData(
 )
 
 private data class ParsedTypeSignature(
-    val typeName: String,
-    val isByRef: Boolean = false,
-)
+    val type: WinRtTypeRef,
+) {
+    val typeName: String
+        get() = type.typeName
+
+    val isByRef: Boolean
+        get() = type.isByRef
+}
 
 private data class ParsedMethodSignature(
     val returnType: ParsedTypeSignature,
@@ -1408,36 +1413,36 @@ private class SignatureReader(
             }
         }
         if (cursor >= bytes.size) {
-            return ParsedTypeSignature("Any")
+            return ParsedTypeSignature(WinRtTypeRef.unknown())
         }
 
         return when (val elementType = readByte()) {
-            ELEMENT_TYPE_VOID -> ParsedTypeSignature("Unit")
-            ELEMENT_TYPE_BOOLEAN -> ParsedTypeSignature("Boolean")
-            ELEMENT_TYPE_CHAR -> ParsedTypeSignature("Char")
-            ELEMENT_TYPE_I1 -> ParsedTypeSignature("Byte")
-            ELEMENT_TYPE_U1 -> ParsedTypeSignature("UByte")
-            ELEMENT_TYPE_I2 -> ParsedTypeSignature("Short")
-            ELEMENT_TYPE_U2 -> ParsedTypeSignature("UShort")
-            ELEMENT_TYPE_I4 -> ParsedTypeSignature("Int")
-            ELEMENT_TYPE_U4 -> ParsedTypeSignature("UInt")
-            ELEMENT_TYPE_I8 -> ParsedTypeSignature("Long")
-            ELEMENT_TYPE_U8 -> ParsedTypeSignature("ULong")
-            ELEMENT_TYPE_R4 -> ParsedTypeSignature("Float")
-            ELEMENT_TYPE_R8 -> ParsedTypeSignature("Double")
-            ELEMENT_TYPE_STRING -> ParsedTypeSignature("String")
-            ELEMENT_TYPE_OBJECT -> ParsedTypeSignature("Any")
-            ELEMENT_TYPE_I -> ParsedTypeSignature("Long")
-            ELEMENT_TYPE_U -> ParsedTypeSignature("ULong")
-            ELEMENT_TYPE_BYREF -> readType().copy(isByRef = true)
+            ELEMENT_TYPE_VOID -> ParsedTypeSignature(WinRtTypeRef.named("Unit"))
+            ELEMENT_TYPE_BOOLEAN -> ParsedTypeSignature(WinRtTypeRef.named("Boolean"))
+            ELEMENT_TYPE_CHAR -> ParsedTypeSignature(WinRtTypeRef.named("Char"))
+            ELEMENT_TYPE_I1 -> ParsedTypeSignature(WinRtTypeRef.named("Byte"))
+            ELEMENT_TYPE_U1 -> ParsedTypeSignature(WinRtTypeRef.named("UByte"))
+            ELEMENT_TYPE_I2 -> ParsedTypeSignature(WinRtTypeRef.named("Short"))
+            ELEMENT_TYPE_U2 -> ParsedTypeSignature(WinRtTypeRef.named("UShort"))
+            ELEMENT_TYPE_I4 -> ParsedTypeSignature(WinRtTypeRef.named("Int"))
+            ELEMENT_TYPE_U4 -> ParsedTypeSignature(WinRtTypeRef.named("UInt"))
+            ELEMENT_TYPE_I8 -> ParsedTypeSignature(WinRtTypeRef.named("Long"))
+            ELEMENT_TYPE_U8 -> ParsedTypeSignature(WinRtTypeRef.named("ULong"))
+            ELEMENT_TYPE_R4 -> ParsedTypeSignature(WinRtTypeRef.named("Float"))
+            ELEMENT_TYPE_R8 -> ParsedTypeSignature(WinRtTypeRef.named("Double"))
+            ELEMENT_TYPE_STRING -> ParsedTypeSignature(WinRtTypeRef.named("String"))
+            ELEMENT_TYPE_OBJECT -> ParsedTypeSignature(WinRtTypeRef.unknown())
+            ELEMENT_TYPE_I -> ParsedTypeSignature(WinRtTypeRef.named("Long"))
+            ELEMENT_TYPE_U -> ParsedTypeSignature(WinRtTypeRef.named("ULong"))
+            ELEMENT_TYPE_BYREF -> ParsedTypeSignature(readType().type.withByRef())
             ELEMENT_TYPE_PTR -> readType()
             ELEMENT_TYPE_CLASS, ELEMENT_TYPE_VALUETYPE -> ParsedTypeSignature(
-                normalizeSignatureTypeName(decodeTypeToken(readCompressedUnsignedInt())),
+                WinRtTypeRef.named(normalizeSignatureTypeReferenceName(decodeTypeToken(readCompressedUnsignedInt()))),
             )
 
-            ELEMENT_TYPE_VAR -> ParsedTypeSignature("T${readCompressedUnsignedInt()}")
-            ELEMENT_TYPE_MVAR -> ParsedTypeSignature("M${readCompressedUnsignedInt()}")
-            ELEMENT_TYPE_SZARRAY -> ParsedTypeSignature("Array<${readType().typeName}>")
+            ELEMENT_TYPE_VAR -> ParsedTypeSignature(WinRtTypeRef.genericTypeParameter(readCompressedUnsignedInt()))
+            ELEMENT_TYPE_MVAR -> ParsedTypeSignature(WinRtTypeRef.methodTypeParameter(readCompressedUnsignedInt()))
+            ELEMENT_TYPE_SZARRAY -> ParsedTypeSignature(WinRtTypeRef.array(readType().type))
             ELEMENT_TYPE_ARRAY -> {
                 val element = readType()
                 val rank = readCompressedUnsignedInt()
@@ -1445,27 +1450,27 @@ private class SignatureReader(
                 repeat(sizes) { readCompressedUnsignedInt() }
                 val lowerBounds = readCompressedUnsignedInt()
                 repeat(lowerBounds) { readCompressedUnsignedInt() }
-                ParsedTypeSignature(if (rank <= 1) "Array<${element.typeName}>" else "Array<${element.typeName}>")
+                ParsedTypeSignature(WinRtTypeRef.array(element.type, rank = rank))
             }
 
             ELEMENT_TYPE_GENERICINST -> {
                 val genericKind = readByte()
                 val genericTypeName = if (genericKind == ELEMENT_TYPE_CLASS || genericKind == ELEMENT_TYPE_VALUETYPE) {
-                    normalizeSignatureTypeName(decodeTypeToken(readCompressedUnsignedInt()))
+                    normalizeSignatureTypeReferenceName(decodeTypeToken(readCompressedUnsignedInt()))
                 } else {
-                    "Any"
+                    null
                 }
                 val argumentCount = readCompressedUnsignedInt()
                 val arguments = buildList(argumentCount) {
                     repeat(argumentCount) {
-                        add(readType().typeName)
+                        add(readType().type)
                     }
                 }
-                ParsedTypeSignature("$genericTypeName<${arguments.joinToString(", ")}>")
+                ParsedTypeSignature(WinRtTypeRef.named(genericTypeName, arguments))
             }
 
-            ELEMENT_TYPE_TYPEDBYREF, ELEMENT_TYPE_FNPTR, ELEMENT_TYPE_INTERNAL -> ParsedTypeSignature("Any")
-            else -> ParsedTypeSignature(if (elementType == ELEMENT_TYPE_END) "Any" else "Any")
+            ELEMENT_TYPE_TYPEDBYREF, ELEMENT_TYPE_FNPTR, ELEMENT_TYPE_INTERNAL -> ParsedTypeSignature(WinRtTypeRef.unknown())
+            else -> ParsedTypeSignature(if (elementType == ELEMENT_TYPE_END) WinRtTypeRef.unknown() else WinRtTypeRef.unknown())
         }
     }
 
@@ -1545,6 +1550,11 @@ private fun normalizeSignatureTypeName(typeName: String?): String = when (typeNa
     "System.String" -> "String"
     "System.Object" -> "Any"
     else -> typeName
+}
+
+private fun normalizeSignatureTypeReferenceName(typeName: String?): String {
+    val normalized = normalizeSignatureTypeName(typeName)
+    return splitGenericArity(normalized).first
 }
 
 private fun String.toIntegralType(): WinRtIntegralType? = when (this) {

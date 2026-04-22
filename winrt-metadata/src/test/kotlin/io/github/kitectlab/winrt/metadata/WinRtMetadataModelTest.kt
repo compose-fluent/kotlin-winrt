@@ -240,4 +240,81 @@ class WinRtMetadataModelTest {
             status.enumMembers,
         )
     }
+
+    @Test
+    fun structured_type_refs_canonicalize_generic_and_array_shapes() {
+        val type = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "WidgetHolder",
+            baseTypeName = " Sample.Foundation.IBox< Array< String > > ",
+            defaultInterfaceName = " Sample.Foundation.IBox< Sample.Foundation.IBox<Int> > ",
+            activation = WinRtActivationShape(
+                activatableFactoryInterfaceName = " Sample.Foundation.IWidgetFactory ",
+                staticInterfaceNames = listOf(" Sample.Foundation.IWidgetStatics ", "Sample.Foundation.IBox< String >"),
+            ),
+            methods = listOf(
+                WinRtMethodDefinition(
+                    name = "Transform",
+                    returnTypeName = " Sample.Foundation.IBox<Array<T0>> ",
+                    parameters = listOf(
+                        WinRtParameterDefinition("input", " Sample.Foundation.IBox<T0> "),
+                        WinRtParameterDefinition("state", " Sample.Foundation.IBox<Sample.Foundation.IBox<String>> ", WinRtParameterDirection.Ref),
+                    ),
+                ),
+            ),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "PrimaryBox",
+                    typeName = " Sample.Foundation.IBox< String > ",
+                ),
+            ),
+            events = listOf(
+                WinRtEventDefinition(
+                    name = "Changed",
+                    delegateTypeName = " Sample.Foundation.IHandler< Array<String> > ",
+                ),
+            ),
+        ).normalized()
+
+        assertEquals("Sample.Foundation.IBox<Array<String>>", type.baseTypeName)
+        assertEquals(WinRtTypeRefKind.Named, type.baseType?.kind)
+        assertEquals("Sample.Foundation.IBox", type.baseType?.qualifiedName)
+        assertEquals("Array<String>", type.baseType?.typeArguments?.single()?.typeName)
+        assertEquals(WinRtTypeRefKind.Array, type.baseType?.typeArguments?.single()?.kind)
+
+        assertEquals("Sample.Foundation.IWidgetFactory", type.activation.activatableFactoryInterfaceName)
+        assertEquals(
+            listOf("Sample.Foundation.IBox<String>", "Sample.Foundation.IWidgetStatics"),
+            type.activation.staticInterfaceNames,
+        )
+        assertEquals(
+            listOf("Sample.Foundation.IBox<String>", "Sample.Foundation.IWidgetStatics"),
+            type.activation.staticInterfaces.map { it.typeName },
+        )
+
+        val method = type.methods.single()
+        assertEquals("Sample.Foundation.IBox<Array<T0>>", method.returnTypeName)
+        assertEquals("Sample.Foundation.IBox", method.returnType.qualifiedName)
+        assertEquals(WinRtTypeRefKind.Array, method.returnType.typeArguments.single().kind)
+        assertEquals("T0", method.returnType.typeArguments.single().elementType?.typeName)
+        assertEquals("Sample.Foundation.IBox<T0>", method.parameters.first().typeName)
+        assertEquals(WinRtTypeRefKind.GenericTypeParameter, method.parameters.first().type.typeArguments.single().kind)
+        assertEquals(
+            "Sample.Foundation.IBox<Sample.Foundation.IBox<String>>",
+            method.parameters.last().typeName,
+        )
+        assertEquals(
+            "String",
+            method.parameters.last().type.typeArguments.single().typeArguments.single().typeName,
+        )
+
+        val property = type.properties.single()
+        assertEquals("Sample.Foundation.IBox<String>", property.typeName)
+        assertEquals("String", property.type.typeArguments.single().typeName)
+
+        val event = type.events.single()
+        assertEquals("Sample.Foundation.IHandler<Array<String>>", event.delegateTypeName)
+        assertEquals(WinRtTypeRefKind.Array, event.delegateType.typeArguments.single().kind)
+        assertEquals("String", event.delegateType.typeArguments.single().elementType?.typeName)
+    }
 }

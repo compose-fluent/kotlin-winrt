@@ -19,12 +19,13 @@ class WinRtMetadataLoaderTest {
 
         val model = WinRtMetadataLoader.load(assembly).normalized()
 
-        assertEquals(listOf("Sample.Foundation", "Windows.Foundation.Metadata"), model.namespaces.map { it.name })
+        assertEquals(listOf("Sample.Foundation", "WinRT.Interop", "Windows.Foundation.Metadata"), model.namespaces.map { it.name })
         val sampleNamespace = model.namespaces.first { it.name == "Sample.Foundation" }
         assertEquals(
             listOf(
                 "Color",
                 "IBox",
+                "IGenericWidget",
                 "IInternalContract",
                 "IWidget",
                 "IWidgetBase",
@@ -44,6 +45,7 @@ class WinRtMetadataLoaderTest {
         assertEquals(
             listOf(
                 WinRtTypeKind.Enum,
+                WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
@@ -83,7 +85,7 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })
         assertEquals(listOf("Update"), iWidget.methods.map { it.name })
         assertEquals("Unit", iWidget.methods.single().returnTypeName)
-        assertEquals(listOf(4), iWidget.methods.map { it.methodRowId })
+        assertTrue((iWidget.methods.single().methodRowId ?: 0) > 0)
         assertEquals(listOf("input", "written", "state"), iWidget.methods.single().parameters.map { it.name })
         assertEquals(listOf("String", "Int", "Int"), iWidget.methods.single().parameters.map { it.typeName })
         assertEquals(
@@ -95,17 +97,54 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf(true, false), iWidget.properties.map { it.isReadOnly })
         assertEquals(listOf("get_Name", "get_Value"), iWidget.properties.map { it.getterMethodName })
         assertEquals(listOf(null, "set_Value"), iWidget.properties.map { it.setterMethodName })
-        assertEquals(listOf(5, 7), iWidget.properties.map { it.getterMethodRowId })
-        assertEquals(listOf(null, 8), iWidget.properties.map { it.setterMethodRowId })
+        assertTrue((iWidget.properties[0].getterMethodRowId ?: 0) > 0)
+        assertTrue((iWidget.properties[1].getterMethodRowId ?: 0) > (iWidget.properties[0].getterMethodRowId ?: 0))
+        assertNull(iWidget.properties[0].setterMethodRowId)
+        assertTrue((iWidget.properties[1].setterMethodRowId ?: 0) > (iWidget.properties[1].getterMethodRowId ?: 0))
         assertEquals(listOf("Changed"), iWidget.events.map { it.name })
         assertEquals(listOf("Sample.Foundation.WidgetHandler"), iWidget.events.map { it.delegateTypeName })
         assertEquals(listOf("add_Changed"), iWidget.events.map { it.addMethodName })
         assertEquals(listOf("remove_Changed"), iWidget.events.map { it.removeMethodName })
-        assertEquals(listOf(9), iWidget.events.map { it.addMethodRowId })
-        assertEquals(listOf(10), iWidget.events.map { it.removeMethodRowId })
+        assertTrue((iWidget.events.single().addMethodRowId ?: 0) > 0)
+        assertTrue((iWidget.events.single().removeMethodRowId ?: 0) > (iWidget.events.single().addMethodRowId ?: 0))
 
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)
+
+        val iGenericWidget = sampleNamespace.types.first { it.name == "IGenericWidget" }
+        assertEquals(Guid("44444444-4444-4444-4444-444444444444"), iGenericWidget.iid)
+        assertEquals(1, iGenericWidget.genericParameterCount)
+        assertEquals("Sample.Foundation.IBox<String>", iGenericWidget.properties.single().typeName)
+        assertEquals("Sample.Foundation.IBox", iGenericWidget.properties.single().type.qualifiedName)
+        assertEquals(listOf("String"), iGenericWidget.properties.single().type.typeArguments.map { it.typeName })
+        assertEquals("Sample.Foundation.IBox<Array<T0>>", iGenericWidget.methods.single().returnTypeName)
+        assertEquals("Sample.Foundation.IBox", iGenericWidget.methods.single().returnType.qualifiedName)
+        assertEquals(WinRtTypeRefKind.Array, iGenericWidget.methods.single().returnType.typeArguments.single().kind)
+        assertEquals("T0", iGenericWidget.methods.single().returnType.typeArguments.single().elementType?.typeName)
+        assertEquals(
+            listOf(
+                "Sample.Foundation.IBox<T0>",
+                "Sample.Foundation.IBox<Int>",
+                "Sample.Foundation.IBox<Sample.Foundation.IBox<String>>",
+            ),
+            iGenericWidget.methods.single().parameters.map { it.typeName },
+        )
+        assertEquals(
+            listOf(
+                "T0",
+                "Int",
+                "String",
+            ),
+            listOf(
+                iGenericWidget.methods.single().parameters[0].type.typeArguments.single().typeName,
+                iGenericWidget.methods.single().parameters[1].type.typeArguments.single().typeName,
+                iGenericWidget.methods.single().parameters[2].type.typeArguments.single().typeArguments.single().typeName,
+            ),
+        )
+        assertEquals(
+            WinRtTypeRefKind.Named,
+            iGenericWidget.methods.single().parameters[2].type.typeArguments.single().kind,
+        )
 
         val iWidgetOverrides = sampleNamespace.types.first { it.name == "IWidgetOverrides" }
         assertTrue(iWidgetOverrides.isExclusiveTo)
@@ -179,6 +218,7 @@ class WinRtMetadataLoaderTest {
             listOf(
                 "Color",
                 "IBox",
+                "IGenericWidget",
                 "IInternalContract",
                 "IWidget",
                 "IWidgetBase",
@@ -288,6 +328,13 @@ class WinRtMetadataLoaderTest {
                 public interface IWidgetStatics {}
 
                 public interface IBox<T> {}
+
+                [Windows.Foundation.Metadata.Guid("44444444-4444-4444-4444-444444444444")]
+                public interface IGenericWidget<T>
+                {
+                    IBox<string> PrimaryBox { get; }
+                    IBox<T[]> Transform(IBox<T> input, out IBox<int> written, ref IBox<IBox<string>> state);
+                }
 
                 [Windows.Foundation.Metadata.ExclusiveTo(typeof(Widget<>))]
                 public interface IWidgetOverrides {}

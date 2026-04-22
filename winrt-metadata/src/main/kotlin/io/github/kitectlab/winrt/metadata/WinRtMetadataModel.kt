@@ -45,7 +45,13 @@ data class WinRtInterfaceImplementationDefinition(
     val isOverridable: Boolean = false,
     val isProtected: Boolean = false,
 ) {
-    fun normalized(): WinRtInterfaceImplementationDefinition = copy(interfaceName = interfaceName.trim())
+    val interfaceType: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(interfaceName)
+
+    fun normalized(): WinRtInterfaceImplementationDefinition {
+        val normalizedInterfaceType = interfaceType.normalized()
+        return copy(interfaceName = normalizedInterfaceType.typeName)
+    }
 
     internal fun merge(other: WinRtInterfaceImplementationDefinition): WinRtInterfaceImplementationDefinition {
         require(interfaceName == other.interfaceName) {
@@ -66,15 +72,26 @@ data class WinRtActivationShape(
     val staticInterfaceNames: List<String> = emptyList(),
     val composableFactoryInterfaceName: String? = null,
 ) {
-    fun normalized(): WinRtActivationShape = copy(
-        activatableFactoryInterfaceName = activatableFactoryInterfaceName?.trim(),
-        staticInterfaceNames = staticInterfaceNames
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
-            .sorted(),
-        composableFactoryInterfaceName = composableFactoryInterfaceName?.trim(),
-    )
+    val activatableFactoryInterface: WinRtTypeRef?
+        get() = activatableFactoryInterfaceName?.let(WinRtTypeRef::fromDisplayName)
+
+    val staticInterfaces: List<WinRtTypeRef>
+        get() = staticInterfaceNames.map(WinRtTypeRef::fromDisplayName)
+
+    val composableFactoryInterface: WinRtTypeRef?
+        get() = composableFactoryInterfaceName?.let(WinRtTypeRef::fromDisplayName)
+
+    fun normalized(): WinRtActivationShape {
+        val normalizedStaticInterfaces = staticInterfaces
+            .map(WinRtTypeRef::normalized)
+            .distinctBy(WinRtTypeRef::typeName)
+            .sortedBy(WinRtTypeRef::typeName)
+        return copy(
+            activatableFactoryInterfaceName = activatableFactoryInterface?.normalized()?.typeName,
+            staticInterfaceNames = normalizedStaticInterfaces.map(WinRtTypeRef::typeName),
+            composableFactoryInterfaceName = composableFactoryInterface?.normalized()?.typeName,
+        )
+    }
 
     internal fun merge(other: WinRtActivationShape): WinRtActivationShape {
         val left = normalized()
@@ -99,12 +116,18 @@ data class WinRtParameterDefinition(
     val typeName: String,
     val direction: WinRtParameterDirection = WinRtParameterDirection.In,
 ) {
-    fun normalized(): WinRtParameterDefinition = copy(
-        name = name.trim(),
-        typeName = typeName.trim(),
-    )
+    val type: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(typeName)
 
-    internal fun signatureKey(): String = "$name:$typeName:$direction"
+    fun normalized(): WinRtParameterDefinition {
+        val normalizedType = type.normalized()
+        return copy(
+            name = name.trim(),
+            typeName = normalizedType.typeName,
+        )
+    }
+
+    internal fun signatureKey(): String = "$name:${type.normalized().typeName}:$direction"
 }
 
 data class WinRtMethodDefinition(
@@ -114,19 +137,25 @@ data class WinRtMethodDefinition(
     val isStatic: Boolean = false,
     val methodRowId: Int? = null,
 ) {
-    fun normalized(): WinRtMethodDefinition = copy(
-        name = name.trim(),
-        returnTypeName = returnTypeName.trim(),
-        parameters = parameters.map(WinRtParameterDefinition::normalized),
-        methodRowId = methodRowId?.takeIf { it > 0 },
-    )
+    val returnType: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(returnTypeName)
+
+    fun normalized(): WinRtMethodDefinition {
+        val normalizedReturnType = returnType.normalized()
+        return copy(
+            name = name.trim(),
+            returnTypeName = normalizedReturnType.typeName,
+            parameters = parameters.map(WinRtParameterDefinition::normalized),
+            methodRowId = methodRowId?.takeIf { it > 0 },
+        )
+    }
 
     internal fun signatureKey(): String = buildString {
         append(if (isStatic) 'S' else 'I')
         append('|')
         append(name)
         append('|')
-        append(returnTypeName)
+        append(returnType.normalized().typeName)
         append('|')
         append(parameters.joinToString(",") { it.signatureKey() })
     }
@@ -161,21 +190,27 @@ data class WinRtPropertyDefinition(
     val isReadOnly: Boolean
         get() = setterMethodName == null
 
-    fun normalized(): WinRtPropertyDefinition = copy(
-        name = name.trim(),
-        typeName = typeName.trim(),
-        getterMethodName = getterMethodName?.trim(),
-        setterMethodName = setterMethodName?.trim(),
-        getterMethodRowId = getterMethodRowId?.takeIf { it > 0 },
-        setterMethodRowId = setterMethodRowId?.takeIf { it > 0 },
-    )
+    val type: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(typeName)
+
+    fun normalized(): WinRtPropertyDefinition {
+        val normalizedType = type.normalized()
+        return copy(
+            name = name.trim(),
+            typeName = normalizedType.typeName,
+            getterMethodName = getterMethodName?.trim(),
+            setterMethodName = setterMethodName?.trim(),
+            getterMethodRowId = getterMethodRowId?.takeIf { it > 0 },
+            setterMethodRowId = setterMethodRowId?.takeIf { it > 0 },
+        )
+    }
 
     internal fun signatureKey(): String = buildString {
         append(if (isStatic) 'S' else 'I')
         append('|')
         append(name)
         append('|')
-        append(typeName)
+        append(type.normalized().typeName)
     }
 
     internal fun sortKey(): Pair<Int, String> =
@@ -208,21 +243,27 @@ data class WinRtEventDefinition(
     val addMethodRowId: Int? = null,
     val removeMethodRowId: Int? = null,
 ) {
-    fun normalized(): WinRtEventDefinition = copy(
-        name = name.trim(),
-        delegateTypeName = delegateTypeName.trim(),
-        addMethodName = addMethodName?.trim(),
-        removeMethodName = removeMethodName?.trim(),
-        addMethodRowId = addMethodRowId?.takeIf { it > 0 },
-        removeMethodRowId = removeMethodRowId?.takeIf { it > 0 },
-    )
+    val delegateType: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(delegateTypeName)
+
+    fun normalized(): WinRtEventDefinition {
+        val normalizedDelegateType = delegateType.normalized()
+        return copy(
+            name = name.trim(),
+            delegateTypeName = normalizedDelegateType.typeName,
+            addMethodName = addMethodName?.trim(),
+            removeMethodName = removeMethodName?.trim(),
+            addMethodRowId = addMethodRowId?.takeIf { it > 0 },
+            removeMethodRowId = removeMethodRowId?.takeIf { it > 0 },
+        )
+    }
 
     internal fun signatureKey(): String = buildString {
         append(if (isStatic) 'S' else 'I')
         append('|')
         append(name)
         append('|')
-        append(delegateTypeName)
+        append(delegateType.normalized().typeName)
     }
 
     internal fun sortKey(): Pair<Int, String> =
@@ -271,6 +312,12 @@ data class WinRtTypeDefinition(
     val qualifiedName: String
         get() = if (namespace.isBlank()) name else "$namespace.$name"
 
+    val baseType: WinRtTypeRef?
+        get() = baseTypeName?.let(WinRtTypeRef::fromDisplayName)
+
+    val defaultInterface: WinRtTypeRef?
+        get() = defaultInterfaceName?.let(WinRtTypeRef::fromDisplayName)
+
     fun normalized(): WinRtTypeDefinition {
         val normalizedMethods = methods
             .map(WinRtMethodDefinition::normalized)
@@ -294,7 +341,7 @@ data class WinRtTypeDefinition(
         return copy(
             namespace = namespace.trim(),
             name = name.trim(),
-            baseTypeName = baseTypeName?.trim(),
+            baseTypeName = baseType?.normalized()?.typeName,
             enumUnderlyingType = enumUnderlyingType,
             enumMembers = enumMembers
                 .map(WinRtEnumMemberDefinition::normalized)
@@ -304,7 +351,7 @@ data class WinRtTypeDefinition(
                 }
                 .values
                 .toList(),
-            defaultInterfaceName = defaultInterfaceName?.trim(),
+            defaultInterfaceName = defaultInterface?.normalized()?.typeName,
             implementedInterfaces = implementedInterfaces
                 .map(WinRtInterfaceImplementationDefinition::normalized)
                 .groupBy(WinRtInterfaceImplementationDefinition::interfaceName)
