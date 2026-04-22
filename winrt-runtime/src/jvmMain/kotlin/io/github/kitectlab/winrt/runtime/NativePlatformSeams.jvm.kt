@@ -47,7 +47,7 @@ actual object NativeInterop {
         get() = NativePointer(MemorySegment.NULL)
 
     actual val hStringHeaderSizeBytes: Long
-        get() = NativeLayoutsJvmCompat.HSTRING_HEADER_SIZE_BYTES
+        get() = 24L
 
     actual fun confinedScope(): NativeScope =
         Arena.ofConfined().let { arena ->
@@ -104,6 +104,9 @@ actual object NativeInterop {
     actual fun readInt8(slot: NativePointer): Byte =
         slot.segment.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).get(ValueLayout.JAVA_BYTE, 0)
 
+    actual fun readInt16(slot: NativePointer): Short =
+        slot.segment.reinterpret(ValueLayout.JAVA_SHORT.byteSize()).get(ValueLayout.JAVA_SHORT, 0)
+
     actual fun readInt32(slot: NativePointer): Int =
         slot.segment.reinterpret(ValueLayout.JAVA_INT.byteSize()).get(ValueLayout.JAVA_INT, 0)
 
@@ -143,6 +146,10 @@ actual object NativeInterop {
 
     actual fun writeInt8(slot: NativePointer, value: Byte) {
         slot.segment.reinterpret(ValueLayout.JAVA_BYTE.byteSize()).set(ValueLayout.JAVA_BYTE, 0, value)
+    }
+
+    actual fun writeInt16(slot: NativePointer, value: Short) {
+        slot.segment.reinterpret(ValueLayout.JAVA_SHORT.byteSize()).set(ValueLayout.JAVA_SHORT, 0, value)
     }
 
     actual fun writeInt32(slot: NativePointer, value: Int) {
@@ -191,7 +198,7 @@ actual object NativeInterop {
         vararg args: Any?,
     ): Int {
         val method = linker.downcallHandle(
-            RawVtableCallJvmCompat.entry(instance.segment, slot),
+            vtableEntry(instance.segment, slot),
             descriptor.asJavaFunctionDescriptor(),
         )
         return method.invokeWithArguments(
@@ -286,9 +293,28 @@ actual object NativeInterop {
         val descriptor: NativeFunctionDescriptor,
         val callback: (List<Any?>) -> Int,
     )
+
+    actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation {
+        val arena = Arena.ofShared()
+        val pointer = arena.allocate(sizeBytes, alignmentBytes).asNativePointer()
+        return OwnedNativeAllocation(pointer = pointer, onClose = arena::close)
+    }
+
+    actual fun zeroBytes(pointer: NativePointer, sizeBytes: Long) {
+        pointer.segment.reinterpret(sizeBytes).fill(0)
+    }
 }
 
 internal fun NativePointer.asMemorySegment(): MemorySegment = segment
+
+internal const val IUNKNOWN_VFTBL_SIZE_BYTES: Long = 24
+
+internal fun vtableEntry(pointer: MemorySegment, slot: Int): MemorySegment {
+    val objectMemory = pointer.reinterpret(ValueLayout.ADDRESS.byteSize())
+    val vtable = objectMemory.get(ValueLayout.ADDRESS, 0)
+    val requiredBytes = maxOf(IUNKNOWN_VFTBL_SIZE_BYTES, (slot + 1L) * ValueLayout.ADDRESS.byteSize())
+    return vtable.reinterpret(requiredBytes).getAtIndex(ValueLayout.ADDRESS, slot.toLong())
+}
 
 internal fun MemorySegment.asNativePointer(): NativePointer = NativePointer(this)
 

@@ -17,26 +17,26 @@ internal object WinRtValueBoxing {
 
     fun createReferenceInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
         ValueBoxingMetadata.referenceInterfaceIdForValue(value)?.let { interfaceId ->
-            PlatformValueProjectionInterop.createReferenceInterfaceDefinition(interfaceId, value)
+            ValueBoxingInterop.createReferenceInterfaceDefinition(interfaceId, value)
         }
 
     fun createReferenceArrayInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition? =
         ValueBoxingMetadata.referenceArrayInterfaceIdForValue(value)?.let { interfaceId ->
-            PlatformValueProjectionInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
+            ValueBoxingInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
         }
 
     fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
-        PlatformValueProjectionInterop.readReferenceValue(interfaceId, pointer)
+        ValueBoxingInterop.readReferenceValue(interfaceId, pointer)
 
     fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>? =
-        PlatformValueProjectionInterop.readReferenceArrayValue(interfaceId, pointer)
+        ValueBoxingInterop.readReferenceArrayValue(interfaceId, pointer)
 
     fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
-        PlatformValueProjectionInterop.writePropertyValue(expectedType, value, destination)
+        ValueBoxingInterop.writePropertyValue(expectedType, value, destination)
     }
 
     fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer) {
-        PlatformValueProjectionInterop.writePropertyValueArray(expectedType, value, countOut, dataOut)
+        ValueBoxingInterop.writePropertyValueArray(expectedType, value, countOut, dataOut)
     }
 
     fun tryProjectInspectableAsType(inspectable: IInspectableReference, projectedType: KClass<*>): Any? {
@@ -58,14 +58,14 @@ internal object WinRtValueBoxing {
             val descriptor = ValueBoxingMetadata.descriptorForClass(elementType) ?: return null
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return null
             return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-                PlatformValueProjectionInterop.readReferenceArrayValue(interfaceId, reference.pointer)
+                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer)
             }
         }
 
         val descriptor = ValueBoxingMetadata.descriptorForClass(projectedType) ?: return null
         val interfaceId = descriptor.nullableInterfaceId ?: return null
         return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-            PlatformValueProjectionInterop.readReferenceValue(interfaceId, reference.pointer)
+            ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer)
         }
     }
 
@@ -73,7 +73,7 @@ internal object WinRtValueBoxing {
         ValueBoxingMetadata.referenceTypeDescriptors().firstNotNullOfOrNull { descriptor ->
             val interfaceId = descriptor.nullableInterfaceId ?: return@firstNotNullOfOrNull null
             queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-                PlatformValueProjectionInterop.readReferenceValue(interfaceId, reference.pointer)
+                ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer)
             }
         }
 
@@ -81,7 +81,7 @@ internal object WinRtValueBoxing {
         ValueBoxingMetadata.referenceTypeDescriptors().firstNotNullOfOrNull { descriptor ->
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
             queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-                PlatformValueProjectionInterop.readReferenceArrayValue(interfaceId, reference.pointer)
+                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer)
             }
         }
 
@@ -110,6 +110,4 @@ internal object WinRtValueBoxing {
         }
 }
 
-private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(type) != null
-
-private fun arrayElementType(type: KClass<*>): KClass<*>? = platformArrayElementType(type)
+private fun isArrayKClass(type: KClass<*>): Boolean = arrayElementType(type) != null

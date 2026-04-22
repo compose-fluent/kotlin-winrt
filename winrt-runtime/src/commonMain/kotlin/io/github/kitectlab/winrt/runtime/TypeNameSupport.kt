@@ -19,6 +19,8 @@ object TypeNameSupport {
 
     private val registeredProjectionTypes = ConcurrentCacheMap<String, KClass<*>>()
     private val registeredReferenceArrayTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
+    /** Reverse mapping: arrayType → elementType, populated alongside [registeredReferenceArrayTypes]. */
+    private val registeredArrayElementTypes = ConcurrentCacheMap<KClass<*>, KClass<*>>()
     private val projectionTypeNameToBaseTypeNameMappingsLock = PlatformLock()
     private val projectionTypeNameToBaseTypeNameMappings = mutableListOf<Map<String, String>>()
     private val typeNameCache = ConcurrentCacheMap<String, TypeLookupResult>()
@@ -43,7 +45,7 @@ object TypeNameSupport {
         val typeName = type.typeDisplayName()
         registeredProjectionTypes[typeName] = type
         WinRtTypeRegistry.registerAlias(type, typeName)
-        platformTypeCanonicalName(type)?.let { alias ->
+        typeCanonicalName(type)?.let { alias ->
             WinRtTypeRegistry.registerAlias(type, alias)
         }
     }
@@ -70,7 +72,7 @@ object TypeNameSupport {
         baseRcwTypeCache.compute(runtimeClassName) { _, existing ->
             when (existing) {
                 is TypeLookupResult.Found ->
-                    if (platformIsAssignableFrom(existing.type, baseType)) {
+                    if (isAssignableFrom(existing.type, baseType)) {
                         TypeLookupResult.Found(baseType)
                     } else {
                         existing
@@ -87,7 +89,12 @@ object TypeNameSupport {
     ) {
         typeNameCache.clear()
         registeredReferenceArrayTypes[elementType] = arrayType
+        registeredArrayElementTypes[arrayType] = elementType
     }
+
+    /** Returns the element type if [arrayType] was registered via [registerReferenceArrayType], else null. */
+    fun registeredArrayElementType(arrayType: KClass<*>): KClass<*>? =
+        registeredArrayElementTypes[arrayType]
 
     internal fun findRcwKClassByNameCached(
         runtimeClassName: String,
@@ -130,7 +137,7 @@ object TypeNameSupport {
         }
 
         if (flags.contains(TypeNameGenerationFlag.GenerateBoxedName)) {
-            platformBoxedRuntimeClassName(type)?.let { return it }
+            boxedRuntimeClassName(type)?.let { return it }
         }
 
         WinRtTypeClassifier.classify(type)?.let { return it.canonicalRuntimeName }
@@ -144,10 +151,10 @@ object TypeNameSupport {
         inferRuntimeClassName(type)?.let { return it }
 
         if (flags.contains(TypeNameGenerationFlag.ForGetRuntimeClassName)) {
-            return platformRuntimeClassNameForNonWinRtType(type) ?: ""
+            return runtimeClassNameForNonWinRtType(type) ?: ""
         }
 
-        return platformTypeName(type)
+        return typeName(type)
     }
 
     internal fun inferRuntimeClassName(
@@ -160,6 +167,7 @@ object TypeNameSupport {
     internal fun clearRegistriesForTests() {
         registeredProjectionTypes.clear()
         registeredReferenceArrayTypes.clear()
+        registeredArrayElementTypes.clear()
         projectionTypeNameToBaseTypeNameMappingsLock.withLock {
             projectionTypeNameToBaseTypeNameMappings.clear()
         }

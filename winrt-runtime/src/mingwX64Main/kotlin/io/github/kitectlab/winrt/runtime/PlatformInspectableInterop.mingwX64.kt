@@ -20,7 +20,4 @@ internal actual fun platformTryCreateProjectedReference(
 internal actual fun platformCreateSyntheticCcwDefinition(value: Any): WinRtCcwDefinition? = null
 
 internal actual fun platformRuntimeClassNameFor(value: Any): String? =
-    TypeNameSupport.getNameForType(
-        value::class,
-        setOf(TypeNameGenerationFlag.ForGetRuntimeClassName),
-    ).takeIf(String::isNotBlank) ?: value::class.qualifiedName
+    defaultInspectableRuntimeClassNameFor(value)

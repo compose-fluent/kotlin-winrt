@@ -9,6 +9,10 @@ data class WinRtTypeId<T : Any>(
     val iid: Guid? = null,
     val signature: String? = null,
     val enumAbiValue: ((T) -> Int)? = null,
+    /** All enum constants for this type, populated at registration time.  Non-null iff [enumAbiValue] is non-null. */
+    val enumEntries: Array<T>? = null,
+    /** Whether this type is a Kotlin exception / Error subtype, registered explicitly at registration time. */
+    val isExceptionType: Boolean = false,
     val helperType: KClass<*>? = null,
     val defaultInterface: KClass<*>? = null,
     val boxedName: String? = null,
@@ -72,6 +76,8 @@ object WinRtTypeRegistry {
         iid: Guid? = null,
         signature: String? = null,
         noinline enumAbiValue: ((T) -> Int)? = null,
+        enumEntries: Array<T>? = null,
+        isExceptionType: Boolean = false,
         helperType: KClass<*>? = null,
         defaultInterface: KClass<*>? = null,
         boxedName: String? = null,
@@ -89,6 +95,8 @@ object WinRtTypeRegistry {
             iid = iid,
             signature = signature,
             enumAbiValue = enumAbiValue,
+            enumEntries = enumEntries,
+            isExceptionType = isExceptionType,
             helperType = helperType,
             defaultInterface = defaultInterface,
             boxedName = boxedName,

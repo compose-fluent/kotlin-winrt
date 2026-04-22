@@ -14,7 +14,7 @@ object TypeExtensions {
         throwIfMissing: Boolean = true,
     ): KClass<*>? {
         val helper = helperTypeCache.computeIfAbsent(type) { candidate ->
-            if (isPlatformExceptionType(candidate)) {
+            if (isExceptionType(candidate)) {
                 return@computeIfAbsent findHelperType(Exception::class, throwIfMissing = false)
             }
 

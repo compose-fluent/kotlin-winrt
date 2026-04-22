@@ -1,5 +1,48 @@
 package io.github.kitectlab.winrt.runtime
 
+// ---------------------------------------------------------------------------
+// NativeAbiLayout — platform-agnostic ABI memory layout descriptor.
+// Replaces direct references to JVM java.lang.foreign.MemoryLayout so that
+// value-boxing logic can live in commonMain.
+// ---------------------------------------------------------------------------
+
+data class NativeAbiLayout(
+    val byteSize: Long,
+    val byteAlignment: Long = byteSize,
+) {
+    companion object {
+        /** 8-byte pointer (WinRT only runs on 64-bit Windows). */
+        val ADDRESS: NativeAbiLayout = NativeAbiLayout(byteSize = 8, byteAlignment = 8)
+
+        val INT8: NativeAbiLayout = NativeAbiLayout(byteSize = 1)
+        val INT16: NativeAbiLayout = NativeAbiLayout(byteSize = 2)
+        val INT32: NativeAbiLayout = NativeAbiLayout(byteSize = 4)
+        val INT64: NativeAbiLayout = NativeAbiLayout(byteSize = 8)
+        val FLOAT32: NativeAbiLayout = NativeAbiLayout(byteSize = 4)
+        val FLOAT64: NativeAbiLayout = NativeAbiLayout(byteSize = 8)
+
+        /** UTF-16 char (little-endian, unaligned). */
+        val CHAR16: NativeAbiLayout = NativeAbiLayout(byteSize = 2, byteAlignment = 1)
+
+        /** 16-byte GUID stored as raw bytes (alignment = 1). */
+        val GUID: NativeAbiLayout = NativeAbiLayout(byteSize = Guid.BYTE_SIZE.toLong(), byteAlignment = 1)
+
+        /**
+         * Windows `TypeName` struct: HSTRING name (ADDRESS) + INT32 kind.
+         * Total 12 bytes, alignment 8 (largest member).
+         */
+        val TYPE_NAME: NativeAbiLayout = NativeAbiLayout(byteSize = 12, byteAlignment = 8)
+    }
+}
+
+/** Returns a [NativeAbiLayout] covering this [NativeStructLayout]'s flat binary footprint. */
+val NativeStructLayout.abiLayout: NativeAbiLayout
+    get() = NativeAbiLayout(byteSize = sizeBytes, byteAlignment = 1)
+
+// ---------------------------------------------------------------------------
+// NativeStructScalarKind — scalar element sizes for struct field descriptors.
+// ---------------------------------------------------------------------------
+
 enum class NativeStructScalarKind(
     val sizeBytes: Long,
     val alignmentBytes: Long = sizeBytes,
@@ -14,6 +57,10 @@ enum class NativeStructScalarKind(
     GUID(Guid.BYTE_SIZE.toLong(), 1),
 }
 
+// ---------------------------------------------------------------------------
+// NativeStructLayout — sequential flat struct layout with named fields.
+// ---------------------------------------------------------------------------
+
 sealed interface NativeStructMemberSpec {
     val name: String
     val sizeBytes: Long
@@ -23,16 +70,14 @@ data class NativeScalarFieldSpec(
     override val name: String,
     val kind: NativeStructScalarKind,
 ) : NativeStructMemberSpec {
-    override val sizeBytes: Long
-        get() = kind.sizeBytes
+    override val sizeBytes: Long get() = kind.sizeBytes
 }
 
 data class NativeNestedStructFieldSpec(
     override val name: String,
     val layout: NativeStructLayout,
 ) : NativeStructMemberSpec {
-    override val sizeBytes: Long
-        get() = layout.sizeBytes
+    override val sizeBytes: Long get() = layout.sizeBytes
 }
 
 data class NativeStructField(
@@ -50,10 +95,7 @@ class NativeStructLayout private constructor(
     fun field(name: String): NativeStructField =
         fieldByName[name] ?: error("Unknown native struct field '$name'.")
 
-    fun slice(
-        source: NativePointer,
-        fieldName: String,
-    ): NativePointer {
+    fun slice(source: NativePointer, fieldName: String): NativePointer {
         val field = field(fieldName)
         return NativeInterop.slice(source, field.offsetBytes, field.sizeBytes)
     }
@@ -61,16 +103,13 @@ class NativeStructLayout private constructor(
     companion object {
         fun sequential(vararg members: NativeStructMemberSpec): NativeStructLayout {
             var offsetBytes = 0L
-            val fields =
-                members.map { member ->
-                    NativeStructField(
-                        name = member.name,
-                        offsetBytes = offsetBytes,
-                        sizeBytes = member.sizeBytes,
-                    ).also {
-                        offsetBytes += member.sizeBytes
-                    }
-                }
+            val fields = members.map { member ->
+                NativeStructField(
+                    name = member.name,
+                    offsetBytes = offsetBytes,
+                    sizeBytes = member.sizeBytes,
+                ).also { offsetBytes += member.sizeBytes }
+            }
             return NativeStructLayout(fields = fields, sizeBytes = offsetBytes)
         }
     }
@@ -81,8 +120,5 @@ interface NativeStructAdapter<T> {
 
     fun read(source: NativePointer): T
 
-    fun write(
-        value: T,
-        destination: NativePointer,
-    )
+    fun write(value: T, destination: NativePointer)
 }

@@ -6,6 +6,19 @@ expect class NativeScope : AutoCloseable {
     override fun close()
 }
 
+/**
+ * A native allocation whose backing memory is owned and can be freed by closing this handle.
+ * This is used when transferring ownership of heap allocations (e.g. array marshalling).
+ */
+class OwnedNativeAllocation(
+    val pointer: NativePointer,
+    private val onClose: () -> Unit,
+) : AutoCloseable {
+    override fun close() {
+        onClose()
+    }
+}
+
 enum class NativeValueLayout {
     ADDRESS,
     JAVA_BYTE,
@@ -75,6 +88,8 @@ expect object NativeInterop {
 
     fun readInt8(slot: NativePointer): Byte
 
+    fun readInt16(slot: NativePointer): Short
+
     fun readInt32(slot: NativePointer): Int
 
     fun readInt64(slot: NativePointer): Long
@@ -94,6 +109,8 @@ expect object NativeInterop {
     fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer)
 
     fun writeInt8(slot: NativePointer, value: Byte)
+
+    fun writeInt16(slot: NativePointer, value: Short)
 
     fun writeInt32(slot: NativePointer, value: Int)
 
@@ -138,6 +155,16 @@ expect object NativeInterop {
         descriptor: NativeFunctionDescriptor,
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle
+
+    /**
+     * Allocates [sizeBytes] bytes in a shared scope that is returned as an [AutoCloseable].
+     * Closing the returned scope frees the backing memory.  Use this when you need to
+     * transfer ownership of a heap allocation (e.g. array marshalling).
+     */
+    fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation
+
+    /** Fills [sizeBytes] bytes starting at [pointer] with zeros. */
+    fun zeroBytes(pointer: NativePointer, sizeBytes: Long)
 }
 
 expect object WinRtPlatformApi {

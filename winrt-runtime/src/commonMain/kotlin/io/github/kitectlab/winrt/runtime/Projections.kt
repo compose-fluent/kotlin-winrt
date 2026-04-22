@@ -16,14 +16,14 @@ object Projections {
     private val isTypeWindowsRuntimeTypeCache = ConcurrentCacheMap<KClass<*>, Boolean>()
 
     init {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
     }
 
     fun registerCustomHelperTypeMapping(
         publicType: KClass<*>,
         helperType: KClass<*>,
     ): Boolean {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         clearDerivedCaches()
         registerTypeDescriptor(
             type = publicType,
@@ -43,7 +43,7 @@ object Projections {
         abiTypeName: String,
         isRuntimeClass: Boolean = false,
     ): Boolean {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         clearDerivedCaches()
         val helperAdded = customTypeToHelperTypeMappings.putIfAbsent(publicType, helperType) == null
         val publicAdded = customAbiTypeToTypeMappings.putIfAbsent(helperType, publicType) == null
@@ -69,7 +69,7 @@ object Projections {
         runtimeClass: KClass<*>,
         defaultInterface: KClass<*>,
     ): Boolean {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         registerTypeDescriptor(
             type = runtimeClass,
             projectedTypeName = customTypeToAbiTypeNameMappings[runtimeClass] ?: (runtimeClass.registeredWinRtType()?.projectedTypeName ?: runtimeClass.typeDisplayName()),
@@ -86,7 +86,7 @@ object Projections {
         publicType: KClass<*>,
         filterToRuntimeClass: Boolean = false,
     ): KClass<*>? {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         if (filterToRuntimeClass && !projectedCustomTypeRuntimeClasses.contains(publicType)) {
             return null
         }
@@ -99,28 +99,28 @@ object Projections {
     fun findCustomPublicTypeForAbiType(
         abiType: KClass<*>,
     ): KClass<*>? {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         return customAbiTypeToTypeMappings[abiType]
     }
 
     internal fun findCustomKClassForAbiTypeName(
         abiTypeName: String,
     ): KClass<*>? {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         return customAbiTypeNameToTypeMappings[abiTypeName]
     }
 
     fun findCustomAbiTypeNameForType(
         type: KClass<*>,
     ): String? {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         return customTypeToAbiTypeNameMappings[type]
     }
 
     fun isTypeWindowsRuntimeType(
         type: KClass<*>,
     ): Boolean {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         return isTypeWindowsRuntimeTypeCache.computeIfAbsent(type) { candidate ->
             isTypeWindowsRuntimeTypeNoArray(candidate)
         }
@@ -129,7 +129,7 @@ object Projections {
     fun tryGetDefaultInterfaceTypeForRuntimeClassType(
         runtimeClass: KClass<*>,
     ): KClass<*>? {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         runtimeClass.registeredWinRtType()?.defaultInterface?.let { return it }
         runtimeClassToDefaultInterfaceMappings[runtimeClass]?.let { return it }
         return null
@@ -138,7 +138,7 @@ object Projections {
     internal fun isProjectedRuntimeClassName(
         runtimeClassName: String,
     ): Boolean {
-        ensurePlatformProjectionMappingsRegistered()
+        ensureProjectionMappingsRegistered()
         return projectedRuntimeClassNames.contains(runtimeClassName)
     }
 
@@ -152,12 +152,12 @@ object Projections {
         runtimeClassToDefaultInterfaceMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()
         WinRtTypeRegistry.clearForTests()
-        clearPlatformProjectionMappingsForTests()
-        ensurePlatformProjectionMappingsRegistered()
+        clearProjectionMappingsForTests()
+        ensureProjectionMappingsRegistered()
     }
 
     private fun isTypeWindowsRuntimeTypeNoArray(type: KClass<*>): Boolean {
-        val candidate = platformArrayElementType(type) ?: type
+        val candidate = arrayElementType(type) ?: type
         if (WinRtTypeClassifier.isIntrinsicWindowsRuntimeType(candidate)) {
             return true
         }

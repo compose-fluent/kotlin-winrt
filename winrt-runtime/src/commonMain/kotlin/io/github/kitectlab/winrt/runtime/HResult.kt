@@ -20,4 +20,5 @@ value class HResult(val value: Int) {
     }
 }
 
-internal expect fun throwHResultFailure(hResult: HResult, operation: String): Nothing
+internal fun throwHResultFailure(hResult: HResult, operation: String): Nothing =
+    throw WinRtExceptionTranslator.exceptionFor(hResult, operation)

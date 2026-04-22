@@ -93,7 +93,7 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
                         NativeValueLayout.ADDRESS,
                     ),
                 ) { rawArgs ->
-                    PlatformValueProjectionInterop.writePropertyValue(propertyType, value, rawArgs[0] as NativePointer)
+                    ValueBoxingInterop.writePropertyValue(propertyType, value, rawArgs[0] as NativePointer)
                     KnownHResults.S_OK.value
                 },
             )
@@ -108,7 +108,7 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
                         NativeValueLayout.ADDRESS,
                     ),
                 ) { rawArgs ->
-                    PlatformValueProjectionInterop.writePropertyValueArray(
+                    ValueBoxingInterop.writePropertyValueArray(
                         propertyType,
                         value,
                         rawArgs[0] as NativePointer,

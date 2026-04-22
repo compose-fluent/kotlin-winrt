@@ -144,12 +144,12 @@ internal object ValueBoxingMetadata {
 
     fun descriptorForClass(type: KClass<*>): WinRtValueTypeMetadata? =
         descriptorsByClass[type]
-            ?: if (platformIsAssignableFrom(Exception::class, type)) exceptionMetadata else null
+            ?: if (isAssignableFrom(Exception::class, type)) exceptionMetadata else null
 
     fun referenceTypeDescriptors(): List<WinRtValueTypeMetadata> = descriptors
 
     fun enumMetadataForClass(type: KClass<*>): WinRtEnumBoxingMetadata? {
-        if (!platformIsEnumType(type)) {
+        if (!isEnumType(type)) {
             return null
         }
         val registeredType = type.registeredWinRtType() ?: return null
@@ -158,7 +158,7 @@ internal object ValueBoxingMetadata {
         val projectedTypeName = match.groupValues[1]
         val underlyingSignature = match.groupValues[2]
         val enumAbiValue = registeredType.enumAbiValue as? (Any) -> Int ?: return null
-        val constants = platformEnumConstants(type) ?: return null
+        val constants = enumConstants(type) ?: return null
 
         fun readBits(enumValue: Any): Int = enumAbiValue(enumValue)
 
@@ -215,7 +215,7 @@ internal object ValueBoxingMetadata {
     private fun normalizeManagedArray(value: Any): ManagedArrayMetadata? =
         when (value) {
             is Array<*> -> {
-                val componentType = platformArrayElementType(value::class) ?: Any::class
+                val componentType = arrayElementType(value::class) ?: Any::class
                 val descriptor = descriptorForClass(componentType) ?: if (componentType == Any::class) objectMetadata else null
                 descriptor?.let { ManagedArrayMetadata(value, it) }
             }
@@ -247,7 +247,5 @@ internal object ValueBoxingMetadata {
         return WinRtReferenceTypeNames.boxedReferenceArray(TypeNameSupport.getNameForType(descriptor.projectedClass))
     }
 
-    private fun isArrayKClass(type: KClass<*>): Boolean = platformArrayElementType(type) != null
-
-    private fun arrayElementType(type: KClass<*>): KClass<*>? = platformArrayElementType(type)
+    private fun isArrayKClass(type: KClass<*>): Boolean = arrayElementType(type) != null
 }

@@ -11,7 +11,7 @@ class InteropRuntimeTest {
         assumeTrue(PlatformRuntime.isWindows)
 
         RuntimeScope.initializeMultithreaded().use {
-            JvmWinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
+            WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
                 AgileReference(instance).use { agileReference ->
                     val resolved = agileReference.get()
                     assertNotNull(resolved)
@@ -28,7 +28,7 @@ class InteropRuntimeTest {
         assumeTrue(PlatformRuntime.isWindows)
 
         RuntimeScope.initializeMultithreaded().use {
-            JvmWinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
+            WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
                 instance.queryInterface(IID.IWeakReferenceSource).getOrThrow().use { weakReferenceSource ->
                     val weakReference = WeakReferenceSourceReference(
                         weakReferenceSource.pointer,

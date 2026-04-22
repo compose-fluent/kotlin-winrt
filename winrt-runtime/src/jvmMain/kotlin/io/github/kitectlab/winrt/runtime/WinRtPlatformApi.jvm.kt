@@ -388,7 +388,7 @@ actual object WinRtPlatformApi {
     ): NativePointerResult =
         Arena.ofConfined().use { arena ->
             val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            interfaceId.writeTo(iidMemory)
+            writeGuidTo(interfaceId, iidMemory)
             val factoryOut = arena.allocate(ValueLayout.ADDRESS)
             val hr = roGetActivationFactoryHandle.invokeWithArguments(
                 runtimeClassId.asMemorySegment(),
@@ -408,10 +408,10 @@ actual object WinRtPlatformApi {
         }
         return Arena.ofConfined().use { arena ->
             val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            interfaceId.writeTo(iidMemory)
+            writeGuidTo(interfaceId, iidMemory)
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
             val queryInterface = linker.downcallHandle(
-                RawVtableCallJvmCompat.entry(unknown.asMemorySegment(), IUnknownVftblSlots.QueryInterface),
+                vtableEntry(unknown.asMemorySegment(), IUnknownVftblSlots.QueryInterface),
                 FunctionDescriptor.of(
                     ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS,
@@ -633,9 +633,9 @@ actual object WinRtPlatformApi {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val classIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            classId.writeTo(classIdMemory)
+            writeGuidTo(classId, classIdMemory)
             val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            interfaceId.writeTo(interfaceIdMemory)
+            writeGuidTo(interfaceId, interfaceIdMemory)
             val instanceOut = arena.allocate(ValueLayout.ADDRESS)
             val hr = coCreateInstanceHandle.invokeWithArguments(
                 classIdMemory,
@@ -698,7 +698,7 @@ actual object WinRtPlatformApi {
         val handle = roGetAgileReferenceHandle ?: return PointerResult(KnownHResults.E_NOTIMPL, MemorySegment.NULL)
         Arena.ofConfined().use { arena ->
             val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            interfaceId.writeTo(interfaceIdMemory)
+            writeGuidTo(interfaceId, interfaceIdMemory)
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
             val hr = handle.invokeWithArguments(
                 0,
@@ -723,7 +723,7 @@ actual object WinRtPlatformApi {
         ensureWindows()
         Arena.ofConfined().use { arena ->
             val interfaceIdMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
-            interfaceId.writeTo(interfaceIdMemory)
+            writeGuidTo(interfaceId, interfaceIdMemory)
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
             val hr = coGetObjectContextHandle.invokeWithArguments(
                 interfaceIdMemory,
@@ -977,7 +977,7 @@ actual object WinRtPlatformApi {
             return 0u
         }
         val method = linker.downcallHandle(
-            RawVtableCallJvmCompat.entry(unknown.asMemorySegment(), slot),
+            vtableEntry(unknown.asMemorySegment(), slot),
             FunctionDescriptor.of(
                 ValueLayout.JAVA_INT,
                 ValueLayout.ADDRESS,
@@ -1013,3 +1013,8 @@ internal data class PointerResult(
 
 private fun PointerResult.toNativePointerResult(): NativePointerResult =
     NativePointerResult(hResult.value, pointer.asNativePointer())
+
+/** Writes [guid] as 16 little-endian bytes into [destination]. */
+private fun writeGuidTo(guid: Guid, destination: MemorySegment) {
+    NativeInterop.writeGuid(destination.asNativePointer(), guid)
+}

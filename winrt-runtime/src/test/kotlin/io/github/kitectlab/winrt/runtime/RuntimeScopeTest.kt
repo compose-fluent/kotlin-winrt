@@ -19,7 +19,7 @@ class RuntimeScopeTest {
             return
         }
 
-        assertEquals(KnownHResults.S_OK, JvmComRuntime.initializeMultithreaded())
-        assertEquals(KnownHResults.S_OK, JvmWinRtRuntime.initializeMultithreaded())
+        assertEquals(KnownHResults.S_OK, ComRuntime.initializeMultithreaded())
+        assertEquals(KnownHResults.S_OK, WinRtRuntime.initializeMultithreaded())
     }
 }

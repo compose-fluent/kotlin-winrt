@@ -16,7 +16,7 @@ internal object WinRtReferenceProjection {
         if (value == null) {
             return null
         }
-        val typeHandle = PlatformValueProjectionInterop.referenceTypeHandle(value, interfaceId)
+        val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
         borrowedProjectionMarshaler(value, typeHandle)?.let { return it }
         return WinRtProjectionMarshaler.hosted(
             host = createReferenceHost(interfaceId, value),
@@ -31,7 +31,7 @@ internal object WinRtReferenceProjection {
         if (value == null) {
             NativeInterop.nullPointer
         } else {
-            val typeHandle = PlatformValueProjectionInterop.referenceTypeHandle(value, interfaceId)
+            val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
             borrowedProjectionAbi(value, typeHandle)
                 ?: run {
                     val host = createReferenceHost(interfaceId, value)
@@ -49,7 +49,7 @@ internal object WinRtReferenceProjection {
         if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            PlatformValueProjectionInterop.readReferenceValue(interfaceId, pointer)
+            ValueBoxingInterop.readReferenceValue(interfaceId, pointer)
         }
 }
 
@@ -88,7 +88,7 @@ internal object WinRtReferenceArrayProjection {
         if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            PlatformValueProjectionInterop.readReferenceArrayValue(interfaceId, pointer)
+            ValueBoxingInterop.readReferenceArrayValue(interfaceId, pointer)
         }
 }
 
@@ -98,7 +98,7 @@ internal object WinRtPropertyValueProjection {
             return null
         }
         return WinRtProjectionMarshaler.owned(
-            PlatformValueProjectionInterop.createPropertyValueReference(value),
+            ValueBoxingInterop.createPropertyValueReference(value),
         )
     }
 
@@ -106,20 +106,20 @@ internal object WinRtPropertyValueProjection {
         if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
             NativeInterop.nullPointer
         } else {
-            PlatformValueProjectionInterop.createPropertyValueReference(value).useAndGetRef()
+            ValueBoxingInterop.createPropertyValueReference(value).useAndGetRef()
         }
 
     fun fromOwnedAbi(pointer: NativePointer): Any? =
         if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            PlatformValueProjectionInterop.readOwnedPropertyValue(pointer)
+            ValueBoxingInterop.readOwnedPropertyValue(pointer)
         }
 
     fun tryFromBorrowedAbi(pointer: NativePointer): Any? =
         if (NativeInterop.isNull(pointer)) {
             null
         } else {
-            PlatformValueProjectionInterop.tryProjectBorrowedPropertyValue(pointer)
+            ValueBoxingInterop.tryProjectBorrowedPropertyValue(pointer)
         }
 }

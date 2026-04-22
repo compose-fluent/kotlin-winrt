@@ -30,7 +30,7 @@ internal object TypeProjection {
         }
         val kind =
             when {
-                platformIsPrimitiveType(value) -> WinRtTypeKind.Primitive
+                isPrimitiveWinRtType(value) -> WinRtTypeKind.Primitive
                 Projections.isTypeWindowsRuntimeType(value) -> WinRtTypeKind.Metadata
                 else -> WinRtTypeKind.Custom
             }

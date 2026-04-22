@@ -96,7 +96,7 @@ class ActivationFactoryTest {
         assumeTrue(PlatformRuntime.isWindows)
 
         RuntimeScope.initializeMultithreaded().use {
-            val instance = JvmWinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow()
+            val instance = WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow()
             instance.use {
                 assertEquals("Windows.Data.Json.JsonObject", it.getRuntimeClassName())
             }

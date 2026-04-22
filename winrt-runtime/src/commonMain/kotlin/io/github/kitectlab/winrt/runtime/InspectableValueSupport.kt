@@ -25,6 +25,44 @@ internal fun createSyntheticValueCcwDefinition(value: Any): WinRtCcwDefinition? 
     )
 }
 
+internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRtCcwDefinition? {
+    createSyntheticValueCcwDefinition(value)?.let { return it }
+    if (value is AutoCloseable) {
+        return WinRtCcwDefinition(
+            interfaceDefinitions = listOf(createClosableInspectableInterfaceDefinition(value)),
+            defaultInterfaceId = IID.IDisposable,
+            runtimeClassName = defaultInspectableRuntimeClassNameFor(value),
+        )
+    }
+    return null
+}
+
+internal fun defaultInspectableRuntimeClassNameFor(value: Any): String? {
+    WinRtValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
+    val lookupName =
+        TypeNameSupport.getNameForType(
+            value::class,
+            setOf(TypeNameGenerationFlag.ForGetRuntimeClassName),
+        )
+    return lookupName.takeIf(String::isNotBlank) ?: value::class.qualifiedName ?: value::class.toString()
+}
+
+private fun createClosableInspectableInterfaceDefinition(value: AutoCloseable): WinRtInspectableInterfaceDefinition =
+    WinRtInspectableInterfaceDefinition(
+        interfaceId = IID.IDisposable,
+        methods = listOf(
+            WinRtInspectableMethodDefinition(
+                descriptor = NativeFunctionDescriptor.of(
+                    NativeValueLayout.JAVA_INT,
+                    NativeValueLayout.ADDRESS,
+                ),
+            ) { _ ->
+                value.close()
+                KnownHResults.S_OK.value
+            },
+        ),
+    )
+
 internal fun tryProjectInspectableValue(
     inspectable: IInspectableReference,
     runtimeClassName: String? = inspectable.tryGetRuntimeClassName(),

@@ -158,6 +158,6 @@ internal class WinRtPropertyValueReference(
             NativeInterop.readInt8(resultOut).toInt() != 0
         }
 
-    fun getValue(): Any? = PlatformValueProjectionInterop.readPropertyValue(pointer, type())
+    fun getValue(): Any? = ValueBoxingInterop.readPropertyValue(pointer, type())
 }
 

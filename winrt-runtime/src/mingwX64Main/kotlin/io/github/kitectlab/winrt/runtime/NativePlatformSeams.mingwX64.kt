@@ -51,6 +51,8 @@ actual object NativeInterop {
 
     actual fun readInt8(slot: NativePointer): Byte = TODO()
 
+    actual fun readInt16(slot: NativePointer): Short = TODO()
+
     actual fun readInt32(slot: NativePointer): Int = TODO()
 
     actual fun readInt64(slot: NativePointer): Long = TODO()
@@ -70,6 +72,8 @@ actual object NativeInterop {
     actual fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer): Unit = TODO()
 
     actual fun writeInt8(slot: NativePointer, value: Byte): Unit = TODO()
+
+    actual fun writeInt16(slot: NativePointer, value: Short): Unit = TODO()
 
     actual fun writeInt32(slot: NativePointer, value: Int): Unit = TODO()
 
@@ -114,6 +118,10 @@ actual object NativeInterop {
         descriptor: NativeFunctionDescriptor,
         callback: (List<Any?>) -> Int,
     ): NativeCallbackHandle = TODO()
+
+    actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation = TODO()
+
+    actual fun zeroBytes(pointer: NativePointer, sizeBytes: Long): Unit = TODO()
 }
 
 actual object WinRtPlatformApi {
