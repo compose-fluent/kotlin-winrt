@@ -85,9 +85,10 @@ class WinRtMetadataAbiResolver private constructor(
                 )
 
             WinRtTypeRefKind.Named -> {
-                val rawTypeName = normalizedType.qualifiedName ?: "Any"
-                val resolvedTypeName = qualifyTypeName(rawTypeName, currentNamespace, typesByQualifiedName) ?: rawTypeName
-                val resolvedType = typesByQualifiedName[resolvedTypeName]
+                val resolvedReference = resolveTypeReference(normalizedType, currentNamespace, typesByQualifiedName)
+                val rawTypeName = resolvedReference.definitionQualifiedName ?: normalizedType.qualifiedName ?: "Any"
+                val resolvedTypeName = resolvedReference.definitionQualifiedName ?: rawTypeName
+                val resolvedType = resolvedReference.definitionType
                 val resolvedArguments = normalizedType.typeArguments.map { argument ->
                     resolveType(argument, currentNamespace)
                 }
@@ -136,15 +137,7 @@ class WinRtMetadataAbiResolver private constructor(
 
     companion object {
         fun create(model: WinRtMetadataModel): WinRtMetadataAbiResolver {
-            val normalizedModel = model.normalized()
-            val byQualifiedName = buildMap {
-                normalizedModel.namespaces.forEach { namespace ->
-                    namespace.types.forEach { type ->
-                        put(type.qualifiedName, type)
-                    }
-                }
-            }
-            return WinRtMetadataAbiResolver(byQualifiedName)
+            return WinRtMetadataAbiResolver(buildTypesByQualifiedName(model))
         }
     }
 }
@@ -193,26 +186,6 @@ private fun abiCategoryFor(
         WinRtParameterDirection.Ref -> WinRtAbiParameterCategory.Ref
         WinRtParameterDirection.Out -> WinRtAbiParameterCategory.Out
     }
-}
-
-private fun qualifyTypeName(
-    rawTypeName: String,
-    currentNamespace: String,
-    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-): String? {
-    if (rawTypeName.isBlank()) {
-        return null
-    }
-    if (rawTypeName in typesByQualifiedName) {
-        return rawTypeName
-    }
-    if ('.' !in rawTypeName) {
-        val qualified = "$currentNamespace.$rawTypeName"
-        if (qualified in typesByQualifiedName) {
-            return qualified
-        }
-    }
-    return null
 }
 
 private val FUNDAMENTAL_TYPE_NAMES = setOf(

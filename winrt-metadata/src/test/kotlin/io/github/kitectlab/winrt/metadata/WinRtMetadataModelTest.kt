@@ -424,4 +424,126 @@ class WinRtMetadataModelTest {
             abiMethod.parameters.map { it.category },
         )
     }
+
+    @Test
+    fun closure_resolver_materializes_default_precedence_and_generic_interface_closure() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IIterable", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IVector",
+                            kind = WinRtTypeKind.Interface,
+                            genericParameterCount = 1,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IIterable<T0>"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetExtra",
+                            kind = WinRtTypeKind.Interface,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IIterable<Int>"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            isExclusiveTo = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IIterable<String>"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetFactory", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IVector<String>",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IVector<String>", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetExtra", isOverridable = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverrides", isProtected = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val resolver = model.closureResolver()
+        val vectorClosure = resolver.resolveInterface(
+            WinRtTypeRef.fromDisplayName("Sample.Foundation.IVector<String>"),
+            currentNamespace = "Sample.Foundation",
+        )
+        assertEquals("Sample.Foundation.IVector<String>", vectorClosure.interfaceName)
+        assertEquals(listOf("Sample.Foundation.IIterable<String>"), vectorClosure.baseInterfaces.map { it.interfaceName })
+
+        val widget = model.normalized().namespaces.single().types.first { it.name == "Widget" }
+        val widgetClosure = resolver.resolveRuntimeClass(widget)
+        assertEquals("Sample.Foundation.IVector<String>", widgetClosure.defaultInterfaceName)
+        assertEquals(
+            listOf(
+                "Sample.Foundation.IVector<String>",
+                "Sample.Foundation.IWidgetExtra",
+                "Sample.Foundation.IWidgetOverrides",
+            ),
+            widgetClosure.instanceInterfaces.map { it.interfaceName },
+        )
+        assertEquals(
+            listOf(
+                WinRtRuntimeClassInterfaceKind.Default,
+                WinRtRuntimeClassInterfaceKind.Implemented,
+                WinRtRuntimeClassInterfaceKind.Implemented,
+            ),
+            widgetClosure.instanceInterfaces.map { it.kind },
+        )
+        assertEquals(listOf(true, false, false), widgetClosure.instanceInterfaces.map { it.isDefault })
+        assertEquals(listOf(false, true, false), widgetClosure.instanceInterfaces.map { it.isOverridable })
+        assertEquals(listOf(false, false, true), widgetClosure.instanceInterfaces.map { it.isProtected })
+        assertEquals(listOf(false, false, true), widgetClosure.instanceInterfaces.map { it.isExclusiveTo })
+        assertEquals(
+            listOf(
+                "Sample.Foundation.IVector<String>",
+                "Sample.Foundation.IIterable<String>",
+                "Sample.Foundation.IWidgetExtra",
+                "Sample.Foundation.IIterable<Int>",
+                "Sample.Foundation.IWidgetOverrides",
+            ),
+            widgetClosure.instanceInterfaceClosure.map { it.interfaceName },
+        )
+        assertEquals(true, widgetClosure.activation.isActivatable)
+        assertEquals(
+            "Sample.Foundation.IWidgetFactory",
+            widgetClosure.activation.activatableFactoryInterface?.interfaceName,
+        )
+        assertEquals(
+            listOf("Sample.Foundation.IWidgetStatics"),
+            widgetClosure.activation.staticInterfaces.map { it.interfaceName },
+        )
+        assertEquals(
+            listOf("Sample.Foundation.IIterable<String>"),
+            widgetClosure.activation.staticInterfaces.single().closure?.baseInterfaces?.map { it.interfaceName },
+        )
+        assertEquals(
+            "Sample.Foundation.IWidgetFactory",
+            widgetClosure.activation.composableFactoryInterface?.interfaceName,
+        )
+    }
 }

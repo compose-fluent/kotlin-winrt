@@ -199,6 +199,24 @@ class WinRtMetadataLoaderTest {
             transformAbi.parameters[2].type.typeArguments.single().typeArguments.single().category,
         )
 
+        val closureResolver = model.closureResolver()
+        val widgetClosure = closureResolver.resolveRuntimeClass(widget)
+        assertNull(widgetClosure.defaultInterfaceName)
+        assertEquals(
+            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetBase"),
+            widgetClosure.instanceInterfaceClosure.map { it.interfaceName },
+        )
+        assertEquals(
+            "Sample.Foundation.IWidgetFactory",
+            widgetClosure.activation.activatableFactoryInterface?.interfaceName,
+        )
+        assertEquals(
+            listOf("Sample.Foundation.IWidgetStatics"),
+            widgetClosure.activation.staticInterfaces.map { it.interfaceName },
+        )
+        val iWidgetClosure = closureResolver.resolveInterface(iWidget)
+        assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidgetClosure.baseInterfaces.map { it.interfaceName })
+
         val iWidgetOverrides = sampleNamespace.types.first { it.name == "IWidgetOverrides" }
         assertTrue(iWidgetOverrides.isExclusiveTo)
         assertFalse(iWidgetOverrides.isProjectionInternal)

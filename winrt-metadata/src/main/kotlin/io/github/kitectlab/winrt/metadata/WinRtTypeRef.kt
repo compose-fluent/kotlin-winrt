@@ -67,6 +67,40 @@ data class WinRtTypeRef(
 
     fun withByRef(value: Boolean = true): WinRtTypeRef = copy(isByRef = value)
 
+    fun substituteTypeParameters(
+        genericTypeArguments: List<WinRtTypeRef>,
+        methodTypeArguments: List<WinRtTypeRef> = emptyList(),
+    ): WinRtTypeRef =
+        when (kind) {
+            WinRtTypeRefKind.Named ->
+                named(
+                    qualifiedName = qualifiedName,
+                    typeArguments = typeArguments.map { argument ->
+                        argument.substituteTypeParameters(genericTypeArguments, methodTypeArguments)
+                    },
+                    isByRef = isByRef,
+                )
+
+            WinRtTypeRefKind.Array ->
+                array(
+                    elementType = (elementType ?: unknown()).substituteTypeParameters(genericTypeArguments, methodTypeArguments),
+                    rank = arrayRank,
+                    isByRef = isByRef,
+                )
+
+            WinRtTypeRefKind.GenericTypeParameter ->
+                genericTypeArguments.getOrNull(genericParameterIndex ?: 0)
+                    ?.let { substituted -> if (isByRef) substituted.withByRef() else substituted }
+                    ?: this
+
+            WinRtTypeRefKind.MethodTypeParameter ->
+                methodTypeArguments.getOrNull(genericParameterIndex ?: 0)
+                    ?.let { substituted -> if (isByRef) substituted.withByRef() else substituted }
+                    ?: this
+
+            WinRtTypeRefKind.Unknown -> this
+        }
+
     companion object {
         fun named(
             qualifiedName: String?,
