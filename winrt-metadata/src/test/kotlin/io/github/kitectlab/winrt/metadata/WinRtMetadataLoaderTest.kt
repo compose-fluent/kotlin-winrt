@@ -19,7 +19,18 @@ class WinRtMetadataLoaderTest {
 
         val model = WinRtMetadataLoader.load(assembly).normalized()
 
-        assertEquals(listOf("Sample.Foundation", "WinRT.Interop", "Windows.Foundation.Metadata"), model.namespaces.map { it.name })
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Xaml.Data",
+                "Microsoft.UI.Xaml.Interop",
+                "Sample.Foundation",
+                "WinRT.Interop",
+                "Windows.Foundation",
+                "Windows.Foundation.Collections",
+                "Windows.Foundation.Metadata",
+            ),
+            model.namespaces.map { it.name },
+        )
         val sampleNamespace = model.namespaces.first { it.name == "Sample.Foundation" }
         assertEquals(
             listOf(
@@ -27,6 +38,7 @@ class WinRtMetadataLoaderTest {
                 "IBox",
                 "IGenericWidget",
                 "IInternalContract",
+                "ISpecialShapes",
                 "IWidget",
                 "IWidgetBase",
                 "IWidgetFactory",
@@ -45,6 +57,7 @@ class WinRtMetadataLoaderTest {
         assertEquals(
             listOf(
                 WinRtTypeKind.Enum,
+                WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
@@ -217,6 +230,46 @@ class WinRtMetadataLoaderTest {
         val iWidgetClosure = closureResolver.resolveInterface(iWidget)
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidgetClosure.baseInterfaces.map { it.interfaceName })
 
+        val specialResolver = model.specialTypeResolver()
+        val specialShapes = sampleNamespace.types.first { it.name == "ISpecialShapes" }
+        val itemsDescriptor =
+            specialResolver.resolveType(specialShapes.properties.first { it.name == "Items" }.type, specialShapes.namespace) as WinRtCollectionTypeDescriptor
+        assertEquals(WinRtCollectionInterfaceKind.Vector, itemsDescriptor.kind)
+        assertEquals("String", itemsDescriptor.elementType?.displayName)
+        val lookupDescriptor =
+            specialResolver.resolveType(specialShapes.properties.first { it.name == "Lookup" }.type, specialShapes.namespace) as WinRtCollectionTypeDescriptor
+        assertEquals(WinRtCollectionInterfaceKind.Map, lookupDescriptor.kind)
+        assertEquals("String", lookupDescriptor.keyType?.displayName)
+        assertEquals("Int", lookupDescriptor.valueType?.displayName)
+        val bindableDescriptor =
+            specialResolver.resolveType(specialShapes.properties.first { it.name == "BindableVector" }.type, specialShapes.namespace) as WinRtBindableCollectionTypeDescriptor
+        assertEquals(WinRtBindableCollectionKind.Vector, bindableDescriptor.kind)
+        assertEquals("System.Object", bindableDescriptor.elementType?.displayName)
+        val referenceDescriptor =
+            specialResolver.resolveType(specialShapes.properties.first { it.name == "MaybeNames" }.type, specialShapes.namespace) as WinRtReferenceTypeDescriptor
+        assertEquals(WinRtReferenceInterfaceKind.ReferenceArray, referenceDescriptor.kind)
+        assertEquals("String", referenceDescriptor.valueType?.displayName)
+        val asyncDescriptor =
+            specialResolver.resolveType(specialShapes.methods.first { it.name == "LoadWithProgressAsync" }.returnType, specialShapes.namespace) as WinRtAsyncTypeDescriptor
+        assertEquals(WinRtAsyncInterfaceKind.OperationWithProgress, asyncDescriptor.kind)
+        assertEquals("String", asyncDescriptor.resultType?.displayName)
+        assertEquals("Int", asyncDescriptor.progressType?.displayName)
+        val eventDescriptor =
+            specialResolver.resolveType(specialShapes.events.first { it.name == "WidgetChanged" }.delegateType, specialShapes.namespace) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.TypedEventHandler, eventDescriptor.kind)
+        assertEquals("Sample.Foundation.Widget<Int>", eventDescriptor.senderType?.displayName)
+        assertEquals("String", eventDescriptor.eventArgsType?.displayName)
+        val vectorChangedDescriptor =
+            specialResolver.resolveType(specialShapes.events.first { it.name == "ItemsChanged" }.delegateType, specialShapes.namespace) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.VectorChangedEventHandler, vectorChangedDescriptor.kind)
+        assertEquals("String", vectorChangedDescriptor.elementType?.displayName)
+        val propertyChangedDescriptor =
+            specialResolver.resolveType(specialShapes.events.first { it.name == "PropertyChanged" }.delegateType, specialShapes.namespace) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.PropertyChangedEventHandler, propertyChangedDescriptor.kind)
+        val collectionChangedDescriptor =
+            specialResolver.resolveType(specialShapes.events.first { it.name == "CollectionChanged" }.delegateType, specialShapes.namespace) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.NotifyCollectionChangedEventHandler, collectionChangedDescriptor.kind)
+
         val iWidgetOverrides = sampleNamespace.types.first { it.name == "IWidgetOverrides" }
         assertTrue(iWidgetOverrides.isExclusiveTo)
         assertFalse(iWidgetOverrides.isProjectionInternal)
@@ -291,6 +344,7 @@ class WinRtMetadataLoaderTest {
                 "IBox",
                 "IGenericWidget",
                 "IInternalContract",
+                "ISpecialShapes",
                 "IWidget",
                 "IWidgetBase",
                 "IWidgetFactory",
@@ -404,6 +458,26 @@ class WinRtMetadataLoaderTest {
 
                 public interface IBox<T> {}
 
+                public interface ISpecialShapes
+                {
+                    Windows.Foundation.Collections.IVector<string> Items { get; }
+                    Windows.Foundation.Collections.IMap<string, int> Lookup { get; }
+                    Microsoft.UI.Xaml.Interop.IBindableIterable BindableItems { get; }
+                    Microsoft.UI.Xaml.Interop.IBindableVector BindableVector { get; }
+                    Windows.Foundation.IReference<int> MaybeValue { get; }
+                    Windows.Foundation.IReferenceArray<string> MaybeNames { get; }
+                    Windows.Foundation.IAsyncAction StartAsync();
+                    Windows.Foundation.IAsyncActionWithProgress<int> StartWithProgressAsync();
+                    Windows.Foundation.IAsyncOperation<string> LoadAsync();
+                    Windows.Foundation.IAsyncOperationWithProgress<string, int> LoadWithProgressAsync();
+                    event Windows.Foundation.EventHandler<string> StatusChanged;
+                    event Windows.Foundation.TypedEventHandler<Widget<int>, string> WidgetChanged;
+                    event Windows.Foundation.Collections.VectorChangedEventHandler<string> ItemsChanged;
+                    event Windows.Foundation.Collections.MapChangedEventHandler<string, int> LookupChanged;
+                    event Microsoft.UI.Xaml.Data.PropertyChangedEventHandler PropertyChanged;
+                    event Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler CollectionChanged;
+                }
+
                 [Windows.Foundation.Metadata.Guid("44444444-4444-4444-4444-444444444444")]
                 public interface IGenericWidget<T>
                 {
@@ -466,6 +540,66 @@ class WinRtMetadataLoaderTest {
 
                 [AttributeUsage(AttributeTargets.Interface, AllowMultiple = false)]
                 public sealed class ProjectionInternalAttribute : Attribute {}
+            }
+
+            namespace Windows.Foundation
+            {
+                public interface IAsyncInfo {}
+
+                public interface IAsyncAction : IAsyncInfo {}
+
+                public interface IAsyncActionWithProgress<TProgress> : IAsyncInfo {}
+
+                public interface IAsyncOperation<TResult> : IAsyncInfo {}
+
+                public interface IAsyncOperationWithProgress<TResult, TProgress> : IAsyncInfo {}
+
+                public interface IReference<T> {}
+
+                public interface IReferenceArray<T> {}
+
+                public delegate void EventHandler<T>(object sender, T args);
+
+                public delegate void TypedEventHandler<TSender, TResult>(TSender sender, TResult args);
+
+                public delegate void AsyncActionProgressHandler<TProgress>(IAsyncActionWithProgress<TProgress> asyncInfo, TProgress progressInfo);
+
+                public delegate void AsyncOperationProgressHandler<TResult, TProgress>(IAsyncOperationWithProgress<TResult, TProgress> asyncInfo, TProgress progressInfo);
+            }
+
+            namespace Windows.Foundation.Collections
+            {
+                public interface IIterable<T> {}
+
+                public interface IIterator<T> {}
+
+                public interface IVectorView<T> : IIterable<T> {}
+
+                public interface IVector<T> : IIterable<T> {}
+
+                public interface IMapView<TKey, TValue> : IIterable<IKeyValuePair<TKey, TValue>> {}
+
+                public interface IMap<TKey, TValue> : IIterable<IKeyValuePair<TKey, TValue>> {}
+
+                public interface IKeyValuePair<TKey, TValue> {}
+
+                public delegate void VectorChangedEventHandler<T>(IVector<T> sender, object args);
+
+                public delegate void MapChangedEventHandler<TKey, TValue>(IMap<TKey, TValue> sender, object args);
+            }
+
+            namespace Microsoft.UI.Xaml.Data
+            {
+                public delegate void PropertyChangedEventHandler(object sender, object args);
+            }
+
+            namespace Microsoft.UI.Xaml.Interop
+            {
+                public interface IBindableIterable {}
+
+                public interface IBindableVector {}
+
+                public delegate void NotifyCollectionChangedEventHandler(object sender, object args);
             }
             """.trimIndent(),
         )

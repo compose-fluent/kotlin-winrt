@@ -1,6 +1,6 @@
 package io.github.kitectlab.winrt.metadata
 
-internal data class WinRtResolvedTypeReference(
+data class WinRtResolvedTypeReference(
     val type: WinRtTypeRef,
     val displayName: String,
     val definitionQualifiedName: String?,

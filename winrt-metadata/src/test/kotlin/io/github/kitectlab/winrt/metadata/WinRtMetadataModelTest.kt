@@ -546,4 +546,136 @@ class WinRtMetadataModelTest {
             widgetClosure.activation.composableFactoryInterface?.interfaceName,
         )
     }
+
+    @Test
+    fun special_type_resolver_classifies_collection_async_reference_and_event_families() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IAsyncInfo", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IAsyncAction", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IAsyncActionWithProgress", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IAsyncOperation", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IAsyncOperationWithProgress", kind = WinRtTypeKind.Interface, genericParameterCount = 2),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IReference", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IReferenceArray", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "EventHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "TypedEventHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 2),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "AsyncActionProgressHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "AsyncOperationProgressHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 2),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IIterable", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IIterator", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IVectorView", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IVector", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IMapView", kind = WinRtTypeKind.Interface, genericParameterCount = 2),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IMap", kind = WinRtTypeKind.Interface, genericParameterCount = 2),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IKeyValuePair", kind = WinRtTypeKind.Interface, genericParameterCount = 2),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "VectorChangedEventHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "MapChangedEventHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 2),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableIterable", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "NotifyCollectionChangedEventHandler", kind = WinRtTypeKind.Delegate),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Data",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Data", name = "PropertyChangedEventHandler", kind = WinRtTypeKind.Delegate),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Widget", kind = WinRtTypeKind.RuntimeClass),
+                    ),
+                ),
+            ),
+        )
+
+        val resolver = model.specialTypeResolver()
+
+        val vector = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.Collections.IVector<String>"),
+            "Sample.Foundation",
+        ) as WinRtCollectionTypeDescriptor
+        assertEquals(WinRtCollectionInterfaceKind.Vector, vector.kind)
+        assertEquals("String", vector.elementType?.displayName)
+
+        val map = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.Collections.IMap<String, Int>"),
+            "Sample.Foundation",
+        ) as WinRtCollectionTypeDescriptor
+        assertEquals(WinRtCollectionInterfaceKind.Map, map.kind)
+        assertEquals("String", map.keyType?.displayName)
+        assertEquals("Int", map.valueType?.displayName)
+
+        val bindable = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Interop.IBindableVector"),
+            "Sample.Foundation",
+        ) as WinRtBindableCollectionTypeDescriptor
+        assertEquals(WinRtBindableCollectionKind.Vector, bindable.kind)
+        assertEquals("System.Object", bindable.elementType?.displayName)
+
+        val async = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.IAsyncOperationWithProgress<Sample.Foundation.Widget, Int>"),
+            "Sample.Foundation",
+        ) as WinRtAsyncTypeDescriptor
+        assertEquals(WinRtAsyncInterfaceKind.OperationWithProgress, async.kind)
+        assertEquals("Sample.Foundation.Widget", async.resultType?.displayName)
+        assertEquals("Int", async.progressType?.displayName)
+
+        val reference = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.IReferenceArray<String>"),
+            "Sample.Foundation",
+        ) as WinRtReferenceTypeDescriptor
+        assertEquals(WinRtReferenceInterfaceKind.ReferenceArray, reference.kind)
+        assertEquals("String", reference.valueType?.displayName)
+
+        val eventHandler = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.EventHandler<String>"),
+            "Sample.Foundation",
+        ) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.EventHandler, eventHandler.kind)
+        assertEquals("String", eventHandler.eventArgsType?.displayName)
+
+        val typedEventHandler = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget, String>"),
+            "Sample.Foundation",
+        ) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.TypedEventHandler, typedEventHandler.kind)
+        assertEquals("Sample.Foundation.Widget", typedEventHandler.senderType?.displayName)
+        assertEquals("String", typedEventHandler.eventArgsType?.displayName)
+
+        val progressHandler = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.AsyncOperationProgressHandler<Sample.Foundation.Widget, Int>"),
+            "Sample.Foundation",
+        ) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.AsyncOperationProgressHandler, progressHandler.kind)
+        assertEquals("Sample.Foundation.Widget", progressHandler.resultType?.displayName)
+        assertEquals("Int", progressHandler.progressType?.displayName)
+
+        val propertyChanged = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Data.PropertyChangedEventHandler"),
+            "Sample.Foundation",
+        ) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.PropertyChangedEventHandler, propertyChanged.kind)
+
+        val collectionChanged = resolver.resolveType(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler"),
+            "Sample.Foundation",
+        ) as WinRtEventHandlerTypeDescriptor
+        assertEquals(WinRtEventHandlerKind.NotifyCollectionChangedEventHandler, collectionChanged.kind)
+    }
 }

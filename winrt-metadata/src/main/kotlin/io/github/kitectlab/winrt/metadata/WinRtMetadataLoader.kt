@@ -298,6 +298,8 @@ private class MetadataTables private constructor(
                             rawEvents = rawEvents,
                             eventAccessors = methodSemantics.eventAccessorsByEventRowId,
                             rawMethods = rawMethods,
+                            typeDefNames = typeDefNames,
+                            typeRefNames = typeRefNames,
                         )
                     },
                 )
@@ -564,14 +566,24 @@ private class MetadataTables private constructor(
         rawEvents: List<RawEvent>,
         eventAccessors: Map<Int, EventAccessorRows>,
         rawMethods: List<RawMethodDef>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
     ): WinRtEventDefinition? {
         val rawEvent = rawEvents.getOrNull(eventRowId - 1) ?: return null
         val accessors = eventAccessors[eventRowId] ?: EventAccessorRows()
         val addMethod = accessors.addMethodRowId?.let { rawMethods.getOrNull(it - 1) }
         val removeMethod = accessors.removeMethodRowId?.let { rawMethods.getOrNull(it - 1) }
+        val delegateTypeName = listOfNotNull(addMethod, removeMethod)
+            .firstNotNullOfOrNull { method ->
+                readMethodSignature(method.signatureBlobIndex, typeDefNames, typeRefNames)
+                    .parameters
+                    .firstOrNull()
+                    ?.typeName
+            }
+            ?: rawEvent.delegateTypeName
         return WinRtEventDefinition(
             name = rawEvent.name,
-            delegateTypeName = rawEvent.delegateTypeName,
+            delegateTypeName = delegateTypeName,
             isStatic = listOfNotNull(addMethod, removeMethod).any { it.flags and METHOD_ATTRIBUTE_STATIC != 0 },
             addMethodName = addMethod?.name,
             removeMethodName = removeMethod?.name,
