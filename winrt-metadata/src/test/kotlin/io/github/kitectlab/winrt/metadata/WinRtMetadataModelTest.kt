@@ -317,4 +317,111 @@ class WinRtMetadataModelTest {
         assertEquals(WinRtTypeRefKind.Array, event.delegateType.typeArguments.single().kind)
         assertEquals("String", event.delegateType.typeArguments.single().elementType?.typeName)
     }
+
+    @Test
+    fun abi_resolver_exposes_generator_facing_type_and_parameter_categories() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidget", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Widget", kind = WinRtTypeKind.RuntimeClass),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Priority",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val resolver = model.abiResolver()
+        assertEquals(WinRtAbiTypeCategory.Fundamental, resolver.resolveType(WinRtTypeRef.fromDisplayName("Int"), "Sample.Foundation").category)
+        assertEquals(WinRtAbiTypeCategory.String, resolver.resolveType(WinRtTypeRef.fromDisplayName("String"), "Sample.Foundation").category)
+        assertEquals(WinRtAbiTypeCategory.Interface, resolver.resolveType(WinRtTypeRef.fromDisplayName("IWidget"), "Sample.Foundation").category)
+        assertEquals(WinRtAbiTypeCategory.RuntimeClass, resolver.resolveType(WinRtTypeRef.fromDisplayName("Widget"), "Sample.Foundation").category)
+        assertEquals(WinRtAbiTypeCategory.Delegate, resolver.resolveType(WinRtTypeRef.fromDisplayName("WidgetHandler"), "Sample.Foundation").category)
+        assertEquals(WinRtAbiTypeCategory.Struct, resolver.resolveType(WinRtTypeRef.fromDisplayName("Point"), "Sample.Foundation").category)
+        assertEquals(WinRtAbiTypeCategory.Enum, resolver.resolveType(WinRtTypeRef.fromDisplayName("Priority"), "Sample.Foundation").category)
+        assertEquals(
+            WinRtIntegralType.Int32,
+            resolver.resolveType(WinRtTypeRef.fromDisplayName("Priority"), "Sample.Foundation").enumUnderlyingType,
+        )
+        assertEquals(
+            WinRtAbiTypeCategory.GenericTypeParameter,
+            resolver.resolveType(WinRtTypeRef.fromDisplayName("T0"), "Sample.Foundation").category,
+        )
+        val arrayDescriptor = resolver.resolveType(WinRtTypeRef.fromDisplayName("Array<WidgetHandler>"), "Sample.Foundation")
+        assertEquals(WinRtAbiTypeCategory.Array, arrayDescriptor.category)
+        assertEquals(WinRtAbiTypeCategory.Delegate, arrayDescriptor.elementType?.category)
+
+        val abiMethod = resolver.resolveMethod(
+            WinRtMethodDefinition(
+                name = "Project",
+                returnTypeName = "Array<Widget>",
+                parameters = listOf(
+                    WinRtParameterDefinition("count", "Int"),
+                    WinRtParameterDefinition("name", "String"),
+                    WinRtParameterDefinition("widget", "IWidget"),
+                    WinRtParameterDefinition("callback", "WidgetHandler"),
+                    WinRtParameterDefinition("priority", "Priority"),
+                    WinRtParameterDefinition("location", "Point"),
+                    WinRtParameterDefinition("genericValue", "T0"),
+                    WinRtParameterDefinition("passValues", "Array<Int>", isInParameter = true),
+                    WinRtParameterDefinition(
+                        "filledValues",
+                        "Array<Int>",
+                        direction = WinRtParameterDirection.Out,
+                        isOutParameter = true,
+                    ),
+                    WinRtParameterDefinition(
+                        "receivedValues",
+                        "Array<Int>",
+                        direction = WinRtParameterDirection.Out,
+                        typeIsByRef = true,
+                        isOutParameter = true,
+                    ),
+                ),
+            ),
+            currentNamespace = "Sample.Foundation",
+        )
+
+        assertEquals(WinRtAbiTypeCategory.Array, abiMethod.returnType.category)
+        assertEquals(WinRtAbiTypeCategory.RuntimeClass, abiMethod.returnType.elementType?.category)
+        assertEquals(
+            listOf(
+                WinRtAbiTypeCategory.Fundamental,
+                WinRtAbiTypeCategory.String,
+                WinRtAbiTypeCategory.Interface,
+                WinRtAbiTypeCategory.Delegate,
+                WinRtAbiTypeCategory.Enum,
+                WinRtAbiTypeCategory.Struct,
+                WinRtAbiTypeCategory.GenericTypeParameter,
+                WinRtAbiTypeCategory.Array,
+                WinRtAbiTypeCategory.Array,
+                WinRtAbiTypeCategory.Array,
+            ),
+            abiMethod.parameters.map { it.type.category },
+        )
+        assertEquals(
+            listOf(
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.PassArray,
+                WinRtAbiParameterCategory.FillArray,
+                WinRtAbiParameterCategory.ReceiveArray,
+            ),
+            abiMethod.parameters.map { it.category },
+        )
+    }
 }

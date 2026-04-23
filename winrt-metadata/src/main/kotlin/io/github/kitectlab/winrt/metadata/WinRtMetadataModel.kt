@@ -115,19 +115,24 @@ data class WinRtParameterDefinition(
     val name: String,
     val typeName: String,
     val direction: WinRtParameterDirection = WinRtParameterDirection.In,
+    val typeIsByRef: Boolean = false,
+    val isInParameter: Boolean = false,
+    val isOutParameter: Boolean = false,
 ) {
     val type: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(typeName)
+        get() = WinRtTypeRef.fromDisplayName(typeName).withByRef(typeIsByRef)
 
     fun normalized(): WinRtParameterDefinition {
         val normalizedType = type.normalized()
         return copy(
             name = name.trim(),
             typeName = normalizedType.typeName,
+            typeIsByRef = normalizedType.isByRef,
         )
     }
 
-    internal fun signatureKey(): String = "$name:${type.normalized().typeName}:$direction"
+    internal fun signatureKey(): String =
+        "$name:${type.renderSignatureKey()}:$direction:$isInParameter:$isOutParameter"
 }
 
 data class WinRtMethodDefinition(
@@ -135,16 +140,18 @@ data class WinRtMethodDefinition(
     val returnTypeName: String,
     val parameters: List<WinRtParameterDefinition> = emptyList(),
     val isStatic: Boolean = false,
+    val returnTypeIsByRef: Boolean = false,
     val methodRowId: Int? = null,
 ) {
     val returnType: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(returnTypeName)
+        get() = WinRtTypeRef.fromDisplayName(returnTypeName).withByRef(returnTypeIsByRef)
 
     fun normalized(): WinRtMethodDefinition {
         val normalizedReturnType = returnType.normalized()
         return copy(
             name = name.trim(),
             returnTypeName = normalizedReturnType.typeName,
+            returnTypeIsByRef = normalizedReturnType.isByRef,
             parameters = parameters.map(WinRtParameterDefinition::normalized),
             methodRowId = methodRowId?.takeIf { it > 0 },
         )
@@ -155,7 +162,7 @@ data class WinRtMethodDefinition(
         append('|')
         append(name)
         append('|')
-        append(returnType.normalized().typeName)
+        append(returnType.renderSignatureKey())
         append('|')
         append(parameters.joinToString(",") { it.signatureKey() })
     }
@@ -173,6 +180,7 @@ data class WinRtMethodDefinition(
             returnTypeName = left.returnTypeName,
             parameters = left.parameters,
             isStatic = left.isStatic,
+            returnTypeIsByRef = left.returnTypeIsByRef || right.returnTypeIsByRef,
             methodRowId = listOfNotNull(left.methodRowId, right.methodRowId).minOrNull(),
         )
     }
@@ -469,4 +477,9 @@ private fun mergeKind(left: WinRtTypeKind, right: WinRtTypeKind): WinRtTypeKind 
     left == WinRtTypeKind.Unknown -> right
     right == WinRtTypeKind.Unknown -> left
     else -> minOf(left, right, compareBy(WinRtTypeKind::ordinal))
+}
+
+private fun WinRtTypeRef.renderSignatureKey(): String {
+    val normalizedType = normalized()
+    return if (normalizedType.isByRef) "${normalizedType.typeName}&" else normalizedType.typeName
 }

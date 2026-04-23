@@ -517,12 +517,16 @@ private class MetadataTables private constructor(
                 WinRtMethodDefinition(
                     name = rawMethod.name,
                     returnTypeName = signature.returnType.typeName,
+                    returnTypeIsByRef = signature.returnType.isByRef,
                     parameters = signature.parameters.mapIndexed { parameterIndex, parameterType ->
                         val parameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == parameterIndex + 1 }
                         WinRtParameterDefinition(
                             name = parameterRow?.name?.takeIf(String::isNotBlank) ?: "arg${parameterIndex + 1}",
                             typeName = parameterType.typeName,
                             direction = parameterDirectionFor(parameterRow, parameterType.isByRef),
+                            typeIsByRef = parameterType.isByRef,
+                            isInParameter = parameterRow?.flags?.and(PARAM_ATTRIBUTE_IN) != 0,
+                            isOutParameter = parameterRow?.flags?.and(PARAM_ATTRIBUTE_OUT) != 0,
                         )
                     },
                     isStatic = rawMethod.flags and METHOD_ATTRIBUTE_STATIC != 0,
@@ -1034,6 +1038,8 @@ private class MetadataTables private constructor(
     }
 
     private fun parameterDirectionFor(rawParam: RawParam?, isByRef: Boolean): WinRtParameterDirection = when {
+        rawParam != null && rawParam.flags and PARAM_ATTRIBUTE_OUT != 0 && !isByRef && rawParam.flags and PARAM_ATTRIBUTE_IN == 0 ->
+            WinRtParameterDirection.Out
         !isByRef -> WinRtParameterDirection.In
         rawParam == null -> WinRtParameterDirection.Ref
         rawParam.flags and PARAM_ATTRIBUTE_OUT != 0 && rawParam.flags and PARAM_ATTRIBUTE_IN == 0 -> WinRtParameterDirection.Out

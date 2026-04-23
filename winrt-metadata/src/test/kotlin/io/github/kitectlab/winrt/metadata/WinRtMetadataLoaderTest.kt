@@ -83,15 +83,25 @@ class WinRtMetadataLoaderTest {
         val iWidget = sampleNamespace.types.first { it.name == "IWidget" }
         assertEquals(Guid("22222222-2222-2222-2222-222222222222"), iWidget.iid)
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })
-        assertEquals(listOf("Update"), iWidget.methods.map { it.name })
-        assertEquals("Unit", iWidget.methods.single().returnTypeName)
-        assertTrue((iWidget.methods.single().methodRowId ?: 0) > 0)
-        assertEquals(listOf("input", "written", "state"), iWidget.methods.single().parameters.map { it.name })
-        assertEquals(listOf("String", "Int", "Int"), iWidget.methods.single().parameters.map { it.typeName })
+        assertEquals(listOf("Update", "UpdateArrays"), iWidget.methods.map { it.name })
+        assertEquals("Unit", iWidget.methods.first().returnTypeName)
+        assertTrue((iWidget.methods.first().methodRowId ?: 0) > 0)
+        assertEquals(listOf("input", "written", "state"), iWidget.methods.first().parameters.map { it.name })
+        assertEquals(listOf("String", "Int", "Int"), iWidget.methods.first().parameters.map { it.typeName })
         assertEquals(
             listOf(WinRtParameterDirection.In, WinRtParameterDirection.Out, WinRtParameterDirection.Ref),
-            iWidget.methods.single().parameters.map { it.direction },
+            iWidget.methods.first().parameters.map { it.direction },
         )
+        val updateArrays = iWidget.methods.last()
+        assertEquals(listOf("input", "filled", "received"), updateArrays.parameters.map { it.name })
+        assertEquals(listOf("Array<Int>", "Array<Int>", "Array<Int>"), updateArrays.parameters.map { it.typeName })
+        assertEquals(
+            listOf(WinRtParameterDirection.In, WinRtParameterDirection.Out, WinRtParameterDirection.Out),
+            updateArrays.parameters.map { it.direction },
+        )
+        assertEquals(listOf(false, false, true), updateArrays.parameters.map { it.typeIsByRef })
+        assertEquals(listOf(true, false, false), updateArrays.parameters.map { it.isInParameter })
+        assertEquals(listOf(false, true, true), updateArrays.parameters.map { it.isOutParameter })
         assertEquals(listOf("Name", "Value"), iWidget.properties.map { it.name })
         assertEquals(listOf("String", "Int"), iWidget.properties.map { it.typeName })
         assertEquals(listOf(true, false), iWidget.properties.map { it.isReadOnly })
@@ -146,6 +156,49 @@ class WinRtMetadataLoaderTest {
             iGenericWidget.methods.single().parameters[2].type.typeArguments.single().kind,
         )
 
+        val abiResolver = model.abiResolver()
+        val updateArraysAbi = abiResolver.resolveMethod(updateArrays, iWidget.namespace)
+        assertEquals(WinRtAbiTypeCategory.Unit, updateArraysAbi.returnType.category)
+        assertEquals(
+            listOf(
+                WinRtAbiParameterCategory.PassArray,
+                WinRtAbiParameterCategory.FillArray,
+                WinRtAbiParameterCategory.ReceiveArray,
+            ),
+            updateArraysAbi.parameters.map { it.category },
+        )
+        assertEquals(
+            listOf(
+                WinRtAbiTypeCategory.Fundamental,
+                WinRtAbiTypeCategory.Fundamental,
+                WinRtAbiTypeCategory.Fundamental,
+            ),
+            updateArraysAbi.parameters.map { it.type.elementType?.category },
+        )
+
+        val transformAbi = abiResolver.resolveMethod(iGenericWidget.methods.single(), iGenericWidget.namespace)
+        assertEquals(WinRtAbiTypeCategory.Interface, transformAbi.returnType.category)
+        assertEquals(WinRtAbiTypeCategory.Array, transformAbi.returnType.typeArguments.single().category)
+        assertEquals(
+            WinRtAbiTypeCategory.GenericTypeParameter,
+            transformAbi.returnType.typeArguments.single().elementType?.category,
+        )
+        assertEquals(
+            listOf(
+                WinRtAbiParameterCategory.In,
+                WinRtAbiParameterCategory.Out,
+                WinRtAbiParameterCategory.Ref,
+            ),
+            transformAbi.parameters.map { it.category },
+        )
+        assertEquals(WinRtAbiTypeCategory.Interface, transformAbi.parameters[0].type.category)
+        assertEquals(WinRtAbiTypeCategory.GenericTypeParameter, transformAbi.parameters[0].type.typeArguments.single().category)
+        assertEquals(WinRtAbiTypeCategory.Interface, transformAbi.parameters[2].type.typeArguments.single().category)
+        assertEquals(
+            WinRtAbiTypeCategory.String,
+            transformAbi.parameters[2].type.typeArguments.single().typeArguments.single().category,
+        )
+
         val iWidgetOverrides = sampleNamespace.types.first { it.name == "IWidgetOverrides" }
         assertTrue(iWidgetOverrides.isExclusiveTo)
         assertFalse(iWidgetOverrides.isProjectionInternal)
@@ -185,7 +238,7 @@ class WinRtMetadataLoaderTest {
             priority.enumMembers,
         )
 
-        assertEquals(listOf("Update"), widget.methods.map { it.name })
+        assertEquals(listOf("Update", "UpdateArrays"), widget.methods.map { it.name })
         assertEquals(listOf("Name", "Value"), widget.properties.map { it.name })
         assertEquals(listOf("Changed"), widget.events.map { it.name })
         assertFalse(widget.methods.any { it.name.startsWith("get_") || it.name.startsWith("set_") || it.name.startsWith("add_") || it.name.startsWith("remove_") })
@@ -321,6 +374,10 @@ class WinRtMetadataLoaderTest {
                     int Value { get; set; }
                     event WidgetHandler Changed;
                     void Update(string input, out int written, ref int state);
+                    void UpdateArrays(
+                        [System.Runtime.InteropServices.In] int[] input,
+                        [System.Runtime.InteropServices.Out] int[] filled,
+                        out int[] received);
                 }
 
                 public interface IWidgetFactory {}
@@ -357,6 +414,15 @@ class WinRtMetadataLoaderTest {
                         written = input.Length;
                         state += 1;
                         Changed?.Invoke();
+                    }
+
+                    public void UpdateArrays(
+                        [System.Runtime.InteropServices.In] int[] input,
+                        [System.Runtime.InteropServices.Out] int[] filled,
+                        out int[] received)
+                    {
+                        filled = input;
+                        received = input;
                     }
                 }
 
