@@ -230,8 +230,37 @@ class WinRtMetadataLoaderTest {
         val iWidgetClosure = closureResolver.resolveInterface(iWidget)
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidgetClosure.baseInterfaces.map { it.interfaceName })
 
+        val lookupIndex = model.lookupIndex()
+        val widgetLookup = lookupIndex.typeLookup("Sample.Foundation.Widget")!!
+        assertEquals("Sample.Foundation.Widget", widgetLookup.canonicalType.displayName)
+        assertNull(widgetLookup.defaultInterface)
+        assertEquals(
+            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetBase"),
+            widgetLookup.declaredInterfaces.map { it.interfaceName },
+        )
+        val canonicalGenericWidget = lookupIndex.canonicalType("Widget<Int>", "Sample.Foundation")
+        assertEquals("Sample.Foundation.Widget<Int>", canonicalGenericWidget.displayName)
+        assertEquals("Sample.Foundation.Widget", canonicalGenericWidget.definitionQualifiedName)
+        assertEquals(
+            "Sample.Foundation.Widget",
+            lookupIndex.typeLookup(WinRtTypeRef.fromDisplayName("Widget<Int>"), "Sample.Foundation")?.qualifiedTypeName,
+        )
+        val iWidgetLookup = lookupIndex.typeLookup("Sample.Foundation.IWidget")!!
+        assertEquals(
+            listOf("Sample.Foundation.IWidgetBase"),
+            iWidgetLookup.interfaceClosure?.baseInterfaces?.map { it.interfaceName },
+        )
+        val updateSignatureKey = iWidgetLookup.methodsBySignatureKey.entries.first { it.value.name == "Update" }.key
+        assertEquals("Update", iWidgetLookup.method(updateSignatureKey)?.name)
+        assertEquals("Name", iWidgetLookup.property("Name")?.name)
+        val changedSignatureKey = iWidgetLookup.eventsBySignatureKey.keys.single()
+        assertEquals("Changed", iWidgetLookup.eventBySignature(changedSignatureKey)?.name)
+
         val specialResolver = model.specialTypeResolver()
         val specialShapes = sampleNamespace.types.first { it.name == "ISpecialShapes" }
+        val specialShapesLookup = lookupIndex.typeLookup("Sample.Foundation.ISpecialShapes")!!
+        val loadAsyncSignatureKey = specialShapesLookup.methodsBySignatureKey.entries.first { it.value.name == "LoadWithProgressAsync" }.key
+        assertEquals("LoadWithProgressAsync", specialShapesLookup.method(loadAsyncSignatureKey)?.name)
         val itemsDescriptor =
             specialResolver.resolveType(specialShapes.properties.first { it.name == "Items" }.type, specialShapes.namespace) as WinRtCollectionTypeDescriptor
         assertEquals(WinRtCollectionInterfaceKind.Vector, itemsDescriptor.kind)

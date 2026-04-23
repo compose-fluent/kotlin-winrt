@@ -548,6 +548,99 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun lookup_index_materializes_canonical_types_member_signatures_and_interface_queries() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetBase", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Open",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("id", "Int")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Open",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "Name", typeName = "String"),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetStatics", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            genericParameterCount = 1,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ).normalized()
+
+        val index = model.lookupIndex()
+        val canonicalLocal = index.canonicalType("Widget", "Sample.Foundation")
+        assertEquals("Sample.Foundation.Widget", canonicalLocal.displayName)
+        assertEquals("Sample.Foundation.Widget", canonicalLocal.definitionQualifiedName)
+        val canonicalGeneric = index.canonicalType("Widget<String>", "Sample.Foundation")
+        assertEquals("Sample.Foundation.Widget<String>", canonicalGeneric.displayName)
+        assertEquals("Sample.Foundation.Widget", canonicalGeneric.definitionQualifiedName)
+
+        val widgetLookup = index.typeLookup("Sample.Foundation.Widget")!!
+        assertEquals("Sample.Foundation.IWidget", widgetLookup.defaultInterface?.interfaceName)
+        assertEquals(
+            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetBase"),
+            widgetLookup.declaredInterfaces.map { it.interfaceName },
+        )
+        assertEquals(true, widgetLookup.declaredInterface("Sample.Foundation.IWidget")?.isDefault)
+        assertEquals(
+            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetBase"),
+            widgetLookup.runtimeClassClosure?.instanceInterfaceClosure?.map { it.interfaceName },
+        )
+
+        val iWidgetLookup = index.typeLookup(WinRtTypeRef.fromDisplayName("IWidget"), "Sample.Foundation")!!
+        assertEquals("Sample.Foundation.IWidget", iWidgetLookup.qualifiedTypeName)
+        assertEquals(
+            listOf("Sample.Foundation.IWidgetBase"),
+            iWidgetLookup.interfaceClosure?.baseInterfaces?.map { it.interfaceName },
+        )
+        assertEquals(2, iWidgetLookup.methodOverloads("Open").size)
+        val intOverload = iWidgetLookup.methodOverloads("Open").first { it.parameters.single().typeName == "Int" }
+        val intOverloadKey = iWidgetLookup.methodsBySignatureKey.entries.first { it.value == intOverload }.key
+        assertEquals(intOverload, iWidgetLookup.method(intOverloadKey))
+        assertEquals("Name", iWidgetLookup.property("Name")?.name)
+        val propertySignatureKey = iWidgetLookup.propertiesBySignatureKey.keys.single()
+        assertEquals("Name", iWidgetLookup.propertyBySignature(propertySignatureKey)?.name)
+        assertEquals("Changed", iWidgetLookup.event("Changed")?.name)
+        val eventSignatureKey = iWidgetLookup.eventsBySignatureKey.keys.single()
+        assertEquals("Changed", iWidgetLookup.eventBySignature(eventSignatureKey)?.name)
+    }
+
+    @Test
     fun special_type_resolver_classifies_collection_async_reference_and_event_families() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
