@@ -25,9 +25,13 @@ import io.github.kitectlab.winrt.runtime.WinRtBindableVectorViewProjection
 import io.github.kitectlab.winrt.runtime.WinRtDictionaryProjection
 import io.github.kitectlab.winrt.runtime.WinRtIterableProjection
 import io.github.kitectlab.winrt.runtime.WinRtListProjection
+import io.github.kitectlab.winrt.runtime.WinRtAsyncActionReference
+import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationReference
+import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationVftblSlots
 import io.github.kitectlab.winrt.runtime.WinRtReadOnlyDictionaryProjection
 import io.github.kitectlab.winrt.runtime.WinRtReadOnlyListProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapter
+import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
 import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
@@ -53,7 +57,6 @@ import java.time.OffsetDateTime
 import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
-import java.util.concurrent.CompletableFuture
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 private val GUID_CLASS_NAME = Guid::class.asClassName()
@@ -72,16 +75,19 @@ private val WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME = WinRtBindableVect
 private val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRtDictionaryProjection::class.asClassName()
 private val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRtIterableProjection::class.asClassName()
 private val WINRT_LIST_PROJECTION_CLASS_NAME = WinRtListProjection::class.asClassName()
+private val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRtAsyncActionReference::class.asClassName()
+private val WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME = WinRtAsyncOperationReference::class.asClassName()
+private val WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationVftblSlots::class.asClassName()
 private val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRtReadOnlyDictionaryProjection::class.asClassName()
 private val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProjection::class.asClassName()
 private val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
+private val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
 private val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
 private val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClassName()
 private val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::class.asClassName()
 private val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
 private val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
-private val COMPLETABLE_FUTURE_CLASS_NAME = CompletableFuture::class.asClassName()
 private val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 private val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
 private val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableList")
@@ -242,6 +248,8 @@ enum class KotlinProjectionAbiValueKind {
     MappedBindableIterable,
     MappedBindableVector,
     MappedBindableVectorView,
+    MappedAsyncAction,
+    MappedAsyncOperation,
     ProjectedInterface,
     ProjectedRuntimeClass,
     Struct,
@@ -332,10 +340,24 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.MappedKeyValuePair,
         descriptionName = "KeyValuePair",
     ),
-    KotlinProjectionMappedType("Windows.Foundation.IAsyncAction", { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) }, descriptionName = "IAsyncAction"),
-    KotlinProjectionMappedType("Windows.Foundation.IAsyncActionWithProgress", { COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(UNIT) }, descriptionName = "IAsyncActionWithProgress"),
-    KotlinProjectionMappedType("Windows.Foundation.IAsyncOperation", { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.single()) }, descriptionName = "IAsyncOperation"),
-    KotlinProjectionMappedType("Windows.Foundation.IAsyncOperationWithProgress", { arguments -> COMPLETABLE_FUTURE_CLASS_NAME.parameterizedBy(arguments.first()) }, descriptionName = "IAsyncOperationWithProgress"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IAsyncAction",
+        { WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncAction,
+        descriptionName = "IAsyncAction",
+    ),
+    KotlinProjectionMappedType("Windows.Foundation.IAsyncActionWithProgress", { WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME }, descriptionName = "IAsyncActionWithProgress"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IAsyncOperation",
+        { arguments -> WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(arguments.single()) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        descriptionName = "IAsyncOperation",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IAsyncOperationWithProgress",
+        { arguments -> WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(arguments.first()) },
+        descriptionName = "IAsyncOperationWithProgress",
+    ),
     KotlinProjectionMappedType(
         "Microsoft.UI.Xaml.Interop.IBindableIterable",
         { Iterable::class.asClassName().parameterizedBy(ANY.copy(nullable = true)) },
@@ -3108,6 +3130,8 @@ class KotlinProjectionRenderer {
             returnBinding.isMappedBindableCollectionBinding() -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             else -> when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.String,
+            KotlinProjectionAbiValueKind.MappedAsyncAction,
+            KotlinProjectionAbiValueKind.MappedAsyncOperation,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -3143,6 +3167,14 @@ class KotlinProjectionRenderer {
                     HSTRING_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                 )
+            KotlinProjectionAbiValueKind.MappedAsyncAction ->
+                CodeBlock.of(
+                    "return %T(%T.readPointer(__resultOut))\n",
+                    WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                )
+            KotlinProjectionAbiValueKind.MappedAsyncOperation ->
+                asyncOperationReturnReadback(returnBinding) ?: return null
             KotlinProjectionAbiValueKind.Boolean ->
                 CodeBlock.of("return %T.readInt8(__resultOut).toInt() != 0\n", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Int32 ->
@@ -3234,6 +3266,84 @@ class KotlinProjectionRenderer {
     ): ClassName? =
         runCatching { resolveTypeName(returnBinding.typeName) as? ClassName }.getOrNull()
             ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName) as? ClassName }.getOrNull()
+
+    private fun asyncOperationReturnReadback(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val resultBinding = returnBinding.typeArguments.singleOrNull() ?: return null
+        val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
+        val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
+        val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
+        val asyncOperationType = WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(resolveTypeName(resultBinding.typeName))
+        return CodeBlock.builder()
+            .add("return %T(\n", asyncOperationType)
+            .indent()
+            .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
+            .add("interfaceId = %T.interfaceId(%L),\n", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME, resultTypeSignature)
+            .add("completedHandlerInterfaceId = %T.completedHandlerInterfaceId(%L),\n", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME, resultTypeSignature)
+            .add("resultReader = { __operation ->\n")
+            .indent()
+            .add("%T.confinedScope().use { __operationScope ->\n", PLATFORM_ABI_CLASS_NAME)
+            .indent()
+            .add("val __operationResultOut = %L\n", resultOutAllocation)
+            .add(
+                "val __operationHr = %T.invokeArgs(__operation.pointer, %T.GetResults, __operationResultOut)\n",
+                COM_VTABLE_INVOKER_CLASS_NAME,
+                WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME,
+            )
+            .add("%T.checkSucceededRaw(__operationHr)\n", WINRT_PLATFORM_API_CLASS_NAME)
+            .add("%L\n", resultReadbackExpression)
+            .unindent()
+            .add("}\n")
+            .unindent()
+            .add("},\n")
+            .unindent()
+            .add(")\n")
+            .build()
+    }
+
+    private fun asyncOperationResultTypeSignature(
+        resultBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? = when (resultBinding.kind) {
+        KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.string()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.boolean()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.int32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.uint32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.float64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        else -> null
+    }
+
+    private fun abiResultAllocationForAsyncOperationResult(
+        resultBinding: KotlinProjectionAbiTypeBinding,
+        scopeName: String,
+    ): CodeBlock? = when (resultBinding.kind) {
+        KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.allocateInt32Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.allocateDoubleSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        else -> null
+    }
+
+    private fun asyncOperationResultReadbackExpression(
+        resultBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? = when (resultBinding.kind) {
+        KotlinProjectionAbiValueKind.String ->
+            CodeBlock.of(
+                "%T.fromHandle(%T.readPointer(__operationResultOut), owner = true).use { it.toKString() }",
+                HSTRING_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+        KotlinProjectionAbiValueKind.Boolean ->
+            CodeBlock.of("%T.readInt8(__operationResultOut).toInt() != 0", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int32 ->
+            CodeBlock.of("%T.readInt32(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt32 ->
+            CodeBlock.of("%T.readInt32(__operationResultOut).toUInt()", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Double ->
+            CodeBlock.of("%T.readDouble(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        else -> null
+    }
 
     private fun mappedCollectionReturnReadback(
         returnBinding: KotlinProjectionAbiTypeBinding,

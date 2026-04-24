@@ -1752,14 +1752,69 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model).single()
 
         assertTrue(file.contents, file.contents.contains("import java.net.URI"))
-        assertTrue(file.contents, file.contents.contains("import java.util.concurrent.CompletableFuture"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtAsyncActionReference"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationReference"))
         assertTrue(file.contents, file.contents.contains("public interface IWidgetCollection : Iterable<String>"))
         assertTrue(file.contents, file.contents.contains("public fun asReadOnly(): List<String>"))
         assertTrue(file.contents, file.contents.contains("public fun asMap(): MutableMap<String, Int>"))
-        assertTrue(file.contents, file.contents.contains("public fun refreshAsync(): CompletableFuture<Unit>"))
-        assertTrue(file.contents, file.contents.contains("public fun fetchAsync(): CompletableFuture<String>"))
+        assertTrue(file.contents, file.contents.contains("public fun refreshAsync(): WinRtAsyncActionReference"))
+        assertTrue(file.contents, file.contents.contains("public fun fetchAsync(): WinRtAsyncOperationReference<String>"))
         assertTrue(file.contents, file.contents.contains("public val sourceUri: URI"))
         assertTrue(file.contents, file.contents.contains("public val selection: Int?"))
+    }
+
+    @Test
+    fun generator_emits_runtime_backed_async_abi_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("12345678-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction", methodRowId = 6),
+                                WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>", methodRowId = 7),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction"),
+                                WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertFalse(widgetContents.contains("CompletableFuture"))
+        assertTrue(widgetContents.contains("public fun refreshAsync(): WinRtAsyncActionReference"))
+        assertTrue(widgetContents.contains("return WinRtAsyncActionReference(PlatformAbi.readPointer(__resultOut))"))
+        assertTrue(widgetContents.contains("public fun fetchAsync(): WinRtAsyncOperationReference<String>"))
+        assertTrue(widgetContents.contains("interfaceId = WinRtAsyncOperationReference.interfaceId(WinRtTypeSignature.string())"))
+        assertTrue(widgetContents.contains("completedHandlerInterfaceId ="))
+        assertTrue(widgetContents.contains("WinRtAsyncOperationReference.completedHandlerInterfaceId(WinRtTypeSignature.string())"))
+        assertTrue(widgetContents.contains("ComVtableInvoker.invokeArgs(__operation.pointer,"))
+        assertTrue(widgetContents.contains("WinRtAsyncOperationVftblSlots.GetResults, __operationResultOut)"))
+        assertTrue(widgetContents.contains("HString.fromHandle(PlatformAbi.readPointer(__operationResultOut), owner = true).use"))
+        assertTrue(widgetContents.contains("it.toKString()"))
     }
 
     @Test
