@@ -35,7 +35,7 @@ class JsonObjectInteropTest {
                             resultOut,
                         )
                         HResult(hr).requireSuccess()
-                        IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0))
+                        IUnknownReference(resultOut.get(ValueLayout.ADDRESS, 0).asRawAddress().asRawComPtr())
                     }
                 }
                 try {

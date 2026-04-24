@@ -5,54 +5,27 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 open class WinRtAsyncReferenceBase(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
-) : ComObjectReference(pointer, interfaceId) {
-    override fun invokeInt32Method(slot: Int): Int =
-        RawAbiResultSupport.int32Result { resultOut ->
-            invokeIntMethod(
-                slot = slot,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
-        }
+) : ComObjectReference(pointer.asRawComPtr(), interfaceId) {
+    private val asyncInfoView: WinRtAsyncInfoView = WinRtAsyncInfoView(comPtr)
 
-    protected fun invokeHResultMethod(slot: Int): HResult = HResult(invokeInt32Method(slot))
-
-    protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? =
-        RawObjectAbiSupport.nullableObjectResult(
-            invoke = { resultOut ->
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    resultOut,
-                )
-            },
-            wrap = ::IUnknownReference,
-        )
+    internal fun asAsyncInfoView(): WinRtAsyncInfoView = asyncInfoView
 }
 
 open class WinRtAsyncInfoReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncInfo,
 ) : WinRtAsyncReferenceBase(pointer, interfaceId) {
-    open fun id(): UInt = invokeUInt32Method(WinRtAsyncInfoVftblSlots.Id)
+    open fun id(): UInt = asAsyncInfoView().id()
 
     open fun status(): WinRtAsyncStatus =
-        WinRtAsyncStatus.fromAbi(invokeInt32Method(WinRtAsyncInfoVftblSlots.Status))
+        asAsyncInfoView().status()
 
-    open fun errorCode(): HResult = invokeHResultMethod(WinRtAsyncInfoVftblSlots.ErrorCode)
+    open fun errorCode(): HResult = asAsyncInfoView().errorCode()
 
     open fun cancel() {
-        invokeUnitMethod(WinRtAsyncInfoVftblSlots.Cancel)
+        asAsyncInfoView().cancel()
     }
 
     override fun close() {
@@ -60,7 +33,7 @@ open class WinRtAsyncInfoReference(
             return
         }
         try {
-            invokeUnitMethod(WinRtAsyncInfoVftblSlots.Close)
+            asAsyncInfoView().closeAsyncInfo()
         } finally {
             super.close()
         }
@@ -68,20 +41,22 @@ open class WinRtAsyncInfoReference(
 }
 
 open class WinRtAsyncActionReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncAction,
 ) : WinRtAsyncInfoReference(pointer, interfaceId) {
+    private val asyncActionView: WinRtAsyncActionView = WinRtAsyncActionView(comPtr)
+
+    internal fun asAsyncActionView(): WinRtAsyncActionView = asyncActionView
+
     open fun setCompletedHandler(handler: ComObjectReference) {
-        invokeUnitMethodWithObjectArg(WinRtAsyncActionVftblSlots.PutCompleted, handler)
+        asAsyncActionView().setCompletedHandler(handler)
     }
 
     open fun getCompletedHandler(): ComObjectReference? =
-        invokeNullableObjectMethod(WinRtAsyncActionVftblSlots.GetCompleted)?.let { reference ->
-            ComObjectReference(reference.pointer, WinRtAsyncInterfaceIds.AsyncActionCompletedHandler)
-        }
+        asAsyncActionView().getCompletedHandler()
 
     open fun getResults() {
-        invokeUnitMethod(WinRtAsyncActionVftblSlots.GetResults)
+        asAsyncActionView().getResults()
     }
 
     open fun whenCompleted(callback: (WinRtAsyncActionReference, WinRtAsyncStatus) -> Unit): WinRtDelegateHandle {
@@ -120,19 +95,21 @@ open class WinRtAsyncActionReference(
 }
 
 open class WinRtAsyncOperationReference<T>(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     private val completedHandlerInterfaceId: Guid,
     private val resultReader: (WinRtAsyncOperationReference<T>) -> T,
 ) : WinRtAsyncInfoReference(pointer, interfaceId) {
+    private val asyncOperationView: WinRtAsyncOperationView = WinRtAsyncOperationView(comPtr, completedHandlerInterfaceId)
+
+    internal fun asAsyncOperationView(): WinRtAsyncOperationView = asyncOperationView
+
     open fun setCompletedHandler(handler: ComObjectReference) {
-        invokeUnitMethodWithObjectArg(WinRtAsyncOperationVftblSlots.PutCompleted, handler)
+        asAsyncOperationView().setCompletedHandler(handler)
     }
 
     open fun getCompletedHandler(): ComObjectReference? =
-        invokeNullableObjectMethod(WinRtAsyncOperationVftblSlots.GetCompleted)?.let { reference ->
-            ComObjectReference(reference.pointer, completedHandlerInterfaceId)
-        }
+        asAsyncOperationView().getCompletedHandler()
 
     open fun getResults(): T = resultReader(this)
 

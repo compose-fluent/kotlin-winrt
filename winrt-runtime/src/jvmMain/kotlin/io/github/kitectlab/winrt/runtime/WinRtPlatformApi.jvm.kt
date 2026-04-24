@@ -383,7 +383,7 @@ actual object WinRtPlatformApi {
     }
 
     actual fun roGetActivationFactoryRaw(
-        runtimeClassId: NativePointer,
+        runtimeClassId: RawAddress,
         interfaceId: Guid,
     ): NativePointerResult =
         Arena.ofConfined().use { arena ->
@@ -395,16 +395,16 @@ actual object WinRtPlatformApi {
                 iidMemory,
                 factoryOut,
             ) as Int
-            NativePointerResult(hr, factoryOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
+            NativePointerResult(hr, factoryOut.get(ValueLayout.ADDRESS, 0).asRawAddress())
         }
 
     actual fun queryInterfaceRaw(
-        unknown: NativePointer,
+        unknown: RawAddress,
         interfaceId: Guid,
     ): NativePointerResult {
         ensureWindows()
-        if (NativeInterop.isNull(unknown)) {
-            return NativePointerResult(KnownHResults.E_POINTER.value, NativeInterop.nullPointer)
+        if (PlatformAbi.isNull(unknown)) {
+            return NativePointerResult(KnownHResults.E_POINTER.value, PlatformAbi.nullPointer)
         }
         return Arena.ofConfined().use { arena ->
             val iidMemory = arena.allocate(ValueLayout.JAVA_BYTE, 16)
@@ -424,23 +424,23 @@ actual object WinRtPlatformApi {
                 iidMemory,
                 resultOut,
             ) as Int
-            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
+            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asRawAddress())
         }
     }
 
-    actual fun addRefRaw(unknown: NativePointer): UInt =
+    actual fun addRefRaw(unknown: RawAddress): UInt =
         invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.AddRef)
 
-    actual fun releaseRaw(unknown: NativePointer): UInt =
+    actual fun releaseRaw(unknown: RawAddress): UInt =
         invokeUnknownRefCountMethod(unknown, IUnknownVftblSlots.Release)
 
     actual fun dllGetActivationFactoryRaw(
-        getActivationFactoryProc: NativePointer,
-        runtimeClassId: NativePointer,
+        getActivationFactoryProc: RawAddress,
+        runtimeClassId: RawAddress,
     ): NativePointerResult {
         ensureWindows()
-        if (NativeInterop.isNull(getActivationFactoryProc) || NativeInterop.isNull(runtimeClassId)) {
-            return NativePointerResult(KnownHResults.E_POINTER.value, NativeInterop.nullPointer)
+        if (PlatformAbi.isNull(getActivationFactoryProc) || PlatformAbi.isNull(runtimeClassId)) {
+            return NativePointerResult(KnownHResults.E_POINTER.value, PlatformAbi.nullPointer)
         }
         return Arena.ofConfined().use { arena ->
             val resultOut = arena.allocate(ValueLayout.ADDRESS)
@@ -456,7 +456,7 @@ actual object WinRtPlatformApi {
                 runtimeClassId.asMemorySegment(),
                 resultOut,
             ) as Int
-            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asNativePointer())
+            NativePointerResult(hr, resultOut.get(ValueLayout.ADDRESS, 0).asRawAddress())
         }
     }
 
@@ -484,11 +484,11 @@ actual object WinRtPlatformApi {
     actual fun coIncrementMtaUsageRaw(): NativePointerResult =
         coIncrementMtaUsage().toNativePointerResult()
 
-    actual fun coDecrementMtaUsageRaw(cookie: NativePointer): Int =
+    actual fun coDecrementMtaUsageRaw(cookie: RawAddress): Int =
         coDecrementMtaUsage(cookie.asMemorySegment()).value
 
     actual fun roGetAgileReferenceRaw(
-        unknown: NativePointer,
+        unknown: RawAddress,
         interfaceId: Guid,
     ): NativePointerResult =
         roGetAgileReference(unknown.asMemorySegment(), interfaceId).toNativePointerResult()
@@ -499,44 +499,44 @@ actual object WinRtPlatformApi {
     actual fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult =
         coGetObjectContext(interfaceId).toNativePointerResult()
 
-    actual fun setErrorInfoRaw(errorInfo: NativePointer): Int =
+    actual fun setErrorInfoRaw(errorInfo: RawAddress): Int =
         setErrorInfo(errorInfo.asMemorySegment()).value
 
-    actual fun setRestrictedErrorInfoRaw(errorInfo: NativePointer): Int? =
+    actual fun setRestrictedErrorInfoRaw(errorInfo: RawAddress): Int? =
         setRestrictedErrorInfoHandle
             ?.invokeWithArguments(errorInfo.asMemorySegment()) as? Int
 
-    actual fun borrowRestrictedErrorInfoRaw(): NativePointer? =
-        borrowRestrictedErrorInfo()?.asNativePointer()
+    actual fun borrowRestrictedErrorInfoRaw(): RawAddress? =
+        borrowRestrictedErrorInfo()?.asRawAddress()
 
-    actual fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int? =
+    actual fun reportUnhandledErrorRaw(errorInfo: RawAddress): Int? =
         reportUnhandledError(errorInfo.asMemorySegment())?.value
 
-    actual fun sysAllocStringRaw(value: String?): NativePointer =
-        sysAllocString(value).asNativePointer()
+    actual fun sysAllocStringRaw(value: String?): RawAddress =
+        sysAllocString(value).asRawAddress()
 
-    actual fun sysFreeStringRaw(value: NativePointer) {
+    actual fun sysFreeStringRaw(value: RawAddress) {
         sysFreeString(value.asMemorySegment())
     }
 
-    actual fun readAndFreeBstrRaw(value: NativePointer): String =
+    actual fun readAndFreeBstrRaw(value: RawAddress): String =
         readAndFreeBstr(value.asMemorySegment())
 
-    actual fun coCreateFreeThreadedMarshalerRaw(outer: NativePointer): NativePointerResult =
+    actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult =
         coCreateFreeThreadedMarshaler(outer.asMemorySegment()).toNativePointerResult()
 
     actual fun windowsCreateStringRaw(
-        utf16Chars: NativePointer,
+        utf16Chars: RawAddress,
         length: Int,
-        outHandle: NativePointer,
+        outHandle: RawAddress,
     ): Int =
         windowsCreateString(utf16Chars.asMemorySegment(), length, outHandle.asMemorySegment())
 
     actual fun windowsCreateStringReferenceRaw(
-        utf16Chars: NativePointer,
+        utf16Chars: RawAddress,
         length: Int,
-        header: NativePointer,
-        outHandle: NativePointer,
+        header: RawAddress,
+        outHandle: RawAddress,
     ): Int =
         windowsCreateStringReference(
             utf16Chars.asMemorySegment(),
@@ -545,39 +545,39 @@ actual object WinRtPlatformApi {
             outHandle.asMemorySegment(),
         )
 
-    actual fun windowsDeleteStringRaw(handle: NativePointer) {
+    actual fun windowsDeleteStringRaw(handle: RawAddress) {
         windowsDeleteString(handle.asMemorySegment())
     }
 
     actual fun windowsGetStringRawBufferRaw(
-        handle: NativePointer,
-        lengthOut: NativePointer,
-    ): NativePointer =
-        windowsGetStringRawBuffer(handle.asMemorySegment(), lengthOut.asMemorySegment()).asNativePointer()
+        handle: RawAddress,
+        lengthOut: RawAddress,
+    ): RawAddress =
+        windowsGetStringRawBuffer(handle.asMemorySegment(), lengthOut.asMemorySegment()).asRawAddress()
 
-    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer =
-        tryLoadLibraryExW(absolutePath, flags).asNativePointer()
+    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress =
+        tryLoadLibraryExW(absolutePath, flags).asRawAddress()
 
-    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer =
-        loadLibraryExW(absolutePath, flags).asNativePointer()
+    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress =
+        loadLibraryExW(absolutePath, flags).asRawAddress()
 
     actual fun tryGetProcAddressRaw(
-        moduleHandle: NativePointer,
+        moduleHandle: RawAddress,
         procedureName: String,
-    ): NativePointer =
-        tryGetProcAddress(moduleHandle.asMemorySegment(), procedureName).asNativePointer()
+    ): RawAddress =
+        tryGetProcAddress(moduleHandle.asMemorySegment(), procedureName).asRawAddress()
 
     actual fun getProcAddressRaw(
-        moduleHandle: NativePointer,
+        moduleHandle: RawAddress,
         procedureName: String,
-    ): NativePointer =
-        getProcAddress(moduleHandle.asMemorySegment(), procedureName).asNativePointer()
+    ): RawAddress =
+        getProcAddress(moduleHandle.asMemorySegment(), procedureName).asRawAddress()
 
-    actual fun freeLibraryRaw(moduleHandle: NativePointer): Boolean =
+    actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean =
         freeLibrary(moduleHandle.asMemorySegment())
 
     actual fun mddBootstrapInitialize2Raw(
-        initializeProc: NativePointer,
+        initializeProc: RawAddress,
         majorMinorVersion: Int,
         versionTag: String,
         minVersion: Long,
@@ -608,7 +608,7 @@ actual object WinRtPlatformApi {
         }
     }
 
-    actual fun mddBootstrapShutdownRaw(shutdownProc: NativePointer) {
+    actual fun mddBootstrapShutdownRaw(shutdownProc: RawAddress) {
         ensureWindows()
         linker.downcallHandle(
             shutdownProc.asMemorySegment(),
@@ -975,9 +975,9 @@ actual object WinRtPlatformApi {
         }
     }
 
-    private fun invokeUnknownRefCountMethod(unknown: NativePointer, slot: Int): UInt {
+    private fun invokeUnknownRefCountMethod(unknown: RawAddress, slot: Int): UInt {
         ensureWindows()
-        if (NativeInterop.isNull(unknown)) {
+        if (PlatformAbi.isNull(unknown)) {
             return 0u
         }
         val method = linker.downcallHandle(
@@ -1016,9 +1016,9 @@ internal data class PointerResult(
 )
 
 private fun PointerResult.toNativePointerResult(): NativePointerResult =
-    NativePointerResult(hResult.value, pointer.asNativePointer())
+    NativePointerResult(hResult.value, pointer.asRawAddress())
 
 /** Writes [guid] as 16 little-endian bytes into [destination]. */
 private fun writeGuidTo(guid: Guid, destination: MemorySegment) {
-    NativeInterop.writeGuid(destination.asNativePointer(), guid)
+    PlatformAbi.writeGuid(destination.asRawAddress(), guid)
 }

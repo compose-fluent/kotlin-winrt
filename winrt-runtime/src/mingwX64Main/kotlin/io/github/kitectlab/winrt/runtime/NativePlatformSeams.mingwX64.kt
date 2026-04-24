@@ -1,19 +1,18 @@
 package io.github.kitectlab.winrt.runtime
 
-actual class NativePointer
-
 actual class NativeScope : AutoCloseable {
     actual override fun close() {}
 }
 
 actual class NativeCallbackHandle : AutoCloseable {
-    actual val pointer: NativePointer = NativePointer()
+    actual val pointer: RawAddress = RawAddress.Null
 
     actual override fun close() {}
 }
 
-actual object NativeInterop {
-    actual val nullPointer: NativePointer = NativePointer()
+actual object PlatformAbi {
+    actual val nullPointer: RawAddress = RawAddress.Null
+    actual val nullComPtr: RawComPtr = RawComPtr.Null
 
     actual val hStringHeaderSizeBytes: Long = TODO()
 
@@ -21,121 +20,107 @@ actual object NativeInterop {
 
     actual fun sharedScope(): NativeScope = NativeScope()
 
-    actual fun isNull(pointer: NativePointer): Boolean = pointer === nullPointer
+    actual fun isNull(pointer: RawAddress): Boolean = pointer.value == 0L
 
-    actual fun samePointer(first: NativePointer, second: NativePointer): Boolean = first === second
+    actual fun isNull(pointer: RawComPtr): Boolean = pointer.value == 0L
 
-    actual fun allocatePointerSlot(scope: NativeScope): NativePointer = TODO()
+    actual fun samePointer(first: RawAddress, second: RawAddress): Boolean = first.value == second.value
 
-    actual fun allocateInt8Slot(scope: NativeScope): NativePointer = TODO()
+    actual fun samePointer(first: RawComPtr, second: RawComPtr): Boolean = first.value == second.value
 
-    actual fun allocateInt32Slot(scope: NativeScope): NativePointer = TODO()
+    actual fun toRawComPtr(pointer: RawAddress): RawComPtr = pointer.asRawComPtr()
 
-    actual fun allocateInt64Slot(scope: NativeScope): NativePointer = TODO()
+    actual fun fromRawComPtr(pointer: RawComPtr): RawAddress = pointer.asRawAddress()
 
-    actual fun allocateDoubleSlot(scope: NativeScope): NativePointer = TODO()
+    actual fun allocatePointerSlot(scope: NativeScope): RawAddress = TODO()
 
-    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer = TODO()
+    actual fun allocateInt8Slot(scope: NativeScope): RawAddress = TODO()
 
-    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): NativePointer = TODO()
+    actual fun allocateInt32Slot(scope: NativeScope): RawAddress = TODO()
 
-    actual fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer = TODO()
+    actual fun allocateInt64Slot(scope: NativeScope): RawAddress = TODO()
 
-    actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): NativePointer = TODO()
+    actual fun allocateDoubleSlot(scope: NativeScope): RawAddress = TODO()
 
-    actual fun slice(pointer: NativePointer, offsetBytes: Long, sizeBytes: Long): NativePointer = TODO()
+    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long): RawAddress = TODO()
 
-    actual fun readPointer(slot: NativePointer): NativePointer = TODO()
+    actual fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): RawAddress = TODO()
 
-    actual fun readPointerAt(array: NativePointer, index: Int): NativePointer = TODO()
+    actual fun allocatePointerArray(scope: NativeScope, size: Int): RawAddress = TODO()
 
-    actual fun readInt8(slot: NativePointer): Byte = TODO()
+    actual fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean): RawAddress = TODO()
 
-    actual fun readInt16(slot: NativePointer): Short = TODO()
+    actual fun slice(pointer: RawAddress, offsetBytes: Long, sizeBytes: Long): RawAddress = TODO()
 
-    actual fun readInt32(slot: NativePointer): Int = TODO()
+    actual fun readPointer(slot: RawAddress): RawAddress = TODO()
 
-    actual fun readInt64(slot: NativePointer): Long = TODO()
+    actual fun readPointerAt(array: RawAddress, index: Int): RawAddress = TODO()
 
-    actual fun readDouble(slot: NativePointer): Double = TODO()
+    actual fun readInt8(slot: RawAddress): Byte = TODO()
 
-    actual fun readFloat(slot: NativePointer): Float = TODO()
+    actual fun readInt16(slot: RawAddress): Short = TODO()
 
-    actual fun readChar16(slot: NativePointer): Char = TODO()
+    actual fun readInt32(slot: RawAddress): Int = TODO()
 
-    actual fun readUtf16(pointer: NativePointer, length: Int): String = TODO()
+    actual fun readInt64(slot: RawAddress): Long = TODO()
 
-    actual fun readGuid(pointer: NativePointer): Guid = TODO()
+    actual fun readDouble(slot: RawAddress): Double = TODO()
 
-    actual fun writePointer(slot: NativePointer, value: NativePointer): Unit = TODO()
+    actual fun readFloat(slot: RawAddress): Float = TODO()
 
-    actual fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer): Unit = TODO()
+    actual fun readChar16(slot: RawAddress): Char = TODO()
 
-    actual fun writeInt8(slot: NativePointer, value: Byte): Unit = TODO()
+    actual fun readUtf16(pointer: RawAddress, length: Int): String = TODO()
 
-    actual fun writeInt16(slot: NativePointer, value: Short): Unit = TODO()
+    actual fun readGuid(pointer: RawAddress): Guid = TODO()
 
-    actual fun writeInt32(slot: NativePointer, value: Int): Unit = TODO()
+    actual fun writePointer(slot: RawAddress, value: RawAddress): Unit = TODO()
 
-    actual fun writeInt32(slot: NativePointer, offsetBytes: Long, value: Int): Unit = TODO()
+    actual fun writePointer(slot: RawAddress, offsetBytes: Long, value: RawAddress): Unit = TODO()
 
-    actual fun writeInt64(slot: NativePointer, value: Long): Unit = TODO()
+    actual fun writeInt8(slot: RawAddress, value: Byte): Unit = TODO()
 
-    actual fun writeDouble(slot: NativePointer, value: Double): Unit = TODO()
+    actual fun writeInt16(slot: RawAddress, value: Short): Unit = TODO()
 
-    actual fun writeFloat(slot: NativePointer, value: Float): Unit = TODO()
+    actual fun writeInt32(slot: RawAddress, value: Int): Unit = TODO()
 
-    actual fun writeChar16(slot: NativePointer, value: Char): Unit = TODO()
+    actual fun writeInt32(slot: RawAddress, offsetBytes: Long, value: Int): Unit = TODO()
 
-    actual fun writeGuid(pointer: NativePointer, value: Guid): Unit = TODO()
+    actual fun writeInt64(slot: RawAddress, value: Long): Unit = TODO()
 
-    actual fun writeGuid(pointer: NativePointer, offsetBytes: Long, value: Guid): Unit = TODO()
+    actual fun writeDouble(slot: RawAddress, value: Double): Unit = TODO()
 
-    actual fun writePointerAt(array: NativePointer, index: Int, value: NativePointer): Unit = TODO()
+    actual fun writeFloat(slot: RawAddress, value: Float): Unit = TODO()
 
-    actual fun pointerKey(pointer: NativePointer): Long = TODO()
+    actual fun writeChar16(slot: RawAddress, value: Char): Unit = TODO()
 
-    actual fun invokeVtableInt32(
-        instance: NativePointer,
-        slot: Int,
-        descriptor: NativeFunctionDescriptor,
-        vararg args: Any?,
-    ): Int = TODO()
+    actual fun writeGuid(pointer: RawAddress, value: Guid): Unit = TODO()
 
-    actual fun invokeFunctionInt32(
-        function: NativePointer,
-        descriptor: NativeFunctionDescriptor,
-        vararg args: Any?,
-    ): Int = TODO()
+    actual fun writeGuid(pointer: RawAddress, offsetBytes: Long, value: Guid): Unit = TODO()
 
-    actual fun invokeFunctionVoid(
-        function: NativePointer,
-        descriptor: NativeFunctionDescriptor,
-        vararg args: Any?,
-    ): Unit = TODO()
+    actual fun writePointerAt(array: RawAddress, index: Int, value: RawAddress): Unit = TODO()
 
-    actual fun createCallback(
-        descriptor: NativeFunctionDescriptor,
-        callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle = TODO()
+    actual fun pointerKey(pointer: RawAddress): Long = pointer.value
+
+    actual fun pointerKey(pointer: RawComPtr): Long = pointer.value
 
     actual fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation = TODO()
 
-    actual fun zeroBytes(pointer: NativePointer, sizeBytes: Long): Unit = TODO()
+    actual fun zeroBytes(pointer: RawAddress, sizeBytes: Long): Unit = TODO()
 }
 
 actual object WinRtPlatformApi {
-    actual fun roGetActivationFactoryRaw(runtimeClassId: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
+    actual fun roGetActivationFactoryRaw(runtimeClassId: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
 
-    actual fun queryInterfaceRaw(unknown: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
+    actual fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
 
-    actual fun addRefRaw(unknown: NativePointer): UInt = TODO()
+    actual fun addRefRaw(unknown: RawAddress): UInt = TODO()
 
-    actual fun releaseRaw(unknown: NativePointer): UInt = TODO()
+    actual fun releaseRaw(unknown: RawAddress): UInt = TODO()
 
     actual fun dllGetActivationFactoryRaw(
-        getActivationFactoryProc: NativePointer,
-        runtimeClassId: NativePointer,
+        getActivationFactoryProc: RawAddress,
+        runtimeClassId: RawAddress,
     ): NativePointerResult = TODO()
 
     actual fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int): NativePointerResult = TODO()
@@ -150,61 +135,61 @@ actual object WinRtPlatformApi {
 
     actual fun coIncrementMtaUsageRaw(): NativePointerResult = TODO()
 
-    actual fun coDecrementMtaUsageRaw(cookie: NativePointer): Int = TODO()
+    actual fun coDecrementMtaUsageRaw(cookie: RawAddress): Int = TODO()
 
-    actual fun roGetAgileReferenceRaw(unknown: NativePointer, interfaceId: Guid): NativePointerResult = TODO()
+    actual fun roGetAgileReferenceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult = TODO()
 
     actual fun coGetContextTokenRaw(): NativePointerResult = TODO()
 
     actual fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult = TODO()
 
-    actual fun setErrorInfoRaw(errorInfo: NativePointer): Int = TODO()
+    actual fun setErrorInfoRaw(errorInfo: RawAddress): Int = TODO()
 
-    actual fun setRestrictedErrorInfoRaw(errorInfo: NativePointer): Int? = TODO()
+    actual fun setRestrictedErrorInfoRaw(errorInfo: RawAddress): Int? = TODO()
 
-    actual fun borrowRestrictedErrorInfoRaw(): NativePointer? = TODO()
+    actual fun borrowRestrictedErrorInfoRaw(): RawAddress? = TODO()
 
-    actual fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int? = TODO()
+    actual fun reportUnhandledErrorRaw(errorInfo: RawAddress): Int? = TODO()
 
-    actual fun sysAllocStringRaw(value: String?): NativePointer = TODO()
+    actual fun sysAllocStringRaw(value: String?): RawAddress = TODO()
 
-    actual fun sysFreeStringRaw(value: NativePointer): Unit = TODO()
+    actual fun sysFreeStringRaw(value: RawAddress): Unit = TODO()
 
-    actual fun readAndFreeBstrRaw(value: NativePointer): String = TODO()
+    actual fun readAndFreeBstrRaw(value: RawAddress): String = TODO()
 
-    actual fun coCreateFreeThreadedMarshalerRaw(outer: NativePointer): NativePointerResult = TODO()
+    actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult = TODO()
 
-    actual fun windowsCreateStringRaw(utf16Chars: NativePointer, length: Int, outHandle: NativePointer): Int = TODO()
+    actual fun windowsCreateStringRaw(utf16Chars: RawAddress, length: Int, outHandle: RawAddress): Int = TODO()
 
     actual fun windowsCreateStringReferenceRaw(
-        utf16Chars: NativePointer,
+        utf16Chars: RawAddress,
         length: Int,
-        header: NativePointer,
-        outHandle: NativePointer,
+        header: RawAddress,
+        outHandle: RawAddress,
     ): Int = TODO()
 
-    actual fun windowsDeleteStringRaw(handle: NativePointer): Unit = TODO()
+    actual fun windowsDeleteStringRaw(handle: RawAddress): Unit = TODO()
 
-    actual fun windowsGetStringRawBufferRaw(handle: NativePointer, lengthOut: NativePointer): NativePointer = TODO()
+    actual fun windowsGetStringRawBufferRaw(handle: RawAddress, lengthOut: RawAddress): RawAddress = TODO()
 
-    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer = TODO()
+    actual fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress = TODO()
 
-    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer = TODO()
+    actual fun loadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress = TODO()
 
-    actual fun tryGetProcAddressRaw(moduleHandle: NativePointer, procedureName: String): NativePointer = TODO()
+    actual fun tryGetProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress = TODO()
 
-    actual fun getProcAddressRaw(moduleHandle: NativePointer, procedureName: String): NativePointer = TODO()
+    actual fun getProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress = TODO()
 
-    actual fun freeLibraryRaw(moduleHandle: NativePointer): Boolean = TODO()
+    actual fun freeLibraryRaw(moduleHandle: RawAddress): Boolean = TODO()
 
     actual fun mddBootstrapInitialize2Raw(
-        initializeProc: NativePointer,
+        initializeProc: RawAddress,
         majorMinorVersion: Int,
         versionTag: String,
         minVersion: Long,
     ): Int = TODO()
 
-    actual fun mddBootstrapShutdownRaw(shutdownProc: NativePointer): Unit = TODO()
+    actual fun mddBootstrapShutdownRaw(shutdownProc: RawAddress): Unit = TODO()
 
     actual fun tryFormatMessageRaw(hResultValue: Int): String? = TODO()
 

@@ -1,21 +1,24 @@
 package io.github.kitectlab.winrt.runtime.exception
 
 import io.github.kitectlab.winrt.runtime.ConcurrentCacheMap
+import io.github.kitectlab.winrt.runtime.ComAbiInteropBridge
+import io.github.kitectlab.winrt.runtime.ComMethodSignature
+import io.github.kitectlab.winrt.runtime.ComMethodSignatures
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.IUnknownReference
+import io.github.kitectlab.winrt.runtime.IUnknownVftbl
 import io.github.kitectlab.winrt.runtime.IUnknownVftblSlots
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.ManagedComHostState
 import io.github.kitectlab.winrt.runtime.ManagedReferenceHostSupport
 import io.github.kitectlab.winrt.runtime.NativeCallbackHandle
-import io.github.kitectlab.winrt.runtime.NativeFunctionDescriptor
-import io.github.kitectlab.winrt.runtime.NativeInterop
-import io.github.kitectlab.winrt.runtime.NativePointer
-import io.github.kitectlab.winrt.runtime.NativeValueLayout
+import io.github.kitectlab.winrt.runtime.PlatformAbi
+import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import io.github.kitectlab.winrt.runtime.WinRtUnsupportedOperationException
+import io.github.kitectlab.winrt.runtime.asRawComPtr
 import io.github.kitectlab.winrt.runtime.guidOf
 import io.github.kitectlab.winrt.runtime.platformHResultFromThrowable
 import io.github.kitectlab.winrt.runtime.typeDisplayName
@@ -31,7 +34,7 @@ import io.github.kitectlab.winrt.runtime.typeDisplayName
 internal class ManagedErrorInfoComObject(
     private val error: Throwable,
 ) : AutoCloseable {
-    private val scope = NativeInterop.sharedScope()
+    private val scope = PlatformAbi.sharedScope()
     private val state = ManagedComHostState(::cleanup)
     private val interfaceEntries = mapOf(
         IID.IErrorInfo to createInterfaceEntry(
@@ -46,7 +49,7 @@ internal class ManagedErrorInfoComObject(
 
     init {
         interfaceEntries.values.forEach { entry ->
-            registry[NativeInterop.pointerKey(entry.objectMemory)] = this
+            registry[PlatformAbi.pointerKey(entry.objectMemory)] = this
         }
     }
 
@@ -62,14 +65,14 @@ internal class ManagedErrorInfoComObject(
 
     private fun createReference(interfaceId: Guid): IUnknownReference {
         addReference()
-        return IUnknownReference(interfacePointer(interfaceId), interfaceId)
+        return IUnknownReference(interfacePointer(interfaceId).asRawComPtr(), interfaceId)
     }
 
     private fun releaseManagedReference() {
         releaseReference()
     }
 
-    private fun interfacePointer(interfaceId: Guid): NativePointer =
+    private fun interfacePointer(interfaceId: Guid): RawAddress =
         interfaceEntries[interfaceId]?.objectMemory
             ?: throw WinRtUnsupportedOperationException(
                 "Managed error info object does not implement '$interfaceId'.",
@@ -78,128 +81,75 @@ internal class ManagedErrorInfoComObject(
 
     private fun createInterfaceEntry(
         slotCount: Int,
-        slotBuilder: (NativePointer, MutableList<NativeCallbackHandle>) -> Unit,
+        slotBuilder: (RawAddress, MutableList<NativeCallbackHandle>) -> Unit,
     ): InterfaceEntry {
-        val objectMemory = NativeInterop.allocatePointerSlot(scope)
-        val vtableMemory = NativeInterop.allocatePointerArray(scope, slotCount)
+        val objectMemory = PlatformAbi.allocatePointerSlot(scope)
+        val vtableMemory = PlatformAbi.allocatePointerArray(scope, slotCount)
         val callbacks = mutableListOf<NativeCallbackHandle>()
-        val queryInterfaceCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
+        val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
             queryInterface(
-                requestedInterfaceId = NativeInterop.readGuid(args[1] as NativePointer),
-                resultPointer = args[2] as NativePointer,
+                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
+                resultPointer = args[2] as RawAddress,
             )
         }
-        val addRefCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { addReference() }
-        val releaseCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { releaseReference() }
+        val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { addReference() }
+        val releaseCallback = callbackOf(IUnknownVftbl.Release) { releaseReference() }
         callbacks += queryInterfaceCallback
         callbacks += addRefCallback
         callbacks += releaseCallback
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
         slotBuilder(vtableMemory, callbacks)
-        NativeInterop.writePointer(objectMemory, vtableMemory)
+        PlatformAbi.writePointer(objectMemory, vtableMemory)
         return InterfaceEntry(objectMemory = objectMemory, callbacks = callbacks)
     }
 
     private fun populateErrorInfoSlots(
-        vtableMemory: NativePointer,
+        vtableMemory: RawAddress,
         callbacks: MutableList<NativeCallbackHandle>,
     ) {
-        val getGuidCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getGuid(args[1] as NativePointer)
+        val getGuidCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            getGuid(args[1] as RawAddress)
         }
-        val getSourceCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getSource(args[1] as NativePointer)
+        val getSourceCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            getSource(args[1] as RawAddress)
         }
-        val getDescriptionCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getDescription(args[1] as NativePointer)
+        val getDescriptionCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            getDescription(args[1] as RawAddress)
         }
-        val getHelpFileCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getHelpFile(args[1] as NativePointer)
+        val getHelpFileCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            getHelpFile(args[1] as RawAddress)
         }
-        val getHelpFileContentCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getHelpFileContent(args[1] as NativePointer)
+        val getHelpFileContentCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            getHelpFileContent(args[1] as RawAddress)
         }
         callbacks += getGuidCallback
         callbacks += getSourceCallback
         callbacks += getDescriptionCallback
         callbacks += getHelpFileCallback
         callbacks += getHelpFileContentCallback
-        NativeInterop.writePointerAt(vtableMemory, 3, getGuidCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, 4, getSourceCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, 5, getDescriptionCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, 6, getHelpFileCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, 7, getHelpFileContentCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, 3, getGuidCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, 4, getSourceCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, 5, getDescriptionCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, 6, getHelpFileCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, 7, getHelpFileContentCallback.pointer)
     }
 
     private fun populateSupportErrorInfoSlots(
-        vtableMemory: NativePointer,
+        vtableMemory: RawAddress,
         callbacks: MutableList<NativeCallbackHandle>,
     ) {
-        val supportsErrorInfoCallback = callbackOf(
-            NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            interfaceSupportsErrorInfo(args[1] as NativePointer)
+        val supportsErrorInfoCallback = callbackOf(ComMethodSignatures.HResult_Ptr) { args ->
+            interfaceSupportsErrorInfo(args[1] as RawAddress)
         }
         callbacks += supportsErrorInfoCallback
-        NativeInterop.writePointerAt(vtableMemory, 3, supportsErrorInfoCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, 3, supportsErrorInfoCallback.pointer)
     }
 
     private fun queryInterface(
         requestedInterfaceId: Guid,
-        resultPointer: NativePointer,
+        resultPointer: RawAddress,
     ): Int {
         val queryResult = state.queryInterface(requestedInterfaceId) { requested ->
             when (requested) {
@@ -211,9 +161,9 @@ internal class ManagedErrorInfoComObject(
                 else -> null
             }
         }
-        NativeInterop.writePointer(
+        PlatformAbi.writePointer(
             resultPointer,
-            queryResult.target ?: NativeInterop.nullPointer,
+            queryResult.target ?: PlatformAbi.nullPointer,
         )
         return queryResult.hResult.value
     }
@@ -222,33 +172,33 @@ internal class ManagedErrorInfoComObject(
 
     private fun releaseReference(): Int = state.releaseReference()
 
-    private fun getGuid(resultPointer: NativePointer): Int {
-        NativeInterop.writeGuid(resultPointer, guidOf("00000000-0000-0000-0000-000000000000"))
+    private fun getGuid(resultPointer: RawAddress): Int {
+        PlatformAbi.writeGuid(resultPointer, guidOf("00000000-0000-0000-0000-000000000000"))
         return KnownHResults.S_OK.value
     }
 
-    private fun getSource(resultPointer: NativePointer): Int =
+    private fun getSource(resultPointer: RawAddress): Int =
         writeBstr(resultPointer, error::class.typeDisplayName())
 
-    private fun getDescription(resultPointer: NativePointer): Int =
+    private fun getDescription(resultPointer: RawAddress): Int =
         writeBstr(resultPointer, error.message ?: error::class.typeDisplayName())
 
-    private fun getHelpFile(resultPointer: NativePointer): Int =
+    private fun getHelpFile(resultPointer: RawAddress): Int =
         writeBstr(resultPointer, null)
 
-    private fun getHelpFileContent(resultPointer: NativePointer): Int =
+    private fun getHelpFileContent(resultPointer: RawAddress): Int =
         writeBstr(resultPointer, null)
 
-    private fun interfaceSupportsErrorInfo(@Suppress("UNUSED_PARAMETER") interfaceIdPointer: NativePointer): Int =
+    private fun interfaceSupportsErrorInfo(@Suppress("UNUSED_PARAMETER") interfaceIdPointer: RawAddress): Int =
         KnownHResults.S_OK.value
 
     private fun writeBstr(
-        resultPointer: NativePointer,
+        resultPointer: RawAddress,
         value: String?,
     ): Int {
-        NativeInterop.writePointer(resultPointer, NativeInterop.nullPointer)
+        PlatformAbi.writePointer(resultPointer, PlatformAbi.nullPointer)
         return runCatching {
-            NativeInterop.writePointer(resultPointer, WinRtPlatformApi.sysAllocStringRaw(value))
+            PlatformAbi.writePointer(resultPointer, WinRtPlatformApi.sysAllocStringRaw(value))
             KnownHResults.S_OK.value
         }.getOrElse { failure ->
             platformHResultFromThrowable(failure).value
@@ -257,19 +207,19 @@ internal class ManagedErrorInfoComObject(
 
     private fun cleanup() {
         interfaceEntries.values.forEach { entry ->
-            registry.remove(NativeInterop.pointerKey(entry.objectMemory))
+            registry.remove(PlatformAbi.pointerKey(entry.objectMemory))
             entry.callbacks.forEach(NativeCallbackHandle::close)
         }
         scope.close()
     }
 
     private fun callbackOf(
-        descriptor: NativeFunctionDescriptor,
+        signature: ComMethodSignature,
         callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle = NativeInterop.createCallback(descriptor, callback)
+    ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
 
     private data class InterfaceEntry(
-        val objectMemory: NativePointer,
+        val objectMemory: RawAddress,
         val callbacks: List<NativeCallbackHandle>,
     )
 

@@ -8,24 +8,24 @@ object NativeStringMarshaller {
             HString.createReference(value)
         }
 
-    fun getAbi(value: ReferencedHString?): NativePointer =
-        value?.handle ?: NativeInterop.nullPointer
+    fun getAbi(value: ReferencedHString?): RawAddress =
+        value?.handle ?: PlatformAbi.nullPointer
 
-    fun getAbi(value: HString?): NativePointer =
-        value?.handle ?: NativeInterop.nullPointer
+    fun getAbi(value: HString?): RawAddress =
+        value?.handle ?: PlatformAbi.nullPointer
 
     fun disposeMarshaler(value: ReferencedHString?) {
         value?.close()
     }
 
-    fun disposeAbi(handle: NativePointer) {
-        if (!NativeInterop.isNull(handle)) {
+    fun disposeAbi(handle: RawAddress) {
+        if (!PlatformAbi.isNull(handle)) {
             WinRtPlatformApi.windowsDeleteStringRaw(handle)
         }
     }
 
-    fun fromAbi(handle: NativePointer): String =
-        if (NativeInterop.isNull(handle)) {
+    fun fromAbi(handle: RawAddress): String =
+        if (PlatformAbi.isNull(handle)) {
             ""
         } else {
             HString.fromHandle(handle, owner = false).toKString()

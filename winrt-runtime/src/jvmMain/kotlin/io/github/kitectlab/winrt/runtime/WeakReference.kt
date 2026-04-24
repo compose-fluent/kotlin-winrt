@@ -30,7 +30,7 @@ internal actual object WeakReferenceInterop {
         return unwrapped.use {
             val weakReferenceSource = unwrapped.queryInterface(IID.IWeakReferenceSource).getOrNull() ?: return null
             weakReferenceSource.use {
-                WeakReferenceSourceReference(it.pointer, IID.IWeakReferenceSource)
+                WeakReferenceSourceReference(it.pointer.asRawAddress(), IID.IWeakReferenceSource)
                     .getWeakReference()
                     ?.let(::NativeWeakReferenceHandle)
             }
@@ -39,6 +39,6 @@ internal actual object WeakReferenceInterop {
 
     actual fun resolveNativeWeakReference(reference: NativeWeakReferenceHandle): Any? =
         reference.reference.resolve(IID.IUnknown)?.use { resolved ->
-            ComWrappersSupport.createRcwForComObject(resolved.pointer)
+            ComWrappersSupport.createRcwForComObject(resolved.pointer.asRawAddress())
         }
 }

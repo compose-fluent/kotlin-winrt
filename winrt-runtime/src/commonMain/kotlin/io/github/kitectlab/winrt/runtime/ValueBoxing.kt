@@ -25,17 +25,17 @@ internal object WinRtValueBoxing {
             ValueBoxingInterop.createReferenceArrayInterfaceDefinition(interfaceId, value)
         }
 
-    fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
+    fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
         ValueBoxingInterop.readReferenceValue(interfaceId, pointer)
 
-    fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>? =
+    fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? =
         ValueBoxingInterop.readReferenceArrayValue(interfaceId, pointer)
 
-    fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
+    fun writePropertyValue(expectedType: PropertyType, value: Any, destination: RawAddress) {
         ValueBoxingInterop.writePropertyValue(expectedType, value, destination)
     }
 
-    fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: NativePointer, dataOut: NativePointer) {
+    fun writePropertyValueArray(expectedType: PropertyType, value: Any, countOut: RawAddress, dataOut: RawAddress) {
         ValueBoxingInterop.writePropertyValueArray(expectedType, value, countOut, dataOut)
     }
 
@@ -44,7 +44,7 @@ internal object WinRtValueBoxing {
             return queryInspectableReference(inspectable, descriptor.nullableInterfaceId)?.use { reference ->
                 readEnumReferenceValue(
                     WinRtReferenceReference(
-                        reference.pointer,
+                        reference.pointer.asRawAddress(),
                         descriptor.nullableInterfaceId,
                         preventReleaseOnDispose = true,
                     ),
@@ -58,14 +58,14 @@ internal object WinRtValueBoxing {
             val descriptor = ValueBoxingMetadata.descriptorForClass(elementType) ?: return null
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return null
             return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer)
+                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer.asRawAddress())
             }
         }
 
         val descriptor = ValueBoxingMetadata.descriptorForClass(projectedType) ?: return null
         val interfaceId = descriptor.nullableInterfaceId ?: return null
         return queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-            ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer)
+            ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer.asRawAddress())
         }
     }
 
@@ -73,7 +73,7 @@ internal object WinRtValueBoxing {
         ValueBoxingMetadata.referenceTypeDescriptors().firstNotNullOfOrNull { descriptor ->
             val interfaceId = descriptor.nullableInterfaceId ?: return@firstNotNullOfOrNull null
             queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-                ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer)
+                ValueBoxingInterop.readReferenceValue(interfaceId, reference.pointer.asRawAddress())
             }
         }
 
@@ -81,7 +81,7 @@ internal object WinRtValueBoxing {
         ValueBoxingMetadata.referenceTypeDescriptors().firstNotNullOfOrNull { descriptor ->
             val interfaceId = descriptor.referenceArrayInterfaceId ?: return@firstNotNullOfOrNull null
             queryInspectableReference(inspectable, interfaceId)?.use { reference ->
-                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer)
+                ValueBoxingInterop.readReferenceArrayValue(interfaceId, reference.pointer.asRawAddress())
             }
         }
 
@@ -94,19 +94,12 @@ internal object WinRtValueBoxing {
         reference: WinRtReferenceReference,
         descriptor: WinRtEnumBoxingMetadata,
     ): Any =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt32Slot(scope)
-            val hr = reference.invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt32Slot(scope)
+            reference.comPtr.throwIfDisposed()
+            val hr = ComVtableInvoker.invokeArgs(reference.comPtr.raw, 6, resultOut)
             WinRtPlatformApi.checkSucceededRaw(hr)
-            descriptor.fromAbiBits(NativeInterop.readInt32(resultOut))
+            descriptor.fromAbiBits(PlatformAbi.readInt32(resultOut))
         }
 }
 

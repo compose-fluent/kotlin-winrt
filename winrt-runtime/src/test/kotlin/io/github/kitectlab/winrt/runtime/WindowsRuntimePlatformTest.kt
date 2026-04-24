@@ -93,7 +93,7 @@ class WindowsRuntimePlatformTest {
                 ExceptionHelpers.throwExceptionForHR(
                     errorInfo.invokeAbi(
                         slot = 5,
-                        descriptor = NativeFunctionDescriptor.of(
+                        descriptor = AbiFunctionDescriptor.of(
                             NativeValueLayout.JAVA_INT,
                             NativeValueLayout.ADDRESS,
                             NativeValueLayout.ADDRESS,
@@ -134,7 +134,7 @@ class WindowsRuntimePlatformTest {
                 ExceptionHelpers.throwExceptionForHR(
                     errorInfo.invokeAbi(
                         slot = 3,
-                        descriptor = NativeFunctionDescriptor.of(
+                        descriptor = AbiFunctionDescriptor.of(
                             NativeValueLayout.JAVA_INT,
                             NativeValueLayout.ADDRESS,
                             NativeValueLayout.ADDRESS,
@@ -173,7 +173,7 @@ class WindowsRuntimePlatformTest {
                 ExceptionHelpers.throwExceptionForHR(
                     errorInfo.invokeAbi(
                         slot = 4,
-                        descriptor = NativeFunctionDescriptor.of(
+                        descriptor = AbiFunctionDescriptor.of(
                             NativeValueLayout.JAVA_INT,
                             NativeValueLayout.ADDRESS,
                             NativeValueLayout.ADDRESS,

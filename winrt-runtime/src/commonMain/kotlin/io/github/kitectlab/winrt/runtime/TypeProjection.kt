@@ -30,6 +30,7 @@ internal object TypeProjection {
         }
         val kind =
             when {
+                value == KClass::class -> WinRtTypeKind.Metadata
                 isPrimitiveWinRtType(value) -> WinRtTypeKind.Primitive
                 Projections.isTypeWindowsRuntimeType(value) -> WinRtTypeKind.Metadata
                 else -> WinRtTypeKind.Custom
@@ -41,37 +42,37 @@ internal object TypeProjection {
                 TypeNameSupport.getNameForType(value)
             }
         return TypeAbi(
-            name = NativeStringMarshaller.fromManaged(typeName)?.handle ?: NativeInterop.nullPointer,
+            name = NativeStringMarshaller.fromManaged(typeName)?.handle ?: PlatformAbi.nullPointer,
             kind = kind.ordinal,
         )
     }
 
     fun copyTo(
         value: KClass<*>?,
-        destination: NativePointer,
+        destination: RawAddress,
     ) {
         val abi = fromManaged(value)
-        NativeInterop.writePointer(destination, LAYOUT.field("name").offsetBytes, abi.name)
-        NativeInterop.writeInt32(destination, LAYOUT.field("kind").offsetBytes, abi.kind)
+        PlatformAbi.writePointer(destination, LAYOUT.field("name").offsetBytes, abi.name)
+        PlatformAbi.writeInt32(destination, LAYOUT.field("kind").offsetBytes, abi.kind)
     }
 
-    fun fromAbi(source: NativePointer): KClass<*>? =
+    fun fromAbi(source: RawAddress): KClass<*>? =
         fromAbi(
             TypeAbi(
-                name = NativeInterop.readPointer(LAYOUT.slice(source, "name")),
-                kind = NativeInterop.readInt32(LAYOUT.slice(source, "kind")),
+                name = PlatformAbi.readPointer(LAYOUT.slice(source, "name")),
+                kind = PlatformAbi.readInt32(LAYOUT.slice(source, "kind")),
             ),
         )
 
-    fun disposeAbi(source: NativePointer) {
-        val name = NativeInterop.readPointer(LAYOUT.slice(source, "name"))
-        if (!NativeInterop.isNull(name)) {
+    fun disposeAbi(source: RawAddress) {
+        val name = PlatformAbi.readPointer(LAYOUT.slice(source, "name"))
+        if (!PlatformAbi.isNull(name)) {
             WinRtPlatformApi.windowsDeleteStringRaw(name)
         }
     }
 
     data class TypeAbi(
-        val name: NativePointer = NativeInterop.nullPointer,
+        val name: RawAddress = PlatformAbi.nullPointer,
         val kind: Int = 0,
     )
 }

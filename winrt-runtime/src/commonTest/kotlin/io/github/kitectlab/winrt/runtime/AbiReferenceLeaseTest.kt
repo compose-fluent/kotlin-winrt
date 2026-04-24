@@ -15,7 +15,7 @@ class AbiReferenceLeaseTest {
             }
 
         AbiReferenceLeaseSupport.create(
-            abi = NativeInterop.nullPointer,
+            abi = PlatformAbi.nullPointer,
             ownedReference = owned,
             cleanup = { events += "cleanup" },
         ).close()
@@ -36,7 +36,7 @@ class AbiReferenceLeaseTest {
 
         runCatching {
             AbiReferenceLeaseSupport.create(
-                abi = NativeInterop.nullPointer,
+                abi = PlatformAbi.nullPointer,
                 ownedReference = owned,
                 cleanup = { events += "cleanup" },
             ).close()

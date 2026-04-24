@@ -58,27 +58,20 @@ internal enum class PropertyType(val code: Int) {
 }
 
 internal class WinRtReferenceReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun <T> readValue(
         sizeBytes: Long,
         alignmentBytes: Long,
-        readValue: (NativePointer) -> T,
-        disposeValue: (NativePointer) -> Unit = {},
+        readValue: (RawAddress) -> T,
+        disposeValue: (RawAddress) -> Unit = {},
     ): T =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateBytes(scope, sizeBytes, alignmentBytes)
-            val hr = invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateBytes(scope, sizeBytes, alignmentBytes)
+            comPtr.throwIfDisposed()
+            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, resultOut)
             WinRtPlatformApi.checkSucceededRaw(hr)
             try {
                 readValue(resultOut)
@@ -89,31 +82,22 @@ internal class WinRtReferenceReference(
 }
 
 internal class WinRtReferenceArrayReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun readValue(
-        readArray: (Int, NativePointer) -> Array<Any?>?,
-        disposeArray: (Int, NativePointer) -> Unit,
+        readArray: (Int, RawAddress) -> Array<Any?>?,
+        disposeArray: (Int, RawAddress) -> Unit,
     ): Array<Any?>? =
-        NativeInterop.confinedScope().use { scope ->
-            val countOut = NativeInterop.allocateInt32Slot(scope)
-            val dataOut = NativeInterop.allocatePointerSlot(scope)
-            val hr = invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                countOut,
-                dataOut,
-            )
+        PlatformAbi.confinedScope().use { scope ->
+            val countOut = PlatformAbi.allocateInt32Slot(scope)
+            val dataOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
+            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, countOut, dataOut)
             WinRtPlatformApi.checkSucceededRaw(hr)
-            val length = NativeInterop.readInt32(countOut)
-            val data = NativeInterop.readPointer(dataOut)
+            val length = PlatformAbi.readInt32(countOut)
+            val data = PlatformAbi.readPointer(dataOut)
             try {
                 readArray(length, data)
             } finally {
@@ -123,41 +107,26 @@ internal class WinRtReferenceArrayReference(
 }
 
 internal class WinRtPropertyValueReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = preventReleaseOnDispose) {
+) : IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = preventReleaseOnDispose) {
     fun type(): PropertyType =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt32Slot(scope)
-            val hr = invokeAbi(
-                slot = 6,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt32Slot(scope)
+            comPtr.throwIfDisposed()
+            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 6, resultOut)
             WinRtPlatformApi.checkSucceededRaw(hr)
-            PropertyType.fromCode(NativeInterop.readInt32(resultOut))
+            PropertyType.fromCode(PlatformAbi.readInt32(resultOut))
         }
 
     fun isNumericScalar(): Boolean =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt8Slot(scope)
-            val hr = invokeAbi(
-                slot = 7,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt8Slot(scope)
+            comPtr.throwIfDisposed()
+            val hr = ComVtableInvoker.invokeArgs(comPtr.raw, 7, resultOut)
             WinRtPlatformApi.checkSucceededRaw(hr)
-            NativeInterop.readInt8(resultOut).toInt() != 0
+            PlatformAbi.readInt8(resultOut).toInt() != 0
         }
 
-    fun getValue(): Any? = ValueBoxingInterop.readPropertyValue(pointer, type())
+    fun getValue(): Any? = ValueBoxingInterop.readPropertyValue(pointer.asRawAddress(), type())
 }
-

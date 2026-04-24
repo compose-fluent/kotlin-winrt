@@ -62,38 +62,26 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
     return buildList {
         add(
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                NativeInterop.writeInt32(rawArgs[0] as NativePointer, WinRtValueBoxing.propertyTypeOf(value).code)
+                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, WinRtValueBoxing.propertyTypeOf(value).code)
                 KnownHResults.S_OK.value
             },
         )
         add(
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (WinRtValueBoxing.isNumericScalar(value)) 1 else 0)
+                PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (WinRtValueBoxing.isNumericScalar(value)) 1 else 0)
                 KnownHResults.S_OK.value
             },
         )
         scalarGetters.forEach { propertyType ->
             add(
                 WinRtInspectableMethodDefinition(
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                 ) { rawArgs ->
-                    ValueBoxingInterop.writePropertyValue(propertyType, value, rawArgs[0] as NativePointer)
+                    ValueBoxingInterop.writePropertyValue(propertyType, value, rawArgs[0] as RawAddress)
                     KnownHResults.S_OK.value
                 },
             )
@@ -101,18 +89,13 @@ private fun buildPropertyValueMethods(value: Any): List<WinRtInspectableMethodDe
         arrayGetters.forEach { propertyType ->
             add(
                 WinRtInspectableMethodDefinition(
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                 ) { rawArgs ->
                     ValueBoxingInterop.writePropertyValueArray(
                         propertyType,
                         value,
-                        rawArgs[0] as NativePointer,
-                        rawArgs[1] as NativePointer,
+                        rawArgs[0] as RawAddress,
+                        rawArgs[1] as RawAddress,
                     )
                     KnownHResults.S_OK.value
                 },

@@ -35,5 +35,5 @@ internal object ManifestFreeActivation {
     }
 
     private fun failure(): ActivationResult =
-        ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
+        ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
 }

@@ -46,6 +46,25 @@ class InspectableReferenceTest {
     }
 
     @Test
+    fun inspectable_typed_view_matches_legacy_runtime_class_name_lookup() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeSingleThreaded().use {
+            val factory = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                val inspectable = factory.activateInstance()
+                inspectable.use { reference ->
+                    val typedView = reference.asTypedView()
+                    assertEquals("Windows.Data.Json.JsonObject", typedView.getRuntimeClassName())
+                    assertEquals(reference.getRuntimeClassName(), typedView.getRuntimeClassName())
+                }
+            } finally {
+                factory.close()
+            }
+        }
+    }
+
+    @Test
     fun inspectable_reference_returns_null_for_missing_interface_query() {
         assumeTrue(PlatformRuntime.isWindows)
 

@@ -13,6 +13,10 @@ internal object IInspectableVftblSlots {
     const val FirstCustom = 6
 }
 
+internal object IActivationFactoryVftblSlots {
+    const val ActivateInstance = IInspectableVftblSlots.FirstCustom
+}
+
 object ReferenceTrackerVftblSlots {
     const val ConnectFromTrackerSource = 3
     const val DisconnectFromTrackerSource = 4

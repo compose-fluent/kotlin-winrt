@@ -12,23 +12,23 @@ data class EventRegistrationToken(
                 NativeScalarFieldSpec("value", NativeStructScalarKind.INT64),
             )
 
-        override fun read(source: NativePointer): EventRegistrationToken =
+        override fun read(source: RawAddress): EventRegistrationToken =
             EventRegistrationToken(
-                value = NativeInterop.readInt64(layout.slice(source, "value")),
+                value = PlatformAbi.readInt64(layout.slice(source, "value")),
             )
 
         override fun write(
             value: EventRegistrationToken,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
-            NativeInterop.writeInt64(layout.slice(destination, "value"), value.value)
+            PlatformAbi.writeInt64(layout.slice(destination, "value"), value.value)
         }
 
-        fun fromAbi(source: NativePointer): EventRegistrationToken = read(source)
+        fun fromAbi(source: RawAddress): EventRegistrationToken = read(source)
 
         fun copyTo(
             value: EventRegistrationToken,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }

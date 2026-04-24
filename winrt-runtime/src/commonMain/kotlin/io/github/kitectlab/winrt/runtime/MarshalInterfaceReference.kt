@@ -15,72 +15,35 @@ internal object WinRtMarshalingFlags {
     const val NoPing = 4
 }
 
-internal val getUnmarshalClassDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-)
-
-internal val getMarshalSizeMaxDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-)
-
-internal val marshalInterfaceDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_INT,
-)
-
-internal val unmarshalInterfaceDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
-
-internal val releaseMarshalDataDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-)
-
-internal val disconnectObjectDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.JAVA_INT,
-)
+internal object MarshalInterfaceVftbl {
+    const val GetUnmarshalClass: Int = 3
+    const val GetMarshalSizeMax: Int = 4
+    const val MarshalInterface: Int = 5
+    const val UnmarshalInterface: Int = 6
+    const val ReleaseMarshalData: Int = 7
+    const val DisconnectObject: Int = 8
+}
 
 internal class MarshalInterfaceReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = IID.IMarshal,
-) : IUnknownReference(pointer, interfaceId) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun getUnmarshalClass(
         interfaceId: Guid,
-        sourcePointer: NativePointer = NativeInterop.nullPointer,
+        sourcePointer: RawAddress = PlatformAbi.nullPointer,
         destinationContext: Int = WinRtMarshalingContext.InProc,
-        destinationContextPointer: NativePointer = NativeInterop.nullPointer,
+        destinationContextPointer: RawAddress = PlatformAbi.nullPointer,
         flags: Int = WinRtMarshalingFlags.Normal,
     ): Guid =
-        NativeInterop.confinedScope().use { scope ->
-            val interfaceIdMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(interfaceIdMemory)
-            val resultOut = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            val resultOut = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 3,
-                    descriptor = getUnmarshalClassDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    comPtr.raw,
+                    MarshalInterfaceVftbl.GetUnmarshalClass,
                     interfaceIdMemory,
                     sourcePointer,
                     destinationContext,
@@ -89,24 +52,25 @@ internal class MarshalInterfaceReference(
                     resultOut,
                 ),
             ).requireSuccess("IMarshal.GetUnmarshalClass")
-            NativeInterop.readGuid(resultOut)
+            PlatformAbi.readGuid(resultOut)
         }
 
     fun getMarshalSizeMax(
         interfaceId: Guid,
-        sourcePointer: NativePointer = NativeInterop.nullPointer,
+        sourcePointer: RawAddress = PlatformAbi.nullPointer,
         destinationContext: Int = WinRtMarshalingContext.InProc,
-        destinationContextPointer: NativePointer = NativeInterop.nullPointer,
+        destinationContextPointer: RawAddress = PlatformAbi.nullPointer,
         flags: Int = WinRtMarshalingFlags.Normal,
     ): UInt =
-        NativeInterop.confinedScope().use { scope ->
-            val interfaceIdMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(interfaceIdMemory)
-            val resultOut = NativeInterop.allocateInt32Slot(scope)
+            val resultOut = PlatformAbi.allocateInt32Slot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 4,
-                    descriptor = getMarshalSizeMaxDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    comPtr.raw,
+                    MarshalInterfaceVftbl.GetMarshalSizeMax,
                     interfaceIdMemory,
                     sourcePointer,
                     destinationContext,
@@ -115,24 +79,25 @@ internal class MarshalInterfaceReference(
                     resultOut,
                 ),
             ).requireSuccess("IMarshal.GetMarshalSizeMax")
-            NativeInterop.readInt32(resultOut).toUInt()
+            PlatformAbi.readInt32(resultOut).toUInt()
         }
 
     fun marshalInterface(
-        streamPointer: NativePointer,
+        streamPointer: RawAddress,
         interfaceId: Guid,
-        interfacePointer: NativePointer = NativeInterop.nullPointer,
+        interfacePointer: RawAddress = PlatformAbi.nullPointer,
         destinationContext: Int = WinRtMarshalingContext.InProc,
-        destinationContextPointer: NativePointer = NativeInterop.nullPointer,
+        destinationContextPointer: RawAddress = PlatformAbi.nullPointer,
         flags: Int = WinRtMarshalingFlags.Normal,
     ) {
-        NativeInterop.confinedScope().use { scope ->
-            val interfaceIdMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(interfaceIdMemory)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 5,
-                    descriptor = marshalInterfaceDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    comPtr.raw,
+                    MarshalInterfaceVftbl.MarshalInterface,
                     streamPointer,
                     interfaceIdMemory,
                     interfacePointer,
@@ -145,47 +110,42 @@ internal class MarshalInterfaceReference(
     }
 
     fun unmarshalInterface(
-        streamPointer: NativePointer,
+        streamPointer: RawAddress,
         interfaceId: Guid,
     ): IUnknownReference? =
-        NativeInterop.confinedScope().use { scope ->
-            val interfaceIdMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val interfaceIdMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(interfaceIdMemory)
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 6,
-                    descriptor = unmarshalInterfaceDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    comPtr.raw,
+                    MarshalInterfaceVftbl.UnmarshalInterface,
                     streamPointer,
                     interfaceIdMemory,
                     resultOut,
                 ),
             ).requireSuccess("IMarshal.UnmarshalInterface")
-            val resolvedPointer = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(resolvedPointer)) {
+            val resolvedPointer = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(resolvedPointer)) {
                 null
             } else {
-                IUnknownReference(resolvedPointer, interfaceId)
+                IUnknownReference(resolvedPointer.asRawComPtr(), interfaceId)
             }
         }
 
-    fun releaseMarshalData(streamPointer: NativePointer) {
+    fun releaseMarshalData(streamPointer: RawAddress) {
+        comPtr.throwIfDisposed()
         HResult(
-            invokeAbi(
-                slot = 7,
-                descriptor = releaseMarshalDataDescriptor,
-                streamPointer,
-            ),
+            ComVtableInvoker.invokeArgs(comPtr.raw, MarshalInterfaceVftbl.ReleaseMarshalData, streamPointer),
         ).requireSuccess("IMarshal.ReleaseMarshalData")
     }
 
     fun disconnectObject(reserved: Int = 0) {
+        comPtr.throwIfDisposed()
         HResult(
-            invokeAbi(
-                slot = 8,
-                descriptor = disconnectObjectDescriptor,
-                reserved,
-            ),
+            ComVtableInvoker.invokeArgs(comPtr.raw, MarshalInterfaceVftbl.DisconnectObject, reserved),
         ).requireSuccess("IMarshal.DisconnectObject")
     }
 }
@@ -201,11 +161,11 @@ internal object FreeThreadedMarshalerSupport {
 
             val result = WinRtPlatformApi.coCreateFreeThreadedMarshalerRaw()
             HResult(result.hResultValue).requireSuccess("CoCreateFreeThreadedMarshaler")
-            check(!NativeInterop.isNull(result.pointer)) {
+            check(!PlatformAbi.isNull(result.pointer)) {
                 "CoCreateFreeThreadedMarshaler returned a null pointer with success HRESULT."
             }
 
-            val createdProxy = IUnknownReference(result.pointer, IID.IUnknown).use { unknown ->
+            val createdProxy = IUnknownReference(result.pointer.asRawComPtr(), IID.IUnknown).use { unknown ->
                 val marshal = unknown.queryInterface(IID.IMarshal).getOrThrow()
                 MarshalInterfaceReference(marshal.useAndGetRef(), IID.IMarshal)
             }

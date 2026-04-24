@@ -1,34 +1,28 @@
 package io.github.kitectlab.winrt.runtime
 
-private val getXamlTypeByFullNameDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
-
 class WinUiXamlTypeReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlType,
-) : IUnknownReference(pointer, interfaceId)
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
 class WinUiXamlMetadataProviderReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinUiXamlInterfaceIds.IXamlMetadataProvider,
-) : IUnknownReference(pointer, interfaceId) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun getXamlTypeByFullName(fullName: String): WinUiXamlTypeReference =
         HString.create(fullName).use { hString ->
-            NativeInterop.confinedScope().use { scope ->
-                val resultOut = NativeInterop.allocatePointerSlot(scope)
-                val hr = invokeAbi(
-                    slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
-                    descriptor = getXamlTypeByFullNameDescriptor,
-                    hString.handle,
-                    resultOut,
-                )
+            PlatformAbi.confinedScope().use { scope ->
+                val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                val hr =
+                    ComVtableInvoker.invokeArgs(
+                        pointer,
+                        WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
+                        hString.handle,
+                        resultOut,
+                    )
                 HResult(hr).requireSuccess()
-                IUnknownReference(NativeInterop.readPointer(resultOut)).use { reference ->
-                    WinUiXamlTypeReference(reference.getRefPointer(), WinUiXamlInterfaceIds.IXamlType)
+                IUnknownReference(PlatformAbi.readPointer(resultOut).asRawComPtr()).use { reference ->
+                    WinUiXamlTypeReference(reference.getRefPointer().asRawAddress(), WinUiXamlInterfaceIds.IXamlType)
                 }
             }
         }
@@ -50,7 +44,7 @@ object WinUiXamlMetadataProvider {
                     .getOrThrow()
                     .let { reference ->
                         try {
-                            WinUiXamlMetadataProviderReference(reference.getRefPointer(), WinUiXamlInterfaceIds.IXamlMetadataProvider)
+                            WinUiXamlMetadataProviderReference(reference.getRefPointer().asRawAddress(), WinUiXamlInterfaceIds.IXamlMetadataProvider)
                         } finally {
                             reference.close()
                         }
@@ -73,7 +67,12 @@ object WinUiXamlMetadataProvider {
             factory.queryInterface(WinUiXamlInterfaceIds.IXamlControlsXamlMetaDataProviderStatics)
                 .getOrThrow()
                 .use { statics ->
-                    statics.invokeUnitMethod(WinUiXamlControlsXamlMetadataProviderStaticsSlots.Initialize)
+                    val hr =
+                        ComVtableInvoker.invoke(
+                            statics.pointer,
+                            WinUiXamlControlsXamlMetadataProviderStaticsSlots.Initialize,
+                        )
+                    WinRtPlatformApi.checkSucceededRaw(hr)
                 }
             initialized = true
         }

@@ -4,7 +4,7 @@ package io.github.kitectlab.winrt.runtime
  * Runtime projection surface corresponding to the `IReference<T>`, `IReferenceArray<T>`,
  * and `IPropertyValue` helper layer inside `.cswinrt/src/WinRT.Runtime/Projections/Nullable.cs`.
  *
- * The shared owner keeps the projection-facing API and `NativePointer` ABI surface in common code,
+ * The shared owner keeps the projection-facing API and `RawAddress` ABI surface in common code,
  * while the remaining value-classification and adapter tables stay behind target seams until the
  * broader `ValueBoxing` owner is fully migrated.
  */
@@ -27,26 +27,26 @@ internal object WinRtReferenceProjection {
     fun fromManaged(
         value: Any?,
         interfaceId: Guid,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             val typeHandle = ValueBoxingInterop.referenceTypeHandle(value, interfaceId)
             borrowedProjectionAbi(value, typeHandle)
                 ?: run {
                     val host = createReferenceHost(interfaceId, value)
                     ManagedReferenceHostSupport.detachReference(
-                        createReference = { host.createReference(interfaceId).pointer },
+                        createReference = { host.createReference(interfaceId).pointer.asRawAddress() },
                         releaseManagedReference = host::releaseManagedReference,
                     )
                 }
         }
 
     fun fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): Any? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             ValueBoxingInterop.readReferenceValue(interfaceId, pointer)
@@ -70,22 +70,22 @@ internal object WinRtReferenceArrayProjection {
     fun fromManaged(
         value: Any?,
         interfaceId: Guid,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             val host = createReferenceArrayHost(interfaceId, value)
             ManagedReferenceHostSupport.detachReference(
-                createReference = { host.createReference(interfaceId).pointer },
+                createReference = { host.createReference(interfaceId).pointer.asRawAddress() },
                 releaseManagedReference = host::releaseManagedReference,
             )
         }
 
     fun fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): Array<Any?>? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             ValueBoxingInterop.readReferenceArrayValue(interfaceId, pointer)
@@ -102,22 +102,22 @@ internal object WinRtPropertyValueProjection {
         )
     }
 
-    fun fromManaged(value: Any?): NativePointer =
+    fun fromManaged(value: Any?): RawAddress =
         if (value == null || !WinRtValueBoxing.isPropertyValueCompatible(value)) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             ValueBoxingInterop.createPropertyValueReference(value).useAndGetRef()
         }
 
-    fun fromOwnedAbi(pointer: NativePointer): Any? =
-        if (NativeInterop.isNull(pointer)) {
+    fun fromOwnedAbi(pointer: RawAddress): Any? =
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             ValueBoxingInterop.readOwnedPropertyValue(pointer)
         }
 
-    fun tryFromBorrowedAbi(pointer: NativePointer): Any? =
-        if (NativeInterop.isNull(pointer)) {
+    fun tryFromBorrowedAbi(pointer: RawAddress): Any? =
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             ValueBoxingInterop.tryProjectBorrowedPropertyValue(pointer)

@@ -13,11 +13,11 @@ class WinRtBindableProjectionTest {
 
         try {
             ComObjectReference(
-                marshaler.abi,
+                marshaler.abi.asRawComPtr(),
                 WinRtBindableInterfaceIds.IBindableIterable,
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRtBindableIterableProjection.fromAbi(borrowed.getRefPointer())!!.use { projected ->
+                WinRtBindableIterableProjection.fromAbi(borrowed.getRefPointer().asRawAddress())!!.use { projected ->
                     assertEquals(values, projected.toList())
                     assertEquals(
                         WinRtTypeHandle("kotlin.collections.Iterable<kotlin.Any?>", WinRtBindableInterfaceIds.IBindableIterable),
@@ -36,11 +36,11 @@ class WinRtBindableProjectionTest {
         val abi = WinRtBindableVectorProjection.fromManaged(managed)
 
         ComObjectReference(
-            abi,
+            abi.asRawComPtr(),
             WinRtBindableInterfaceIds.IBindableVector,
             preventReleaseOnDispose = true,
         ).use { borrowed ->
-            WinRtBindableVectorProjection.fromAbi(borrowed.getRefPointer())!!.use { projected ->
+            WinRtBindableVectorProjection.fromAbi(borrowed.getRefPointer().asRawAddress())!!.use { projected ->
                 projected[1] = "two"
                 projected.add("three")
                 assertEquals(listOf("one", "two", null, "three"), projected.toList())

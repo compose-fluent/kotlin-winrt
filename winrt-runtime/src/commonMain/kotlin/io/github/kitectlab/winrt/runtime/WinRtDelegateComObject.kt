@@ -4,52 +4,33 @@ internal class WinRtDelegateComObject(
     private val descriptor: WinRtDelegateDescriptor,
     private val callback: (List<Any?>) -> Any?,
 ) {
-    private val scope = NativeInterop.sharedScope()
-    private val objectMemory = NativeInterop.allocatePointerSlot(scope)
-    private val vtableMemory = NativeInterop.allocatePointerArray(scope, WinRtDelegateVftblSlots.Invoke + 1)
-    private val queryInterfaceCallback = NativeInterop.createCallback(
-        NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-        ),
-    ) { args ->
+    private val scope = PlatformAbi.sharedScope()
+    private val objectMemory = PlatformAbi.allocatePointerSlot(scope)
+    private val vtableMemory = PlatformAbi.allocatePointerArray(scope, WinRtDelegateVftblSlots.Invoke + 1)
+    private val queryInterfaceCallback = ComAbiInteropBridge.createComMethodCallback(IUnknownVftbl.QueryInterface) { args ->
         queryInterface(
-            requestedInterfaceId = NativeInterop.readGuid(args[1] as NativePointer),
-            resultPointer = args[2] as NativePointer,
+            requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
+            resultPointer = args[2] as RawAddress,
         )
     }
-    private val addRefCallback = NativeInterop.createCallback(
-        NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-        ),
-    ) {
+    private val addRefCallback = ComAbiInteropBridge.createComMethodCallback(IUnknownVftbl.AddRef) {
         addReference()
     }
-    private val releaseCallback = NativeInterop.createCallback(
-        NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-        ),
-    ) {
+    private val releaseCallback = ComAbiInteropBridge.createComMethodCallback(IUnknownVftbl.Release) {
         releaseReference()
     }
-    private val invokeCallback = NativeInterop.createCallback(
-        WinRtDelegateAbiMarshaller.functionDescriptor(descriptor),
-    ) { args ->
+    private val invokeCallback = ComAbiInteropBridge.createComMethodCallback(WinRtDelegateAbiMarshaller.functionSignature(descriptor)) { args ->
         invoke(args.drop(1))
     }
     private val state = ManagedComHostState(::cleanup)
 
     init {
-        registry[NativeInterop.pointerKey(objectMemory)] = this
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, WinRtDelegateVftblSlots.Invoke, invokeCallback.pointer)
-        NativeInterop.writePointer(objectMemory, vtableMemory)
+        registry[PlatformAbi.pointerKey(objectMemory)] = this
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, WinRtDelegateVftblSlots.Invoke, invokeCallback.pointer)
+        PlatformAbi.writePointer(objectMemory, vtableMemory)
     }
 
     fun createReference(): WinRtDelegateReference {
@@ -66,7 +47,7 @@ internal class WinRtDelegateComObject(
 
     private fun queryInterface(
         requestedInterfaceId: Guid,
-        resultPointer: NativePointer,
+        resultPointer: RawAddress,
     ): Int {
         val queryResult = state.queryInterface(requestedInterfaceId) { requested ->
             if (requested == IID.IUnknown || requested == descriptor.interfaceId) {
@@ -76,9 +57,9 @@ internal class WinRtDelegateComObject(
             }
         }
         if (queryResult.target != null) {
-            NativeInterop.writePointer(resultPointer, objectMemory)
+            PlatformAbi.writePointer(resultPointer, objectMemory)
         } else {
-            NativeInterop.writePointer(resultPointer, NativeInterop.nullPointer)
+            PlatformAbi.writePointer(resultPointer, PlatformAbi.nullPointer)
         }
         return queryResult.hResult.value
     }
@@ -98,7 +79,7 @@ internal class WinRtDelegateComObject(
                 ),
             )
             if (hasReturnValue) {
-                val resultOut = rawArguments.last() as? NativePointer
+                val resultOut = rawArguments.last() as? RawAddress
                     ?: error("Non-unit delegate invocation requires a trailing ABI return buffer.")
                 WinRtDelegateAbiMarshaller.writeReturnValue(descriptor.returnKind, returnValue, resultOut)
             }
@@ -109,7 +90,7 @@ internal class WinRtDelegateComObject(
         }
 
     private fun cleanup() {
-        registry.remove(NativeInterop.pointerKey(objectMemory))
+        registry.remove(PlatformAbi.pointerKey(objectMemory))
         invokeCallback.close()
         releaseCallback.close()
         addRefCallback.close()
@@ -120,8 +101,8 @@ internal class WinRtDelegateComObject(
     companion object {
         private val registry = ConcurrentCacheMap<Long, WinRtDelegateComObject>()
 
-        internal fun releaseLocalReference(pointer: NativePointer): Boolean {
-            val delegate = registry[NativeInterop.pointerKey(pointer)] ?: return false
+        internal fun releaseLocalReference(pointer: RawAddress): Boolean {
+            val delegate = registry[PlatformAbi.pointerKey(pointer)] ?: return false
             delegate.releaseManagedReference()
             return true
         }
@@ -129,15 +110,15 @@ internal class WinRtDelegateComObject(
 }
 
 class WinRtDelegateReference internal constructor(
-    pointer: NativePointer,
+    pointer: RawAddress,
     val descriptor: WinRtDelegateDescriptor,
-) : ComObjectReference(pointer, descriptor.interfaceId) {
+) : ComObjectReference(pointer.asRawComPtr(), descriptor.interfaceId) {
     companion object {
         fun fromAbi(
-            pointer: NativePointer,
+            pointer: RawAddress,
             descriptor: WinRtDelegateDescriptor,
         ): WinRtDelegateReference? =
-            if (NativeInterop.isNull(pointer)) {
+            if (PlatformAbi.isNull(pointer)) {
                 null
             } else {
                 WinRtDelegateReference(pointer, descriptor)
@@ -145,34 +126,41 @@ class WinRtDelegateReference internal constructor(
     }
 
     fun invokeAbi(arguments: List<Any?>): HResult {
-        val encodedArguments = WinRtDelegateAbiMarshaller.encodeArguments(descriptor.parameterKinds, arguments)
-        return HResult(
-            invokeIntMethod(
-                slot = WinRtDelegateVftblSlots.Invoke,
-                descriptor = WinRtDelegateAbiMarshaller.functionDescriptor(descriptor),
-                *encodedArguments.toTypedArray(),
-            ),
-        )
+        WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor.parameterKinds, arguments).use { encodedArguments ->
+            val signature = WinRtDelegateAbiMarshaller.functionSignature(descriptor)
+            val words = ComAbiWord.fromDynamicArgs(signature.explicitParameterKinds, encodedArguments.values)
+            return HResult(
+                comPtr.invokeGeneric(
+                    slot = WinRtDelegateVftblSlots.Invoke,
+                    signature = signature,
+                    args = words,
+                ),
+            )
+        }
     }
 
     fun invoke(arguments: List<Any?>): Any? {
         require(arguments.size == descriptor.parameterKinds.size) {
             "Argument count ${arguments.size} must match delegate parameter count ${descriptor.parameterKinds.size}."
         }
-        val encodedArguments = WinRtDelegateAbiMarshaller.encodeArguments(descriptor.parameterKinds, arguments)
         return if (descriptor.returnKind == WinRtDelegateValueKind.UNIT) {
             invokeAbi(arguments).requireSuccess()
             Unit
         } else {
-            NativeInterop.confinedScope().use { scope ->
-                val resultOut = WinRtDelegateAbiMarshaller.allocateReturnOut(descriptor.returnKind, scope)
-                val hr = invokeIntMethod(
-                    slot = WinRtDelegateVftblSlots.Invoke,
-                    descriptor = WinRtDelegateAbiMarshaller.functionDescriptor(descriptor),
-                    *arrayOf(*encodedArguments.toTypedArray(), resultOut),
-                )
-                WinRtPlatformApi.checkSucceededRaw(hr)
-                WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor.returnKind, resultOut)
+            PlatformAbi.confinedScope().use { scope ->
+                WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor.parameterKinds, arguments).use { encodedArguments ->
+                    val resultOut = WinRtDelegateAbiMarshaller.allocateReturnOut(descriptor.returnKind, scope)
+                    val signature = WinRtDelegateAbiMarshaller.functionSignature(descriptor)
+                    val abiArguments = encodedArguments.values + resultOut
+                    val words = ComAbiWord.fromDynamicArgs(signature.explicitParameterKinds, abiArguments)
+                    val hr = comPtr.invokeGeneric(
+                        slot = WinRtDelegateVftblSlots.Invoke,
+                        signature = signature,
+                        args = words,
+                    )
+                    WinRtPlatformApi.checkSucceededRaw(hr)
+                    WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor.returnKind, resultOut)
+                }
             }
         }
     }

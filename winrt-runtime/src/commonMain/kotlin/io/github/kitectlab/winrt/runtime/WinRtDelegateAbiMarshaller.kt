@@ -1,17 +1,16 @@
 package io.github.kitectlab.winrt.runtime
 
 internal object WinRtDelegateAbiMarshaller {
-    fun functionDescriptor(descriptor: WinRtDelegateDescriptor): NativeFunctionDescriptor {
-        val parameterLayouts = descriptor.parameterKinds.map(::layoutFor)
-        val trailingLayouts = if (descriptor.returnKind == WinRtDelegateValueKind.UNIT) {
+    fun functionSignature(descriptor: WinRtDelegateDescriptor): ComMethodSignature {
+        val parameterKinds = descriptor.parameterKinds.map(::abiKindFor)
+        val trailingKinds = if (descriptor.returnKind == WinRtDelegateValueKind.UNIT) {
             emptyList()
         } else {
-            listOf(NativeValueLayout.ADDRESS)
+            listOf(ComAbiValueKind.Pointer)
         }
-        return NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            *(parameterLayouts + trailingLayouts).toTypedArray(),
+        return ComMethodSignature(
+            explicitParameterKinds = parameterKinds + trailingKinds,
+            resultKind = ComAbiValueKind.Int32,
         )
     }
 
@@ -41,59 +40,74 @@ internal object WinRtDelegateAbiMarshaller {
         }
     }
 
+    fun encodeArgumentsLease(
+        parameterKinds: List<WinRtDelegateValueKind>,
+        abiArguments: List<Any?>,
+    ): EncodedDelegateArguments {
+        require(parameterKinds.size == abiArguments.size) {
+            "ABI argument count ${abiArguments.size} must match delegate parameter count ${parameterKinds.size}."
+        }
+
+        val cleanup = mutableListOf<() -> Unit>()
+        val values = parameterKinds.zip(abiArguments).map { (kind, value) ->
+            encodeArgument(kind, value, cleanup)
+        }
+        return EncodedDelegateArguments(values, cleanup)
+    }
+
     fun allocateReturnOut(
         kind: WinRtDelegateValueKind,
         scope: NativeScope,
-    ): NativePointer =
+    ): RawAddress =
         when (kind) {
-            WinRtDelegateValueKind.UNIT -> NativeInterop.nullPointer
+            WinRtDelegateValueKind.UNIT -> PlatformAbi.nullPointer
             WinRtDelegateValueKind.OBJECT,
             WinRtDelegateValueKind.HSTRING,
             WinRtDelegateValueKind.IUNKNOWN,
             WinRtDelegateValueKind.IINSPECTABLE,
-            -> NativeInterop.allocatePointerSlot(scope)
+            -> PlatformAbi.allocatePointerSlot(scope)
 
             WinRtDelegateValueKind.BOOLEAN ->
-                NativeInterop.allocateInt8Slot(scope)
+                PlatformAbi.allocateInt8Slot(scope)
 
             WinRtDelegateValueKind.INT32,
             WinRtDelegateValueKind.UINT32,
-            -> NativeInterop.allocateInt32Slot(scope)
+            -> PlatformAbi.allocateInt32Slot(scope)
 
             WinRtDelegateValueKind.INT64 ->
-                NativeInterop.allocateInt64Slot(scope)
+                PlatformAbi.allocateInt64Slot(scope)
 
             WinRtDelegateValueKind.DOUBLE ->
-                NativeInterop.allocateDoubleSlot(scope)
+                PlatformAbi.allocateDoubleSlot(scope)
         }
 
-    fun decodeReturnValue(kind: WinRtDelegateValueKind, resultOut: NativePointer): Any? =
+    fun decodeReturnValue(kind: WinRtDelegateValueKind, resultOut: RawAddress): Any? =
         when (kind) {
             WinRtDelegateValueKind.UNIT -> Unit
             WinRtDelegateValueKind.OBJECT,
             WinRtDelegateValueKind.IUNKNOWN,
             -> {
-                val pointer = NativeInterop.readPointer(resultOut)
-                if (NativeInterop.isNull(pointer)) null else IUnknownReference(pointer)
+                val pointer = PlatformAbi.readPointer(resultOut)
+                if (PlatformAbi.isNull(pointer)) null else IUnknownReference(pointer.asRawComPtr())
             }
 
             WinRtDelegateValueKind.IINSPECTABLE -> {
-                val pointer = NativeInterop.readPointer(resultOut)
-                if (NativeInterop.isNull(pointer)) {
+                val pointer = PlatformAbi.readPointer(resultOut)
+                if (PlatformAbi.isNull(pointer)) {
                     null
                 } else {
-                    IUnknownReference(pointer).asInspectable()
+                    IUnknownReference(pointer.asRawComPtr()).asInspectable()
                 }
             }
 
-            WinRtDelegateValueKind.BOOLEAN -> NativeInterop.readInt8(resultOut).toInt() != 0
-            WinRtDelegateValueKind.INT32 -> NativeInterop.readInt32(resultOut)
-            WinRtDelegateValueKind.UINT32 -> NativeInterop.readInt32(resultOut).toUInt()
-            WinRtDelegateValueKind.INT64 -> NativeInterop.readInt64(resultOut)
-            WinRtDelegateValueKind.DOUBLE -> NativeInterop.readDouble(resultOut)
+            WinRtDelegateValueKind.BOOLEAN -> PlatformAbi.readInt8(resultOut).toInt() != 0
+            WinRtDelegateValueKind.INT32 -> PlatformAbi.readInt32(resultOut)
+            WinRtDelegateValueKind.UINT32 -> PlatformAbi.readInt32(resultOut).toUInt()
+            WinRtDelegateValueKind.INT64 -> PlatformAbi.readInt64(resultOut)
+            WinRtDelegateValueKind.DOUBLE -> PlatformAbi.readDouble(resultOut)
             WinRtDelegateValueKind.HSTRING -> {
-                val handle = NativeInterop.readPointer(resultOut)
-                if (NativeInterop.isNull(handle)) {
+                val handle = PlatformAbi.readPointer(resultOut)
+                if (PlatformAbi.isNull(handle)) {
                     null
                 } else {
                     HString.fromHandle(handle, owner = true).use { it.toKString() }
@@ -104,19 +118,19 @@ internal object WinRtDelegateAbiMarshaller {
     fun writeReturnValue(
         kind: WinRtDelegateValueKind,
         value: Any?,
-        resultOut: NativePointer,
+        resultOut: RawAddress,
     ) {
         when (kind) {
             WinRtDelegateValueKind.UNIT -> Unit
-            WinRtDelegateValueKind.OBJECT -> NativeInterop.writePointer(resultOut, encodeObject(value))
-            WinRtDelegateValueKind.IUNKNOWN -> NativeInterop.writePointer(resultOut, encodeUnknownReference(value))
-            WinRtDelegateValueKind.IINSPECTABLE -> NativeInterop.writePointer(resultOut, encodeInspectableReference(value))
-            WinRtDelegateValueKind.BOOLEAN -> NativeInterop.writeInt8(resultOut, encodeBoolean(value))
-            WinRtDelegateValueKind.INT32 -> NativeInterop.writeInt32(resultOut, encodeInt32(value))
-            WinRtDelegateValueKind.UINT32 -> NativeInterop.writeInt32(resultOut, encodeUInt32(value))
-            WinRtDelegateValueKind.INT64 -> NativeInterop.writeInt64(resultOut, encodeInt64(value))
-            WinRtDelegateValueKind.DOUBLE -> NativeInterop.writeDouble(resultOut, encodeDouble(value))
-            WinRtDelegateValueKind.HSTRING -> NativeInterop.writePointer(resultOut, encodeHStringValue(value))
+            WinRtDelegateValueKind.OBJECT -> PlatformAbi.writePointer(resultOut, encodeObject(value))
+            WinRtDelegateValueKind.IUNKNOWN -> PlatformAbi.writePointer(resultOut, encodeUnknownReference(value))
+            WinRtDelegateValueKind.IINSPECTABLE -> PlatformAbi.writePointer(resultOut, encodeInspectableReference(value))
+            WinRtDelegateValueKind.BOOLEAN -> PlatformAbi.writeInt8(resultOut, encodeBoolean(value))
+            WinRtDelegateValueKind.INT32 -> PlatformAbi.writeInt32(resultOut, encodeInt32(value))
+            WinRtDelegateValueKind.UINT32 -> PlatformAbi.writeInt32(resultOut, encodeUInt32(value))
+            WinRtDelegateValueKind.INT64 -> PlatformAbi.writeInt64(resultOut, encodeInt64(value))
+            WinRtDelegateValueKind.DOUBLE -> PlatformAbi.writeDouble(resultOut, encodeDouble(value))
+            WinRtDelegateValueKind.HSTRING -> PlatformAbi.writePointer(resultOut, encodeHStringValue(value))
         }
     }
 
@@ -135,9 +149,16 @@ internal object WinRtDelegateAbiMarshaller {
         }
 
     private fun encodeArgument(kind: WinRtDelegateValueKind, abiValue: Any?): Any? =
+        encodeArgument(kind, abiValue, cleanup = null)
+
+    private fun encodeArgument(
+        kind: WinRtDelegateValueKind,
+        abiValue: Any?,
+        cleanup: MutableList<() -> Unit>?,
+    ): Any? =
         when (kind) {
             WinRtDelegateValueKind.UNIT -> error("UNIT is not a valid ABI parameter kind.")
-            WinRtDelegateValueKind.OBJECT -> encodeObject(abiValue)
+            WinRtDelegateValueKind.OBJECT -> encodeObject(abiValue, cleanup)
             WinRtDelegateValueKind.IUNKNOWN -> encodeUnknownReference(abiValue)
             WinRtDelegateValueKind.IINSPECTABLE -> encodeInspectableReference(abiValue)
             WinRtDelegateValueKind.BOOLEAN -> encodeBoolean(abiValue)
@@ -145,17 +166,17 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.UINT32 -> encodeUInt32(abiValue)
             WinRtDelegateValueKind.INT64 -> encodeInt64(abiValue)
             WinRtDelegateValueKind.DOUBLE -> encodeDouble(abiValue)
-            WinRtDelegateValueKind.HSTRING -> encodeHStringArgument(abiValue)
+            WinRtDelegateValueKind.HSTRING -> encodeHStringArgument(abiValue, cleanup)
         }
 
     private fun decodeObject(abiValue: Any?): Any? = when (abiValue) {
         null -> null
         is ComObjectReference -> abiValue
-        is NativePointer ->
-            if (NativeInterop.isNull(abiValue)) {
+        is RawAddress ->
+            if (PlatformAbi.isNull(abiValue)) {
                 null
             } else {
-                IUnknownReference(abiValue)
+                IUnknownReference(abiValue.asRawComPtr(), preventReleaseOnDispose = true)
             }
         else -> error("Unsupported ABI object argument: ${abiValue::class.qualifiedName}")
     }
@@ -208,8 +229,8 @@ internal object WinRtDelegateAbiMarshaller {
         is String -> abiValue
         is HString -> abiValue.toKString()
         is ReferencedHString -> abiValue.toKString()
-        is NativePointer ->
-            if (NativeInterop.isNull(abiValue)) {
+        is RawAddress ->
+            if (PlatformAbi.isNull(abiValue)) {
                 null
             } else {
                 HString.fromHandle(abiValue, owner = false).toKString()
@@ -217,31 +238,44 @@ internal object WinRtDelegateAbiMarshaller {
         else -> error("Unsupported ABI HSTRING argument: ${abiValue::class.qualifiedName}")
     }
 
-    private fun encodeObject(abiValue: Any?): NativePointer = when (abiValue) {
-        null -> NativeInterop.nullPointer
-        is IWinRTObject -> abiValue.nativeObject.pointer
-        is ComObjectReference -> abiValue.pointer
-        is NativePointer -> abiValue
-        else -> error("Unsupported outbound ABI object argument: ${abiValue::class.qualifiedName}")
+    private fun encodeObject(
+        abiValue: Any?,
+        cleanup: MutableList<() -> Unit>? = null,
+    ): RawAddress = when (abiValue) {
+        null -> PlatformAbi.nullPointer
+        is IWinRTObject -> abiValue.nativeObject.pointer.asRawAddress()
+        is ComObjectReference -> abiValue.pointer.asRawAddress()
+        is RawAddress -> abiValue
+        is RawComPtr -> abiValue.asRawAddress()
+        else -> {
+            check(cleanup != null) {
+                "Unsupported outbound ABI object argument: ${abiValue::class.qualifiedName}"
+            }
+            ComWrappersSupport.createCCWForObject(abiValue, IID.IInspectable).useAndGetRef().also { pointer ->
+                cleanup += { IUnknownReference(pointer.asRawComPtr()).close() }
+            }
+        }
     }
 
-    private fun encodeUnknownReference(abiValue: Any?): NativePointer = when (abiValue) {
-        null -> NativeInterop.nullPointer
-        is IUnknownReference -> abiValue.pointer
-        is IInspectableReference -> abiValue.pointer
-        is ComObjectReference -> abiValue.pointer
-        is IWinRTObject -> abiValue.nativeObject.pointer
-        is NativePointer -> abiValue
+    private fun encodeUnknownReference(abiValue: Any?): RawAddress = when (abiValue) {
+        null -> PlatformAbi.nullPointer
+        is IUnknownReference -> abiValue.pointer.asRawAddress()
+        is IInspectableReference -> abiValue.pointer.asRawAddress()
+        is ComObjectReference -> abiValue.pointer.asRawAddress()
+        is IWinRTObject -> abiValue.nativeObject.pointer.asRawAddress()
+        is RawAddress -> abiValue
+        is RawComPtr -> abiValue.asRawAddress()
         else -> error("Unsupported outbound ABI unknown reference argument: ${abiValue::class.qualifiedName}")
     }
 
-    private fun encodeInspectableReference(abiValue: Any?): NativePointer = when (abiValue) {
-        null -> NativeInterop.nullPointer
-        is IInspectableReference -> abiValue.pointer
-        is IUnknownReference -> abiValue.pointer
-        is ComObjectReference -> abiValue.pointer
-        is IWinRTObject -> abiValue.nativeObject.pointer
-        is NativePointer -> abiValue
+    private fun encodeInspectableReference(abiValue: Any?): RawAddress = when (abiValue) {
+        null -> PlatformAbi.nullPointer
+        is IInspectableReference -> abiValue.pointer.asRawAddress()
+        is IUnknownReference -> abiValue.pointer.asRawAddress()
+        is ComObjectReference -> abiValue.pointer.asRawAddress()
+        is IWinRTObject -> abiValue.nativeObject.pointer.asRawAddress()
+        is RawAddress -> abiValue
+        is RawComPtr -> abiValue.asRawAddress()
         else -> error("Unsupported outbound ABI inspectable reference argument: ${abiValue::class.qualifiedName}")
     }
 
@@ -277,43 +311,63 @@ internal object WinRtDelegateAbiMarshaller {
         else -> error("Unsupported outbound ABI double argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
-    private fun encodeHStringArgument(abiValue: Any?): NativePointer = when (abiValue) {
-        null -> NativeInterop.nullPointer
-        is NativePointer -> abiValue
+    private fun encodeHStringArgument(
+        abiValue: Any?,
+        cleanup: MutableList<() -> Unit>? = null,
+    ): RawAddress = when (abiValue) {
+        null -> PlatformAbi.nullPointer
+        is RawAddress -> abiValue
         is HString -> abiValue.handle
         is ReferencedHString -> abiValue.handle
+        is String -> {
+            check(cleanup != null) {
+                "Unsupported outbound ABI HSTRING argument: ${abiValue::class.qualifiedName}"
+            }
+            HString.create(abiValue).also { hstring ->
+                cleanup += { hstring.close() }
+            }.handle
+        }
         else -> error("Unsupported outbound ABI HSTRING argument: ${abiValue::class.qualifiedName}")
     }
 
-    private fun encodeHStringValue(abiValue: Any?): NativePointer = when (abiValue) {
-        null -> NativeInterop.nullPointer
+    private fun encodeHStringValue(abiValue: Any?): RawAddress = when (abiValue) {
+        null -> PlatformAbi.nullPointer
         is String -> HString.create(abiValue).handle
         is HString -> abiValue.handle
         is ReferencedHString -> abiValue.handle
-        is NativePointer -> abiValue
+        is RawAddress -> abiValue
         else -> error("Unsupported outbound ABI HSTRING return value: ${abiValue::class.qualifiedName}")
     }
 
-    private fun layoutFor(kind: WinRtDelegateValueKind): NativeValueLayout =
+    private fun abiKindFor(kind: WinRtDelegateValueKind): ComAbiValueKind =
         when (kind) {
             WinRtDelegateValueKind.UNIT -> error("UNIT does not have an ABI layout.")
             WinRtDelegateValueKind.OBJECT,
             WinRtDelegateValueKind.HSTRING,
             WinRtDelegateValueKind.IUNKNOWN,
             WinRtDelegateValueKind.IINSPECTABLE,
-            -> NativeValueLayout.ADDRESS
+            -> ComAbiValueKind.Pointer
 
             WinRtDelegateValueKind.BOOLEAN ->
-                NativeValueLayout.JAVA_BYTE
+                ComAbiValueKind.Int8
 
             WinRtDelegateValueKind.INT32,
             WinRtDelegateValueKind.UINT32,
-            -> NativeValueLayout.JAVA_INT
+            -> ComAbiValueKind.Int32
 
             WinRtDelegateValueKind.INT64 ->
-                NativeValueLayout.JAVA_LONG
+                ComAbiValueKind.Int64
 
             WinRtDelegateValueKind.DOUBLE ->
-                NativeValueLayout.JAVA_DOUBLE
+                ComAbiValueKind.Double
         }
+}
+
+internal class EncodedDelegateArguments(
+    val values: List<Any?>,
+    private val cleanup: List<() -> Unit>,
+) : AutoCloseable {
+    override fun close() {
+        cleanup.asReversed().forEach { it() }
+    }
 }

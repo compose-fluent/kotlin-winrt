@@ -5,11 +5,11 @@ object BooleanMarshaller {
 
     fun fromAbi(value: Byte): Boolean = value.toInt() != 0
 
-    fun copyTo(value: Boolean, destination: NativePointer) {
-        NativeInterop.writeInt8(destination, toAbi(value))
+    fun copyTo(value: Boolean, destination: RawAddress) {
+        PlatformAbi.writeInt8(destination, toAbi(value))
     }
 
-    fun readFrom(source: NativePointer): Boolean = fromAbi(NativeInterop.readInt8(source))
+    fun readFrom(source: RawAddress): Boolean = fromAbi(PlatformAbi.readInt8(source))
 }
 
 object CharMarshaller {
@@ -17,17 +17,17 @@ object CharMarshaller {
 
     fun fromAbi(value: Short): Char = value.toInt().toChar()
 
-    fun copyTo(value: Char, destination: NativePointer) {
-        NativeInterop.writeChar16(destination, value)
+    fun copyTo(value: Char, destination: RawAddress) {
+        PlatformAbi.writeChar16(destination, value)
     }
 
-    fun readFrom(source: NativePointer): Char = NativeInterop.readChar16(source)
+    fun readFrom(source: RawAddress): Char = PlatformAbi.readChar16(source)
 }
 
 object GuidMarshaller {
-    fun copyTo(value: Guid, destination: NativePointer) {
+    fun copyTo(value: Guid, destination: RawAddress) {
         value.writeTo(destination)
     }
 
-    fun readFrom(source: NativePointer): Guid = Guid.readFrom(source)
+    fun readFrom(source: RawAddress): Guid = Guid.readFrom(source)
 }

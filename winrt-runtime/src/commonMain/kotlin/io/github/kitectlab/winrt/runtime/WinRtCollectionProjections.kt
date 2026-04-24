@@ -55,13 +55,9 @@ object WinRtIterableProjection {
                     interfaceId = iterableInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as NativePointer
+                            val resultOut = rawArgs[0] as RawAddress
                             resultOut.writeReturnedPointer(
                                 WinRtIteratorProjection.detachReference(managed.iterator(), elementAdapter),
                             )
@@ -75,7 +71,7 @@ object WinRtIterableProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, iterableInterfaceId(elementAdapter))
 
-        fun detachReference(): NativePointer = host.detachReference(iterableInterfaceId(elementAdapter))
+        fun detachReference(): RawAddress = host.detachReference(iterableInterfaceId(elementAdapter))
     }
 
     fun <T> createMarshaler(
@@ -92,19 +88,19 @@ object WinRtIterableProjection {
     fun <T> fromManaged(
         value: Iterable<T>?,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             borrowedProjectionAbi(value, iterableTypeHandle(elementAdapter))
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
     fun <T> fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): FromAbiHelper<T>? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
@@ -180,51 +176,33 @@ object WinRtIteratorProjection {
                     interfaceId = iteratorInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as NativePointer
+                            val resultOut = rawArgs[0] as RawAddress
                             val current = state.currentOrNull()
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(current, elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            (rawArgs[0] as NativePointer).writeBoolean(state.hasCurrent)
+                            (rawArgs[0] as RawAddress).writeBoolean(state.hasCurrent)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             state.moveNext()
-                            (rawArgs[0] as NativePointer).writeBoolean(state.hasCurrent)
+                            (rawArgs[0] as RawAddress).writeBoolean(state.hasCurrent)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val capacity = rawArgs[0] as Int
-                            val itemsOut = rawArgs[1] as NativePointer
-                            val countOut = rawArgs[2] as NativePointer
+                            val itemsOut = rawArgs[1] as RawAddress
+                            val countOut = rawArgs[2] as RawAddress
                             val written = state.getMany(capacity)
                             itemsOut.writeManagedValues(written, elementAdapter)
                             countOut.writeUInt32(written.size.toUInt())
@@ -238,13 +216,13 @@ object WinRtIteratorProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, iteratorInterfaceId(elementAdapter))
 
-        fun detachReference(): NativePointer = host.detachReference(iteratorInterfaceId(elementAdapter))
+        fun detachReference(): RawAddress = host.detachReference(iteratorInterfaceId(elementAdapter))
     }
 
     internal fun <T> detachReference(
         managed: Iterator<T>,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): NativePointer = ToAbiHelper(managed, elementAdapter).detachReference()
+    ): RawAddress = ToAbiHelper(managed, elementAdapter).detachReference()
 
     private class IteratorState<T>(
         managed: Iterator<T>,
@@ -294,7 +272,7 @@ object WinRtReadOnlyListProjection {
         private val adapter by lazy {
             WinRtVectorViewListAdapter(
                 vectorView = WinRtVectorViewReference(
-                    vectorView.pointer,
+                    vectorView.pointer.asRawAddress(),
                     vectorView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -326,61 +304,44 @@ object WinRtReadOnlyListProjection {
                     interfaceId = vectorViewInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val resultOut = rawArgs[1] as NativePointer
+                            val resultOut = rawArgs[1] as RawAddress
                             val value = managed.getOrNull(index.toInt())
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as RawAddress).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val value = decodeBorrowedValue(rawArgs[0] as NativePointer, elementAdapter)
-                            val indexOut = rawArgs[1] as NativePointer
-                            val foundOut = rawArgs[2] as NativePointer
+                            val value = decodeBorrowedValue(rawArgs[0] as RawAddress, elementAdapter)
+                            val indexOut = rawArgs[1] as RawAddress
+                            val foundOut = rawArgs[2] as RawAddress
                             val index = managed.indexOf(value)
                             foundOut.writeBoolean(index >= 0)
                             indexOut.writeUInt32(if (index >= 0) index.toUInt() else 0u)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
+                            signature = ComMethodSignature.of(
+                                ComAbiValueKind.Int32,
+                                ComAbiValueKind.Int32,
+                                ComAbiValueKind.Pointer,
+                                ComAbiValueKind.Pointer,
                             ),
                         ) { rawArgs ->
                             val startIndex = (rawArgs[0] as Int).toUInt()
                             val capacity = rawArgs[1] as Int
-                            val itemsOut = rawArgs[2] as NativePointer
-                            val countOut = rawArgs[3] as NativePointer
+                            val itemsOut = rawArgs[2] as RawAddress
+                            val countOut = rawArgs[3] as RawAddress
                             val written = managed.drop(startIndex.toInt()).take(capacity)
                             itemsOut.writeManagedValues(written, elementAdapter)
                             countOut.writeUInt32(written.size.toUInt())
@@ -394,7 +355,7 @@ object WinRtReadOnlyListProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, vectorViewInterfaceId(elementAdapter))
 
-        fun detachReference(): NativePointer = host.detachReference(vectorViewInterfaceId(elementAdapter))
+        fun detachReference(): RawAddress = host.detachReference(vectorViewInterfaceId(elementAdapter))
     }
 
     fun <T> createMarshaler(
@@ -411,19 +372,19 @@ object WinRtReadOnlyListProjection {
     fun <T> fromManaged(
         value: List<T>?,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             borrowedProjectionAbi(value, vectorViewTypeHandle(elementAdapter))
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
     fun <T> fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): FromAbiHelper<T>? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
@@ -447,7 +408,7 @@ object WinRtListProjection {
         private val adapter by lazy {
             WinRtVectorListAdapter(
                 vector = WinRtVectorReference(
-                    vector.pointer,
+                    vector.pointer.asRawAddress(),
                     vector.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -492,70 +453,46 @@ object WinRtListProjection {
                     interfaceId = vectorInterfaceId(elementAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val resultOut = rawArgs[1] as NativePointer
+                            val resultOut = rawArgs[1] as RawAddress
                             val value = managed.getOrNull(index.toInt())
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as RawAddress).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as NativePointer
+                            val resultOut = rawArgs[0] as RawAddress
                             resultOut.writeReturnedPointer(
                                 WinRtReadOnlyListProjection.ToAbiHelper(managed.toList(), elementAdapter).detachReference(),
                             )
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val value = decodeBorrowedValue(rawArgs[0] as NativePointer, elementAdapter)
-                            val indexOut = rawArgs[1] as NativePointer
-                            val foundOut = rawArgs[2] as NativePointer
+                            val value = decodeBorrowedValue(rawArgs[0] as RawAddress, elementAdapter)
+                            val indexOut = rawArgs[1] as RawAddress
+                            val foundOut = rawArgs[2] as RawAddress
                             val index = managed.indexOf(value)
                             foundOut.writeBoolean(index >= 0)
                             indexOut.writeUInt32(if (index >= 0) index.toUInt() else 0u)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val value = decodeBorrowedValue(rawArgs[1] as NativePointer, elementAdapter)
+                            val value = decodeBorrowedValue(rawArgs[1] as RawAddress, elementAdapter)
                             if (index.toInt() !in managed.indices) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -563,15 +500,10 @@ object WinRtListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
-                            val value = decodeBorrowedValue(rawArgs[1] as NativePointer, elementAdapter)
+                            val value = decodeBorrowedValue(rawArgs[1] as RawAddress, elementAdapter)
                             if (index.toInt() > managed.size) {
                                 return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             }
@@ -579,11 +511,7 @@ object WinRtListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32),
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
                             if (index.toInt() !in managed.indices) {
@@ -593,20 +521,13 @@ object WinRtListProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            managed.add(decodeBorrowedValue(rawArgs[0] as NativePointer, elementAdapter))
+                            managed.add(decodeBorrowedValue(rawArgs[0] as RawAddress, elementAdapter))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(),
                         ) {
                             if (managed.isEmpty()) {
                                 KnownHResults.E_BOUNDS.value
@@ -616,47 +537,37 @@ object WinRtListProjection {
                             }
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(),
                         ) {
                             managed.clear()
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
+                            signature = ComMethodSignature.of(
+                                ComAbiValueKind.Int32,
+                                ComAbiValueKind.Int32,
+                                ComAbiValueKind.Pointer,
+                                ComAbiValueKind.Pointer,
                             ),
                         ) { rawArgs ->
                             val startIndex = (rawArgs[0] as Int).toUInt()
                             val capacity = rawArgs[1] as Int
-                            val itemsOut = rawArgs[2] as NativePointer
-                            val countOut = rawArgs[3] as NativePointer
+                            val itemsOut = rawArgs[2] as RawAddress
+                            val countOut = rawArgs[3] as RawAddress
                             val written = managed.drop(startIndex.toInt()).take(capacity)
                             itemsOut.writeManagedValues(written, elementAdapter)
                             countOut.writeUInt32(written.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val size = rawArgs[0] as Int
-                            val itemsIn = rawArgs[1] as NativePointer
+                            val itemsIn = rawArgs[1] as RawAddress
                             managed.clear()
                             repeat(size) { index ->
                                 managed += decodeBorrowedValue(
-                                    NativeInterop.readPointerAt(itemsIn, index),
+                                    PlatformAbi.readPointerAt(itemsIn, index),
                                     elementAdapter,
                                 )
                             }
@@ -670,7 +581,7 @@ object WinRtListProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, vectorInterfaceId(elementAdapter))
 
-        fun detachReference(): NativePointer = host.detachReference(vectorInterfaceId(elementAdapter))
+        fun detachReference(): RawAddress = host.detachReference(vectorInterfaceId(elementAdapter))
     }
 
     fun <T> createMarshaler(
@@ -687,19 +598,19 @@ object WinRtListProjection {
     fun <T> fromManaged(
         value: MutableList<T>?,
         elementAdapter: WinRtReferenceValueAdapter<T>,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             borrowedProjectionAbi(value, vectorTypeHandle(elementAdapter))
                 ?: ToAbiHelper(value, elementAdapter).detachReference()
         }
 
     fun <T> fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         elementAdapter: WinRtReferenceValueAdapter<T>,
     ): FromAbiHelper<T>? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
@@ -724,7 +635,7 @@ object WinRtReadOnlyDictionaryProjection {
         private val adapter by lazy {
             WinRtMapViewAdapter(
                 mapView = WinRtMapViewReference(
-                    mapView.pointer,
+                    mapView.pointer.asRawAddress(),
                     mapView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -764,52 +675,33 @@ object WinRtReadOnlyDictionaryProjection {
                     interfaceId = mapViewInterfaceId(keyAdapter, valueAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
-                            val resultOut = rawArgs[1] as NativePointer
+                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val resultOut = rawArgs[1] as RawAddress
                             val value = managed[key]
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, valueAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as RawAddress).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
-                            (rawArgs[1] as NativePointer).writeBoolean(managed.containsKey(key))
+                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            (rawArgs[1] as RawAddress).writeBoolean(managed.containsKey(key))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val firstOut = rawArgs[0] as NativePointer
-                            val secondOut = rawArgs[1] as NativePointer
+                            val firstOut = rawArgs[0] as RawAddress
+                            val secondOut = rawArgs[1] as RawAddress
                             val entries = managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }
                             val midpoint = entries.size / 2
                             val first = entries.take(midpoint).associate { it.key to it.value }
@@ -830,7 +722,7 @@ object WinRtReadOnlyDictionaryProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, mapViewInterfaceId(keyAdapter, valueAdapter))
 
-        fun detachReference(): NativePointer = host.detachReference(mapViewInterfaceId(keyAdapter, valueAdapter))
+        fun detachReference(): RawAddress = host.detachReference(mapViewInterfaceId(keyAdapter, valueAdapter))
     }
 
     fun <K, V> createMarshaler(
@@ -849,20 +741,20 @@ object WinRtReadOnlyDictionaryProjection {
         value: Map<K, V>?,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             borrowedProjectionAbi(value, mapViewTypeHandle(keyAdapter, valueAdapter))
                 ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
         }
 
     fun <K, V> fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
     ): FromAbiHelper<K, V>? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
@@ -888,7 +780,7 @@ object WinRtDictionaryProjection {
         private val adapter by lazy {
             WinRtMapAdapter(
                 map = WinRtMapReference(
-                    map.pointer,
+                    map.pointer.asRawAddress(),
                     map.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
@@ -936,50 +828,32 @@ object WinRtDictionaryProjection {
                     interfaceId = mapInterfaceId(keyAdapter, valueAdapter),
                     methods = listOf(
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
-                            val resultOut = rawArgs[1] as NativePointer
+                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val resultOut = rawArgs[1] as RawAddress
                             val value = managed[key]
                                 ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
                             resultOut.writeManagedValue(value, valueAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            (rawArgs[0] as NativePointer).writeUInt32(managed.size.toUInt())
+                            (rawArgs[0] as RawAddress).writeUInt32(managed.size.toUInt())
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
-                            (rawArgs[1] as NativePointer).writeBoolean(managed.containsKey(key))
+                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            (rawArgs[1] as RawAddress).writeBoolean(managed.containsKey(key))
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val resultOut = rawArgs[0] as NativePointer
+                            val resultOut = rawArgs[0] as RawAddress
                             resultOut.writeReturnedPointer(
                                 WinRtReadOnlyDictionaryProjection.ToAbiHelper(
                                     managed.toMap(),
@@ -990,28 +864,18 @@ object WinRtDictionaryProjection {
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
-                            val value = decodeBorrowedValue(rawArgs[1] as NativePointer, valueAdapter)
+                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
+                            val value = decodeBorrowedValue(rawArgs[1] as RawAddress, valueAdapter)
                             val replaced = managed.put(key, value) != null
-                            (rawArgs[2] as NativePointer).writeBoolean(replaced)
+                            (rawArgs[2] as RawAddress).writeBoolean(replaced)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
-                            val key = decodeBorrowedValue(rawArgs[0] as NativePointer, keyAdapter)
+                            val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
                             if (managed.remove(key) == null) {
                                 KnownHResults.E_BOUNDS.value
                             } else {
@@ -1019,10 +883,7 @@ object WinRtDictionaryProjection {
                             }
                         },
                         WinRtInspectableMethodDefinition(
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                            signature = ComMethodSignature.of(),
                         ) {
                             managed.clear()
                             KnownHResults.S_OK.value
@@ -1035,7 +896,7 @@ object WinRtDictionaryProjection {
         fun createMarshaler(): WinRtCollectionProjectionMarshaler =
             WinRtProjectionMarshaler.hosted(host, mapInterfaceId(keyAdapter, valueAdapter))
 
-        fun detachReference(): NativePointer = host.detachReference(mapInterfaceId(keyAdapter, valueAdapter))
+        fun detachReference(): RawAddress = host.detachReference(mapInterfaceId(keyAdapter, valueAdapter))
     }
 
     fun <K, V> createMarshaler(
@@ -1054,20 +915,20 @@ object WinRtDictionaryProjection {
         value: MutableMap<K, V>?,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
-    ): NativePointer =
+    ): RawAddress =
         if (value == null) {
-            NativeInterop.nullPointer
+            PlatformAbi.nullPointer
         } else {
             borrowedProjectionAbi(value, mapTypeHandle(keyAdapter, valueAdapter))
                 ?: ToAbiHelper(value, keyAdapter, valueAdapter).detachReference()
         }
 
     fun <K, V> fromAbi(
-        pointer: NativePointer,
+        pointer: RawAddress,
         keyAdapter: WinRtReferenceValueAdapter<K>,
         valueAdapter: WinRtReferenceValueAdapter<V>,
     ): FromAbiHelper<K, V>? =
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
             FromAbiHelper(
@@ -1145,7 +1006,7 @@ private fun <K, V> keyValuePairAdapter(
         projector = { reference ->
             val pair = reference?.let {
                 WinRtKeyValuePairReference(
-                    it.pointer,
+                    it.pointer.asRawAddress(),
                     keyValuePairInterfaceId(keyAdapter, valueAdapter),
                     preventReleaseOnDispose = true,
                 )
@@ -1167,23 +1028,15 @@ private fun <K, V> keyValuePairAdapter(
                         interfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                         methods = listOf(
                             WinRtInspectableMethodDefinition(
-                                descriptor = NativeFunctionDescriptor.of(
-                                    NativeValueLayout.JAVA_INT,
-                                    NativeValueLayout.ADDRESS,
-                                    NativeValueLayout.ADDRESS,
-                                ),
+                                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                             ) { rawArgs ->
-                                (rawArgs[0] as NativePointer).writeManagedValue(entry.key, keyAdapter)
+                                (rawArgs[0] as RawAddress).writeManagedValue(entry.key, keyAdapter)
                                 KnownHResults.S_OK.value
                             },
                             WinRtInspectableMethodDefinition(
-                                descriptor = NativeFunctionDescriptor.of(
-                                    NativeValueLayout.JAVA_INT,
-                                    NativeValueLayout.ADDRESS,
-                                    NativeValueLayout.ADDRESS,
-                                ),
+                                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                             ) { rawArgs ->
-                                (rawArgs[0] as NativePointer).writeManagedValue(entry.value, valueAdapter)
+                                (rawArgs[0] as RawAddress).writeManagedValue(entry.value, valueAdapter)
                                 KnownHResults.S_OK.value
                             },
                         ),
@@ -1205,13 +1058,9 @@ private fun iterableInterfaceDefinition(
         interfaceId = iterableInterfaceId(elementAdapter),
         methods = listOf(
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                val resultOut = rawArgs[0] as NativePointer
+                val resultOut = rawArgs[0] as RawAddress
                 @Suppress("UNCHECKED_CAST")
                 resultOut.writeReturnedPointer(
                     WinRtIteratorProjection.detachReference(
@@ -1234,44 +1083,44 @@ private fun <T> projectBorrowed(
 }
 
 private fun <T> decodeBorrowedValue(
-    pointer: NativePointer,
+    pointer: RawAddress,
     adapter: WinRtReferenceValueAdapter<T>,
 ): T =
     projectBorrowed(
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             null
         } else {
-            IUnknownReference(pointer, preventReleaseOnDispose = true)
+            IUnknownReference(pointer.asRawComPtr(), preventReleaseOnDispose = true)
         },
         adapter,
     )
 
-private fun NativePointer.writeReturnedPointer(pointer: NativePointer) {
-    NativeInterop.writePointer(this, pointer)
+private fun RawAddress.writeReturnedPointer(pointer: RawAddress) {
+    PlatformAbi.writePointer(this, pointer)
 }
 
-private fun <T> NativePointer.writeManagedValues(
+private fun <T> RawAddress.writeManagedValues(
     values: List<T>,
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
     values.forEachIndexed { index, value ->
-        NativeInterop.writePointerAt(this, index, adapter.marshaller(value).useAndGetRef())
+        PlatformAbi.writePointerAt(this, index, adapter.marshaller(value).useAndGetRef())
     }
 }
 
-private fun <T> NativePointer.writeManagedValue(
+private fun <T> RawAddress.writeManagedValue(
     value: T,
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
-    NativeInterop.writePointer(this, adapter.marshaller(value).useAndGetRef())
+    PlatformAbi.writePointer(this, adapter.marshaller(value).useAndGetRef())
 }
 
-private fun NativePointer.writeBoolean(value: Boolean) {
-    NativeInterop.writeInt8(this, if (value) 1 else 0)
+private fun RawAddress.writeBoolean(value: Boolean) {
+    PlatformAbi.writeInt8(this, if (value) 1 else 0)
 }
 
-private fun NativePointer.writeUInt32(value: UInt) {
-    NativeInterop.writeInt32(this, value.toInt())
+private fun RawAddress.writeUInt32(value: UInt) {
+    PlatformAbi.writeInt32(this, value.toInt())
 }
 
 

@@ -130,7 +130,7 @@ class ComWrappersSupportTest {
     private class ProjectedInspectableObject(
         pointer: NativePointer,
     ) : IWinRTObject {
-        override val nativeObject: ComObjectReference = IInspectableReference(pointer, IID.IInspectable)
+        override val nativeObject: ComObjectReference = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
     }
 
     private class TestRuntimeClassWrapper(

@@ -75,7 +75,7 @@ internal object FeatureSwitches {
         propertyName: String,
         defaultValue: Boolean,
     ): Boolean {
-        testOverrides[propertyName]?.let(::stateToBoolean)
+        testOverrides[propertyName]?.let { return stateToBoolean(it) }
         return stateToBoolean(
             cachedResults.computeIfAbsent(propertyName) { key ->
                 booleanState(platformReadFeatureSwitch(key) ?: defaultValue)

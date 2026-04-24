@@ -49,12 +49,12 @@ class MarshalersTest {
         val host = WinRtInspectableComObject.inspectableBox("payload", "test.RuntimeClass")
         val projected = TestProjectedWrapper(
             primaryTypeHandle = typeHandle,
-            inspectable = IInspectableReference(host.detachReference(IID.IInspectable), IID.IInspectable),
+            inspectable = IInspectableReference(host.detachReference(IID.IInspectable).asRawComPtr(), IID.IInspectable),
         )
 
         val reference = marshaler.createMarshaler(projected) as ComObjectReference
         try {
-            assertEquals(projected.nativeObject.pointer, marshaler.getAbi(reference))
+            assertEquals(projected.nativeObject.pointer.asRawAddress(), marshaler.getAbi(reference))
         } finally {
             marshaler.disposeMarshaler(reference)
             projected.nativeObject.close()

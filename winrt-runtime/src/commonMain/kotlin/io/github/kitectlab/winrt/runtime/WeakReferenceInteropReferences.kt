@@ -1,17 +1,12 @@
 package io.github.kitectlab.winrt.runtime
 
-internal val getWeakReferenceDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
+internal object WeakReferenceSourceVftblSlots {
+    const val GetWeakReference: Int = 3
+}
 
-internal val resolveWeakReferenceDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
+internal object WeakReferenceVftblSlots {
+    const val Resolve: Int = 3
+}
 
 /**
  * Shared ABI-facing weak-reference wrappers corresponding to the COM reference flow in
@@ -21,21 +16,18 @@ internal val resolveWeakReferenceDescriptor = NativeFunctionDescriptor.of(
  * raw `IWeakReferenceSource` / `IWeakReference` call shapes themselves are target-agnostic.
  */
 internal class WeakReferenceSourceReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = IID.IWeakReferenceSource,
-) : IUnknownReference(pointer, interfaceId) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun getWeakReference(): WeakReferenceReference? =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 3,
-                    descriptor = getWeakReferenceDescriptor,
-                    resultOut,
-                ),
+                ComVtableInvoker.invokeArgs(comPtr.raw, WeakReferenceSourceVftblSlots.GetWeakReference, resultOut),
             ).requireSuccess("IWeakReferenceSource.GetWeakReference")
-            val resolvedPointer = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(resolvedPointer)) {
+            val resolvedPointer = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(resolvedPointer)) {
                 null
             } else {
                 WeakReferenceReference(resolvedPointer, IID.IWeakReference)
@@ -45,17 +37,18 @@ internal class WeakReferenceSourceReference(
 
 internal fun ComObjectReference.tryGetWeakReference(): WeakReferenceReference? =
     tryQueryInterface(IID.IWeakReferenceSource)?.use { weakReferenceSource ->
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            weakReferenceSource.comPtr.throwIfDisposed()
             HResult(
-                weakReferenceSource.invokeAbi(
-                    slot = 3,
-                    descriptor = getWeakReferenceDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    weakReferenceSource.comPtr.raw,
+                    WeakReferenceSourceVftblSlots.GetWeakReference,
                     resultOut,
                 ),
             ).requireSuccess("IWeakReferenceSource.GetWeakReference")
-            val resolvedPointer = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(resolvedPointer)) {
+            val resolvedPointer = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(resolvedPointer)) {
                 null
             } else {
                 WeakReferenceReference(resolvedPointer, IID.IWeakReference)
@@ -64,27 +57,23 @@ internal fun ComObjectReference.tryGetWeakReference(): WeakReferenceReference? =
     }
 
 internal class WeakReferenceReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = IID.IWeakReference,
-) : IUnknownReference(pointer, interfaceId) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun resolve(interfaceId: Guid): IUnknownReference? =
-        NativeInterop.confinedScope().use { scope ->
-            val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val iidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 3,
-                    descriptor = resolveWeakReferenceDescriptor,
-                    iidMemory,
-                    resultOut,
-                ),
+                ComVtableInvoker.invokeArgs(comPtr.raw, WeakReferenceVftblSlots.Resolve, iidMemory, resultOut),
             ).requireSuccess("IWeakReference.Resolve")
-            val resolvedPointer = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(resolvedPointer)) {
+            val resolvedPointer = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(resolvedPointer)) {
                 null
             } else {
-                IUnknownReference(resolvedPointer, interfaceId)
+                IUnknownReference(resolvedPointer.asRawComPtr(), interfaceId)
             }
         }
 }

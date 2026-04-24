@@ -12,7 +12,7 @@ class ManagedReferenceHostSupportTest {
         ManagedReferenceHostSupport.detachReference(
             createReference = {
                 events += "create"
-                NativeInterop.nullPointer
+                PlatformAbi.nullPointer
             },
             releaseManagedReference = { events += "cleanup" },
         )
@@ -33,7 +33,7 @@ class ManagedReferenceHostSupportTest {
                 }
             },
             releaseManagedReference = { events += "cleanup" },
-            abiOf = { NativeInterop.nullPointer },
+            abiOf = { PlatformAbi.nullPointer },
         )
 
         lease.close()

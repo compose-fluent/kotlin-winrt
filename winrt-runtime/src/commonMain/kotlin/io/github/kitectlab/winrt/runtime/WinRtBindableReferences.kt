@@ -1,5 +1,21 @@
 package io.github.kitectlab.winrt.runtime
 
+private object WinRtBindableSlots {
+    const val IterableFirst: Int = 6
+    const val IteratorCurrent: Int = 6
+    const val IteratorHasCurrent: Int = 7
+    const val IteratorMoveNext: Int = 8
+    const val VectorGetAt: Int = 6
+    const val VectorSize: Int = 7
+    const val VectorViewIndexOf: Int = 8
+    const val VectorGetView: Int = 8
+    const val VectorIndexOf: Int = 9
+    const val VectorRemoveAt: Int = 12
+    const val VectorAppend: Int = 13
+    const val VectorRemoveAtEnd: Int = 14
+    const val VectorClear: Int = 15
+}
+
 /**
  * Runtime object-reference wrappers corresponding to `.cswinrt/src/WinRT.Runtime/Projections/Bindable.net5.cs`.
  *
@@ -7,23 +23,24 @@ package io.github.kitectlab.winrt.runtime
  * `winrt-runtime`, instead of pushing object marshalling policy into the generator.
  */
 open class WinRtBindableIterableReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableIterable,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun first(): WinRtBindableIteratorReference =
-        invokeObjectMethod(slot = 6).use { reference ->
-            createIteratorReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableIterator)
-        }
+        RawAbiResultSupport.objectResult(
+            invoke = { resultOut -> invokeSlot(WinRtBindableSlots.IterableFirst, resultOut) },
+            wrap = { pointer -> createIteratorReference(pointer, WinRtBindableInterfaceIds.IBindableIterator) },
+        )
 
     protected open fun createIteratorReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtBindableIteratorReference = WinRtBindableIteratorReference(pointer, interfaceId)
 }
 
 open class WinRtBindableIteratorReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableIterator,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -35,13 +52,20 @@ open class WinRtBindableIteratorReference(
             )
 
     open fun currentOrNull(): IUnknownReference? =
-        invokeNullableObjectMethod(slot = 6)?.use { reference ->
-            createUnknownReference(reference.getRefPointer(), IID.IInspectable)
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut -> invokeSlot(WinRtBindableSlots.IteratorCurrent, resultOut) },
+            wrap = { pointer -> createUnknownReference(pointer, IID.IInspectable) },
+        )
+
+    open fun hasCurrent(): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtBindableSlots.IteratorHasCurrent, resultOut)
         }
 
-    open fun hasCurrent(): Boolean = invokeBooleanMethod(slot = 7)
-
-    open fun moveNext(): Boolean = invokeBooleanMethod(slot = 8)
+    open fun moveNext(): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtBindableSlots.IteratorMoveNext, resultOut)
+        }
 
     /**
      * `.cswinrt` keeps GetMany for WinUI compatibility only and throws NotImplementedException when called.
@@ -56,13 +80,13 @@ open class WinRtBindableIteratorReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 }
 
 open class WinRtBindableVectorViewReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableVectorView,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -74,47 +98,39 @@ open class WinRtBindableVectorViewReference(
             )
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
-        invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.use { reference ->
-            createUnknownReference(reference.getRefPointer(), IID.IInspectable)
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut -> invokeSlot(WinRtBindableSlots.VectorGetAt, index, resultOut) },
+            wrap = { pointer -> createUnknownReference(pointer, IID.IInspectable) },
+        )
+
+    open fun size(): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeSlot(WinRtBindableSlots.VectorSize, resultOut)
         }
 
-    open fun size(): UInt = invokeUInt32Method(slot = 7)
-
-    open fun indexOf(valuePointer: NativePointer): Pair<Boolean, UInt> =
+    open fun indexOf(valuePointer: RawAddress): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
-            invokeAbi(
-                slot = 8,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                valuePointer,
-                indexOut,
-                foundOut,
-            )
+            invokeSlot(WinRtBindableSlots.VectorViewIndexOf, valuePointer, indexOut, foundOut)
         }
 
     open fun asIterable(): WinRtBindableIterableReference =
         queryInterface(WinRtBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
-            createIterableReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableIterable)
+            createIterableReference(reference.getRefPointer().asRawAddress(), WinRtBindableInterfaceIds.IBindableIterable)
         }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun createIterableReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtBindableIterableReference = WinRtBindableIterableReference(pointer, interfaceId)
 }
 
 open class WinRtBindableVectorReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = WinRtBindableInterfaceIds.IBindableVector,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -126,112 +142,81 @@ open class WinRtBindableVectorReference(
             )
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
-        invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.use { reference ->
-            createUnknownReference(reference.getRefPointer(), IID.IInspectable)
-        }
+        RawObjectAbiSupport.nullableObjectResult(
+            invoke = { resultOut -> invokeSlot(WinRtBindableSlots.VectorGetAt, index, resultOut) },
+            wrap = { pointer -> createUnknownReference(pointer, IID.IInspectable) },
+        )
 
-    open fun size(): UInt = invokeUInt32Method(slot = 7)
+    open fun size(): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeSlot(WinRtBindableSlots.VectorSize, resultOut)
+        }
 
     open fun getView(): WinRtBindableVectorViewReference =
-        invokeObjectMethod(slot = 8).use { reference ->
-            createVectorViewReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableVectorView)
-        }
+        RawAbiResultSupport.objectResult(
+            invoke = { resultOut -> invokeSlot(WinRtBindableSlots.VectorGetView, resultOut) },
+            wrap = { pointer -> createVectorViewReference(pointer, WinRtBindableInterfaceIds.IBindableVectorView) },
+        )
 
-    open fun indexOf(valuePointer: NativePointer): Pair<Boolean, UInt> =
+    open fun indexOf(valuePointer: RawAddress): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
-            invokeAbi(
-                slot = 9,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                valuePointer,
-                indexOut,
-                foundOut,
-            )
+            invokeSlot(WinRtBindableSlots.VectorIndexOf, valuePointer, indexOut, foundOut)
         }
 
-    open fun setAt(index: UInt, valuePointer: NativePointer) {
+    open fun setAt(index: UInt, valuePointer: RawAddress) {
         invokeNullableInspectableMethod(slot = 10, index = index, valuePointer = valuePointer)
     }
 
-    open fun insertAt(index: UInt, valuePointer: NativePointer) {
+    open fun insertAt(index: UInt, valuePointer: RawAddress) {
         invokeNullableInspectableMethod(slot = 11, index = index, valuePointer = valuePointer)
     }
 
     open fun removeAt(index: UInt) {
-        val hr = invokeAbi(
-            slot = 12,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.JAVA_INT,
-            ),
-            index.toInt(),
-        )
+        val hr = invokeSlot(WinRtBindableSlots.VectorRemoveAt, index)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
-    open fun append(valuePointer: NativePointer) {
-        val hr = invokeAbi(
-            slot = 13,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-            valuePointer,
-        )
+    open fun append(valuePointer: RawAddress) {
+        val hr = invokeSlot(WinRtBindableSlots.VectorAppend, valuePointer)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun removeAtEnd() {
-        invokeUnitMethod(slot = 14)
+        val hr = invokeSlot(WinRtBindableSlots.VectorRemoveAtEnd)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun clear() {
-        invokeUnitMethod(slot = 15)
+        val hr = invokeSlot(WinRtBindableSlots.VectorClear)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun asIterable(): WinRtBindableIterableReference =
         queryInterface(WinRtBindableInterfaceIds.IBindableIterable).getOrThrow().use { reference ->
-            createIterableReference(reference.getRefPointer(), WinRtBindableInterfaceIds.IBindableIterable)
+            createIterableReference(reference.getRefPointer().asRawAddress(), WinRtBindableInterfaceIds.IBindableIterable)
         }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun createVectorViewReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtBindableVectorViewReference = WinRtBindableVectorViewReference(pointer, interfaceId)
 
     protected open fun createIterableReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtBindableIterableReference = WinRtBindableIterableReference(pointer, interfaceId)
 
     private fun invokeNullableInspectableMethod(
         slot: Int,
         index: UInt,
-        valuePointer: NativePointer,
+        valuePointer: RawAddress,
     ) {
-        val hr = invokeAbi(
-            slot = slot,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-            ),
-            index.toInt(),
-            valuePointer,
-        )
+        val hr = invokeSlot(slot, index, valuePointer)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 }

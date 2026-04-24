@@ -106,7 +106,7 @@ private class FakeWinRtObject(
 private class FakeComObjectReference(
     interfaceId: Guid,
     private val queryResults: Map<Guid, ComObjectReference> = emptyMap(),
-) : ComObjectReference(pointer = allocatePointer(), interfaceId = interfaceId, preventReleaseOnDispose = true) {
+) : ComObjectReference(pointer = allocatePointer().asRawComPtr(), interfaceId = interfaceId, preventReleaseOnDispose = true) {
     private val queryCounts = ConcurrentHashMap<Guid, AtomicInteger>()
 
     override fun tryQueryInterface(requestedInterfaceId: Guid): ComObjectReference? {

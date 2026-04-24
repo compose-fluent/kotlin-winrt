@@ -80,12 +80,12 @@ class XamlSystemProjectionRuntimeTest {
         val dataErrors = WinRtDataErrorsChangedEventArgs("Field")
 
         ComWrappersSupport.createCCWForObject(propertyChanged).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer()) as WinRtPropertyChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRtPropertyChangedEventArgs
             assertEquals("Name", projected.propertyName)
         }
 
         ComWrappersSupport.createCCWForObject(collectionChanged).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer()) as WinRtNotifyCollectionChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRtNotifyCollectionChangedEventArgs
             assertEquals(WinRtNotifyCollectionChangedAction.Replace, projected.action)
             assertEquals(listOf("new"), projected.newItems)
             assertEquals(listOf("old"), projected.oldItems)
@@ -94,7 +94,7 @@ class XamlSystemProjectionRuntimeTest {
         }
 
         ComWrappersSupport.createCCWForObject(dataErrors).use { reference ->
-            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer()) as WinRtDataErrorsChangedEventArgs
+            val projected = ComWrappersSupport.createRcwForComObject(reference.getRefPointer().asRawAddress()) as WinRtDataErrorsChangedEventArgs
             assertEquals("Field", projected.propertyName)
         }
     }

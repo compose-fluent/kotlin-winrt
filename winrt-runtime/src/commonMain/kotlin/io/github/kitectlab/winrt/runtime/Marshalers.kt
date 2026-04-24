@@ -12,7 +12,7 @@ enum class WinRtAbiCategory {
 
 class WinRtAbiArray internal constructor(
     val length: Int,
-    val data: NativePointer,
+    val data: RawAddress,
     private val cleanup: (() -> Unit)? = null,
 ) : AutoCloseable {
     override fun close() {
@@ -26,16 +26,16 @@ class Marshaler<T> internal constructor(
     private val getAbiImpl: (Any?) -> Any?,
     private val fromAbiImpl: (Any?) -> T?,
     private val fromManagedImpl: (T?) -> Any?,
-    private val copyAbiImpl: (Any?, NativePointer) -> Unit,
-    private val copyManagedImpl: (T?, NativePointer) -> Unit,
+    private val copyAbiImpl: (Any?, RawAddress) -> Unit,
+    private val copyManagedImpl: (T?, RawAddress) -> Unit,
     private val disposeMarshalerImpl: (Any?) -> Unit,
     private val disposeAbiImpl: (Any?) -> Unit,
     private val createMarshalerArrayImpl: (Array<out T?>?) -> WinRtAbiArray?,
-    private val fromAbiArrayImpl: (Int, NativePointer) -> List<T?>?,
+    private val fromAbiArrayImpl: (Int, RawAddress) -> List<T?>?,
     private val fromManagedArrayImpl: (Array<out T?>?) -> WinRtAbiArray?,
-    private val copyManagedArrayImpl: (Array<out T?>?, NativePointer) -> Unit,
+    private val copyManagedArrayImpl: (Array<out T?>?, RawAddress) -> Unit,
     private val disposeMarshalerArrayImpl: (WinRtAbiArray?) -> Unit,
-    private val disposeAbiArrayImpl: (Int, NativePointer) -> Unit,
+    private val disposeAbiArrayImpl: (Int, RawAddress) -> Unit,
 ) {
     fun createMarshaler(value: T?): Any? = createMarshalerImpl(value)
 
@@ -45,11 +45,11 @@ class Marshaler<T> internal constructor(
 
     fun fromManaged(value: T?): Any? = fromManagedImpl(value)
 
-    fun copyAbi(value: Any?, destination: NativePointer) {
+    fun copyAbi(value: Any?, destination: RawAddress) {
         copyAbiImpl(value, destination)
     }
 
-    fun copyManaged(value: T?, destination: NativePointer) {
+    fun copyManaged(value: T?, destination: RawAddress) {
         copyManagedImpl(value, destination)
     }
 
@@ -63,11 +63,11 @@ class Marshaler<T> internal constructor(
 
     fun createMarshalerArray(values: Array<out T?>?): WinRtAbiArray? = createMarshalerArrayImpl(values)
 
-    fun fromAbiArray(length: Int, data: NativePointer): List<T?>? = fromAbiArrayImpl(length, data)
+    fun fromAbiArray(length: Int, data: RawAddress): List<T?>? = fromAbiArrayImpl(length, data)
 
     fun fromManagedArray(values: Array<out T?>?): WinRtAbiArray? = fromManagedArrayImpl(values)
 
-    fun copyManagedArray(values: Array<out T?>?, destination: NativePointer) {
+    fun copyManagedArray(values: Array<out T?>?, destination: RawAddress) {
         copyManagedArrayImpl(values, destination)
     }
 
@@ -75,7 +75,7 @@ class Marshaler<T> internal constructor(
         disposeMarshalerArrayImpl(array)
     }
 
-    fun disposeAbiArray(length: Int, data: NativePointer) {
+    fun disposeAbiArray(length: Int, data: RawAddress) {
         disposeAbiArrayImpl(length, data)
     }
 
@@ -132,11 +132,11 @@ object MarshalBlittable {
             when (abi) {
                 is Byte -> abi
                 is UByte -> abi.toByte()
-                is NativePointer -> NativeInterop.readInt8(abi)
+                is RawAddress -> PlatformAbi.readInt8(abi)
                 else -> error("Expected ABI Int8, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeInt8(destination, value) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt8(destination, value) },
     )
 
     fun uint8(): Marshaler<UByte> = scalar(
@@ -147,11 +147,11 @@ object MarshalBlittable {
             when (abi) {
                 is Byte -> abi.toUByte()
                 is UByte -> abi
-                is NativePointer -> NativeInterop.readInt8(abi).toUByte()
+                is RawAddress -> PlatformAbi.readInt8(abi).toUByte()
                 else -> error("Expected ABI UInt8, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeInt8(destination, value.toByte()) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt8(destination, value.toByte()) },
     )
 
     fun int16(): Marshaler<Short> = scalar(
@@ -162,11 +162,11 @@ object MarshalBlittable {
             when (abi) {
                 is Short -> abi
                 is UShort -> abi.toShort()
-                is NativePointer -> NativeInterop.readChar16(abi).code.toShort()
+                is RawAddress -> PlatformAbi.readChar16(abi).code.toShort()
                 else -> error("Expected ABI Int16, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeChar16(destination, value.toInt().toChar()) },
+        copyManaged = { value, destination -> PlatformAbi.writeChar16(destination, value.toInt().toChar()) },
     )
 
     fun uint16(): Marshaler<UShort> = scalar(
@@ -177,11 +177,11 @@ object MarshalBlittable {
             when (abi) {
                 is Short -> abi.toUShort()
                 is UShort -> abi
-                is NativePointer -> NativeInterop.readChar16(abi).code.toUShort()
+                is RawAddress -> PlatformAbi.readChar16(abi).code.toUShort()
                 else -> error("Expected ABI UInt16, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeChar16(destination, value.toInt().toChar()) },
+        copyManaged = { value, destination -> PlatformAbi.writeChar16(destination, value.toInt().toChar()) },
     )
 
     fun boolean(): Marshaler<Boolean> = scalar(
@@ -191,7 +191,7 @@ object MarshalBlittable {
         fromAbi = { abi ->
             when (abi) {
                 is Byte -> BooleanMarshaller.fromAbi(abi)
-                is NativePointer -> BooleanMarshaller.readFrom(abi)
+                is RawAddress -> BooleanMarshaller.readFrom(abi)
                 else -> error("Expected ABI Boolean byte, got '${abiTypeName(abi)}'.")
             }
         },
@@ -206,7 +206,7 @@ object MarshalBlittable {
             when (abi) {
                 is Short -> CharMarshaller.fromAbi(abi)
                 is Char -> abi
-                is NativePointer -> CharMarshaller.readFrom(abi)
+                is RawAddress -> CharMarshaller.readFrom(abi)
                 else -> error("Expected ABI char16, got '${abiTypeName(abi)}'.")
             }
         },
@@ -221,11 +221,11 @@ object MarshalBlittable {
             when (abi) {
                 is Int -> abi
                 is UInt -> abi.toInt()
-                is NativePointer -> NativeInterop.readInt32(abi)
+                is RawAddress -> PlatformAbi.readInt32(abi)
                 else -> error("Expected ABI Int32, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeInt32(destination, value) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt32(destination, value) },
     )
 
     fun uint32(): Marshaler<UInt> = scalar(
@@ -236,11 +236,11 @@ object MarshalBlittable {
             when (abi) {
                 is Int -> abi.toUInt()
                 is UInt -> abi
-                is NativePointer -> NativeInterop.readInt32(abi).toUInt()
+                is RawAddress -> PlatformAbi.readInt32(abi).toUInt()
                 else -> error("Expected ABI UInt32, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeInt32(destination, value.toInt()) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt32(destination, value.toInt()) },
     )
 
     fun int64(): Marshaler<Long> = scalar(
@@ -251,11 +251,11 @@ object MarshalBlittable {
             when (abi) {
                 is Long -> abi
                 is ULong -> abi.toLong()
-                is NativePointer -> NativeInterop.readInt64(abi)
+                is RawAddress -> PlatformAbi.readInt64(abi)
                 else -> error("Expected ABI Int64, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeInt64(destination, value) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt64(destination, value) },
     )
 
     fun uint64(): Marshaler<ULong> = scalar(
@@ -266,11 +266,11 @@ object MarshalBlittable {
             when (abi) {
                 is Long -> abi.toULong()
                 is ULong -> abi
-                is NativePointer -> NativeInterop.readInt64(abi).toULong()
+                is RawAddress -> PlatformAbi.readInt64(abi).toULong()
                 else -> error("Expected ABI UInt64, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeInt64(destination, value.toLong()) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt64(destination, value.toLong()) },
     )
 
     fun float32(): Marshaler<Float> = scalar(
@@ -280,11 +280,11 @@ object MarshalBlittable {
         fromAbi = { abi ->
             when (abi) {
                 is Float -> abi
-                is NativePointer -> NativeInterop.readFloat(abi)
+                is RawAddress -> PlatformAbi.readFloat(abi)
                 else -> error("Expected ABI Float32, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeFloat(destination, value) },
+        copyManaged = { value, destination -> PlatformAbi.writeFloat(destination, value) },
     )
 
     fun float64(): Marshaler<Double> = scalar(
@@ -294,11 +294,11 @@ object MarshalBlittable {
         fromAbi = { abi ->
             when (abi) {
                 is Double -> abi
-                is NativePointer -> NativeInterop.readDouble(abi)
+                is RawAddress -> PlatformAbi.readDouble(abi)
                 else -> error("Expected ABI Float64, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> NativeInterop.writeDouble(destination, value) },
+        copyManaged = { value, destination -> PlatformAbi.writeDouble(destination, value) },
     )
 
     fun guid(): Marshaler<Guid> = scalar(
@@ -308,7 +308,7 @@ object MarshalBlittable {
         fromAbi = { abi ->
             when (abi) {
                 is Guid -> abi
-                is NativePointer -> GuidMarshaller.readFrom(abi)
+                is RawAddress -> GuidMarshaller.readFrom(abi)
                 else -> error("Expected ABI GUID, got '${abiTypeName(abi)}'.")
             }
         },
@@ -321,7 +321,7 @@ object MarshalBlittable {
         abiKind: NativeStructScalarKind,
         toAbi: (T) -> ABI,
         fromAbi: (Any?) -> T,
-        copyManaged: (T, NativePointer) -> Unit,
+        copyManaged: (T, RawAddress) -> Unit,
     ): Marshaler<T> =
         Marshaler(
             abiCategory = category,
@@ -329,7 +329,7 @@ object MarshalBlittable {
             getAbiImpl = { value ->
                 when (value) {
                     null -> null
-                    is NativePointer -> fromAbi(value).let(toAbi)
+                    is RawAddress -> fromAbi(value).let(toAbi)
                     else -> toAbi(value as T)
                 }
             },
@@ -373,19 +373,19 @@ object MarshalString {
     fun marshaler(): Marshaler<String> =
         pointerMarshaler(
             category = WinRtAbiCategory.STRING,
-            nullFromAbi = { NativeStringMarshaller.fromAbi(NativeInterop.nullPointer) },
+            nullFromAbi = { NativeStringMarshaller.fromAbi(PlatformAbi.nullPointer) },
             createMarshaler = NativeStringMarshaller::createMarshaler,
             getAbiPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
+                    null -> PlatformAbi.nullPointer
                     is ReferencedHString -> NativeStringMarshaller.getAbi(value)
                     is HString -> NativeStringMarshaller.getAbi(value)
-                    is NativePointer -> value
+                    is RawAddress -> value
                     else -> error("Expected HSTRING marshaler, got '${abiTypeName(value)}'.")
                 }
             },
             fromAbiPointer = NativeStringMarshaller::fromAbi,
-            fromManagedPointer = { value -> NativeStringMarshaller.fromManaged(value)?.handle ?: NativeInterop.nullPointer },
+            fromManagedPointer = { value -> NativeStringMarshaller.fromManaged(value)?.handle ?: PlatformAbi.nullPointer },
             disposeMarshaler = { value ->
                 when (value) {
                     null -> Unit
@@ -416,9 +416,9 @@ object MarshalInterface {
             },
             getAbiPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
-                    is ComObjectReference -> value.pointer
-                    is NativePointer -> value
+                    null -> PlatformAbi.nullPointer
+                    is ComObjectReference -> value.pointer.asRawAddress()
+                    is RawAddress -> value
                     else -> error("Expected COM object reference marshaler, got '${abiTypeName(value)}'.")
                 }
             },
@@ -428,14 +428,14 @@ object MarshalInterface {
             },
             fromManagedPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
+                    null -> PlatformAbi.nullPointer
                     else -> ComWrappersSupport.createCCWForObject(value, typeHandle.interfaceId).useAndGetRef()
                 }
             },
             disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
             disposeAbiPointer = { pointer ->
-                if (!NativeInterop.isNull(pointer)) {
-                    IUnknownReference(pointer, typeHandle.interfaceId).close()
+                if (!PlatformAbi.isNull(pointer)) {
+                    IUnknownReference(pointer.asRawComPtr(), typeHandle.interfaceId).close()
                 }
             },
         )
@@ -458,9 +458,9 @@ object MarshalInspectable {
             },
             getAbiPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
-                    is ComObjectReference -> value.pointer
-                    is NativePointer -> value
+                    null -> PlatformAbi.nullPointer
+                    is ComObjectReference -> value.pointer.asRawAddress()
+                    is RawAddress -> value
                     else -> error("Expected inspectable marshaler, got '${abiTypeName(value)}'.")
                 }
             },
@@ -470,14 +470,14 @@ object MarshalInspectable {
             },
             fromManagedPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
+                    null -> PlatformAbi.nullPointer
                     else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
                 }
             },
             disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
             disposeAbiPointer = { pointer ->
-                if (!NativeInterop.isNull(pointer)) {
-                    IUnknownReference(pointer, IID.IInspectable).close()
+                if (!PlatformAbi.isNull(pointer)) {
+                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
                 }
             },
         )
@@ -495,9 +495,9 @@ object MarshalInspectable {
             },
             getAbiPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
-                    is ComObjectReference -> value.pointer
-                    is NativePointer -> value
+                    null -> PlatformAbi.nullPointer
+                    is ComObjectReference -> value.pointer.asRawAddress()
+                    is RawAddress -> value
                     else -> error("Expected inspectable marshaler, got '${abiTypeName(value)}'.")
                 }
             },
@@ -507,14 +507,14 @@ object MarshalInspectable {
             },
             fromManagedPointer = { value ->
                 when (value) {
-                    null -> NativeInterop.nullPointer
+                    null -> PlatformAbi.nullPointer
                     else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
                 }
             },
             disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
             disposeAbiPointer = { pointer ->
-                if (!NativeInterop.isNull(pointer)) {
-                    IUnknownReference(pointer, IID.IInspectable).close()
+                if (!PlatformAbi.isNull(pointer)) {
+                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
                 }
             },
         )
@@ -522,22 +522,22 @@ object MarshalInspectable {
 
 object MarshalDelegate {
     fun createMarshaler(value: WinRtDelegateReference?): WinRtDelegateReference? =
-        value?.let { WinRtDelegateReference.fromAbi(it.getRefPointer(), it.descriptor) }
+        value?.let { WinRtDelegateReference.fromAbi(it.getRefPointer().asRawAddress(), it.descriptor) }
 
-    fun getAbi(value: WinRtDelegateReference?): NativePointer = value?.pointer ?: NativeInterop.nullPointer
+    fun getAbi(value: WinRtDelegateReference?): RawAddress = value?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
 
-    fun fromAbi(pointer: NativePointer, descriptor: WinRtDelegateDescriptor): WinRtDelegateReference? =
+    fun fromAbi(pointer: RawAddress, descriptor: WinRtDelegateDescriptor): WinRtDelegateReference? =
         WinRtDelegateReference.fromAbi(pointer, descriptor)
 
-    fun fromManaged(value: WinRtDelegateHandle?): NativePointer =
-        value?.createReference()?.useAndGetRef() ?: NativeInterop.nullPointer
+    fun fromManaged(value: WinRtDelegateHandle?): RawAddress =
+        value?.createReference()?.useAndGetRef() ?: PlatformAbi.nullPointer
 
     fun disposeMarshaler(value: WinRtDelegateReference?) {
         value?.close()
     }
 
-    fun disposeAbi(pointer: NativePointer, descriptor: WinRtDelegateDescriptor) {
-        if (NativeInterop.isNull(pointer)) {
+    fun disposeAbi(pointer: RawAddress, descriptor: WinRtDelegateDescriptor) {
+        if (PlatformAbi.isNull(pointer)) {
             return
         }
         if (!WinRtDelegateComObject.releaseLocalReference(pointer)) {
@@ -562,7 +562,7 @@ object MarshalDelegate {
 
     fun fromAbiArray(
         length: Int,
-        data: NativePointer,
+        data: RawAddress,
         descriptor: WinRtDelegateDescriptor,
     ): List<WinRtDelegateReference?>? =
         decodePointerArray(
@@ -573,7 +573,7 @@ object MarshalDelegate {
 
     fun disposeAbiArray(
         length: Int,
-        data: NativePointer,
+        data: RawAddress,
         descriptor: WinRtDelegateDescriptor,
     ) {
         disposePointerArray(length, data) { pointer ->
@@ -586,11 +586,11 @@ private fun <T> pointerMarshaler(
     category: WinRtAbiCategory,
     nullFromAbi: () -> T? = { null },
     createMarshaler: (T?) -> Any?,
-    getAbiPointer: (Any?) -> NativePointer,
-    fromAbiPointer: (NativePointer) -> T?,
-    fromManagedPointer: (T?) -> NativePointer,
+    getAbiPointer: (Any?) -> RawAddress,
+    fromAbiPointer: (RawAddress) -> T?,
+    fromManagedPointer: (T?) -> RawAddress,
     disposeMarshaler: (Any?) -> Unit,
-    disposeAbiPointer: (NativePointer) -> Unit,
+    disposeAbiPointer: (RawAddress) -> Unit,
 ): Marshaler<T> =
     Marshaler(
         abiCategory = category,
@@ -598,7 +598,7 @@ private fun <T> pointerMarshaler(
         getAbiImpl = { value -> getAbiPointer(value) },
         fromAbiImpl = { abi ->
             val pointer = abiPointer(abi)
-            if (NativeInterop.isNull(pointer)) {
+            if (PlatformAbi.isNull(pointer)) {
                 nullFromAbi()
             } else {
                 fromAbiPointer(pointer)
@@ -606,10 +606,10 @@ private fun <T> pointerMarshaler(
         },
         fromManagedImpl = { value -> fromManagedPointer(value) },
         copyAbiImpl = { abi, destination ->
-            NativeInterop.writePointer(destination, abiPointer(abi))
+            PlatformAbi.writePointer(destination, abiPointer(abi))
         },
         copyManagedImpl = { value, destination ->
-            NativeInterop.writePointer(destination, fromManagedPointer(value))
+            PlatformAbi.writePointer(destination, fromManagedPointer(value))
         },
         disposeMarshalerImpl = disposeMarshaler,
         disposeAbiImpl = { abi -> disposeAbiPointer(abiPointer(abi)) },
@@ -634,16 +634,16 @@ private fun <T> pointerMarshaler(
 private fun <T> createBlittableArray(
     values: Array<out T?>?,
     abiKind: NativeStructScalarKind,
-    copyManaged: (T, NativePointer) -> Unit,
+    copyManaged: (T, RawAddress) -> Unit,
 ): WinRtAbiArray? {
     if (values == null) {
         return null
     }
 
-    val scope = NativeInterop.confinedScope()
+    val scope = PlatformAbi.confinedScope()
     return try {
         val data =
-            NativeInterop.allocateBytes(
+            PlatformAbi.allocateBytes(
                 scope = scope,
                 sizeBytes = abiKind.sizeBytes * values.size.toLong(),
                 alignmentBytes = abiKind.alignmentBytes,
@@ -665,11 +665,11 @@ private fun <T> createBlittableArray(
 
 private fun <T> decodeBlittableArray(
     length: Int,
-    data: NativePointer,
+    data: RawAddress,
     abiKind: NativeStructScalarKind,
     fromAbi: (Any?) -> T,
 ): List<T?>? {
-    if (NativeInterop.isNull(data)) {
+    if (PlatformAbi.isNull(data)) {
         return null
     }
     return List(length) { index ->
@@ -679,9 +679,9 @@ private fun <T> decodeBlittableArray(
 
 private fun <T> copyBlittableArray(
     values: Array<out T?>?,
-    destination: NativePointer,
+    destination: RawAddress,
     abiKind: NativeStructScalarKind,
-    copyManaged: (T, NativePointer) -> Unit,
+    copyManaged: (T, RawAddress) -> Unit,
 ) {
     if (values == null) {
         return
@@ -699,21 +699,21 @@ private fun <T> copyBlittableArray(
 private fun <T> createPointerArrayFromMarshallers(
     values: Array<out T?>?,
     createMarshaler: (T?) -> Any?,
-    getAbiPointer: (Any?) -> NativePointer,
+    getAbiPointer: (Any?) -> RawAddress,
     disposeMarshaler: (Any?) -> Unit,
 ): WinRtAbiArray? {
     if (values == null) {
         return null
     }
 
-    val scope = NativeInterop.confinedScope()
+    val scope = PlatformAbi.confinedScope()
     val marshalers = mutableListOf<Any?>()
     return try {
-        val data = NativeInterop.allocatePointerArray(scope, values.size)
+        val data = PlatformAbi.allocatePointerArray(scope, values.size)
         values.forEachIndexed { index, value ->
             val marshaler = createMarshaler(value)
             marshalers += marshaler
-            NativeInterop.writePointerAt(data, index, getAbiPointer(marshaler))
+            PlatformAbi.writePointerAt(data, index, getAbiPointer(marshaler))
         }
         WinRtAbiArray(
             length = values.size,
@@ -731,21 +731,21 @@ private fun <T> createPointerArrayFromMarshallers(
 
 private fun <T> createPointerArrayFromAbiValues(
     values: Array<out T?>?,
-    fromManagedPointer: (T?) -> NativePointer,
-    disposeAbiPointer: (NativePointer) -> Unit,
+    fromManagedPointer: (T?) -> RawAddress,
+    disposeAbiPointer: (RawAddress) -> Unit,
 ): WinRtAbiArray? {
     if (values == null) {
         return null
     }
 
-    val scope = NativeInterop.confinedScope()
-    val ownedPointers = mutableListOf<NativePointer>()
+    val scope = PlatformAbi.confinedScope()
+    val ownedPointers = mutableListOf<RawAddress>()
     return try {
-        val data = NativeInterop.allocatePointerArray(scope, values.size)
+        val data = PlatformAbi.allocatePointerArray(scope, values.size)
         values.forEachIndexed { index, value ->
             val pointer = fromManagedPointer(value)
             ownedPointers += pointer
-            NativeInterop.writePointerAt(data, index, pointer)
+            PlatformAbi.writePointerAt(data, index, pointer)
         }
         WinRtAbiArray(
             length = values.size,
@@ -763,16 +763,16 @@ private fun <T> createPointerArrayFromAbiValues(
 
 private fun <T> decodePointerArray(
     length: Int,
-    data: NativePointer,
-    fromAbiPointer: (NativePointer) -> T?,
+    data: RawAddress,
+    fromAbiPointer: (RawAddress) -> T?,
     nullFromAbi: () -> T? = { null },
 ): List<T?>? {
-    if (NativeInterop.isNull(data)) {
+    if (PlatformAbi.isNull(data)) {
         return null
     }
     return List(length) { index ->
-        val pointer = NativeInterop.readPointerAt(data, index)
-        if (NativeInterop.isNull(pointer)) {
+        val pointer = PlatformAbi.readPointerAt(data, index)
+        if (PlatformAbi.isNull(pointer)) {
             nullFromAbi()
         } else {
             fromAbiPointer(pointer)
@@ -782,20 +782,20 @@ private fun <T> decodePointerArray(
 
 private fun <T> copyManagedPointerArray(
     values: Array<out T?>?,
-    destination: NativePointer,
-    fromManagedPointer: (T?) -> NativePointer,
-    disposeAbiPointer: (NativePointer) -> Unit,
+    destination: RawAddress,
+    fromManagedPointer: (T?) -> RawAddress,
+    disposeAbiPointer: (RawAddress) -> Unit,
 ) {
     if (values == null) {
         return
     }
 
-    val createdPointers = mutableListOf<NativePointer>()
+    val createdPointers = mutableListOf<RawAddress>()
     try {
         values.forEachIndexed { index, value ->
             val pointer = fromManagedPointer(value)
             createdPointers += pointer
-            NativeInterop.writePointerAt(destination, index, pointer)
+            PlatformAbi.writePointerAt(destination, index, pointer)
         }
     } catch (error: Throwable) {
         createdPointers.forEach(disposeAbiPointer)
@@ -805,31 +805,32 @@ private fun <T> copyManagedPointerArray(
 
 private fun disposePointerArray(
     length: Int,
-    data: NativePointer,
-    disposeAbiPointer: (NativePointer) -> Unit,
+    data: RawAddress,
+    disposeAbiPointer: (RawAddress) -> Unit,
 ) {
-    if (NativeInterop.isNull(data)) {
+    if (PlatformAbi.isNull(data)) {
         return
     }
 
     repeat(length) { index ->
-        val pointer = NativeInterop.readPointerAt(data, index)
-        if (!NativeInterop.isNull(pointer)) {
+        val pointer = PlatformAbi.readPointerAt(data, index)
+        if (!PlatformAbi.isNull(pointer)) {
             disposeAbiPointer(pointer)
         }
     }
 }
 
-private fun NativePointer.elementSlice(index: Int, elementSize: Long): NativePointer =
-    NativeInterop.slice(this, index.toLong() * elementSize, elementSize)
+private fun RawAddress.elementSlice(index: Int, elementSize: Long): RawAddress =
+    PlatformAbi.slice(this, index.toLong() * elementSize, elementSize)
 
-private fun abiPointer(value: Any?): NativePointer =
+private fun abiPointer(value: Any?): RawAddress =
     when (value) {
-        null -> NativeInterop.nullPointer
-        is NativePointer -> value
+        null -> PlatformAbi.nullPointer
+        is RawAddress -> value
+        is RawComPtr -> value.asRawAddress()
         is ReferencedHString -> value.handle
         is HString -> value.handle
-        is ComObjectReference -> value.pointer
+        is ComObjectReference -> value.pointer.asRawAddress()
         else -> error("Expected pointer-backed ABI value, got '${abiTypeName(value)}'.")
     }
 
@@ -845,17 +846,17 @@ private fun <T : Any> KClass<T>.castProjected(value: Any?): T {
 
 private fun writeZeroValue(
     abiKind: NativeStructScalarKind,
-    destination: NativePointer,
+    destination: RawAddress,
 ) {
     when (abiKind) {
-        NativeStructScalarKind.ADDRESS -> NativeInterop.writePointer(destination, NativeInterop.nullPointer)
-        NativeStructScalarKind.INT8 -> NativeInterop.writeInt8(destination, 0)
-        NativeStructScalarKind.INT32 -> NativeInterop.writeInt32(destination, 0)
-        NativeStructScalarKind.INT64 -> NativeInterop.writeInt64(destination, 0L)
-        NativeStructScalarKind.DOUBLE -> NativeInterop.writeDouble(destination, 0.0)
-        NativeStructScalarKind.FLOAT32 -> NativeInterop.writeFloat(destination, 0f)
-        NativeStructScalarKind.CHAR16 -> NativeInterop.writeChar16(destination, '\u0000')
-        NativeStructScalarKind.GUID -> NativeInterop.writeGuid(destination, ZERO_GUID)
+        NativeStructScalarKind.ADDRESS -> PlatformAbi.writePointer(destination, PlatformAbi.nullPointer)
+        NativeStructScalarKind.INT8 -> PlatformAbi.writeInt8(destination, 0)
+        NativeStructScalarKind.INT32 -> PlatformAbi.writeInt32(destination, 0)
+        NativeStructScalarKind.INT64 -> PlatformAbi.writeInt64(destination, 0L)
+        NativeStructScalarKind.DOUBLE -> PlatformAbi.writeDouble(destination, 0.0)
+        NativeStructScalarKind.FLOAT32 -> PlatformAbi.writeFloat(destination, 0f)
+        NativeStructScalarKind.CHAR16 -> PlatformAbi.writeChar16(destination, '\u0000')
+        NativeStructScalarKind.GUID -> PlatformAbi.writeGuid(destination, ZERO_GUID)
     }
 }
 

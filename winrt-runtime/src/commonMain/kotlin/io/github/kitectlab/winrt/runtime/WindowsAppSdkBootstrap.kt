@@ -13,9 +13,9 @@ object WindowsAppSdkBootstrap {
 
     class BootstrapLibrary internal constructor(
         val path: String,
-        private val moduleHandle: NativePointer,
-        private val initializePointer: NativePointer,
-        private val shutdownPointer: NativePointer,
+        private val moduleHandle: RawAddress,
+        private val initializePointer: RawAddress,
+        private val shutdownPointer: RawAddress,
     ) : AutoCloseable {
         private val lock = PlatformLock()
         private var closed = false
@@ -67,13 +67,13 @@ object WindowsAppSdkBootstrap {
                     absolutePath(path),
                     loadWithAlteredSearchPath,
                 )
-                if (NativeInterop.isNull(moduleHandle)) {
+                if (PlatformAbi.isNull(moduleHandle)) {
                     return@firstNotNullOfOrNull null
                 }
 
                 val initializePointer = WinRtPlatformApi.tryGetProcAddressRaw(moduleHandle, bootstrapInitialize2)
                 val shutdownPointer = WinRtPlatformApi.tryGetProcAddressRaw(moduleHandle, bootstrapShutdown)
-                if (NativeInterop.isNull(initializePointer) || NativeInterop.isNull(shutdownPointer)) {
+                if (PlatformAbi.isNull(initializePointer) || PlatformAbi.isNull(shutdownPointer)) {
                     WinRtPlatformApi.freeLibraryRaw(moduleHandle)
                     return@firstNotNullOfOrNull null
                 }

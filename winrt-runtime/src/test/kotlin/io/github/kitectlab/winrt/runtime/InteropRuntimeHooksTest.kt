@@ -20,7 +20,7 @@ class InteropRuntimeHooksTest {
             }
 
             inspectable.queryInterface(IID.IMarshal).getOrThrow().use { queriedMarshal ->
-                MarshalInterfaceReference(queriedMarshal.getRefPointer(), IID.IMarshal).use { marshal ->
+                MarshalInterfaceReference(queriedMarshal.getRefPointer().asRawAddress(), IID.IMarshal).use { marshal ->
                     assertEquals(
                         FreeThreadedMarshalerSupport.inProcFreeThreadedMarshalerIid(),
                         marshal.getUnmarshalClass(IID.IUnknown),

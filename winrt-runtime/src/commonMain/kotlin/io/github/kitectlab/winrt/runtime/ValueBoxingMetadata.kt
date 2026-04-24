@@ -197,7 +197,12 @@ internal object ValueBoxingMetadata {
         }
     }
 
-    private fun descriptorForValue(value: Any): WinRtValueTypeMetadata? = descriptorForClass(value::class)
+    private fun descriptorForValue(value: Any): WinRtValueTypeMetadata? =
+        if (value is Exception) {
+            exceptionMetadata
+        } else {
+            descriptorForClass(value::class)
+        }
 
     private fun classifyPropertyValue(value: Any): WinRtValueTypeMetadata? =
         descriptorForValue(value)?.takeIf { it.propertyType != null }
@@ -216,7 +221,12 @@ internal object ValueBoxingMetadata {
         when (value) {
             is Array<*> -> {
                 val componentType = arrayElementType(value::class) ?: Any::class
-                val descriptor = descriptorForClass(componentType) ?: if (componentType == Any::class) objectMetadata else null
+                val descriptor =
+                    if (componentType == Any::class) {
+                        value.firstOrNull { it != null }?.let { descriptorForValue(it) } ?: objectMetadata
+                    } else {
+                        descriptorForClass(componentType)
+                    }
                 descriptor?.let { ManagedArrayMetadata(value, it) }
             }
             else -> normalizePrimitiveManagedArray(value)

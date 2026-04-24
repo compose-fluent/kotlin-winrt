@@ -3,7 +3,7 @@ package io.github.kitectlab.winrt.runtime
 class WinRtProjectionMarshaler internal constructor(
     private val lease: AbiReferenceLease<ComObjectReference>,
 ) : AutoCloseable {
-    val abi: NativePointer
+    val abi: RawAddress
         get() = lease.abi
 
     override fun close() {
@@ -18,7 +18,7 @@ class WinRtProjectionMarshaler internal constructor(
                 lease = AbiReferenceLeaseSupport.borrowed(
                     reference = reference,
                     cloneReference = ::cloneComReference,
-                    abiOf = ComObjectReference::pointer,
+                    abiOf = { it.pointer.asRawAddress() },
                 ),
             )
 
@@ -30,7 +30,7 @@ class WinRtProjectionMarshaler internal constructor(
                 lease = ManagedReferenceHostSupport.createLease(
                     createReference = { host.createReference(interfaceId) },
                     releaseManagedReference = host::releaseManagedReference,
-                    abiOf = ComObjectReference::pointer,
+                    abiOf = { it.pointer.asRawAddress() },
                 ),
             )
 
@@ -39,7 +39,7 @@ class WinRtProjectionMarshaler internal constructor(
         ): WinRtProjectionMarshaler =
             WinRtProjectionMarshaler(
                 lease = AbiReferenceLeaseSupport.create(
-                    abi = reference.pointer,
+                    abi = reference.pointer.asRawAddress(),
                     ownedReference = reference,
                 ),
             )
@@ -49,7 +49,7 @@ class WinRtProjectionMarshaler internal constructor(
 internal fun borrowedProjectionAbi(
     value: Any,
     typeHandle: WinRtTypeHandle,
-): NativePointer? = borrowedProjectionReference(value, typeHandle)?.useAndGetRef()
+): RawAddress? = borrowedProjectionReference(value, typeHandle)?.useAndGetRef()
 
 internal fun borrowedProjectionMarshaler(
     value: Any,
@@ -69,7 +69,7 @@ internal fun cloneComReference(reference: ComObjectReference): ComObjectReferenc
         wrapActivationFactory = ::ActivationFactoryReference,
     )
 
-internal fun <T : ComObjectReference> T.useAndGetRef(): NativePointer = use { it.getRefPointer() }
+internal fun <T : ComObjectReference> T.useAndGetRef(): RawAddress = use { it.getRefPointer().asRawAddress() }
 
 private fun borrowedProjectionReference(
     value: Any,

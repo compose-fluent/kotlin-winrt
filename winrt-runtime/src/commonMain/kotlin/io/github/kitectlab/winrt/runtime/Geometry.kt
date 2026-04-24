@@ -1,18 +1,18 @@
 package io.github.kitectlab.winrt.runtime
 
 private fun readFloatField(
-    source: NativePointer,
+    source: RawAddress,
     layout: NativeStructLayout,
     fieldName: String,
-): Float = NativeInterop.readFloat(layout.slice(source, fieldName))
+): Float = PlatformAbi.readFloat(layout.slice(source, fieldName))
 
 private fun writeFloatField(
-    destination: NativePointer,
+    destination: RawAddress,
     layout: NativeStructLayout,
     fieldName: String,
     value: Float,
 ) {
-    NativeInterop.writeFloat(layout.slice(destination, fieldName), value)
+    PlatformAbi.writeFloat(layout.slice(destination, fieldName), value)
 }
 
 @WindowsRuntimeType("struct(Windows.Foundation.Point;f4;f4)")
@@ -27,7 +27,7 @@ data class Point(
                 NativeScalarFieldSpec("y", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Point =
+        override fun read(source: RawAddress): Point =
             Point(
                 x = readFloatField(source, layout, "x"),
                 y = readFloatField(source, layout, "y"),
@@ -35,17 +35,17 @@ data class Point(
 
         override fun write(
             value: Point,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "x", value.x)
             writeFloatField(destination, layout, "y", value.y)
         }
 
-        fun fromAbi(source: NativePointer): Point = read(source)
+        fun fromAbi(source: RawAddress): Point = read(source)
 
         fun copyTo(
             value: Point,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -64,7 +64,7 @@ data class Size(
                 NativeScalarFieldSpec("height", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Size =
+        override fun read(source: RawAddress): Size =
             Size(
                 width = readFloatField(source, layout, "width"),
                 height = readFloatField(source, layout, "height"),
@@ -72,17 +72,17 @@ data class Size(
 
         override fun write(
             value: Size,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "width", value.width)
             writeFloatField(destination, layout, "height", value.height)
         }
 
-        fun fromAbi(source: NativePointer): Size = read(source)
+        fun fromAbi(source: RawAddress): Size = read(source)
 
         fun copyTo(
             value: Size,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -105,7 +105,7 @@ data class Rect(
                 NativeScalarFieldSpec("height", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Rect =
+        override fun read(source: RawAddress): Rect =
             Rect(
                 x = readFloatField(source, layout, "x"),
                 y = readFloatField(source, layout, "y"),
@@ -115,7 +115,7 @@ data class Rect(
 
         override fun write(
             value: Rect,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "x", value.x)
             writeFloatField(destination, layout, "y", value.y)
@@ -123,11 +123,11 @@ data class Rect(
             writeFloatField(destination, layout, "height", value.height)
         }
 
-        fun fromAbi(source: NativePointer): Rect = read(source)
+        fun fromAbi(source: RawAddress): Rect = read(source)
 
         fun copyTo(
             value: Rect,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }

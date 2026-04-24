@@ -43,7 +43,7 @@ class WinRtDelegateBridgeTest {
 
         HString.create("payload").use { hString ->
             handle.use {
-                it.invokeAbiForTesting(listOf(NativeInterop.nullPointer, 42L, hString.handle))
+                it.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, 42L, hString.handle))
             }
         }
 
@@ -90,7 +90,7 @@ class WinRtDelegateBridgeTest {
         handle.close()
 
         reference.use {
-            assertEquals(KnownHResults.S_OK, it.invokeAbi(listOf(NativeInterop.nullPointer)))
+            assertEquals(KnownHResults.S_OK, it.invokeAbi(listOf(PlatformAbi.nullPointer)))
             assertTrue(it.queryInterface(IID.IUnknown).getOrThrow().sameIdentity(it))
         }
 
@@ -108,7 +108,7 @@ class WinRtDelegateBridgeTest {
 
         handle.use {
             it.createReference().use { reference ->
-                assertEquals(KnownHResults.E_ACCESSDENIED, reference.invokeAbi(listOf(NativeInterop.nullPointer)))
+                assertEquals(KnownHResults.E_ACCESSDENIED, reference.invokeAbi(listOf(PlatformAbi.nullPointer)))
             }
         }
     }
@@ -124,7 +124,7 @@ class WinRtDelegateBridgeTest {
 
         handle.use {
             it.createReference().use { reference ->
-                assertEquals(KnownHResults.E_FAIL, reference.invokeAbi(listOf(NativeInterop.nullPointer)))
+                assertEquals(KnownHResults.E_FAIL, reference.invokeAbi(listOf(PlatformAbi.nullPointer)))
             }
         }
     }

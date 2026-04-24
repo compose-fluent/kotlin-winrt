@@ -17,7 +17,7 @@ internal object EventSourceCache {
         state: WeakReference<Any>,
     ) {
         val target = obj.tryGetWeakReference() ?: return
-        val cacheKey = NativeInterop.pointerKey(obj.pointer)
+        val cacheKey = PlatformAbi.pointerKey(obj.pointer)
         val staleTarget: WeakReferenceReference? =
             lock.withLock {
             val existing = caches[cacheKey]
@@ -37,7 +37,7 @@ internal object EventSourceCache {
         obj: ComObjectReference,
         index: Int,
     ): WeakReference<Any>? {
-        val cacheKey = NativeInterop.pointerKey(obj.pointer)
+        val cacheKey = PlatformAbi.pointerKey(obj.pointer)
         return lock.withLock {
             val entry = caches[cacheKey] ?: return@withLock null
             if (!entry.isTargetAlive()) {

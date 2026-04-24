@@ -92,6 +92,22 @@ class ActivationFactoryTest {
     }
 
     @Test
+    fun activation_factory_typed_view_can_activate_instance() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        RuntimeScope.initializeMultithreaded().use {
+            val factory = ActivationFactory.get("Windows.Data.Json.JsonObject")
+            try {
+                factory.asTypedView().activateInstance().use {
+                    assertEquals("Windows.Data.Json.JsonObject", it.getRuntimeClassName())
+                }
+            } finally {
+                factory.close()
+            }
+        }
+    }
+
+    @Test
     fun runtime_class_activation_helper_can_activate_instance() {
         assumeTrue(PlatformRuntime.isWindows)
 

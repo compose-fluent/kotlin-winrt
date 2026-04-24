@@ -24,7 +24,7 @@ class EventRuntimeInfrastructureTest {
                 addHandler = { _, handler ->
                     registrations += 1
                     activeDelegate?.close()
-                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer(), testIntEventDescriptor)
+                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
                     token
                 },
                 removeHandler = { _, removedToken ->
@@ -119,7 +119,7 @@ class EventRuntimeInfrastructureTest {
                 EventSourceCache.create(instance, 41, state)
                 assertSame(state, EventSourceCache.getState(instance, 41))
 
-                EventSourceCache.remove(NativeInterop.pointerKey(instance.pointer), 41, state)
+                EventSourceCache.remove(PlatformAbi.pointerKey(instance.pointer), 41, state)
                 assertNull(EventSourceCache.getState(instance, 41))
             }
         }
@@ -144,7 +144,7 @@ class EventRuntimeInfrastructureTest {
             }
 
         override fun createEventSourceState(): EventSourceState<(Any?, Int) -> Unit> =
-            object : EventSourceState<(Any?, Int) -> Unit>(nativeObjectReference.pointer, eventIndex) {
+            object : EventSourceState<(Any?, Int) -> Unit>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
                 override fun createEventInvoke(): (Any?, Int) -> Unit =
                     { sender, value ->
                         snapshotHandlers().forEach { handler -> handler(sender, value) }
@@ -166,7 +166,7 @@ class EventRuntimeInfrastructureTest {
                             methods =
                                 listOf(
                                     WinRtInspectableMethodDefinition(addEventHandlerTestDescriptor) { args ->
-                                        lastAddedHandlerPointerKey = NativeInterop.pointerKey(args[0] as NativePointer)
+                                        lastAddedHandlerPointerKey = PlatformAbi.pointerKey(args[0] as NativePointer)
                                         EventRegistrationToken.copyTo(token, args[1] as NativePointer)
                                         KnownHResults.S_OK.value
                                     },
@@ -195,12 +195,12 @@ class EventRuntimeInfrastructureTest {
                 interfaceId = testEventInterfaceId,
                 parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
             )
-        private val addEventHandlerTestDescriptor = NativeFunctionDescriptor.of(
+        private val addEventHandlerTestDescriptor = AbiFunctionDescriptor.of(
             NativeValueLayout.JAVA_INT,
             NativeValueLayout.ADDRESS,
             NativeValueLayout.ADDRESS,
         )
-        private val removeEventHandlerTestDescriptor = NativeFunctionDescriptor.of(
+        private val removeEventHandlerTestDescriptor = AbiFunctionDescriptor.of(
             NativeValueLayout.JAVA_INT,
             NativeValueLayout.JAVA_LONG,
         )

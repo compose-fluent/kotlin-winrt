@@ -2,8 +2,8 @@ package io.github.kitectlab.winrt.runtime
 
 internal class DllModule private constructor(
     val fileName: String,
-    private val moduleHandle: NativePointer,
-    private val getActivationFactoryPointer: NativePointer,
+    private val moduleHandle: RawAddress,
+    private val getActivationFactoryPointer: RawAddress,
 ) {
     fun getActivationFactory(runtimeClassName: String): ActivationResult {
         HString.create(runtimeClassName).use { classId ->
@@ -34,13 +34,13 @@ internal class DllModule private constructor(
                 WinRtPlatformApi.resolveModulePathRaw(fileName),
                 loadWithAlteredSearchPath,
             )
-            if (NativeInterop.isNull(moduleHandle)) {
+            if (PlatformAbi.isNull(moduleHandle)) {
                 return null
             }
 
             val getActivationFactoryPointer =
                 WinRtPlatformApi.tryGetProcAddressRaw(moduleHandle, dllGetActivationFactory)
-            if (NativeInterop.isNull(getActivationFactoryPointer)) {
+            if (PlatformAbi.isNull(getActivationFactoryPointer)) {
                 WinRtPlatformApi.freeLibraryRaw(moduleHandle)
                 return null
             }

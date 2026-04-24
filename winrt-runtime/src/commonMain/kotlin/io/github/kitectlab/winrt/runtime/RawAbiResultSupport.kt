@@ -2,18 +2,18 @@ package io.github.kitectlab.winrt.runtime
 
 internal object RawAbiResultSupport {
     fun <T> objectResult(
-        invoke: (NativePointer) -> Int,
-        wrap: (NativePointer) -> T,
+        invoke: (RawAddress) -> Int,
+        wrap: (RawAddress) -> T,
     ): T =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invoke(resultOut)
             WinRtPlatformApi.checkSucceededRaw(hResult)
-            return wrap(NativeInterop.readPointer(resultOut))
+            return wrap(PlatformAbi.readPointer(resultOut))
         }
 
     fun hStringResult(
-        invoke: (NativePointer) -> Int,
+        invoke: (RawAddress) -> Int,
     ): HString =
         objectResult(
             invoke = invoke,
@@ -21,36 +21,36 @@ internal object RawAbiResultSupport {
         )
 
     fun int32Result(
-        invoke: (NativePointer) -> Int,
+        invoke: (RawAddress) -> Int,
     ): Int =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt32Slot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt32Slot(scope)
             val hResult = invoke(resultOut)
             WinRtPlatformApi.checkSucceededRaw(hResult)
-            return NativeInterop.readInt32(resultOut)
+            return PlatformAbi.readInt32(resultOut)
         }
 
     fun uint32Result(
-        invoke: (NativePointer) -> Int,
+        invoke: (RawAddress) -> Int,
     ): UInt = int32Result(invoke).toUInt()
 
     fun booleanResult(
-        invoke: (NativePointer) -> Int,
+        invoke: (RawAddress) -> Int,
     ): Boolean =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt8Slot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt8Slot(scope)
             val hResult = invoke(resultOut)
             WinRtPlatformApi.checkSucceededRaw(hResult)
-            return NativeInterop.readInt8(resultOut).toInt() != 0
+            return PlatformAbi.readInt8(resultOut).toInt() != 0
         }
 
     fun doubleResult(
-        invoke: (NativePointer) -> Int,
+        invoke: (RawAddress) -> Int,
     ): Double =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateDoubleSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateDoubleSlot(scope)
             val hResult = invoke(resultOut)
             WinRtPlatformApi.checkSucceededRaw(hResult)
-            return NativeInterop.readDouble(resultOut)
+            return PlatformAbi.readDouble(resultOut)
         }
 }

@@ -18,46 +18,46 @@ internal class WinRtValueAdapter<T : Any>(
     val isNumericScalar: Boolean = false,
     private val exactUnbox: (Any) -> T,
     private val propertyValueCoerce: (Any) -> T = exactUnbox,
-    private val writeTransferredValue: (T, NativePointer) -> Unit,
-    private val readOwnedValue: (NativePointer) -> T,
-    private val disposeTransferredValue: (NativePointer) -> Unit = {},
+    private val writeTransferredValue: (T, RawAddress) -> Unit,
+    private val readOwnedValue: (RawAddress) -> T,
+    private val disposeTransferredValue: (RawAddress) -> Unit = {},
 ) {
     fun unboxExact(value: Any): T = exactUnbox(value)
 
     fun coercePropertyValue(value: Any): T = propertyValueCoerce(value)
 
-    fun writeValue(value: Any, destination: NativePointer) {
-        writeTransferredValue(unboxExact(value), NativeInterop.slice(destination, 0, abiLayout.byteSize))
+    fun writeValue(value: Any, destination: RawAddress) {
+        writeTransferredValue(unboxExact(value), PlatformAbi.slice(destination, 0, abiLayout.byteSize))
     }
 
-    fun writeCoercedPropertyValue(value: Any, destination: NativePointer) {
-        writeTransferredValue(coercePropertyValue(value), NativeInterop.slice(destination, 0, abiLayout.byteSize))
+    fun writeCoercedPropertyValue(value: Any, destination: RawAddress) {
+        writeTransferredValue(coercePropertyValue(value), PlatformAbi.slice(destination, 0, abiLayout.byteSize))
     }
 
-    fun readValue(source: NativePointer): T = readOwnedValue(source)
+    fun readValue(source: RawAddress): T = readOwnedValue(source)
 
-    fun disposeValue(source: NativePointer) {
+    fun disposeValue(source: RawAddress) {
         disposeTransferredValue(source)
     }
 
-    fun createTransferredArray(elements: Array<*>): Pair<Int, NativePointer> {
-        val owned = NativeInterop.allocateBytesOwned(
+    fun createTransferredArray(elements: Array<*>): Pair<Int, RawAddress> {
+        val owned = PlatformAbi.allocateBytesOwned(
             sizeBytes = abiLayout.byteSize * elements.size.toLong(),
             alignmentBytes = abiLayout.byteAlignment,
         )
         val data = owned.pointer
         return try {
             elements.forEachIndexed { index, element ->
-                val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
+                val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
                 if (element != null) {
                     writeTransferredValue(unboxExact(element), slice)
                 } else {
-                    NativeInterop.zeroBytes(slice, abiLayout.byteSize)
+                    PlatformAbi.zeroBytes(slice, abiLayout.byteSize)
                 }
             }
             TransferredArrayOwnership.transfer(data) {
                 elements.indices.forEach { index ->
-                    val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
+                    val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
                     disposeTransferredValue(slice)
                 }
                 owned.close()
@@ -65,7 +65,7 @@ internal class WinRtValueAdapter<T : Any>(
             elements.size to data
         } catch (error: Throwable) {
             elements.indices.forEach { index ->
-                val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
+                val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
                 disposeTransferredValue(slice)
             }
             owned.close()
@@ -73,19 +73,19 @@ internal class WinRtValueAdapter<T : Any>(
         }
     }
 
-    fun readOwnedArray(length: Int, data: NativePointer): Array<Any?>? {
-        if (NativeInterop.isNull(data)) return null
+    fun readOwnedArray(length: Int, data: RawAddress): Array<Any?>? {
+        if (PlatformAbi.isNull(data)) return null
         return Array(length) { index ->
-            val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
+            val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
             readOwnedValue(slice)
         }
     }
 
-    fun disposeOwnedArray(length: Int, data: NativePointer) {
-        if (NativeInterop.isNull(data)) return
+    fun disposeOwnedArray(length: Int, data: RawAddress) {
+        if (PlatformAbi.isNull(data)) return
         if (TransferredArrayOwnership.release(data)) return
         repeat(length) { index ->
-            val slice = NativeInterop.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
+            val slice = PlatformAbi.slice(data, index.toLong() * abiLayout.byteSize, abiLayout.byteSize)
             disposeTransferredValue(slice)
         }
     }
@@ -94,12 +94,12 @@ internal class WinRtValueAdapter<T : Any>(
 private object TransferredArrayOwnership {
     private val cleanups = ConcurrentCacheMap<Long, () -> Unit>()
 
-    fun transfer(pointer: NativePointer, cleanup: () -> Unit) {
-        cleanups[NativeInterop.pointerKey(pointer)] = cleanup
+    fun transfer(pointer: RawAddress, cleanup: () -> Unit) {
+        cleanups[PlatformAbi.pointerKey(pointer)] = cleanup
     }
 
-    fun release(pointer: NativePointer): Boolean =
-        cleanups.remove(NativeInterop.pointerKey(pointer))?.let { it(); true } ?: false
+    fun release(pointer: RawAddress): Boolean =
+        cleanups.remove(PlatformAbi.pointerKey(pointer))?.let { it(); true } ?: false
 }
 
 internal fun <T : Any> directValueAdapter(
@@ -112,9 +112,9 @@ internal fun <T : Any> directValueAdapter(
     isNumericScalar: Boolean = false,
     exactUnbox: (Any) -> T,
     propertyValueCoerce: (Any) -> T = exactUnbox,
-    readOwnedValue: (NativePointer) -> T,
-    writeTransferredValue: (T, NativePointer) -> Unit,
-    disposeTransferredValue: (NativePointer) -> Unit = {},
+    readOwnedValue: (RawAddress) -> T,
+    writeTransferredValue: (T, RawAddress) -> Unit,
+    disposeTransferredValue: (RawAddress) -> Unit = {},
 ): WinRtValueAdapter<T> =
     WinRtValueAdapter(
         projectedClass = projectedClass,
@@ -139,9 +139,9 @@ internal fun <T : Any> pointerValueAdapter(
     propertyTypeArray: PropertyType?,
     exactUnbox: (Any) -> T,
     propertyValueCoerce: (Any) -> T = exactUnbox,
-    createPointer: (T) -> NativePointer,
-    readOwnedPointer: (NativePointer) -> T,
-    disposeOwnedPointer: (NativePointer) -> Unit,
+    createPointer: (T) -> RawAddress,
+    readOwnedPointer: (RawAddress) -> T,
+    disposeOwnedPointer: (RawAddress) -> Unit,
 ): WinRtValueAdapter<T> =
     directValueAdapter(
         projectedClass = projectedClass,
@@ -152,13 +152,13 @@ internal fun <T : Any> pointerValueAdapter(
         abiLayout = NativeAbiLayout.ADDRESS,
         exactUnbox = exactUnbox,
         propertyValueCoerce = propertyValueCoerce,
-        readOwnedValue = { source -> readOwnedPointer(NativeInterop.readPointer(source)) },
+        readOwnedValue = { source -> readOwnedPointer(PlatformAbi.readPointer(source)) },
         writeTransferredValue = { value, destination ->
-            NativeInterop.writePointer(destination, createPointer(value))
+            PlatformAbi.writePointer(destination, createPointer(value))
         },
         disposeTransferredValue = { source ->
-            val pointer = NativeInterop.readPointer(source)
-            if (!NativeInterop.isNull(pointer)) disposeOwnedPointer(pointer)
+            val pointer = PlatformAbi.readPointer(source)
+            if (!PlatformAbi.isNull(pointer)) disposeOwnedPointer(pointer)
         },
     )
 
@@ -176,7 +176,7 @@ internal object ValueBoxingInterop {
             propertyTypeArray = PropertyType.StringArray,
             exactUnbox = { it as String },
             propertyValueCoerce = ::coerceString,
-            createPointer = { value -> NativeStringMarshaller.fromManaged(value)?.handle ?: NativeInterop.nullPointer },
+            createPointer = { value -> NativeStringMarshaller.fromManaged(value)?.handle ?: PlatformAbi.nullPointer },
             readOwnedPointer = { pointer -> NativeStringMarshaller.fromAbi(pointer) },
             disposeOwnedPointer = { pointer -> NativeStringMarshaller.disposeAbi(pointer) },
         )
@@ -191,7 +191,7 @@ internal object ValueBoxingInterop {
             exactUnbox = { it },
             createPointer = { value -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef() },
             readOwnedPointer = ::unboxInspectablePointer,
-            disposeOwnedPointer = { pointer -> IUnknownReference(pointer, IID.IInspectable).close() },
+            disposeOwnedPointer = { pointer -> IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close() },
         )
 
     private val classAdapter =
@@ -220,8 +220,8 @@ internal object ValueBoxingInterop {
             propertyTypeArray = null,
             abiLayout = NativeAbiLayout.INT32,
             exactUnbox = { it as Exception },
-            readOwnedValue = { source -> ExceptionProjection.fromAbi(NativeInterop.readInt32(source)) },
-            writeTransferredValue = { value, destination -> NativeInterop.writeInt32(destination, ExceptionProjection.toAbi(value)) },
+            readOwnedValue = { source -> ExceptionProjection.fromAbi(PlatformAbi.readInt32(source)) },
+            writeTransferredValue = { value, destination -> PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value)) },
         )
 
     private val adapters: List<WinRtValueAdapter<*>> =
@@ -234,8 +234,8 @@ internal object ValueBoxingInterop {
                 propertyTypeArray = null,
                 abiLayout = NativeAbiLayout.INT8,
                 exactUnbox = { it as Byte },
-                readOwnedValue = { source -> NativeInterop.readInt8(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt8(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readInt8(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt8(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = UByte::class,
@@ -247,8 +247,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as UByte },
                 propertyValueCoerce = ::coerceUByte,
-                readOwnedValue = { source -> NativeInterop.readInt8(source).toUByte() },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt8(destination, value.toByte()) },
+                readOwnedValue = { source -> PlatformAbi.readInt8(source).toUByte() },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt8(destination, value.toByte()) },
             ),
             directValueAdapter(
                 projectedClass = Short::class,
@@ -260,8 +260,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as Short },
                 propertyValueCoerce = ::coerceShort,
-                readOwnedValue = { source -> NativeInterop.readInt16(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt16(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readInt16(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt16(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = UShort::class,
@@ -273,8 +273,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as UShort },
                 propertyValueCoerce = ::coerceUShort,
-                readOwnedValue = { source -> NativeInterop.readInt16(source).toUShort() },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt16(destination, value.toShort()) },
+                readOwnedValue = { source -> PlatformAbi.readInt16(source).toUShort() },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt16(destination, value.toShort()) },
             ),
             directValueAdapter(
                 projectedClass = Int::class,
@@ -286,8 +286,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as Int },
                 propertyValueCoerce = ::coerceInt,
-                readOwnedValue = { source -> NativeInterop.readInt32(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt32(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readInt32(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt32(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = UInt::class,
@@ -299,8 +299,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as UInt },
                 propertyValueCoerce = ::coerceUInt,
-                readOwnedValue = { source -> NativeInterop.readInt32(source).toUInt() },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt32(destination, value.toInt()) },
+                readOwnedValue = { source -> PlatformAbi.readInt32(source).toUInt() },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt32(destination, value.toInt()) },
             ),
             directValueAdapter(
                 projectedClass = Long::class,
@@ -312,8 +312,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as Long },
                 propertyValueCoerce = ::coerceLong,
-                readOwnedValue = { source -> NativeInterop.readInt64(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt64(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readInt64(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = ULong::class,
@@ -325,8 +325,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as ULong },
                 propertyValueCoerce = ::coerceULong,
-                readOwnedValue = { source -> NativeInterop.readInt64(source).toULong() },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt64(destination, value.toLong()) },
+                readOwnedValue = { source -> PlatformAbi.readInt64(source).toULong() },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, value.toLong()) },
             ),
             directValueAdapter(
                 projectedClass = Float::class,
@@ -338,8 +338,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as Float },
                 propertyValueCoerce = ::coerceFloat,
-                readOwnedValue = { source -> NativeInterop.readFloat(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeFloat(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readFloat(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeFloat(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = Double::class,
@@ -351,8 +351,8 @@ internal object ValueBoxingInterop {
                 isNumericScalar = true,
                 exactUnbox = { it as Double },
                 propertyValueCoerce = ::coerceDouble,
-                readOwnedValue = { source -> NativeInterop.readDouble(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeDouble(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readDouble(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeDouble(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = Char::class,
@@ -363,8 +363,8 @@ internal object ValueBoxingInterop {
                 abiLayout = NativeAbiLayout.CHAR16,
                 exactUnbox = { it as Char },
                 propertyValueCoerce = ::coerceChar,
-                readOwnedValue = { source -> NativeInterop.readChar16(source) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeChar16(destination, value) },
+                readOwnedValue = { source -> PlatformAbi.readChar16(source) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeChar16(destination, value) },
             ),
             directValueAdapter(
                 projectedClass = Boolean::class,
@@ -375,8 +375,8 @@ internal object ValueBoxingInterop {
                 abiLayout = NativeAbiLayout.INT8,
                 exactUnbox = { it as Boolean },
                 propertyValueCoerce = ::coerceBoolean,
-                readOwnedValue = { source -> NativeInterop.readInt8(source).toInt() != 0 },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt8(destination, if (value) 1 else 0) },
+                readOwnedValue = { source -> PlatformAbi.readInt8(source).toInt() != 0 },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt8(destination, if (value) 1 else 0) },
             ),
             stringAdapter,
             directValueAdapter(
@@ -399,8 +399,8 @@ internal object ValueBoxingInterop {
                 propertyTypeArray = PropertyType.DateTimeArray,
                 abiLayout = NativeAbiLayout.INT64,
                 exactUnbox = { it as kotlin.time.Instant },
-                readOwnedValue = { source -> DateTimeProjection.fromAbi(NativeInterop.readInt64(source)) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt64(destination, DateTimeProjection.toAbi(value)) },
+                readOwnedValue = { source -> DateTimeProjection.fromAbi(PlatformAbi.readInt64(source)) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, DateTimeProjection.toAbi(value)) },
             ),
             directValueAdapter(
                 projectedClass = kotlin.time.Duration::class,
@@ -410,8 +410,8 @@ internal object ValueBoxingInterop {
                 propertyTypeArray = PropertyType.TimeSpanArray,
                 abiLayout = NativeAbiLayout.INT64,
                 exactUnbox = { it as kotlin.time.Duration },
-                readOwnedValue = { source -> TimeSpanProjection.fromAbi(NativeInterop.readInt64(source)) },
-                writeTransferredValue = { value, destination -> NativeInterop.writeInt64(destination, TimeSpanProjection.toAbi(value)) },
+                readOwnedValue = { source -> TimeSpanProjection.fromAbi(PlatformAbi.readInt64(source)) },
+                writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, TimeSpanProjection.toAbi(value)) },
             ),
             directValueAdapter(
                 projectedClass = Point::class,
@@ -551,10 +551,10 @@ internal object ValueBoxingInterop {
 
     internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
 
-    internal fun writePropertyValue(expectedType: PropertyType, value: Any, destination: NativePointer) {
+    internal fun writePropertyValue(expectedType: PropertyType, value: Any, destination: RawAddress) {
         val enumDescriptor = ValueBoxingMetadata.enumMetadataForClass(value::class)
         if (enumDescriptor != null && enumDescriptor.propertyType == expectedType) {
-            NativeInterop.writeInt32(destination, enumDescriptor.toAbiBits(value))
+            PlatformAbi.writeInt32(destination, enumDescriptor.toAbiBits(value))
             return
         }
         val adapter = adaptersByPropertyType[expectedType]
@@ -565,8 +565,8 @@ internal object ValueBoxingInterop {
     fun writePropertyValueArray(
         expectedType: PropertyType,
         value: Any,
-        countOut: NativePointer,
-        dataOut: NativePointer,
+        countOut: RawAddress,
+        dataOut: RawAddress,
     ) {
         val boxedElements = ValueBoxingMetadata.normalizedManagedArrayElements(value)
             ?: throw WinRtInvalidCastException("Value is not an array for $expectedType", HResult(TYPE_E_TYPEMISMATCH))
@@ -584,14 +584,14 @@ internal object ValueBoxingInterop {
             }
         }.toTypedArray()
         val (length, data) = adapter.createTransferredArray(coerced)
-        NativeInterop.writeInt32(countOut, length)
-        NativeInterop.writePointer(dataOut, data)
+        PlatformAbi.writeInt32(countOut, length)
+        PlatformAbi.writePointer(dataOut, data)
     }
 
-    fun readReferenceValue(interfaceId: Guid, pointer: NativePointer): Any? =
+    fun readReferenceValue(interfaceId: Guid, pointer: RawAddress): Any? =
         WinRtReferenceReference(pointer, interfaceId).use { readReferenceValue(interfaceId, it) }
 
-    fun readReferenceArrayValue(interfaceId: Guid, pointer: NativePointer): Array<Any?>? =
+    fun readReferenceArrayValue(interfaceId: Guid, pointer: RawAddress): Array<Any?>? =
         WinRtReferenceArrayReference(pointer, interfaceId).use { readReferenceArrayValue(interfaceId, it) }
 
     internal fun readReferenceValue(interfaceId: Guid, reference: WinRtReferenceReference): Any? {
@@ -624,18 +624,14 @@ internal object ValueBoxingInterop {
             interfaceId = interfaceId,
             methods = listOf(
                 WinRtInspectableMethodDefinition(
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                 ) { rawArgs ->
-                    val destination = rawArgs.singleOrNull() as? NativePointer
+                    val destination = rawArgs.singleOrNull() as? RawAddress
                         ?: throw IllegalStateException("IReference host requires one out-argument.")
                     if (adapter != null) {
                         adapter.writeValue(value, destination)
                     } else {
-                        NativeInterop.writeInt32(destination, requireNotNull(enumDescriptor).toAbiBits(value))
+                        PlatformAbi.writeInt32(destination, requireNotNull(enumDescriptor).toAbiBits(value))
                     }
                     KnownHResults.S_OK.value
                 },
@@ -652,19 +648,14 @@ internal object ValueBoxingInterop {
             interfaceId = interfaceId,
             methods = listOf(
                 WinRtInspectableMethodDefinition(
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
+                    signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                 ) { rawArgs ->
                     if (rawArgs.size != 2) {
                         throw IllegalStateException("IReferenceArray host requires count and data out-arguments.")
                     }
                     val (length, data) = adapter.createTransferredArray(boxedElements)
-                    NativeInterop.writeInt32(rawArgs[0] as NativePointer, length)
-                    NativeInterop.writePointer(rawArgs[1] as NativePointer, data)
+                    PlatformAbi.writeInt32(rawArgs[0] as RawAddress, length)
+                    PlatformAbi.writePointer(rawArgs[1] as RawAddress, data)
                     KnownHResults.S_OK.value
                 },
             ),
@@ -677,21 +668,18 @@ internal object ValueBoxingInterop {
     fun createPropertyValueReference(value: Any): ComObjectReference =
         createPropertyValueHost(value).createPrimaryReference()
 
-    fun readPropertyValue(pointer: NativePointer, propertyType: PropertyType): Any? {
+    fun readPropertyValue(pointer: RawAddress, propertyType: PropertyType): Any? {
         val scalarAdapter = adapterForPropertyType(propertyType)
         if (scalarAdapter != null) {
-            return NativeInterop.confinedScope().use { scope ->
-                val resultOut = NativeInterop.allocateBytes(scope, scalarAdapter.abiLayout.byteSize, scalarAdapter.abiLayout.byteAlignment)
+            return PlatformAbi.confinedScope().use { scope ->
+                val resultOut = PlatformAbi.allocateBytes(scope, scalarAdapter.abiLayout.byteSize, scalarAdapter.abiLayout.byteAlignment)
                 val slot = 8 + (propertyType.code - PropertyType.UInt8.code)
-                val hr = IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = true).invokeAbi(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    resultOut,
-                )
+                val propertyValue = IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = true)
+                val hr =
+                    propertyValue.use {
+                        it.comPtr.throwIfDisposed()
+                        ComVtableInvoker.invokeArgs(it.comPtr.raw, slot, resultOut)
+                    }
                 WinRtPlatformApi.checkSucceededRaw(hr)
                 try {
                     scalarAdapter.readValue(resultOut)
@@ -705,24 +693,19 @@ internal object ValueBoxingInterop {
             else -> adapterForPropertyTypeArray(propertyType)
         }
         if (arrayAdapter != null) {
-            return NativeInterop.confinedScope().use { scope ->
-                val countOut = NativeInterop.allocateInt32Slot(scope)
-                val dataOut = NativeInterop.allocatePointerSlot(scope)
+            return PlatformAbi.confinedScope().use { scope ->
+                val countOut = PlatformAbi.allocateInt32Slot(scope)
+                val dataOut = PlatformAbi.allocatePointerSlot(scope)
                 val slot = 26 + (propertyType.code - PropertyType.UInt8Array.code)
-                val hr = IUnknownReference(pointer, IID.IPropertyValue, preventReleaseOnDispose = true).invokeAbi(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    countOut,
-                    dataOut,
-                )
+                val propertyValue = IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = true)
+                val hr =
+                    propertyValue.use {
+                        it.comPtr.throwIfDisposed()
+                        ComVtableInvoker.invokeArgs(it.comPtr.raw, slot, countOut, dataOut)
+                    }
                 WinRtPlatformApi.checkSucceededRaw(hr)
-                val length = NativeInterop.readInt32(countOut)
-                val data = NativeInterop.readPointer(dataOut)
+                val length = PlatformAbi.readInt32(countOut)
+                val data = PlatformAbi.readPointer(dataOut)
                 try {
                     arrayAdapter.readOwnedArray(length, data)
                 } finally {
@@ -733,18 +716,17 @@ internal object ValueBoxingInterop {
         return null
     }
 
-    fun readOwnedPropertyValue(pointer: NativePointer): Any? =
+    fun readOwnedPropertyValue(pointer: RawAddress): Any? =
         WinRtPropertyValueReference(pointer).use { it.getValue() }
 
-    fun tryProjectBorrowedPropertyValue(pointer: NativePointer): Any? {
+    fun tryProjectBorrowedPropertyValue(pointer: RawAddress): Any? {
         val propertyValue = runCatching {
-            IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
+            IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
                 .queryInterface(IID.IPropertyValue)
                 .getOrThrow()
         }.getOrNull() ?: return null
         return propertyValue.use { reference ->
-            WinRtPropertyValueReference(reference.pointer, preventReleaseOnDispose = true).getValue()
+            WinRtPropertyValueReference(reference.pointer.asRawAddress(), preventReleaseOnDispose = true).getValue()
         }
     }
 }
-

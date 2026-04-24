@@ -149,15 +149,34 @@ class ProjectionRegistryTest {
             "Windows.Foundation.IReference`1<Int32>",
             TypeNameSupport.getNameForType(Int::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
         )
-        assertEquals(
-            "Windows.Foundation.IReferenceArray`1<String>",
-            TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
-        )
+        assertEquals("kotlin.Array", TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)))
     }
 
     @Test
-    fun windows_runtime_annotations_backfill_runtime_metadata_without_parallel_string_tables() {
+    fun explicit_runtime_metadata_registration_backfills_runtime_type_tables() {
         ComWrappersSupport.clearRegistriesForTests()
+        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+            type = AnnotatedStruct::class,
+            projectedTypeName = "Contoso.AnnotatedStruct",
+            signature = "struct(Contoso.AnnotatedStruct;i4)",
+            isWindowsRuntimeType = true,
+        )
+        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+            type = AnnotatedDefaultInterface::class,
+            projectedTypeName = "Contoso.AnnotatedDefaultInterface",
+            iid = Guid("44444444-4444-4444-4444-444444444444"),
+            isWindowsRuntimeType = true,
+        )
+        CommonWinRtBuiltInProjectionMappings.registerMetadata(
+            type = AnnotatedRuntimeClass::class,
+            projectedTypeName = "Contoso.AnnotatedRuntimeClass",
+            helperType = AnnotatedRuntimeClassHelper::class,
+            guid = Guid("44444444-4444-4444-4444-444444444444"),
+            runtimeClassName = "Contoso.AnnotatedRuntimeClass",
+            defaultInterface = AnnotatedDefaultInterface::class,
+            isRuntimeClass = true,
+            isWindowsRuntimeType = true,
+        )
 
         assertTrue(Projections.isTypeWindowsRuntimeType(AnnotatedStruct::class))
         assertEquals("Contoso.AnnotatedStruct", TypeNameSupport.getNameForType(AnnotatedStruct::class))

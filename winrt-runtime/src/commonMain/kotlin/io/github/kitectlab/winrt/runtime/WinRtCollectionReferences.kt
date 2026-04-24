@@ -1,106 +1,65 @@
 package io.github.kitectlab.winrt.runtime
 
+private object WinRtCollectionSlots {
+    const val KeyValuePairKey: Int = 6
+    const val KeyValuePairValue: Int = 7
+    const val IterableFirst: Int = 6
+    const val IteratorCurrent: Int = 6
+    const val IteratorHasCurrent: Int = 7
+    const val IteratorMoveNext: Int = 8
+    const val VectorGetAt: Int = 6
+    const val VectorSize: Int = 7
+    const val VectorGetView: Int = 8
+    const val VectorRemoveAt: Int = 12
+    const val VectorAppend: Int = 13
+    const val VectorRemoveAtEnd: Int = 14
+    const val VectorClear: Int = 15
+    const val MapViewLookup: Int = 6
+    const val MapViewSize: Int = 7
+    const val MapViewHasKey: Int = 8
+    const val MapViewSplit: Int = 9
+    const val MapLookup: Int = 6
+    const val MapSize: Int = 7
+    const val MapHasKey: Int = 8
+    const val MapGetView: Int = 9
+    const val MapInsert: Int = 10
+    const val MapRemove: Int = 11
+    const val MapClear: Int = 12
+}
+
 open class WinRtCollectionReferenceBase(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
-) : IUnknownReference(pointer, interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId, preventReleaseOnDispose = preventReleaseOnDispose) {
     protected fun invokeNullableObjectMethod(slot: Int): IUnknownReference? =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    resultOut,
-                )
+                invokeSlot(slot, resultOut)
             },
-            wrap = ::IUnknownReference,
+            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )
 
     protected fun invokeNullableObjectMethodWithUInt32Arg(slot: Int, value: UInt): IUnknownReference? =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    value.toInt(),
-                    resultOut,
-                )
+                invokeSlot(slot, value, resultOut)
             },
-            wrap = ::IUnknownReference,
+            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )
 
     protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference? =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    value.pointer,
-                    resultOut,
-                )
+                invokeSlot(slot, value.pointer.asRawAddress(), resultOut)
             },
-            wrap = ::IUnknownReference,
+            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )
 
     protected fun invokeIndexOfObjectArg(slot: Int, value: ComObjectReference): Pair<Boolean, UInt> =
         RawObjectAbiSupport.indexOfResult { indexOut, foundOut ->
-            invokeIntMethod(
-                slot = slot,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                value.pointer,
-                indexOut,
-                foundOut,
-            )
+            invokeSlot(slot, value.pointer.asRawAddress(), indexOut, foundOut)
         }
-
-    protected fun invokeUnitMethodWithUInt32ObjectArg(slot: Int, index: UInt, value: ComObjectReference) {
-        val hr = invokeIntMethod(
-            slot = slot,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-            ),
-            index.toInt(),
-            value.pointer,
-        )
-        WinRtPlatformApi.checkSucceededRaw(hr)
-    }
-
-    protected fun invokeUnitMethodWithUInt32(slot: Int, value: UInt) {
-        val hr = invokeIntMethod(
-            slot = slot,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.JAVA_INT,
-            ),
-            value.toInt(),
-        )
-        WinRtPlatformApi.checkSucceededRaw(hr)
-    }
 
     protected fun invokeObjectGetMany(
         slot: Int,
@@ -110,124 +69,121 @@ open class WinRtCollectionReferenceBase(
         RawObjectAbiSupport.objectGetManyResult(
             capacity = capacity,
             invoke = { itemsOut, countOut ->
-                val descriptor = if (startIndex == null) {
-                    NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    )
-                } else {
-                    NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    )
-                }
                 if (startIndex == null) {
-                    invokeIntMethod(
-                        slot = slot,
-                        descriptor = descriptor,
-                        capacity,
-                        itemsOut,
-                        countOut,
-                    )
+                    invokeSlot(slot, capacity, itemsOut, countOut)
                 } else {
-                    invokeIntMethod(
-                        slot = slot,
-                        descriptor = descriptor,
-                        startIndex.toInt(),
-                        capacity,
-                        itemsOut,
-                        countOut,
-                    )
+                    invokeSlot(slot, startIndex, capacity, itemsOut, countOut)
                 }
             },
             wrap = { elementPointer ->
-                if (NativeInterop.isNull(elementPointer)) {
+                if (PlatformAbi.isNull(elementPointer)) {
                     null
                 } else {
-                    IUnknownReference(elementPointer)
+                    IUnknownReference(elementPointer.asRawComPtr())
                 }
             },
         )
 
     protected fun invokeReplaceAllObjectArray(slot: Int, items: List<ComObjectReference>) {
         RawObjectAbiSupport.replaceAllObjectArray(
-            items = items.map { it.pointer },
+            items = items.map { it.pointer.asRawAddress() },
             invoke = { size, itemsAbi ->
-                invokeIntMethod(
-                    slot = slot,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    size,
-                    itemsAbi,
-                )
+                invokeSlot(slot, size, itemsAbi)
             },
         )
     }
 
-    protected fun invokeMapViewSplitPointers(slot: Int): Pair<NativePointer, NativePointer> =
+    protected fun invokeMapViewSplitPointers(slot: Int): Pair<RawAddress, RawAddress> =
         RawObjectAbiSupport.pointerPairResult { firstOut, secondOut ->
-            invokeIntMethod(
-                slot = slot,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                firstOut,
-                secondOut,
-            )
+            invokeSlot(slot, firstOut, secondOut)
         }
+
+    protected fun invokeSlot(slot: Int): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invoke(comPtr.raw, slot)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: UInt): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: RawAddress, arg1: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: Int, arg1: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: UInt, arg1: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: RawAddress, arg1: RawAddress, arg2: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1, arg2)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: Int, arg1: RawAddress, arg2: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1, arg2)
+    }
+
+    protected fun invokeSlot(slot: Int, arg0: UInt, arg1: Int, arg2: RawAddress, arg3: RawAddress): Int {
+        throwIfDisposed()
+        return ComVtableInvoker.invokeArgs(comPtr.raw, slot, arg0, arg1, arg2, arg3)
+    }
 }
 
 open class WinRtKeyValuePairReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun key(): IUnknownReference? =
-        invokeNullableObjectMethod(slot = 6)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+        invokeNullableObjectMethod(WinRtCollectionSlots.KeyValuePairKey)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
 
     open fun value(): IUnknownReference? =
-        invokeNullableObjectMethod(slot = 7)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+        invokeNullableObjectMethod(WinRtCollectionSlots.KeyValuePairValue)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 }
 
 open class WinRtIterableReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
     open fun first(iteratorInterfaceId: Guid): WinRtIteratorReference =
-        invokeObjectMethod(slot = 6).let { reference -> createIteratorReference(reference.pointer, iteratorInterfaceId) }
+        RawAbiResultSupport.objectResult(
+            invoke = { resultOut -> invokeSlot(WinRtCollectionSlots.IterableFirst, resultOut) },
+            wrap = { pointer -> createIteratorReference(pointer, iteratorInterfaceId) },
+        )
 
     protected open fun createIteratorReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtIteratorReference = WinRtIteratorReference(pointer, interfaceId)
 }
 
 open class WinRtIteratorReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -238,11 +194,19 @@ open class WinRtIteratorReference(
         )
 
     open fun currentOrNull(): IUnknownReference? =
-        invokeNullableObjectMethod(slot = 6)?.let { reference -> createUnknownReference(reference.pointer, reference.interfaceId) }
+        invokeNullableObjectMethod(WinRtCollectionSlots.IteratorCurrent)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
+        }
 
-    open fun hasCurrent(): Boolean = invokeBooleanMethod(slot = 7)
+    open fun hasCurrent(): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtCollectionSlots.IteratorHasCurrent, resultOut)
+        }
 
-    open fun moveNext(): Boolean = invokeBooleanMethod(slot = 8)
+    open fun moveNext(): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtCollectionSlots.IteratorMoveNext, resultOut)
+        }
 
     open fun getMany(capacity: Int): List<IUnknownReference?> {
         require(capacity >= 0) { "capacity must be non-negative." }
@@ -250,9 +214,9 @@ open class WinRtIteratorReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun invokeGetMany(
         slot: Int,
@@ -262,7 +226,7 @@ open class WinRtIteratorReference(
 }
 
 open class WinRtVectorViewReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -274,11 +238,14 @@ open class WinRtVectorViewReference(
             )
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
-        invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+        invokeNullableObjectMethodWithUInt32Arg(WinRtCollectionSlots.VectorGetAt, index)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
 
-    open fun size(): UInt = invokeUInt32Method(slot = 7)
+    open fun size(): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeSlot(WinRtCollectionSlots.VectorSize, resultOut)
+        }
 
     open fun indexOf(value: ComObjectReference): Pair<Boolean, UInt> =
         invokeIndexOfMethodWithObjectArg(slot = 8, value = value)
@@ -289,9 +256,9 @@ open class WinRtVectorViewReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun invokeIndexOfMethodWithObjectArg(
         slot: Int,
@@ -306,7 +273,7 @@ open class WinRtVectorViewReference(
 }
 
 open class WinRtVectorReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -318,40 +285,52 @@ open class WinRtVectorReference(
             )
 
     open fun getAtOrNull(index: UInt): IUnknownReference? =
-        invokeNullableObjectMethodWithUInt32Arg(slot = 6, value = index)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+        invokeNullableObjectMethodWithUInt32Arg(WinRtCollectionSlots.VectorGetAt, index)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
 
-    open fun size(): UInt = invokeUInt32Method(slot = 7)
+    open fun size(): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeSlot(WinRtCollectionSlots.VectorSize, resultOut)
+        }
 
     open fun getView(vectorViewInterfaceId: Guid): WinRtVectorViewReference =
-        invokeObjectMethod(slot = 8).let { reference -> createVectorViewReference(reference.pointer, vectorViewInterfaceId) }
+        RawAbiResultSupport.objectResult(
+            invoke = { resultOut -> invokeSlot(WinRtCollectionSlots.VectorGetView, resultOut) },
+            wrap = { pointer -> createVectorViewReference(pointer, vectorViewInterfaceId) },
+        )
 
     open fun indexOf(value: ComObjectReference): Pair<Boolean, UInt> =
         invokeIndexOfMethodWithObjectArg(slot = 9, value = value)
 
     open fun setAt(index: UInt, value: ComObjectReference) {
-        invokeUnitMethodWithUInt32AndObjectArg(slot = 10, index = index, value = value)
+        val hr = invokeSlot(10, index, value.pointer.asRawAddress())
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun insertAt(index: UInt, value: ComObjectReference) {
-        invokeUnitMethodWithUInt32AndObjectArg(slot = 11, index = index, value = value)
+        val hr = invokeSlot(11, index, value.pointer.asRawAddress())
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun removeAt(index: UInt) {
-        invokeUnitMethodWithUInt32Arg(slot = 12, value = index)
+        val hr = invokeSlot(WinRtCollectionSlots.VectorRemoveAt, index)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun append(value: ComObjectReference) {
-        invokeUnitMethodWithObjectArg(slot = 13, value = value)
+        val hr = invokeSlot(WinRtCollectionSlots.VectorAppend, value.pointer.asRawAddress())
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun removeAtEnd() {
-        invokeUnitMethod(slot = 14)
+        val hr = invokeSlot(WinRtCollectionSlots.VectorRemoveAtEnd)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun clear() {
-        invokeUnitMethod(slot = 15)
+        val hr = invokeSlot(WinRtCollectionSlots.VectorClear)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun getMany(startIndex: UInt, capacity: Int): List<IUnknownReference?> {
@@ -364,12 +343,12 @@ open class WinRtVectorReference(
     }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun createVectorViewReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtVectorViewReference = WinRtVectorViewReference(pointer, interfaceId)
 
@@ -377,18 +356,6 @@ open class WinRtVectorReference(
         slot: Int,
         value: ComObjectReference,
     ): Pair<Boolean, UInt> = invokeIndexOfObjectArg(slot, value)
-
-    protected open fun invokeUnitMethodWithUInt32AndObjectArg(
-        slot: Int,
-        index: UInt,
-        value: ComObjectReference,
-    ) {
-        invokeUnitMethodWithUInt32ObjectArg(slot, index, value)
-    }
-
-    protected fun invokeUnitMethodWithUInt32Arg(slot: Int, value: UInt) {
-        invokeUnitMethodWithUInt32(slot, value)
-    }
 
     protected open fun invokeGetMany(
         slot: Int,
@@ -402,7 +369,7 @@ open class WinRtVectorReference(
 }
 
 open class WinRtMapViewReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -414,34 +381,40 @@ open class WinRtMapViewReference(
             )
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
-        invokeNullableObjectMethodWithObjectArg(slot = 6, value = key)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+        invokeNullableObjectMethodWithObjectArg(WinRtCollectionSlots.MapViewLookup, key)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
 
-    open fun size(): UInt = invokeUInt32Method(slot = 7)
+    open fun size(): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeSlot(WinRtCollectionSlots.MapViewSize, resultOut)
+        }
 
-    open fun hasKey(key: ComObjectReference): Boolean = invokeBooleanMethodWithObjectArg(slot = 8, value = key)
+    open fun hasKey(key: ComObjectReference): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtCollectionSlots.MapViewHasKey, key.pointer.asRawAddress(), resultOut)
+        }
 
     open fun split(mapViewInterfaceId: Guid): Pair<WinRtMapViewReference?, WinRtMapViewReference?> =
-        invokeSplit(slot = 9, mapViewInterfaceId = mapViewInterfaceId)
+        invokeSplit(WinRtCollectionSlots.MapViewSplit, mapViewInterfaceId)
 
     open fun asIterable(iterableInterfaceId: Guid): WinRtIterableReference =
         queryInterface(iterableInterfaceId).getOrThrow().let { reference ->
-            createIterableReference(reference.pointer, iterableInterfaceId)
+            createIterableReference(reference.pointer.asRawAddress(), iterableInterfaceId)
         }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun createMapViewReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtMapViewReference = WinRtMapViewReference(pointer, interfaceId)
 
     protected open fun createIterableReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtIterableReference = WinRtIterableReference(pointer, interfaceId)
 
@@ -450,14 +423,14 @@ open class WinRtMapViewReference(
         mapViewInterfaceId: Guid,
     ): Pair<WinRtMapViewReference?, WinRtMapViewReference?> {
         val (firstPointer, secondPointer) = invokeMapViewSplitPointers(slot)
-        val first = if (NativeInterop.isNull(firstPointer)) null else createMapViewReference(firstPointer, mapViewInterfaceId)
-        val second = if (NativeInterop.isNull(secondPointer)) null else createMapViewReference(secondPointer, mapViewInterfaceId)
+        val first = if (PlatformAbi.isNull(firstPointer)) null else createMapViewReference(firstPointer, mapViewInterfaceId)
+        val second = if (PlatformAbi.isNull(secondPointer)) null else createMapViewReference(secondPointer, mapViewInterfaceId)
         return first to second
     }
 }
 
 open class WinRtMapReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid,
     preventReleaseOnDispose: Boolean = false,
 ) : WinRtCollectionReferenceBase(pointer, interfaceId, preventReleaseOnDispose) {
@@ -469,35 +442,48 @@ open class WinRtMapReference(
             )
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
-        invokeNullableObjectMethodWithObjectArg(slot = 6, value = key)?.let { reference ->
-            createUnknownReference(reference.pointer, reference.interfaceId)
+        invokeNullableObjectMethodWithObjectArg(WinRtCollectionSlots.MapLookup, key)?.let { reference ->
+            createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
 
-    open fun size(): UInt = invokeUInt32Method(slot = 7)
+    open fun size(): UInt =
+        RawAbiResultSupport.uint32Result { resultOut ->
+            invokeSlot(WinRtCollectionSlots.MapSize, resultOut)
+        }
 
-    open fun hasKey(key: ComObjectReference): Boolean = invokeBooleanMethodWithObjectArg(slot = 8, value = key)
+    open fun hasKey(key: ComObjectReference): Boolean =
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtCollectionSlots.MapHasKey, key.pointer.asRawAddress(), resultOut)
+        }
 
     open fun getView(mapViewInterfaceId: Guid): WinRtMapViewReference =
-        invokeObjectMethod(slot = 9).let { reference -> createMapViewReference(reference.pointer, mapViewInterfaceId) }
+        RawAbiResultSupport.objectResult(
+            invoke = { resultOut -> invokeSlot(WinRtCollectionSlots.MapGetView, resultOut) },
+            wrap = { pointer -> createMapViewReference(pointer, mapViewInterfaceId) },
+        )
 
     open fun insert(key: ComObjectReference, value: ComObjectReference): Boolean =
-        invokeBooleanMethodWithTwoObjectArgs(slot = 10, first = key, second = value)
+        RawAbiResultSupport.booleanResult { resultOut ->
+            invokeSlot(WinRtCollectionSlots.MapInsert, key.pointer.asRawAddress(), value.pointer.asRawAddress(), resultOut)
+        }
 
     open fun remove(key: ComObjectReference) {
-        invokeUnitMethodWithObjectArg(slot = 11, value = key)
+        val hr = invokeSlot(WinRtCollectionSlots.MapRemove, key.pointer.asRawAddress())
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun clear() {
-        invokeUnitMethod(slot = 12)
+        val hr = invokeSlot(WinRtCollectionSlots.MapClear)
+        WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     protected open fun createUnknownReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
-    ): IUnknownReference = IUnknownReference(pointer, interfaceId)
+    ): IUnknownReference = IUnknownReference(pointer.asRawComPtr(), interfaceId)
 
     protected open fun createMapViewReference(
-        pointer: NativePointer,
+        pointer: RawAddress,
         interfaceId: Guid,
     ): WinRtMapViewReference = WinRtMapViewReference(pointer, interfaceId)
 }

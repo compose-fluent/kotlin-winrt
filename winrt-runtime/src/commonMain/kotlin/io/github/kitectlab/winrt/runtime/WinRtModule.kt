@@ -8,18 +8,18 @@ package io.github.kitectlab.winrt.runtime
  */
 internal object WinRtModule {
     private data class State(
-        val mtaCookie: NativePointer,
+        val mtaCookie: RawAddress,
         val shutdownHook: AutoCloseable?,
     )
 
     private val state: State by lazy {
         if (!PlatformRuntime.isWindows) {
-            State(NativeInterop.nullPointer, null)
+            State(PlatformAbi.nullPointer, null)
         } else {
             val result = WinRtPlatformApi.coIncrementMtaUsageRaw()
             HResult(result.hResultValue).requireSuccess("CoIncrementMTAUsage")
             val shutdownHook =
-                if (NativeInterop.isNull(result.pointer)) {
+                if (PlatformAbi.isNull(result.pointer)) {
                     null
                 } else {
                     PlatformProcessHooks.registerShutdownHook {

@@ -78,22 +78,22 @@ class ValueBoxingTest {
 
         val scalarPointer = ComWrappersSupport.createCCWForObject(123, IID.IInspectable).useAndGetRef()
         try {
-            IInspectableReference(scalarPointer, IID.IInspectable).use { inspectable ->
+            IInspectableReference(scalarPointer.asRawComPtr(), IID.IInspectable).use { inspectable ->
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().close()
                 inspectable.queryInterface(IID.NullableInt).getOrThrow().close()
             }
         } finally {
-            IUnknownReference(scalarPointer, IID.IInspectable).close()
+            IUnknownReference(scalarPointer.asRawComPtr(), IID.IInspectable).close()
         }
 
         val arrayPointer = ComWrappersSupport.createCCWForObject(arrayOf("one", "two"), IID.IInspectable).useAndGetRef()
         try {
-            IInspectableReference(arrayPointer, IID.IInspectable).use { inspectable ->
+            IInspectableReference(arrayPointer.asRawComPtr(), IID.IInspectable).use { inspectable ->
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().close()
                 inspectable.queryInterface(IID.IReferenceArrayOfString).getOrThrow().close()
             }
         } finally {
-            IUnknownReference(arrayPointer, IID.IInspectable).close()
+            IUnknownReference(arrayPointer.asRawComPtr(), IID.IInspectable).close()
         }
     }
 
@@ -106,11 +106,11 @@ class ValueBoxingTest {
         val uriPointer = ComWrappersSupport.createCCWForObject(uri, IID.IInspectable).useAndGetRef()
         try {
             assertEquals(uri, ComWrappersSupport.createRcwForComObject(uriPointer))
-            IInspectableReference(uriPointer, IID.IInspectable).use { inspectable ->
+            IInspectableReference(uriPointer.asRawComPtr(), IID.IInspectable).use { inspectable ->
                 assertEquals("Windows.Foundation.Uri", inspectable.getRuntimeClassName())
             }
         } finally {
-            IUnknownReference(uriPointer, IID.IInspectable).close()
+            IUnknownReference(uriPointer.asRawComPtr(), IID.IInspectable).close()
         }
 
         val closeable = TestCloseable()
@@ -124,7 +124,7 @@ class ValueBoxingTest {
             projected.close()
             assertTrue(closeable.closed)
         } finally {
-            IUnknownReference(closeablePointer, IID.IInspectable).close()
+            IUnknownReference(closeablePointer.asRawComPtr(), IID.IInspectable).close()
         }
     }
 
@@ -136,7 +136,7 @@ class ValueBoxingTest {
         try {
             assertEquals(9.seconds, WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer))
         } finally {
-            IUnknownReference(pointer, IID.IInspectable).close()
+            IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
         }
     }
 
@@ -155,37 +155,37 @@ class ValueBoxingTest {
             val projected = ComWrappersSupport.createRcwForComObject(exceptionPointer) as Exception
             assertEquals(ExceptionProjection.toAbi(IllegalStateException("boom")), ExceptionProjection.toAbi(projected))
         } finally {
-            IUnknownReference(exceptionPointer, IID.IInspectable).close()
+            IUnknownReference(exceptionPointer.asRawComPtr(), IID.IInspectable).close()
         }
 
         val priorityPointer = ComWrappersSupport.createCCWForObject(TestPriority.High, IID.IInspectable).useAndGetRef()
         try {
-            IUnknownReference(priorityPointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
+            IUnknownReference(priorityPointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(priorityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer, preventReleaseOnDispose = true)
+                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
                     assertEquals(2, projected.getValue())
                 }
             }
             assertEquals(TestPriority.High, ComWrappersSupport.createRcwForComObject(priorityPointer))
             assertEquals(TestPriority.High, WinRtBindableObjectMarshaller.fromBorrowedAbi(priorityPointer))
         } finally {
-            IUnknownReference(priorityPointer, IID.IInspectable).close()
+            IUnknownReference(priorityPointer.asRawComPtr(), IID.IInspectable).close()
         }
 
         val visibilityPointer = ComWrappersSupport.createCCWForObject(TestVisibility.Visible, IID.IInspectable).useAndGetRef()
         try {
-            IUnknownReference(visibilityPointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
+            IUnknownReference(visibilityPointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use { inspectable ->
                 inspectable.queryInterface(visibilityNullableIid()).getOrThrow().close()
                 inspectable.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
-                    val projected = WinRtPropertyValueReference(propertyValue.pointer, preventReleaseOnDispose = true)
+                    val projected = WinRtPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true)
                     assertEquals(1u, projected.getValue())
                 }
             }
             assertEquals(TestVisibility.Visible, ComWrappersSupport.createRcwForComObject(visibilityPointer))
             assertEquals(TestVisibility.Visible, WinRtBindableObjectMarshaller.fromBorrowedAbi(visibilityPointer))
         } finally {
-            IUnknownReference(visibilityPointer, IID.IInspectable).close()
+            IUnknownReference(visibilityPointer.asRawComPtr(), IID.IInspectable).close()
         }
     }
 
@@ -231,12 +231,14 @@ class ValueBoxingTest {
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
             enumAbiValue = { it.abiValue },
+            enumEntries = TestPriority.entries.toTypedArray(),
             isWindowsRuntimeType = true,
         )
         WinRtTypeRegistry.register<TestVisibility>(
             projectedTypeName = "Contoso.Visibility",
             signature = "enum(Contoso.Visibility;u4)",
             enumAbiValue = { it.abiValue.toInt() },
+            enumEntries = TestVisibility.entries.toTypedArray(),
             isWindowsRuntimeType = true,
         )
     }

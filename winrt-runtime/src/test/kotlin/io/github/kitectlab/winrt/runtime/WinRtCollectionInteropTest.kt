@@ -4,7 +4,6 @@ import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,9 +22,9 @@ class WinRtCollectionInteropTest {
 
             val first = iterable.first(Guid("00000000-0000-0000-0000-000000000101"))
             assertTrue(first.hasCurrent())
-            assertSame(firstValue.pointer, first.current().pointer)
+            assertEquals(firstValue.pointer, first.current().pointer)
             assertTrue(first.moveNext())
-            assertSame(secondValue.pointer, first.current().pointer)
+            assertEquals(secondValue.pointer, first.current().pointer)
             assertFalse(first.moveNext())
             assertEquals(listOf(firstValue.pointer, MemorySegment.NULL, secondValue.pointer), first.getMany(3).map { it?.pointer ?: MemorySegment.NULL })
             assertEquals(listOf(6), iterable.objectSlots)
@@ -48,7 +47,7 @@ class WinRtCollectionInteropTest {
             )
 
             assertEquals(3u, vectorView.size())
-            assertSame(element.pointer, vectorView.getAt(1u).pointer)
+            assertEquals(element.pointer, vectorView.getAt(1u).pointer)
             assertEquals(true to 2u, vectorView.indexOf(key))
             assertEquals(listOf(element.pointer, MemorySegment.NULL), vectorView.getMany(1u, 2).map { it?.pointer ?: MemorySegment.NULL })
             assertEquals(listOf(7), vectorView.uintSlots)
@@ -80,9 +79,9 @@ class WinRtCollectionInteropTest {
                 getAtResultsByIndex = mapOf(0u to element, 1u to replacement),
             )
 
-            assertSame(element.pointer, vector.getAt(0u).pointer)
+            assertEquals(element.pointer, vector.getAt(0u).pointer)
             assertEquals(5u, vector.size())
-            assertSame(vectorView.pointer, vector.getView(Guid("00000000-0000-0000-0000-000000000301")).pointer)
+            assertEquals(vectorView.pointer, vector.getView(Guid("00000000-0000-0000-0000-000000000301")).pointer)
             assertEquals(true to 3u, vector.indexOf(element))
             vector.setAt(1u, replacement)
             vector.insertAt(2u, replacement)
@@ -142,21 +141,21 @@ class WinRtCollectionInteropTest {
                 mapViewResult = mapView,
             )
 
-            assertSame(lookedUp.pointer, map.lookup(key).pointer)
+            assertEquals(lookedUp.pointer, map.lookup(key).pointer)
             assertEquals(5u, map.size())
             assertTrue(map.hasKey(key))
-            assertSame(mapView.pointer, map.getView(Guid("00000000-0000-0000-0000-000000000401")).pointer)
+            assertEquals(mapView.pointer, map.getView(Guid("00000000-0000-0000-0000-000000000401")).pointer)
             assertTrue(map.insert(key, value))
             map.remove(key)
             map.clear()
 
-            assertSame(lookedUp.pointer, mapView.lookup(key).pointer)
+            assertEquals(lookedUp.pointer, mapView.lookup(key).pointer)
             assertEquals(5u, mapView.size())
             assertTrue(mapView.hasKey(key))
 
             val split = mapView.split(Guid("00000000-0000-0000-0000-000000000402"))
-            assertSame(firstPart.pointer, split.first?.pointer)
-            assertSame(secondPart.pointer, split.second?.pointer)
+            assertEquals(firstPart.pointer, split.first?.pointer)
+            assertEquals(secondPart.pointer, split.second?.pointer)
 
             assertEquals(listOf(6 to key), map.lookupSlots)
             assertEquals(listOf(8 to key), map.hasKeySlots)
@@ -253,7 +252,7 @@ class WinRtCollectionInteropTest {
     private open class FakeReference(
         arena: Arena,
         val label: String,
-    ) : IUnknownReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000201")) {
+    ) : IUnknownReference(arena.allocate(8).asNativePointer().asRawComPtr(), Guid("00000000-0000-0000-0000-000000000201")) {
         override fun close() = Unit
     }
 

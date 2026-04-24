@@ -1,115 +1,93 @@
 package io.github.kitectlab.winrt.runtime
 
-private val resolveDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
+private object AgileReferenceInterfaceVftbl {
+    const val Resolve: Int = 3
+}
 
-private val registerInGlobalDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
-
-private val revokeFromGlobalDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
-
-private val getFromGlobalDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
+private object GlobalInterfaceTableVftbl {
+    const val RegisterInterfaceInGlobal: Int = 3
+    const val RevokeInterfaceFromGlobal: Int = 4
+    const val GetInterfaceFromGlobal: Int = 5
+}
 
 internal class AgileReferenceInterfaceReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = IID.IAgileReference,
-) : IUnknownReference(pointer, interfaceId) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun resolve(interfaceId: Guid): IUnknownReference? =
-        NativeInterop.confinedScope().use { scope ->
-            val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val iidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 3,
-                    descriptor = resolveDescriptor,
-                    iidMemory,
-                    resultOut,
-                ),
+                ComVtableInvoker.invokeArgs(comPtr.raw, AgileReferenceInterfaceVftbl.Resolve, iidMemory, resultOut),
             ).requireSuccess("IAgileReference.Resolve")
-            val resolvedPointer = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(resolvedPointer)) {
+            val resolvedPointer = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(resolvedPointer)) {
                 null
             } else {
-                IUnknownReference(resolvedPointer, interfaceId)
+                IUnknownReference(resolvedPointer.asRawComPtr(), interfaceId)
             }
         }
 }
 
 internal class GlobalInterfaceTableReference(
-    pointer: NativePointer,
+    pointer: RawAddress,
     interfaceId: Guid = IID.IGlobalInterfaceTable,
-) : IUnknownReference(pointer, interfaceId) {
+) : IUnknownReference(pointer.asRawComPtr(), interfaceId) {
     fun registerInterfaceInGlobal(
-        interfacePointer: NativePointer,
+        interfacePointer: RawAddress,
         interfaceId: Guid,
-    ): NativePointer =
-        NativeInterop.confinedScope().use { scope ->
-            val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+    ): RawAddress =
+        PlatformAbi.confinedScope().use { scope ->
+            val iidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
-            val cookieOut = NativeInterop.allocatePointerSlot(scope)
+            val cookieOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 3,
-                    descriptor = registerInGlobalDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    comPtr.raw,
+                    GlobalInterfaceTableVftbl.RegisterInterfaceInGlobal,
                     interfacePointer,
                     iidMemory,
                     cookieOut,
                 ),
             ).requireSuccess("IGlobalInterfaceTable.RegisterInterfaceInGlobal")
-            NativeInterop.readPointer(cookieOut)
+            PlatformAbi.readPointer(cookieOut)
         }
 
-    fun tryRevokeInterfaceFromGlobal(cookie: NativePointer): HResult =
+    fun tryRevokeInterfaceFromGlobal(cookie: RawAddress): HResult =
         HResult(
-            invokeAbi(
-                slot = 4,
-                descriptor = revokeFromGlobalDescriptor,
-                cookie,
-            ),
+            run {
+                comPtr.throwIfDisposed()
+                ComVtableInvoker.invokeArgs(comPtr.raw, GlobalInterfaceTableVftbl.RevokeInterfaceFromGlobal, cookie)
+            },
         )
 
     fun getInterfaceFromGlobal(
-        cookie: NativePointer,
+        cookie: RawAddress,
         interfaceId: Guid,
     ): IUnknownReference? =
-        NativeInterop.confinedScope().use { scope ->
-            val iidMemory = NativeInterop.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val iidMemory = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             interfaceId.writeTo(iidMemory)
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            comPtr.throwIfDisposed()
             HResult(
-                invokeAbi(
-                    slot = 5,
-                    descriptor = getFromGlobalDescriptor,
+                ComVtableInvoker.invokeArgs(
+                    comPtr.raw,
+                    GlobalInterfaceTableVftbl.GetInterfaceFromGlobal,
                     cookie,
                     iidMemory,
                     resultOut,
                 ),
             ).requireSuccess("IGlobalInterfaceTable.GetInterfaceFromGlobal")
-            val resolvedPointer = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(resolvedPointer)) {
+            val resolvedPointer = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(resolvedPointer)) {
                 null
             } else {
-                IUnknownReference(resolvedPointer, interfaceId)
+                IUnknownReference(resolvedPointer.asRawComPtr(), interfaceId)
             }
         }
 }
@@ -118,21 +96,21 @@ class AgileReference(
     instance: ComObjectReference?,
 ) : AutoCloseable {
     private val agileReference: AgileReferenceInterfaceReference?
-    private val cookie: NativePointer
+    private val cookie: RawAddress
 
     init {
-        if (instance == null || NativeInterop.isNull(instance.pointer)) {
+        if (instance == null || PlatformAbi.isNull(instance.pointer)) {
             agileReference = null
-            cookie = NativeInterop.nullPointer
+            cookie = PlatformAbi.nullPointer
         } else {
-            val result = WinRtPlatformApi.roGetAgileReferenceRaw(instance.pointer, IID.IUnknown)
+            val result = WinRtPlatformApi.roGetAgileReferenceRaw(instance.pointer.asRawAddress(), IID.IUnknown)
             val hResult = HResult(result.hResultValue)
             if (result.isSuccess) {
                 agileReference = AgileReferenceInterfaceReference(result.pointer, IID.IAgileReference)
-                cookie = NativeInterop.nullPointer
+                cookie = PlatformAbi.nullPointer
             } else if (hResult == KnownHResults.E_NOTIMPL) {
                 agileReference = null
-                cookie = git().registerInterfaceInGlobal(instance.pointer, IID.IUnknown)
+                cookie = git().registerInterfaceInGlobal(instance.pointer.asRawAddress(), IID.IUnknown)
             } else {
                 throwHResultFailure(hResult, "RoGetAgileReference")
             }
@@ -140,14 +118,14 @@ class AgileReference(
     }
 
     fun get(): IUnknownReference? =
-        if (NativeInterop.isNull(cookie)) {
+        if (PlatformAbi.isNull(cookie)) {
             agileReference?.resolve(IID.IUnknown)
         } else {
             git().getInterfaceFromGlobal(cookie, IID.IUnknown)
         }
 
     internal fun getReference(typeHandle: WinRtTypeHandle): IUnknownReference? =
-        if (NativeInterop.isNull(cookie)) {
+        if (PlatformAbi.isNull(cookie)) {
             agileReference?.resolve(typeHandle.interfaceId)
         } else {
             git().getInterfaceFromGlobal(cookie, typeHandle.interfaceId)
@@ -155,7 +133,7 @@ class AgileReference(
 
     override fun close() {
         agileReference?.close()
-        if (!NativeInterop.isNull(cookie)) {
+        if (!PlatformAbi.isNull(cookie)) {
             git().tryRevokeInterfaceFromGlobal(cookie)
         }
     }

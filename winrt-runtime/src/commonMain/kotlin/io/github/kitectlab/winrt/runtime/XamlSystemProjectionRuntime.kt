@@ -571,26 +571,21 @@ private class WinRtDataErrorInfoObject(
     }
 
     override val hasErrors: Boolean
-        get() = nativeObject.invokeBooleanMethod(slot = 6)
+        get() = invokeBooleanGetter(nativeObject, slot = 6)
 
     override fun getErrors(propertyName: String?): Iterable<Any?>? {
         val resultPointer =
             withOptionalHString(propertyName) { propertyNameHandle ->
-                NativeInterop.confinedScope().use { scope ->
-                    val resultOut = NativeInterop.allocatePointerSlot(scope)
-                    val hr = nativeObject.invokeAbi(
-                        slot = 9,
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                PlatformAbi.confinedScope().use { scope ->
+                    val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                    val hr = ComVtableInvoker.invokeArgs(
+                        nativeObject.pointer,
+                        9,
                         propertyNameHandle,
                         resultOut,
                     )
                     WinRtPlatformApi.checkSucceededRaw(hr)
-                    NativeInterop.readPointer(resultOut)
+                    PlatformAbi.readPointer(resultOut)
                 }
             }
         return WinRtBindableIterableProjection.fromAbi(resultPointer)
@@ -615,19 +610,14 @@ private class WinRtServiceProviderObject(
         withTypeNameArgument(type) { typePointer ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    nativeObject.invokeAbi(
-                        slot = 6,
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                    ComVtableInvoker.invokeArgs(
+                        nativeObject.pointer,
+                        6,
                         typePointer,
                         resultOut,
                     )
                 },
-                wrap = ::IUnknownReference,
+                wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.let(WinRtBindableObjectMarshaller::fromOwnedReference)
         }
 }
@@ -639,13 +629,13 @@ private class WinRtCustomPropertyObject(
         get() = customPropertyTypeHandle()
 
     override val canRead: Boolean
-        get() = nativeObject.invokeBooleanMethod(slot = 13)
+        get() = invokeBooleanGetter(nativeObject, slot = 13)
 
     override val canWrite: Boolean
-        get() = nativeObject.invokeBooleanMethod(slot = 12)
+        get() = invokeBooleanGetter(nativeObject, slot = 12)
 
     override val name: String
-        get() = nativeObject.invokeHStringMethod(slot = 7).use(HString::toKString)
+        get() = invokeHStringGetter(nativeObject, slot = 7)
 
     override val type: KClass<*>?
         get() = invokeTypeNameGetter(nativeObject, slot = 6)
@@ -654,19 +644,14 @@ private class WinRtCustomPropertyObject(
         withObjectArgument(target) { targetPointer ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    nativeObject.invokeAbi(
-                        slot = 8,
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                    ComVtableInvoker.invokeArgs(
+                        nativeObject.pointer,
+                        8,
                         targetPointer,
                         resultOut,
                     )
                 },
-                wrap = ::IUnknownReference,
+                wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.let(WinRtBindableObjectMarshaller::fromOwnedReference)
         }
 
@@ -675,14 +660,9 @@ private class WinRtCustomPropertyObject(
         value: Any?,
     ) {
         withTwoObjectArguments(target, value) { targetPointer, valuePointer ->
-            val hr = nativeObject.invokeAbi(
-                slot = 9,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+            val hr = ComVtableInvoker.invokeArgs(
+                nativeObject.pointer,
+                9,
                 targetPointer,
                 valuePointer,
             )
@@ -697,21 +677,15 @@ private class WinRtCustomPropertyObject(
         withTwoObjectArguments(target, index) { targetPointer, indexPointer ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    nativeObject.invokeAbi(
-                        slot = 10,
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                    ComVtableInvoker.invokeArgs(
+                        nativeObject.pointer,
+                        10,
                         targetPointer,
                         indexPointer,
                         resultOut,
                     )
                 },
-                wrap = ::IUnknownReference,
+                wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.let(WinRtBindableObjectMarshaller::fromOwnedReference)
         }
 
@@ -721,15 +695,9 @@ private class WinRtCustomPropertyObject(
         index: Any?,
     ) {
         withThreeObjectArguments(target, value, index) { targetPointer, valuePointer, indexPointer ->
-            val hr = nativeObject.invokeAbi(
-                slot = 11,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+            val hr = ComVtableInvoker.invokeArgs(
+                nativeObject.pointer,
+                11,
                 targetPointer,
                 valuePointer,
                 indexPointer,
@@ -749,19 +717,14 @@ private class WinRtCustomPropertyProviderObject(
         withOptionalHString(name) { nameHandle ->
             RawObjectAbiSupport.nullableObjectResult(
                 invoke = { resultOut ->
-                    nativeObject.invokeAbi(
-                        slot = 6,
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                    ComVtableInvoker.invokeArgs(
+                        nativeObject.pointer,
+                        6,
                         nameHandle,
                         resultOut,
                     )
                 },
-                wrap = ::IUnknownReference,
+                wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
             )?.use { reference ->
                 createCustomPropertyObject(reference.asInspectable())
             }
@@ -775,21 +738,15 @@ private class WinRtCustomPropertyProviderObject(
             withTypeNameArgument(indexParameterType) { typePointer ->
                 RawObjectAbiSupport.nullableObjectResult(
                     invoke = { resultOut ->
-                        nativeObject.invokeAbi(
-                            slot = 7,
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
+                        ComVtableInvoker.invokeArgs(
+                            nativeObject.pointer,
+                            7,
                             nameHandle,
                             typePointer,
                             resultOut,
                         )
                     },
-                    wrap = ::IUnknownReference,
+                    wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
                 )?.let { reference ->
                     reference.use { createCustomPropertyObject(it.asInspectable()) }
                 }
@@ -797,7 +754,7 @@ private class WinRtCustomPropertyProviderObject(
         }
 
     override fun getStringRepresentation(): String =
-        nativeObject.invokeHStringMethod(slot = 8).use(HString::toKString)
+        invokeHStringGetter(nativeObject, slot = 8)
 
     override val type: KClass<*>
         get() = invokeTypeNameGetter(nativeObject, slot = 9)
@@ -814,7 +771,7 @@ private class WinRtStringableObject(
         get() = stringableTypeHandle()
 
     override fun stringRepresentation(): String =
-        nativeObject.invokeHStringMethod(slot = 6).use(HString::toKString)
+        invokeHStringGetter(nativeObject, slot = 6)
 
     override fun toString(): String = stringRepresentation()
 }
@@ -834,7 +791,7 @@ private class CommandCanExecuteChangedEventSource(
         }
 
     override fun createEventSourceState(): EventSourceState<WinRtCanExecuteChangedHandler> =
-        object : EventSourceState<WinRtCanExecuteChangedHandler>(nativeObjectReference.pointer, eventIndex) {
+        object : EventSourceState<WinRtCanExecuteChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): WinRtCanExecuteChangedHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
@@ -864,7 +821,7 @@ private class PropertyChangedEventSource(
         }
 
     override fun createEventSourceState(): EventSourceState<WinRtPropertyChangedHandler> =
-        object : EventSourceState<WinRtPropertyChangedHandler>(nativeObjectReference.pointer, eventIndex) {
+        object : EventSourceState<WinRtPropertyChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): WinRtPropertyChangedHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
@@ -894,7 +851,7 @@ private class CollectionChangedEventSource(
         }
 
     override fun createEventSourceState(): EventSourceState<WinRtCollectionChangedHandler> =
-        object : EventSourceState<WinRtCollectionChangedHandler>(nativeObjectReference.pointer, eventIndex) {
+        object : EventSourceState<WinRtCollectionChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): WinRtCollectionChangedHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
@@ -917,7 +874,7 @@ private class DataErrorsChangedEventSource(
         }
 
     override fun createEventSourceState(): EventSourceState<WinRtDataErrorsChangedHandler> =
-        object : EventSourceState<WinRtDataErrorsChangedHandler>(nativeObjectReference.pointer, eventIndex) {
+        object : EventSourceState<WinRtDataErrorsChangedHandler>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): WinRtDataErrorsChangedHandler =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }
@@ -933,25 +890,16 @@ private fun createCommandDefinition(command: WinRtCommand): WinRtCcwDefinition {
                 interfaceId = IID.ICommand,
                 methods = listOf(
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        val handler = NativeCommandChangedHandler(rawArgs[0] as NativePointer)
+                        val handler = NativeCommandChangedHandler(rawArgs[0] as RawAddress)
                         val token = tokenTable.addEventHandler(handler)
                         command.addCanExecuteChanged(handler)
-                        EventRegistrationToken.copyTo(token, rawArgs[1] as NativePointer)
+                        EventRegistrationToken.copyTo(token, rawArgs[1] as RawAddress)
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.JAVA_LONG,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Int64),
                     ) { rawArgs ->
                         tokenTable.removeEventHandler(EventRegistrationToken(rawArgs[0] as Long))?.let { handler ->
                             try {
@@ -963,25 +911,16 @@ private fun createCommandDefinition(command: WinRtCommand): WinRtCcwDefinition {
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        val parameter = decodeBorrowedInspectable(rawArgs[0] as NativePointer)
-                        NativeInterop.writeInt8(rawArgs[1] as NativePointer, if (command.canExecute(parameter)) 1 else 0)
+                        val parameter = decodeBorrowedInspectable(rawArgs[0] as RawAddress)
+                        PlatformAbi.writeInt8(rawArgs[1] as RawAddress, if (command.canExecute(parameter)) 1 else 0)
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        command.execute(decodeBorrowedInspectable(rawArgs[0] as NativePointer))
+                        command.execute(decodeBorrowedInspectable(rawArgs[0] as RawAddress))
                         KnownHResults.S_OK.value
                     },
                 ),
@@ -1045,28 +984,19 @@ private fun createDataErrorInfoDefinition(dataErrorInfo: WinRtDataErrorInfo): Wi
                 interfaceId = IID.INotifyDataErrorInfo,
                 methods = listOf(
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (dataErrorInfo.hasErrors) 1 else 0)
+                        PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (dataErrorInfo.hasErrors) 1 else 0)
                         KnownHResults.S_OK.value
                     },
                     createDataErrorsChangedAddMethod(tokenTable, dataErrorInfo),
                     createDataErrorsChangedRemoveMethod(tokenTable, dataErrorInfo),
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        val propertyName = decodeBorrowedString(rawArgs[0] as NativePointer)
+                        val propertyName = decodeBorrowedString(rawArgs[0] as RawAddress)
                         val result = dataErrorInfo.getErrors(propertyName)
-                        (rawArgs[1] as NativePointer).writeReturnedPointer(
+                        (rawArgs[1] as RawAddress).writeReturnedPointer(
                             WinRtBindableIterableProjection.fromManaged(result?.toList()),
                         )
                         KnownHResults.S_OK.value
@@ -1085,16 +1015,11 @@ private fun createServiceProviderDefinition(serviceProvider: WinRtServiceProvide
                 interfaceId = IID.IServiceProvider,
                 methods = listOf(
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        val requestedType = TypeProjection.fromAbi(rawArgs[0] as NativePointer)
+                        val requestedType = TypeProjection.fromAbi(rawArgs[0] as RawAddress)
                         val service = serviceProvider.getService(requestedType)
-                        (rawArgs[1] as NativePointer).writeReturnedPointer(WinRtBindableObjectMarshaller.fromManaged(service))
+                        (rawArgs[1] as RawAddress).writeReturnedPointer(WinRtBindableObjectMarshaller.fromManaged(service))
                         KnownHResults.S_OK.value
                     },
                 ),
@@ -1110,102 +1035,64 @@ private fun createCustomPropertyDefinition(customProperty: WinRtCustomProperty):
                 interfaceId = IID.ICustomProperty,
                 methods = listOf(
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        TypeProjection.copyTo(customProperty.type, rawArgs[0] as NativePointer)
+                        TypeProjection.copyTo(customProperty.type, rawArgs[0] as RawAddress)
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        writeOptionalHString(customProperty.name, rawArgs[0] as NativePointer)
+                        writeOptionalHString(customProperty.name, rawArgs[0] as RawAddress)
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        val target = decodeBorrowedInspectable(rawArgs[0] as NativePointer)
+                        val target = decodeBorrowedInspectable(rawArgs[0] as RawAddress)
                         val value = customProperty.getValue(target)
-                        (rawArgs[1] as NativePointer).writeReturnedPointer(WinRtBindableObjectMarshaller.fromManaged(value))
+                        (rawArgs[1] as RawAddress).writeReturnedPointer(WinRtBindableObjectMarshaller.fromManaged(value))
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
                         customProperty.setValue(
-                            decodeBorrowedInspectable(rawArgs[0] as NativePointer),
-                            decodeBorrowedInspectable(rawArgs[1] as NativePointer),
+                            decodeBorrowedInspectable(rawArgs[0] as RawAddress),
+                            decodeBorrowedInspectable(rawArgs[1] as RawAddress),
                         )
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
                         val value = customProperty.getIndexedValue(
-                            decodeBorrowedInspectable(rawArgs[0] as NativePointer),
-                            decodeBorrowedInspectable(rawArgs[1] as NativePointer),
+                            decodeBorrowedInspectable(rawArgs[0] as RawAddress),
+                            decodeBorrowedInspectable(rawArgs[1] as RawAddress),
                         )
-                        (rawArgs[2] as NativePointer).writeReturnedPointer(WinRtBindableObjectMarshaller.fromManaged(value))
+                        (rawArgs[2] as RawAddress).writeReturnedPointer(WinRtBindableObjectMarshaller.fromManaged(value))
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
                         customProperty.setIndexedValue(
-                            decodeBorrowedInspectable(rawArgs[0] as NativePointer),
-                            decodeBorrowedInspectable(rawArgs[1] as NativePointer),
-                            decodeBorrowedInspectable(rawArgs[2] as NativePointer),
+                            decodeBorrowedInspectable(rawArgs[0] as RawAddress),
+                            decodeBorrowedInspectable(rawArgs[1] as RawAddress),
+                            decodeBorrowedInspectable(rawArgs[2] as RawAddress),
                         )
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (customProperty.canWrite) 1 else 0)
+                        PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (customProperty.canWrite) 1 else 0)
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        NativeInterop.writeInt8(rawArgs[0] as NativePointer, if (customProperty.canRead) 1 else 0)
+                        PlatformAbi.writeInt8(rawArgs[0] as RawAddress, if (customProperty.canRead) 1 else 0)
                         KnownHResults.S_OK.value
                     },
                 ),
@@ -1222,54 +1109,35 @@ private fun createCustomPropertyProviderDefinition(source: Any): WinRtCcwDefinit
                 interfaceId = IID.ICustomPropertyProvider,
                 methods = listOf(
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        val property = provider?.getCustomProperty(decodeBorrowedString(rawArgs[0] as NativePointer))
-                        (rawArgs[1] as NativePointer).writeReturnedPointer(propertyPointer(property))
+                        val property = provider?.getCustomProperty(decodeBorrowedString(rawArgs[0] as RawAddress))
+                        (rawArgs[1] as RawAddress).writeReturnedPointer(propertyPointer(property))
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
                     ) { rawArgs ->
                         val property = provider?.getIndexedProperty(
-                            name = decodeBorrowedString(rawArgs[0] as NativePointer),
-                            indexParameterType = TypeProjection.fromAbi(rawArgs[1] as NativePointer),
+                            name = decodeBorrowedString(rawArgs[0] as RawAddress),
+                            indexParameterType = TypeProjection.fromAbi(rawArgs[1] as RawAddress),
                         )
-                        (rawArgs[2] as NativePointer).writeReturnedPointer(propertyPointer(property))
+                        (rawArgs[2] as RawAddress).writeReturnedPointer(propertyPointer(property))
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
                         writeOptionalHString(
                             provider?.getStringRepresentation() ?: source.toString(),
-                            rawArgs[0] as NativePointer,
+                            rawArgs[0] as RawAddress,
                         )
                         KnownHResults.S_OK.value
                     },
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        TypeProjection.copyTo(provider?.type ?: source::class, rawArgs[0] as NativePointer)
+                        TypeProjection.copyTo(provider?.type ?: source::class, rawArgs[0] as RawAddress)
                         KnownHResults.S_OK.value
                     },
                 ),
@@ -1307,13 +1175,9 @@ private fun createSinglePropertyRuntimeClassDefinition(
                 interfaceId = interfaceId,
                 methods = listOf(
                     WinRtInspectableMethodDefinition(
-                        descriptor = NativeFunctionDescriptor.of(
-                            NativeValueLayout.JAVA_INT,
-                            NativeValueLayout.ADDRESS,
-                            NativeValueLayout.ADDRESS,
-                        ),
+                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                     ) { rawArgs ->
-                        writeOptionalHString(propertyName, rawArgs[0] as NativePointer)
+                        writeOptionalHString(propertyName, rawArgs[0] as RawAddress)
                         KnownHResults.S_OK.value
                     },
                 ),
@@ -1341,57 +1205,37 @@ private fun createNotifyCollectionChangedEventArgsInterfaceDefinition(
         interfaceId = interfaceId,
         methods = listOf(
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                NativeInterop.writeInt32(rawArgs[0] as NativePointer, value.action.ordinal)
+                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, value.action.ordinal)
                 KnownHResults.S_OK.value
             },
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                (rawArgs[0] as NativePointer).writeReturnedPointer(
+                (rawArgs[0] as RawAddress).writeReturnedPointer(
                     WinRtBindableVectorProjection.fromManaged(value.newItems?.toMutableList()),
                 )
                 KnownHResults.S_OK.value
             },
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                (rawArgs[0] as NativePointer).writeReturnedPointer(
+                (rawArgs[0] as RawAddress).writeReturnedPointer(
                     WinRtBindableVectorProjection.fromManaged(value.oldItems?.toMutableList()),
                 )
                 KnownHResults.S_OK.value
             },
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                NativeInterop.writeInt32(rawArgs[0] as NativePointer, value.newStartingIndex)
+                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, value.newStartingIndex)
                 KnownHResults.S_OK.value
             },
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                NativeInterop.writeInt32(rawArgs[0] as NativePointer, value.oldStartingIndex)
+                PlatformAbi.writeInt32(rawArgs[0] as RawAddress, value.oldStartingIndex)
                 KnownHResults.S_OK.value
             },
         ),
@@ -1402,24 +1246,20 @@ private fun createStringableInterfaceDefinition(value: Any): WinRtInspectableInt
         interfaceId = IID.IStringable,
         methods = listOf(
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
             ) { rawArgs ->
-                writeOptionalHString(value.toString(), rawArgs[0] as NativePointer)
+                writeOptionalHString(value.toString(), rawArgs[0] as RawAddress)
                 KnownHResults.S_OK.value
             },
         ),
     )
 
 private abstract class NativeAbiEventHandler<T>(
-    handlerPointer: NativePointer,
+    handlerPointer: RawAddress,
     descriptor: WinRtDelegateDescriptor,
 ) : EventHandlerCallback<T>, AutoCloseable {
     private val reference =
-        WinRtDelegateReference.fromAbi(handlerPointer, descriptor)
+        WinRtDelegateReference.fromAbi(cloneEventHandlerPointer(handlerPointer), descriptor)
             ?: throw WinRtIllegalStateException(
                 "Event handler pointer was null.",
                 KnownHResults.E_POINTER,
@@ -1431,7 +1271,7 @@ private abstract class NativeAbiEventHandler<T>(
 
     protected fun invokeWithAbi(
         sender: Any?,
-        argsPointer: NativePointer,
+        argsPointer: RawAddress,
     ) {
         withObjectArgument(sender) { senderPointer ->
             reference.invokeAbi(listOf(senderPointer, argsPointer)).requireSuccess("WinRT event delegate invoke")
@@ -1439,8 +1279,13 @@ private abstract class NativeAbiEventHandler<T>(
     }
 }
 
+private fun cloneEventHandlerPointer(handlerPointer: RawAddress): RawAddress =
+    IUnknownReference(handlerPointer.asRawComPtr(), preventReleaseOnDispose = true)
+        .getRefPointer()
+        .asRawAddress()
+
 private class NativeCommandChangedHandler(
-    handlerPointer: NativePointer,
+    handlerPointer: RawAddress,
 ) : NativeAbiEventHandler<Any?>(
         handlerPointer,
         WinRtDelegateDescriptor(
@@ -1459,7 +1304,7 @@ private class NativeCommandChangedHandler(
 }
 
 private class NativePropertyChangedHandler(
-    handlerPointer: NativePointer,
+    handlerPointer: RawAddress,
     useWuxDelegate: Boolean = false,
 ) : NativeAbiEventHandler<WinRtPropertyChangedEventArgs?>(
         handlerPointer,
@@ -1486,7 +1331,7 @@ private class NativePropertyChangedHandler(
 }
 
 private class NativeCollectionChangedHandler(
-    handlerPointer: NativePointer,
+    handlerPointer: RawAddress,
     useWuxDelegate: Boolean = false,
 ) : NativeAbiEventHandler<WinRtNotifyCollectionChangedEventArgs?>(
         handlerPointer,
@@ -1513,7 +1358,7 @@ private class NativeCollectionChangedHandler(
 }
 
 private class NativeDataErrorsChangedHandler(
-    handlerPointer: NativePointer,
+    handlerPointer: RawAddress,
 ) : NativeAbiEventHandler<WinRtDataErrorsChangedEventArgs?>(
         handlerPointer,
         WinRtDelegateDescriptor(
@@ -1537,17 +1382,12 @@ private fun createPropertyChangedAddMethod(
     useWuxDelegate: Boolean,
 ): WinRtInspectableMethodDefinition =
     WinRtInspectableMethodDefinition(
-        descriptor = NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-        ),
+        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
     ) { rawArgs ->
-        val handler = NativePropertyChangedHandler(rawArgs[0] as NativePointer, useWuxDelegate = useWuxDelegate)
+        val handler = NativePropertyChangedHandler(rawArgs[0] as RawAddress, useWuxDelegate = useWuxDelegate)
         val token = tokenTable.addEventHandler(handler)
         notifier.addPropertyChanged(handler)
-        EventRegistrationToken.copyTo(token, rawArgs[1] as NativePointer)
+        EventRegistrationToken.copyTo(token, rawArgs[1] as RawAddress)
         KnownHResults.S_OK.value
     }
 
@@ -1556,11 +1396,7 @@ private fun createPropertyChangedRemoveMethod(
     notifier: WinRtPropertyChangedNotifier,
 ): WinRtInspectableMethodDefinition =
     WinRtInspectableMethodDefinition(
-        descriptor = NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.JAVA_LONG,
-        ),
+        signature = ComMethodSignature.of(ComAbiValueKind.Int64),
     ) { rawArgs ->
         tokenTable.removeEventHandler(EventRegistrationToken(rawArgs[0] as Long))?.let { handler ->
             try {
@@ -1578,17 +1414,12 @@ private fun createCollectionChangedAddMethod(
     useWuxDelegate: Boolean,
 ): WinRtInspectableMethodDefinition =
     WinRtInspectableMethodDefinition(
-        descriptor = NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-        ),
+        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
     ) { rawArgs ->
-        val handler = NativeCollectionChangedHandler(rawArgs[0] as NativePointer, useWuxDelegate = useWuxDelegate)
+        val handler = NativeCollectionChangedHandler(rawArgs[0] as RawAddress, useWuxDelegate = useWuxDelegate)
         val token = tokenTable.addEventHandler(handler)
         notifier.addCollectionChanged(handler)
-        EventRegistrationToken.copyTo(token, rawArgs[1] as NativePointer)
+        EventRegistrationToken.copyTo(token, rawArgs[1] as RawAddress)
         KnownHResults.S_OK.value
     }
 
@@ -1597,11 +1428,7 @@ private fun createCollectionChangedRemoveMethod(
     notifier: WinRtCollectionChangedNotifier,
 ): WinRtInspectableMethodDefinition =
     WinRtInspectableMethodDefinition(
-        descriptor = NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.JAVA_LONG,
-        ),
+        signature = ComMethodSignature.of(ComAbiValueKind.Int64),
     ) { rawArgs ->
         tokenTable.removeEventHandler(EventRegistrationToken(rawArgs[0] as Long))?.let { handler ->
             try {
@@ -1618,17 +1445,12 @@ private fun createDataErrorsChangedAddMethod(
     dataErrorInfo: WinRtDataErrorInfo,
 ): WinRtInspectableMethodDefinition =
     WinRtInspectableMethodDefinition(
-        descriptor = NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.ADDRESS,
-        ),
+        signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer),
     ) { rawArgs ->
-        val handler = NativeDataErrorsChangedHandler(rawArgs[0] as NativePointer)
+        val handler = NativeDataErrorsChangedHandler(rawArgs[0] as RawAddress)
         val token = tokenTable.addEventHandler(handler)
         dataErrorInfo.addErrorsChanged(handler)
-        EventRegistrationToken.copyTo(token, rawArgs[1] as NativePointer)
+        EventRegistrationToken.copyTo(token, rawArgs[1] as RawAddress)
         KnownHResults.S_OK.value
     }
 
@@ -1637,11 +1459,7 @@ private fun createDataErrorsChangedRemoveMethod(
     dataErrorInfo: WinRtDataErrorInfo,
 ): WinRtInspectableMethodDefinition =
     WinRtInspectableMethodDefinition(
-        descriptor = NativeFunctionDescriptor.of(
-            NativeValueLayout.JAVA_INT,
-            NativeValueLayout.ADDRESS,
-            NativeValueLayout.JAVA_LONG,
-        ),
+        signature = ComMethodSignature.of(ComAbiValueKind.Int64),
     ) { rawArgs ->
         tokenTable.removeEventHandler(EventRegistrationToken(rawArgs[0] as Long))?.let { handler ->
             try {
@@ -1653,9 +1471,9 @@ private fun createDataErrorsChangedRemoveMethod(
         KnownHResults.S_OK.value
     }
 
-private fun propertyPointer(property: WinRtCustomProperty?): NativePointer =
+private fun propertyPointer(property: WinRtCustomProperty?): RawAddress =
     property?.let { ComWrappersSupport.createCCWForObject(it, IID.ICustomProperty).useAndGetRef() }
-        ?: NativeInterop.nullPointer
+        ?: PlatformAbi.nullPointer
 
 private fun explicitOrBindableCustomPropertyProvider(source: Any): WinRtCustomPropertyProvider? =
     when (source) {
@@ -1707,54 +1525,62 @@ private fun resolveProjectedReference(
     )
 }
 
+private fun invokeBooleanGetter(
+    reference: ComObjectReference,
+    slot: Int,
+): Boolean =
+    RawAbiResultSupport.booleanResult { resultOut ->
+        ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+    }
+
+private fun invokeHStringGetter(
+    reference: ComObjectReference,
+    slot: Int,
+): String =
+    RawAbiResultSupport.hStringResult { resultOut ->
+        ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+    }.use(HString::toKString)
+
+private fun invokeInt32Getter(
+    reference: ComObjectReference,
+    slot: Int,
+): Int =
+    RawAbiResultSupport.int32Result { resultOut ->
+        ComVtableInvoker.invokeArgs(reference.pointer, slot, resultOut)
+    }
+
 private fun readPropertyChangedEventArgs(reference: ComObjectReference): WinRtPropertyChangedEventArgs =
     WinRtPropertyChangedEventArgs(
-        propertyName = reference.invokeHStringMethod(slot = 6).use(HString::toKString),
+        propertyName = invokeHStringGetter(reference, slot = 6),
     )
 
 private fun readDataErrorsChangedEventArgs(reference: ComObjectReference): WinRtDataErrorsChangedEventArgs =
     WinRtDataErrorsChangedEventArgs(
-        propertyName = reference.invokeHStringMethod(slot = 6).use(HString::toKString),
+        propertyName = invokeHStringGetter(reference, slot = 6),
     )
 
 private fun readNotifyCollectionChangedEventArgs(reference: ComObjectReference): WinRtNotifyCollectionChangedEventArgs {
-    val action = WinRtNotifyCollectionChangedAction.entries[reference.invokeInt32Method(slot = 6)]
+    val action = WinRtNotifyCollectionChangedAction.entries[invokeInt32Getter(reference, slot = 6)]
     val newItems =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                reference.invokeAbi(
-                    slot = 7,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    resultOut,
-                )
+                ComVtableInvoker.invokeArgs(reference.pointer, 7, resultOut)
             },
-            wrap = ::IUnknownReference,
+            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )?.use { listReference ->
-            WinRtBindableVectorProjection.fromAbi(listReference.pointer)?.use { it.toList() }
+            WinRtBindableVectorProjection.fromAbi(listReference.pointer.asRawAddress())?.use { it.toList() }
         }
     val oldItems =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                reference.invokeAbi(
-                    slot = 8,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    resultOut,
-                )
+                ComVtableInvoker.invokeArgs(reference.pointer, 8, resultOut)
             },
-            wrap = ::IUnknownReference,
+            wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )?.use { listReference ->
-            WinRtBindableVectorProjection.fromAbi(listReference.pointer)?.use { it.toList() }
+            WinRtBindableVectorProjection.fromAbi(listReference.pointer.asRawAddress())?.use { it.toList() }
         }
-    val newStartingIndex = reference.invokeInt32Method(slot = 9)
-    val oldStartingIndex = reference.invokeInt32Method(slot = 10)
+    val newStartingIndex = invokeInt32Getter(reference, slot = 9)
+    val oldStartingIndex = invokeInt32Getter(reference, slot = 10)
     return WinRtNotifyCollectionChangedEventArgs(
         action = action,
         newItems = newItems,
@@ -1824,11 +1650,11 @@ private fun decodeDataErrorsChangedEventArgsArgument(argument: Any?): WinRtDataE
         else -> error("Unsupported DataErrorsChangedEventArgs ABI value: ${argument::class.typeDisplayName()}")
     }
 
-private fun decodeBorrowedInspectable(pointer: NativePointer): Any? =
+private fun decodeBorrowedInspectable(pointer: RawAddress): Any? =
     WinRtBindableObjectMarshaller.fromBorrowedAbi(pointer)
 
-private fun decodeBorrowedString(pointer: NativePointer): String =
-    if (NativeInterop.isNull(pointer)) {
+private fun decodeBorrowedString(pointer: RawAddress): String =
+    if (PlatformAbi.isNull(pointer)) {
         ""
     } else {
         HString.fromHandle(pointer, owner = false).toKString()
@@ -1836,30 +1662,22 @@ private fun decodeBorrowedString(pointer: NativePointer): String =
 
 private fun writeOptionalHString(
     value: String?,
-    destination: NativePointer,
+    destination: RawAddress,
 ) {
     if (value == null) {
-        NativeInterop.writePointer(destination, NativeInterop.nullPointer)
+        PlatformAbi.writePointer(destination, PlatformAbi.nullPointer)
         return
     }
-    NativeInterop.writePointer(destination, HString.create(value).handle)
+    PlatformAbi.writePointer(destination, HString.create(value).handle)
 }
 
 private fun invokeTypeNameGetter(
     reference: ComObjectReference,
     slot: Int,
 ): KClass<*>? =
-    NativeInterop.confinedScope().use { scope ->
-        val buffer = NativeInterop.allocateBytes(scope, TypeProjection.LAYOUT.sizeBytes)
-        val hr = reference.invokeAbi(
-            slot = slot,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-            buffer,
-        )
+    PlatformAbi.confinedScope().use { scope ->
+        val buffer = PlatformAbi.allocateBytes(scope, TypeProjection.LAYOUT.sizeBytes)
+        val hr = ComVtableInvoker.invokeArgs(reference.pointer, slot, buffer)
         WinRtPlatformApi.checkSucceededRaw(hr)
         try {
             TypeProjection.fromAbi(buffer)
@@ -1870,10 +1688,10 @@ private fun invokeTypeNameGetter(
 
 private inline fun <T> withTypeNameArgument(
     type: KClass<*>?,
-    block: (NativePointer) -> T,
+    block: (RawAddress) -> T,
 ): T =
-    NativeInterop.confinedScope().use { scope ->
-        val buffer = NativeInterop.allocateBytes(scope, TypeProjection.LAYOUT.sizeBytes)
+    PlatformAbi.confinedScope().use { scope ->
+        val buffer = PlatformAbi.allocateBytes(scope, TypeProjection.LAYOUT.sizeBytes)
         TypeProjection.copyTo(type, buffer)
         try {
             block(buffer)
@@ -1884,32 +1702,32 @@ private inline fun <T> withTypeNameArgument(
 
 private inline fun <T> withOptionalHString(
     value: String?,
-    block: (NativePointer) -> T,
+    block: (RawAddress) -> T,
 ): T {
     if (value == null) {
-        return block(NativeInterop.nullPointer)
+        return block(PlatformAbi.nullPointer)
     }
     return HString.create(value).use { block(it.handle) }
 }
 
 private inline fun <T> withObjectArgument(
     value: Any?,
-    block: (NativePointer) -> T,
+    block: (RawAddress) -> T,
 ): T =
     WinRtBindableObjectMarshaller.createMarshaler(value).use { marshaler ->
-        block(marshaler?.abi ?: NativeInterop.nullPointer)
+        block(marshaler?.abi ?: PlatformAbi.nullPointer)
     }
 
 private inline fun <T> withTwoObjectArguments(
     first: Any?,
     second: Any?,
-    block: (NativePointer, NativePointer) -> T,
+    block: (RawAddress, RawAddress) -> T,
 ): T =
     WinRtBindableObjectMarshaller.createMarshaler(first).use { firstMarshaler ->
         WinRtBindableObjectMarshaller.createMarshaler(second).use { secondMarshaler ->
             block(
-                firstMarshaler?.abi ?: NativeInterop.nullPointer,
-                secondMarshaler?.abi ?: NativeInterop.nullPointer,
+                firstMarshaler?.abi ?: PlatformAbi.nullPointer,
+                secondMarshaler?.abi ?: PlatformAbi.nullPointer,
             )
         }
     }
@@ -1918,15 +1736,15 @@ private inline fun <T> withThreeObjectArguments(
     first: Any?,
     second: Any?,
     third: Any?,
-    block: (NativePointer, NativePointer, NativePointer) -> T,
+    block: (RawAddress, RawAddress, RawAddress) -> T,
 ): T =
     WinRtBindableObjectMarshaller.createMarshaler(first).use { firstMarshaler ->
         WinRtBindableObjectMarshaller.createMarshaler(second).use { secondMarshaler ->
             WinRtBindableObjectMarshaller.createMarshaler(third).use { thirdMarshaler ->
                 block(
-                    firstMarshaler?.abi ?: NativeInterop.nullPointer,
-                    secondMarshaler?.abi ?: NativeInterop.nullPointer,
-                    thirdMarshaler?.abi ?: NativeInterop.nullPointer,
+                    firstMarshaler?.abi ?: PlatformAbi.nullPointer,
+                    secondMarshaler?.abi ?: PlatformAbi.nullPointer,
+                    thirdMarshaler?.abi ?: PlatformAbi.nullPointer,
                 )
             }
         }
@@ -1935,49 +1753,44 @@ private inline fun <T> withThreeObjectArguments(
 private inline fun <T> withPropertyChangedEventArgsArgument(
     value: WinRtPropertyChangedEventArgs?,
     interfaceId: Guid = propertyChangedEventArgsInterfaceId(),
-    block: (NativePointer) -> T,
+    block: (RawAddress) -> T,
 ): T =
     value?.let {
-        ComWrappersSupport.createCCWForObject(it, interfaceId).use { block(it.pointer) }
-    } ?: block(NativeInterop.nullPointer)
+        ComWrappersSupport.createCCWForObject(it, interfaceId).use { block(it.pointer.asRawAddress()) }
+    } ?: block(PlatformAbi.nullPointer)
 
 private inline fun <T> withNotifyCollectionChangedEventArgsArgument(
     value: WinRtNotifyCollectionChangedEventArgs?,
     interfaceId: Guid = notifyCollectionChangedEventArgsInterfaceId(),
-    block: (NativePointer) -> T,
+    block: (RawAddress) -> T,
 ): T =
     value?.let {
-        ComWrappersSupport.createCCWForObject(it, interfaceId).use { block(it.pointer) }
-    } ?: block(NativeInterop.nullPointer)
+        ComWrappersSupport.createCCWForObject(it, interfaceId).use { block(it.pointer.asRawAddress()) }
+    } ?: block(PlatformAbi.nullPointer)
 
 private inline fun <T> withDataErrorsChangedEventArgsArgument(
     value: WinRtDataErrorsChangedEventArgs?,
-    block: (NativePointer) -> T,
+    block: (RawAddress) -> T,
 ): T =
     value?.let {
-        ComWrappersSupport.createCCWForObject(it, dataErrorsChangedEventArgsInterfaceId).use { block(it.pointer) }
-    } ?: block(NativeInterop.nullPointer)
+        ComWrappersSupport.createCCWForObject(it, dataErrorsChangedEventArgsInterfaceId).use { block(it.pointer.asRawAddress()) }
+    } ?: block(PlatformAbi.nullPointer)
 
 private fun invokeCanExecute(
     reference: ComObjectReference,
     parameter: Any?,
 ): Boolean =
     withObjectArgument(parameter) { parameterPointer ->
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocateInt8Slot(scope)
-            val hr = reference.invokeAbi(
-                slot = 8,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateInt8Slot(scope)
+            val hr = ComVtableInvoker.invokeArgs(
+                reference.pointer,
+                8,
                 parameterPointer,
                 resultOut,
             )
             WinRtPlatformApi.checkSucceededRaw(hr)
-            NativeInterop.readInt8(resultOut).toInt() != 0
+            PlatformAbi.readInt8(resultOut).toInt() != 0
         }
     }
 
@@ -1986,19 +1799,11 @@ private fun invokeExecute(
     parameter: Any?,
 ) {
     withObjectArgument(parameter) { parameterPointer ->
-        val hr = reference.invokeAbi(
-            slot = 9,
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-            parameterPointer,
-        )
+        val hr = ComVtableInvoker.invokeArgs(reference.pointer, 9, parameterPointer)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 }
 
-private fun NativePointer.writeReturnedPointer(pointer: NativePointer) {
-    NativeInterop.writePointer(this, pointer)
+private fun RawAddress.writeReturnedPointer(pointer: RawAddress) {
+    PlatformAbi.writePointer(this, pointer)
 }

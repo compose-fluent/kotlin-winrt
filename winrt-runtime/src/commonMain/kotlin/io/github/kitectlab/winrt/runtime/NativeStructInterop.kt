@@ -95,9 +95,9 @@ class NativeStructLayout private constructor(
     fun field(name: String): NativeStructField =
         fieldByName[name] ?: error("Unknown native struct field '$name'.")
 
-    fun slice(source: NativePointer, fieldName: String): NativePointer {
+    fun slice(source: RawAddress, fieldName: String): RawAddress {
         val field = field(fieldName)
-        return NativeInterop.slice(source, field.offsetBytes, field.sizeBytes)
+        return PlatformAbi.slice(source, field.offsetBytes, field.sizeBytes)
     }
 
     companion object {
@@ -118,7 +118,7 @@ class NativeStructLayout private constructor(
 interface NativeStructAdapter<T> {
     val layout: NativeStructLayout
 
-    fun read(source: NativePointer): T
+    fun read(source: RawAddress): T
 
-    fun write(value: T, destination: NativePointer)
+    fun write(value: T, destination: RawAddress)
 }

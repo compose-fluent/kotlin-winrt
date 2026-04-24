@@ -31,7 +31,7 @@ class InteropRuntimeTest {
             WinRtRuntime.activateInstance("Windows.Data.Json.JsonObject").getOrThrow().use { instance ->
                 instance.queryInterface(IID.IWeakReferenceSource).getOrThrow().use { weakReferenceSource ->
                     val weakReference = WeakReferenceSourceReference(
-                        weakReferenceSource.pointer,
+                        weakReferenceSource.pointer.asRawAddress(),
                         IID.IWeakReferenceSource,
                     ).getWeakReference()
                     assertNotNull(weakReference)

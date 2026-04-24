@@ -69,9 +69,9 @@ data class Guid(val value: Uuid) {
 
 fun guidOf(value: String): Guid = Guid(value)
 
-fun Guid.writeTo(destination: NativePointer) {
-    NativeInterop.writeGuid(destination, this)
+fun Guid.writeTo(destination: RawAddress) {
+    PlatformAbi.writeGuid(destination, this)
 }
 
-fun Guid.Companion.readFrom(source: NativePointer): Guid =
-    NativeInterop.readGuid(source)
+fun Guid.Companion.readFrom(source: RawAddress): Guid =
+    PlatformAbi.readGuid(source)

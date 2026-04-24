@@ -3,7 +3,6 @@ package io.github.kitectlab.winrt.runtime
 import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,9 +17,9 @@ class WinRtBindableInteropTest {
 
             val first = iterable.first()
             assertTrue(first.hasCurrent())
-            assertSame(firstValue.pointer, first.current().pointer)
+            assertEquals(firstValue.pointer, first.current().pointer)
             assertTrue(first.moveNext())
-            assertSame(secondValue.pointer, first.current().pointer)
+            assertEquals(secondValue.pointer, first.current().pointer)
             assertFalse(first.moveNext())
             assertEquals(listOf(6), iterable.objectSlots)
             assertEquals(listOf(7, 6, 8, 6, 8), iterator.slotCalls)
@@ -40,11 +39,11 @@ class WinRtBindableInteropTest {
             )
 
             assertEquals(3u, vectorView.size())
-            assertSame(element.pointer, vectorView.getAt(1u).pointer)
-            assertEquals(true to 2u, vectorView.indexOf(key.pointer))
+            assertEquals(element.pointer, vectorView.getAt(1u).pointer)
+            assertEquals(true to 2u, vectorView.indexOf(key.pointer.asRawAddress()))
             assertEquals(listOf(7), vectorView.uintSlots)
             assertEquals(listOf(6 to 1u), vectorView.uintArgSlots)
-            assertEquals(listOf(8 to key.pointer), vectorView.indexOfSlots)
+            assertEquals(listOf(8 to key.pointer.asRawAddress()), vectorView.indexOfSlots)
         }
     }
 
@@ -68,30 +67,30 @@ class WinRtBindableInteropTest {
                 getAtResultsByIndex = mapOf(0u to element, 1u to replacement),
             )
 
-            assertSame(element.pointer, vector.getAt(0u).pointer)
+            assertEquals(element.pointer, vector.getAt(0u).pointer)
             assertEquals(5u, vector.size())
-            assertSame(vectorView.pointer, vector.getView().pointer)
-            assertEquals(true to 3u, vector.indexOf(element.pointer))
-            vector.setAt(1u, replacement.pointer)
-            vector.insertAt(2u, replacement.pointer)
+            assertEquals(vectorView.pointer, vector.getView().pointer)
+            assertEquals(true to 3u, vector.indexOf(element.pointer.asRawAddress()))
+            vector.setAt(1u, replacement.pointer.asRawAddress())
+            vector.insertAt(2u, replacement.pointer.asRawAddress())
             vector.removeAt(4u)
-            vector.append(replacement.pointer)
+            vector.append(replacement.pointer.asRawAddress())
             vector.removeAtEnd()
             vector.clear()
 
             assertEquals(listOf(7), vector.uintSlots)
             assertEquals(listOf(6 to 0u), vector.uintArgSlots)
             assertEquals(listOf(8), vector.objectSlots)
-            assertEquals(listOf(9 to element.pointer), vector.indexOfSlots)
+            assertEquals(listOf(9 to element.pointer.asRawAddress()), vector.indexOfSlots)
             assertEquals(
                 listOf(
-                    10 to (1u to replacement.pointer),
-                    11 to (2u to replacement.pointer),
+                    10 to (1u to replacement.pointer.asRawAddress()),
+                    11 to (2u to replacement.pointer.asRawAddress()),
                 ),
                 vector.uintObjectSlots,
             )
             assertEquals(listOf(12 to 4u), vector.removeAtSlots)
-            assertEquals(listOf(13 to replacement.pointer), vector.appendSlots)
+            assertEquals(listOf(13 to replacement.pointer.asRawAddress()), vector.appendSlots)
             assertEquals(listOf(14, 15), vector.unitSlots)
         }
     }
@@ -99,7 +98,7 @@ class WinRtBindableInteropTest {
     private open class FakeBindableReference(
         arena: Arena,
         val label: String,
-    ) : IUnknownReference(arena.allocate(8).asNativePointer(), IID.IInspectable, preventReleaseOnDispose = true) {
+    ) : IUnknownReference(arena.allocate(8).asNativePointer().asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true) {
         override fun close() = Unit
     }
 

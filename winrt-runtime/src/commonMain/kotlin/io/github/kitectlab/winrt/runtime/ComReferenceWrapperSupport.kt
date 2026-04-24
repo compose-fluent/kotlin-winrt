@@ -16,15 +16,28 @@ internal object ComReferenceWrapperSupport {
 
     fun <T> wrap(
         kind: ComReferenceWrapperKind,
-        pointer: NativePointer,
+        pointer: RawComPtr,
         interfaceId: Guid,
-        wrapUnknown: (NativePointer, Guid) -> T,
-        wrapInspectable: (NativePointer, Guid) -> T,
-        wrapActivationFactory: (NativePointer, Guid) -> T,
-    ): T =
+        wrapUnknown: (RawComPtr, Guid) -> T,
+        wrapInspectable: (RawComPtr, Guid) -> T,
+        wrapActivationFactory: (RawComPtr, Guid) -> T,
+        ): T =
         when (kind) {
             ComReferenceWrapperKind.Unknown -> wrapUnknown(pointer, interfaceId)
             ComReferenceWrapperKind.Inspectable -> wrapInspectable(pointer, interfaceId)
             ComReferenceWrapperKind.ActivationFactory -> wrapActivationFactory(pointer, interfaceId)
+        }
+
+    fun <T> wrap(
+        kind: ComReferenceWrapperKind,
+        comPtr: ComPtr,
+        wrapUnknown: (ComPtr) -> T,
+        wrapInspectable: (ComPtr) -> T,
+        wrapActivationFactory: (ComPtr) -> T,
+    ): T =
+        when (kind) {
+            ComReferenceWrapperKind.Unknown -> wrapUnknown(comPtr)
+            ComReferenceWrapperKind.Inspectable -> wrapInspectable(comPtr)
+            ComReferenceWrapperKind.ActivationFactory -> wrapActivationFactory(comPtr)
         }
 }

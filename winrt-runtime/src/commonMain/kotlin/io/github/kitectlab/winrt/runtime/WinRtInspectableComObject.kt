@@ -1,7 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
 internal data class WinRtInspectableMethodDefinition(
-    val descriptor: NativeFunctionDescriptor,
+    val signature: ComMethodSignature,
     val handler: (List<Any?>) -> Int,
 )
 
@@ -27,7 +27,7 @@ internal class WinRtInspectableComObject(
     private val trustLevel: Int = 0,
     private val managedValue: Any? = null,
 ) : ManagedReferenceHost, AutoCloseable {
-    private val scope = NativeInterop.sharedScope()
+    private val scope = PlatformAbi.sharedScope()
     private val state = ManagedComHostState(::cleanup)
     private val interfaces = interfaceDefinitions.associateBy { it.interfaceId }
     private val interfaceEntries = interfaceDefinitions.associate { definition ->
@@ -42,7 +42,7 @@ internal class WinRtInspectableComObject(
 
     init {
         interfaceEntries.values.forEach { entry ->
-            registry[NativeInterop.pointerKey(entry.objectMemory)] = this
+            registry[PlatformAbi.pointerKey(entry.objectMemory)] = this
         }
     }
 
@@ -52,12 +52,12 @@ internal class WinRtInspectableComObject(
 
     override fun createReference(interfaceId: Guid): ComObjectReference {
         addReference()
-        return ComObjectReference(interfacePointer(interfaceId), interfaceId)
+        return ComObjectReference(interfacePointer(interfaceId).asRawComPtr(), interfaceId)
     }
 
     fun createPrimaryReference(): ComObjectReference = createReference(primaryInterfaceId)
 
-    fun detachReference(interfaceId: Guid = primaryInterfaceId): NativePointer =
+    fun detachReference(interfaceId: Guid = primaryInterfaceId): RawAddress =
         ManagedReferenceHostSupport.detachReference(
             createReference = {
                 addReference()
@@ -70,7 +70,7 @@ internal class WinRtInspectableComObject(
         releaseReference()
     }
 
-    private fun interfacePointer(interfaceId: Guid): NativePointer =
+    private fun interfacePointer(interfaceId: Guid): RawAddress =
         when (interfaceId) {
             IID.IUnknown -> interfaceEntries.getValue(primaryInterfaceId).objectMemory
             IID.IInspectable -> primaryInspectableInterfaceId?.let { interfaceEntries.getValue(it).objectMemory }
@@ -83,67 +83,31 @@ internal class WinRtInspectableComObject(
     private fun createInterfaceEntry(
         definition: WinRtInspectableInterfaceDefinition,
     ): WinRtInspectableInterfaceEntry {
-        val objectMemory = NativeInterop.allocatePointerSlot(scope)
+        val objectMemory = PlatformAbi.allocatePointerSlot(scope)
         val firstCustomSlot = when (definition.baseKind) {
             WinRtComInterfaceBaseKind.IUnknown -> IUnknownVftblSlots.Release + 1
             WinRtComInterfaceBaseKind.IInspectable -> IInspectableVftblSlots.FirstCustom
         }
-        val vtableMemory = NativeInterop.allocatePointerArray(scope, firstCustomSlot + definition.methods.size)
-        val queryInterfaceCallback = callbackOf(
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
+        val vtableMemory = PlatformAbi.allocatePointerArray(scope, firstCustomSlot + definition.methods.size)
+        val queryInterfaceCallback = callbackOf(IUnknownVftbl.QueryInterface) { args ->
             queryInterface(
-                requestedInterfaceId = NativeInterop.readGuid(args[1] as NativePointer),
-                resultPointer = args[2] as NativePointer,
+                requestedInterfaceId = PlatformAbi.readGuid(args[1] as RawAddress),
+                resultPointer = args[2] as RawAddress,
             )
         }
-        val addRefCallback = callbackOf(
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { addReference() }
-        val releaseCallback = callbackOf(
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { releaseReference() }
-        val getIidsCallback = callbackOf(
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getIids(countOut = args[1] as NativePointer, idsOut = args[2] as NativePointer)
+        val addRefCallback = callbackOf(IUnknownVftbl.AddRef) { addReference() }
+        val releaseCallback = callbackOf(IUnknownVftbl.Release) { releaseReference() }
+        val getIidsCallback = callbackOf(IInspectableVftbl.GetIids) { args ->
+            getIids(countOut = args[1] as RawAddress, idsOut = args[2] as RawAddress)
         }
-        val getRuntimeClassNameCallback = callbackOf(
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getRuntimeClassName(args[1] as NativePointer)
+        val getRuntimeClassNameCallback = callbackOf(IInspectableVftbl.GetRuntimeClassName) { args ->
+            getRuntimeClassName(args[1] as RawAddress)
         }
-        val getTrustLevelCallback = callbackOf(
-            descriptor = NativeFunctionDescriptor.of(
-                NativeValueLayout.JAVA_INT,
-                NativeValueLayout.ADDRESS,
-                NativeValueLayout.ADDRESS,
-            ),
-        ) { args ->
-            getTrustLevel(args[1] as NativePointer)
+        val getTrustLevelCallback = callbackOf(IInspectableVftbl.GetTrustLevel) { args ->
+            getTrustLevel(args[1] as RawAddress)
         }
         val methodCallbacks = definition.methods.mapIndexed { index, method ->
-            callbackOf(method.descriptor) { args ->
+            callbackOf(method.signature) { args ->
                 invokeMethod(
                     interfaceId = definition.interfaceId,
                     methodIndex = index,
@@ -151,18 +115,18 @@ internal class WinRtInspectableComObject(
                 )
             }
         }
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
-        NativeInterop.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.QueryInterface, queryInterfaceCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.AddRef, addRefCallback.pointer)
+        PlatformAbi.writePointerAt(vtableMemory, IUnknownVftblSlots.Release, releaseCallback.pointer)
         if (definition.baseKind == WinRtComInterfaceBaseKind.IInspectable) {
-            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetIids, getIidsCallback.pointer)
-            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetRuntimeClassName, getRuntimeClassNameCallback.pointer)
-            NativeInterop.writePointerAt(vtableMemory, IInspectableVftblSlots.GetTrustLevel, getTrustLevelCallback.pointer)
+            PlatformAbi.writePointerAt(vtableMemory, IInspectableVftblSlots.GetIids, getIidsCallback.pointer)
+            PlatformAbi.writePointerAt(vtableMemory, IInspectableVftblSlots.GetRuntimeClassName, getRuntimeClassNameCallback.pointer)
+            PlatformAbi.writePointerAt(vtableMemory, IInspectableVftblSlots.GetTrustLevel, getTrustLevelCallback.pointer)
         }
         methodCallbacks.forEachIndexed { index, callback ->
-            NativeInterop.writePointerAt(vtableMemory, firstCustomSlot + index, callback.pointer)
+            PlatformAbi.writePointerAt(vtableMemory, firstCustomSlot + index, callback.pointer)
         }
-        NativeInterop.writePointer(objectMemory, vtableMemory)
+        PlatformAbi.writePointer(objectMemory, vtableMemory)
         return WinRtInspectableInterfaceEntry(
             objectMemory = objectMemory,
             callbacks = buildList {
@@ -181,7 +145,7 @@ internal class WinRtInspectableComObject(
 
     private fun queryInterface(
         requestedInterfaceId: Guid,
-        resultPointer: NativePointer,
+        resultPointer: RawAddress,
     ): Int {
         val targetPointer = when (requestedInterfaceId) {
             IID.IUnknown -> interfacePointer(primaryInterfaceId)
@@ -189,9 +153,9 @@ internal class WinRtInspectableComObject(
             else -> interfaceEntries[requestedInterfaceId]?.objectMemory
         }
         val queryResult = state.queryInterface(requestedInterfaceId) { _ -> targetPointer }
-        NativeInterop.writePointer(
+        PlatformAbi.writePointer(
             resultPointer,
-            queryResult.target ?: NativeInterop.nullPointer,
+            queryResult.target ?: PlatformAbi.nullPointer,
         )
         return queryResult.hResult.value
     }
@@ -201,25 +165,25 @@ internal class WinRtInspectableComObject(
     private fun releaseReference(): Int = state.releaseReference()
 
     private fun getIids(
-        countOut: NativePointer,
-        idsOut: NativePointer,
+        countOut: RawAddress,
+        idsOut: RawAddress,
     ): Int {
-        NativeInterop.writeInt32(countOut, interfaces.size)
-        NativeInterop.writePointer(idsOut, interfaceIdsMemory)
+        PlatformAbi.writeInt32(countOut, interfaces.size)
+        PlatformAbi.writePointer(idsOut, interfaceIdsMemory)
         return KnownHResults.S_OK.value
     }
 
-    private fun getRuntimeClassName(resultOut: NativePointer): Int {
+    private fun getRuntimeClassName(resultOut: RawAddress): Int {
         if (runtimeClassName == null) {
-            NativeInterop.writePointer(resultOut, NativeInterop.nullPointer)
+            PlatformAbi.writePointer(resultOut, PlatformAbi.nullPointer)
             return KnownHResults.S_OK.value
         }
-        NativeInterop.writePointer(resultOut, HString.create(runtimeClassName).handle)
+        PlatformAbi.writePointer(resultOut, HString.create(runtimeClassName).handle)
         return KnownHResults.S_OK.value
     }
 
-    private fun getTrustLevel(resultOut: NativePointer): Int {
-        NativeInterop.writeInt32(resultOut, trustLevel)
+    private fun getTrustLevel(resultOut: RawAddress): Int {
+        PlatformAbi.writeInt32(resultOut, trustLevel)
         return KnownHResults.S_OK.value
     }
 
@@ -236,7 +200,7 @@ internal class WinRtInspectableComObject(
 
     private fun cleanup() {
         interfaceEntries.values.forEach { entry ->
-            registry.remove(NativeInterop.pointerKey(entry.objectMemory))
+            registry.remove(PlatformAbi.pointerKey(entry.objectMemory))
             entry.callbacks.forEach(NativeCallbackHandle::close)
         }
         scope.close()
@@ -244,32 +208,32 @@ internal class WinRtInspectableComObject(
 
     private fun allocateInterfaceIds(
         definitions: List<WinRtInspectableInterfaceDefinition>,
-    ): NativePointer {
-        val memory = NativeInterop.allocateBytes(scope, definitions.size.toLong() * Guid.BYTE_SIZE)
+    ): RawAddress {
+        val memory = PlatformAbi.allocateBytes(scope, definitions.size.toLong() * Guid.BYTE_SIZE)
         definitions.forEachIndexed { index, definition ->
-            NativeInterop.writeGuid(memory, index.toLong() * Guid.BYTE_SIZE, definition.interfaceId)
+            PlatformAbi.writeGuid(memory, index.toLong() * Guid.BYTE_SIZE, definition.interfaceId)
         }
         return memory
     }
 
     private fun callbackOf(
-        descriptor: NativeFunctionDescriptor,
+        signature: ComMethodSignature,
         callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle = NativeInterop.createCallback(descriptor, callback)
+    ): NativeCallbackHandle = ComAbiInteropBridge.createComMethodCallback(signature, callback)
 
     private data class WinRtInspectableInterfaceEntry(
-        val objectMemory: NativePointer,
+        val objectMemory: RawAddress,
         val callbacks: List<NativeCallbackHandle>,
     )
 
     companion object {
         private val registry = ConcurrentCacheMap<Long, WinRtInspectableComObject>()
 
-        internal fun findManagedValue(pointer: NativePointer): Any? =
-            registry[NativeInterop.pointerKey(pointer)]?.managedValue
+        internal fun findManagedValue(pointer: RawAddress): Any? =
+            registry[PlatformAbi.pointerKey(pointer)]?.managedValue
 
-        internal fun findInspectableInfo(pointer: NativePointer): WinRtInspectableInfoSnapshot? =
-            registry[NativeInterop.pointerKey(pointer)]?.let { host ->
+        internal fun findInspectableInfo(pointer: RawAddress): WinRtInspectableInfoSnapshot? =
+            registry[PlatformAbi.pointerKey(pointer)]?.let { host ->
                 WinRtInspectableInfoSnapshot(
                     runtimeClassName = host.runtimeClassName,
                     interfaceIds = host.interfaces.keys.toList(),

@@ -128,7 +128,7 @@ object ExceptionHelpers {
                     ?.let(::HResult)
                     ?.requireSuccess("RoReportUnhandledError")
             } finally {
-                IUnknownReference(restrictedErrorInfo, IID.IRestrictedErrorInfo).close()
+                IUnknownReference(restrictedErrorInfo.asRawComPtr(), IID.IRestrictedErrorInfo).close()
             }
         }
     }
@@ -179,37 +179,31 @@ object ExceptionHelpers {
         if (!PlatformRuntime.isWindows) {
             return null
         }
-        return runCatching {
-            val borrowedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return null
-            IUnknownReference(borrowedErrorInfo, IID.IRestrictedErrorInfo).use { errorInfo ->
-                val details = readRestrictedErrorInfo(errorInfo) ?: return null
+        val platformInfo = runCatching {
+            val borrowedErrorInfo = WinRtPlatformApi.borrowRestrictedErrorInfoRaw() ?: return@runCatching null
+            IUnknownReference(borrowedErrorInfo.asRawComPtr(), IID.IRestrictedErrorInfo).use { errorInfo ->
+                val details = readRestrictedErrorInfo(errorInfo) ?: return@runCatching null
                 if (details.hResult != expectedHResult) {
-                    return null
+                    return@runCatching null
                 }
                 details.info
             }
         }.getOrNull()
+        return platformInfo ?: ManagedExceptionInterop.retainedRestrictedErrorInfo(expectedHResult)
     }
 
     private fun readRestrictedErrorInfo(
         errorInfo: IUnknownReference,
     ): RestrictedErrorInfoDetails? =
-        NativeInterop.confinedScope().use { scope ->
-            val descriptionOut = NativeInterop.allocatePointerSlot(scope)
-            val errorOut = NativeInterop.allocateInt32Slot(scope)
-            val restrictedDescriptionOut = NativeInterop.allocatePointerSlot(scope)
-            val capabilitySidOut = NativeInterop.allocatePointerSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val descriptionOut = PlatformAbi.allocatePointerSlot(scope)
+            val errorOut = PlatformAbi.allocateInt32Slot(scope)
+            val restrictedDescriptionOut = PlatformAbi.allocatePointerSlot(scope)
+            val capabilitySidOut = PlatformAbi.allocatePointerSlot(scope)
             throwExceptionForHR(
-                errorInfo.invokeAbi(
-                    slot = 3,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
+                ComVtableInvoker.invokeArgs(
+                    errorInfo.pointer,
+                    3,
                     descriptionOut,
                     errorOut,
                     restrictedDescriptionOut,
@@ -218,21 +212,13 @@ object ExceptionHelpers {
                 operation = "IRestrictedErrorInfo.GetErrorDetails",
             )
 
-            val referenceOut = NativeInterop.allocatePointerSlot(scope)
+            val referenceOut = PlatformAbi.allocatePointerSlot(scope)
             val referenceResult = HResult(
-                errorInfo.invokeAbi(
-                    slot = 4,
-                    descriptor = NativeFunctionDescriptor.of(
-                        NativeValueLayout.JAVA_INT,
-                        NativeValueLayout.ADDRESS,
-                        NativeValueLayout.ADDRESS,
-                    ),
-                    referenceOut,
-                ),
+                ComVtableInvoker.invokeArgs(errorInfo.pointer, 4, referenceOut),
             )
 
             RestrictedErrorInfoDetails(
-                hResult = HResult(NativeInterop.readInt32(errorOut)),
+                hResult = HResult(PlatformAbi.readInt32(errorOut)),
                 info = WinRtRestrictedErrorInfo(
                     description = readAndFreeBstr(descriptionOut).ifBlank { null },
                     restrictedDescription = readAndFreeBstr(restrictedDescriptionOut).ifBlank { null },
@@ -247,8 +233,8 @@ object ExceptionHelpers {
             )
         }
 
-    private fun readAndFreeBstr(slot: NativePointer): String =
-        WinRtPlatformApi.readAndFreeBstrRaw(NativeInterop.readPointer(slot))
+    private fun readAndFreeBstr(slot: RawAddress): String =
+        WinRtPlatformApi.readAndFreeBstrRaw(PlatformAbi.readPointer(slot))
 
     private data class RestrictedErrorInfoDetails(
         val hResult: HResult,

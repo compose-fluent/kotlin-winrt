@@ -1,18 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-private val addEventHandlerDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.ADDRESS,
-)
-
-private val removeEventHandlerDescriptor = NativeFunctionDescriptor.of(
-    NativeValueLayout.JAVA_INT,
-    NativeValueLayout.ADDRESS,
-    NativeValueLayout.JAVA_LONG,
-)
-
 /**
  * Common standard-delegate ABI helpers corresponding to the event add/remove delegates
  * in `.cswinrt/src/WinRT.Runtime/Interop/StandardDelegates.cs`.
@@ -23,14 +10,14 @@ internal object StandardDelegates {
         addHandlerSlot: Int,
         handler: ComObjectReference,
     ): EventRegistrationToken =
-        NativeInterop.confinedScope().use { scope ->
-            val tokenOut = NativeInterop.allocateBytes(scope, EventRegistrationToken.BYTE_SIZE.toLong())
+        PlatformAbi.confinedScope().use { scope ->
+            val tokenOut = PlatformAbi.allocateBytes(scope, EventRegistrationToken.BYTE_SIZE.toLong())
             HResult(
-                objectReference.invokeAbi(
+                ComVtableInvoker.invokeArgs(
+                    instance = objectReference.pointer,
                     slot = addHandlerSlot,
-                    descriptor = addEventHandlerDescriptor,
-                    handler.pointer,
-                    tokenOut,
+                    arg0 = handler.pointer.asRawAddress(),
+                    arg1 = tokenOut,
                 ),
             ).requireSuccess("WinRT event add handler")
             EventRegistrationToken.fromAbi(tokenOut)
@@ -42,10 +29,10 @@ internal object StandardDelegates {
         token: EventRegistrationToken,
     ) {
         HResult(
-            objectReference.invokeAbi(
+            ComVtableInvoker.invokeArgs(
+                instance = objectReference.pointer,
                 slot = removeHandlerSlot,
-                descriptor = removeEventHandlerDescriptor,
-                token.value,
+                arg0 = token.value,
             ),
         ).requireSuccess("WinRT event remove handler")
     }

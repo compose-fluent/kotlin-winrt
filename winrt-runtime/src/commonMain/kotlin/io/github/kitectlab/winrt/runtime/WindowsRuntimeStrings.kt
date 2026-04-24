@@ -1,18 +1,18 @@
 package io.github.kitectlab.winrt.runtime
 
 class HString private constructor(
-    val handle: NativePointer,
+    val handle: RawAddress,
     private val owner: Boolean,
 ) : AutoCloseable {
     fun toKString(): String =
-        NativeInterop.confinedScope().use { scope ->
-            val lengthOut = NativeInterop.allocateInt32Slot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val lengthOut = PlatformAbi.allocateInt32Slot(scope)
             val buffer = WinRtPlatformApi.windowsGetStringRawBufferRaw(handle, lengthOut)
-            NativeInterop.readUtf16(buffer, NativeInterop.readInt32(lengthOut))
+            PlatformAbi.readUtf16(buffer, PlatformAbi.readInt32(lengthOut))
         }
 
     override fun close() {
-        if (owner && !NativeInterop.isNull(handle)) {
+        if (owner && !PlatformAbi.isNull(handle)) {
             WinRtPlatformApi.windowsDeleteStringRaw(handle)
         }
     }
@@ -23,9 +23,9 @@ class HString private constructor(
                 error("HSTRING is only available on Windows.")
             }
 
-            NativeInterop.confinedScope().use { scope ->
-                val utf16 = NativeInterop.allocateUtf16(scope, value)
-                val out = NativeInterop.allocatePointerSlot(scope)
+            PlatformAbi.confinedScope().use { scope ->
+                val utf16 = PlatformAbi.allocateUtf16(scope, value)
+                val out = PlatformAbi.allocatePointerSlot(scope)
                 WinRtPlatformApi.checkSucceededRaw(
                     WinRtPlatformApi.windowsCreateStringRaw(
                         utf16,
@@ -33,7 +33,7 @@ class HString private constructor(
                         out,
                     ),
                 )
-                return HString(NativeInterop.readPointer(out), owner = true)
+                return HString(PlatformAbi.readPointer(out), owner = true)
             }
         }
 
@@ -43,16 +43,16 @@ class HString private constructor(
             }
             if (value.isEmpty()) {
                 return ReferencedHString(
-                    handle = NativeInterop.nullPointer,
+                    handle = PlatformAbi.nullPointer,
                     lifetime = null,
                 )
             }
 
-            val scope = NativeInterop.confinedScope()
+            val scope = PlatformAbi.confinedScope()
             try {
-                val utf16 = NativeInterop.allocateUtf16(scope, value, nulTerminated = true)
-                val header = NativeInterop.allocateBytes(scope, NativeInterop.hStringHeaderSizeBytes)
-                val out = NativeInterop.allocatePointerSlot(scope)
+                val utf16 = PlatformAbi.allocateUtf16(scope, value, nulTerminated = true)
+                val header = PlatformAbi.allocateBytes(scope, PlatformAbi.hStringHeaderSizeBytes)
+                val out = PlatformAbi.allocatePointerSlot(scope)
                 WinRtPlatformApi.checkSucceededRaw(
                     WinRtPlatformApi.windowsCreateStringReferenceRaw(
                         utf16Chars = utf16,
@@ -62,7 +62,7 @@ class HString private constructor(
                     ),
                 )
                 return ReferencedHString(
-                    handle = NativeInterop.readPointer(out),
+                    handle = PlatformAbi.readPointer(out),
                     lifetime = scope,
                 )
             } catch (error: Throwable) {
@@ -71,16 +71,16 @@ class HString private constructor(
             }
         }
 
-        fun fromHandle(handle: NativePointer, owner: Boolean): HString = HString(handle, owner)
+        fun fromHandle(handle: RawAddress, owner: Boolean): HString = HString(handle, owner)
     }
 }
 
 class ReferencedHString internal constructor(
-    val handle: NativePointer,
+    val handle: RawAddress,
     private val lifetime: AutoCloseable?,
 ) : AutoCloseable {
     fun toKString(): String =
-        if (NativeInterop.isNull(handle)) {
+        if (PlatformAbi.isNull(handle)) {
             ""
         } else {
             HString.fromHandle(handle, owner = false).toKString()

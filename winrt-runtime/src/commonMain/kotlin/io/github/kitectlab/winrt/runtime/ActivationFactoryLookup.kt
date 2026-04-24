@@ -6,7 +6,7 @@ internal object RawActivationFactoryLookup {
         interfaceId: Guid = IID.IActivationFactory,
     ): ActivationResult {
         if (!PlatformRuntime.isWindows) {
-            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, NativeInterop.nullPointer)
+            return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
 
         WinRtModule.ensureInitialized()
@@ -31,7 +31,7 @@ internal object CachedActivationFactoryPointers {
         val interfaceId: Guid,
     )
 
-    private val cache = ConcurrentCacheMap<CacheKey, NativePointer>()
+    private val cache = ConcurrentCacheMap<CacheKey, RawAddress>()
 
     fun get(runtimeClassName: String, interfaceId: Guid): ActivationResult {
         val key = CacheKey(runtimeClassName, interfaceId)
@@ -60,7 +60,7 @@ internal object CachedActivationFactoryPointers {
 
     fun clearRuntimeCache() {
         cache.values.forEach { pointer ->
-            if (!NativeInterop.isNull(pointer)) {
+            if (!PlatformAbi.isNull(pointer)) {
                 WinRtPlatformApi.releaseRaw(pointer)
             }
         }

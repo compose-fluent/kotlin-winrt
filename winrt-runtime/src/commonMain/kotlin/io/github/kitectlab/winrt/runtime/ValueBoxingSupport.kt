@@ -4,7 +4,7 @@ package io.github.kitectlab.winrt.runtime
 
 private const val DISP_E_OVERFLOW: Int = 0x8002000A.toInt()
 
-internal fun unboxInspectablePointer(pointer: NativePointer): Any {
+internal fun unboxInspectablePointer(pointer: RawAddress): Any {
     WinRtInspectableComObject.findManagedValue(pointer)?.let { return it }
     tryProjectBorrowedInspectableValue(pointer)?.let { return it }
     return ComWrappersSupport.createRcwForComObject(pointer)

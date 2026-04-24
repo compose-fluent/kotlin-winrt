@@ -1,18 +1,18 @@
 package io.github.kitectlab.winrt.runtime
 
 private fun readFloatField(
-    source: NativePointer,
+    source: RawAddress,
     layout: NativeStructLayout,
     fieldName: String,
-): Float = NativeInterop.readFloat(layout.slice(source, fieldName))
+): Float = PlatformAbi.readFloat(layout.slice(source, fieldName))
 
 private fun writeFloatField(
-    destination: NativePointer,
+    destination: RawAddress,
     layout: NativeStructLayout,
     fieldName: String,
     value: Float,
 ) {
-    NativeInterop.writeFloat(layout.slice(destination, fieldName), value)
+    PlatformAbi.writeFloat(layout.slice(destination, fieldName), value)
 }
 
 @WindowsRuntimeType("struct(Windows.Foundation.Numerics.Vector2;f4;f4)")
@@ -27,7 +27,7 @@ data class Vector2(
                 NativeScalarFieldSpec("y", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Vector2 =
+        override fun read(source: RawAddress): Vector2 =
             Vector2(
                 x = readFloatField(source, layout, "x"),
                 y = readFloatField(source, layout, "y"),
@@ -35,17 +35,17 @@ data class Vector2(
 
         override fun write(
             value: Vector2,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "x", value.x)
             writeFloatField(destination, layout, "y", value.y)
         }
 
-        fun fromAbi(source: NativePointer): Vector2 = read(source)
+        fun fromAbi(source: RawAddress): Vector2 = read(source)
 
         fun copyTo(
             value: Vector2,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -66,7 +66,7 @@ data class Vector3(
                 NativeScalarFieldSpec("z", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Vector3 =
+        override fun read(source: RawAddress): Vector3 =
             Vector3(
                 x = readFloatField(source, layout, "x"),
                 y = readFloatField(source, layout, "y"),
@@ -75,18 +75,18 @@ data class Vector3(
 
         override fun write(
             value: Vector3,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "x", value.x)
             writeFloatField(destination, layout, "y", value.y)
             writeFloatField(destination, layout, "z", value.z)
         }
 
-        fun fromAbi(source: NativePointer): Vector3 = read(source)
+        fun fromAbi(source: RawAddress): Vector3 = read(source)
 
         fun copyTo(
             value: Vector3,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -109,7 +109,7 @@ data class Vector4(
                 NativeScalarFieldSpec("w", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Vector4 =
+        override fun read(source: RawAddress): Vector4 =
             Vector4(
                 x = readFloatField(source, layout, "x"),
                 y = readFloatField(source, layout, "y"),
@@ -119,7 +119,7 @@ data class Vector4(
 
         override fun write(
             value: Vector4,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "x", value.x)
             writeFloatField(destination, layout, "y", value.y)
@@ -127,11 +127,11 @@ data class Vector4(
             writeFloatField(destination, layout, "w", value.w)
         }
 
-        fun fromAbi(source: NativePointer): Vector4 = read(source)
+        fun fromAbi(source: RawAddress): Vector4 = read(source)
 
         fun copyTo(
             value: Vector4,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -148,7 +148,7 @@ data class Quaternion(
     companion object Metadata : NativeStructAdapter<Quaternion> {
         override val layout: NativeStructLayout = Vector4.Metadata.layout
 
-        override fun read(source: NativePointer): Quaternion =
+        override fun read(source: RawAddress): Quaternion =
             Quaternion(
                 x = readFloatField(source, layout, "x"),
                 y = readFloatField(source, layout, "y"),
@@ -158,7 +158,7 @@ data class Quaternion(
 
         override fun write(
             value: Quaternion,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "x", value.x)
             writeFloatField(destination, layout, "y", value.y)
@@ -166,11 +166,11 @@ data class Quaternion(
             writeFloatField(destination, layout, "w", value.w)
         }
 
-        fun fromAbi(source: NativePointer): Quaternion = read(source)
+        fun fromAbi(source: RawAddress): Quaternion = read(source)
 
         fun copyTo(
             value: Quaternion,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -197,7 +197,7 @@ data class Matrix3x2(
                 NativeScalarFieldSpec("m32", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Matrix3x2 =
+        override fun read(source: RawAddress): Matrix3x2 =
             Matrix3x2(
                 m11 = readFloatField(source, layout, "m11"),
                 m12 = readFloatField(source, layout, "m12"),
@@ -209,7 +209,7 @@ data class Matrix3x2(
 
         override fun write(
             value: Matrix3x2,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "m11", value.m11)
             writeFloatField(destination, layout, "m12", value.m12)
@@ -219,11 +219,11 @@ data class Matrix3x2(
             writeFloatField(destination, layout, "m32", value.m32)
         }
 
-        fun fromAbi(source: NativePointer): Matrix3x2 = read(source)
+        fun fromAbi(source: RawAddress): Matrix3x2 = read(source)
 
         fun copyTo(
             value: Matrix3x2,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -270,7 +270,7 @@ data class Matrix4x4(
                 NativeScalarFieldSpec("m44", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Matrix4x4 =
+        override fun read(source: RawAddress): Matrix4x4 =
             Matrix4x4(
                 m11 = readFloatField(source, layout, "m11"),
                 m12 = readFloatField(source, layout, "m12"),
@@ -292,7 +292,7 @@ data class Matrix4x4(
 
         override fun write(
             value: Matrix4x4,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             writeFloatField(destination, layout, "m11", value.m11)
             writeFloatField(destination, layout, "m12", value.m12)
@@ -312,11 +312,11 @@ data class Matrix4x4(
             writeFloatField(destination, layout, "m44", value.m44)
         }
 
-        fun fromAbi(source: NativePointer): Matrix4x4 = read(source)
+        fun fromAbi(source: RawAddress): Matrix4x4 = read(source)
 
         fun copyTo(
             value: Matrix4x4,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }
@@ -335,7 +335,7 @@ data class Plane(
                 NativeScalarFieldSpec("d", NativeStructScalarKind.FLOAT32),
             )
 
-        override fun read(source: NativePointer): Plane =
+        override fun read(source: RawAddress): Plane =
             Plane(
                 normal = Vector3.Metadata.read(layout.slice(source, "normal")),
                 d = readFloatField(source, layout, "d"),
@@ -343,17 +343,17 @@ data class Plane(
 
         override fun write(
             value: Plane,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             Vector3.Metadata.write(value.normal, layout.slice(destination, "normal"))
             writeFloatField(destination, layout, "d", value.d)
         }
 
-        fun fromAbi(source: NativePointer): Plane = read(source)
+        fun fromAbi(source: RawAddress): Plane = read(source)
 
         fun copyTo(
             value: Plane,
-            destination: NativePointer,
+            destination: RawAddress,
         ) {
             write(value, destination)
         }

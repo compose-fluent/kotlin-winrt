@@ -4,7 +4,7 @@ internal object ManagedReferenceHostSupport {
     fun <T : AutoCloseable> createLease(
         createReference: () -> T,
         releaseManagedReference: () -> Unit,
-        abiOf: (T) -> NativePointer,
+        abiOf: (T) -> RawAddress,
     ): AbiReferenceLease<T> {
         val reference = createReference()
         return try {

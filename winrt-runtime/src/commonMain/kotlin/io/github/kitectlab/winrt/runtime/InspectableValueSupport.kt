@@ -52,10 +52,7 @@ private fun createClosableInspectableInterfaceDefinition(value: AutoCloseable): 
         interfaceId = IID.IDisposable,
         methods = listOf(
             WinRtInspectableMethodDefinition(
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                ),
+                signature = ComMethodSignature.of(),
             ) { _ ->
                 value.close()
                 KnownHResults.S_OK.value
@@ -73,17 +70,17 @@ internal fun tryProjectInspectableValue(
         }
     }
 
-    WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer)?.let { return it }
+    WinRtPropertyValueProjection.tryFromBorrowedAbi(inspectable.pointer.asRawAddress())?.let { return it }
     WinRtValueBoxing.tryProjectInspectableReference(inspectable)?.let { return it }
     WinRtValueBoxing.tryProjectInspectableReferenceArray(inspectable)?.let { return it }
     return null
 }
 
-internal fun tryProjectBorrowedInspectableValue(pointer: NativePointer): Any? {
-    if (NativeInterop.isNull(pointer)) {
+internal fun tryProjectBorrowedInspectableValue(pointer: RawAddress): Any? {
+    if (PlatformAbi.isNull(pointer)) {
         return null
     }
-    val borrowed = IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true)
+    val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
     val inspectable =
         try {
             borrowed.asInspectable()

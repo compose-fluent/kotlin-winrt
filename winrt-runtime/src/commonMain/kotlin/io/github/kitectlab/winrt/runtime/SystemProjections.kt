@@ -16,8 +16,8 @@ internal object TimeSpanProjection {
     fun toAbi(value: Duration): Long =
         value.toLong(DurationUnit.NANOSECONDS) / NANOS_PER_TICK
 
-    fun copyTo(value: Duration, destination: NativePointer) {
-        NativeInterop.writeInt64(destination, toAbi(value))
+    fun copyTo(value: Duration, destination: RawAddress) {
+        PlatformAbi.writeInt64(destination, toAbi(value))
     }
 }
 
@@ -43,8 +43,8 @@ internal object DateTimeProjection {
         return exactSubtract(utcTicks, managedUtcTicksAtNativeZero)
     }
 
-    fun copyTo(value: Instant, destination: NativePointer) {
-        NativeInterop.writeInt64(destination, toAbi(value))
+    fun copyTo(value: Instant, destination: RawAddress) {
+        PlatformAbi.writeInt64(destination, toAbi(value))
     }
 }
 
@@ -69,7 +69,8 @@ internal class WinRtClosableObject(
 
     override fun close() {
         inspectable.tryQueryInterface(IID.IDisposable)?.use { closable ->
-            closable.invokeUnitMethod(6)
+            val hr = ComVtableInvoker.invoke(closable.pointer, slot = 6)
+            WinRtPlatformApi.checkSucceededRaw(hr)
             return
         }
         throw WinRtUnsupportedOperationException(
@@ -205,6 +206,7 @@ internal object CommonWinRtBuiltInProjectionMappings {
     internal fun registerStruct(publicType: KClass<*>) {
         val registeredType =
             publicType.registeredWinRtType()
+                ?: publicType.windowsRuntimeStructType()
                 ?: error("Struct type '${publicType.typeDisplayName()}' is missing WindowsRuntimeType metadata.")
         val signature =
             registeredType.signature
@@ -229,6 +231,31 @@ internal object CommonWinRtBuiltInProjectionMappings {
     ) {
         TypeNameSupport.registerReferenceArrayType(elementType, arrayType)
     }
+
+    private fun KClass<*>.windowsRuntimeStructType(): WinRtTypeId<*>? {
+        val signature = builtInStructSignatures[this] ?: return null
+        val projectedName = signature.removePrefix("struct(").substringBefore(';')
+        return WinRtTypeId(
+            kClass = this,
+            projectedTypeName = projectedName,
+            signature = signature,
+            isWindowsRuntimeType = true,
+        ).also(WinRtTypeRegistry::register)
+    }
+
+    private val builtInStructSignatures: Map<KClass<*>, String> = mapOf(
+        Point::class to "struct(Windows.Foundation.Point;f4;f4)",
+        Size::class to "struct(Windows.Foundation.Size;f4;f4)",
+        Rect::class to "struct(Windows.Foundation.Rect;f4;f4;f4;f4)",
+        EventRegistrationToken::class to "struct(Windows.Foundation.EventRegistrationToken;i8)",
+        Matrix3x2::class to "struct(Windows.Foundation.Numerics.Matrix3x2;f4;f4;f4;f4;f4;f4)",
+        Matrix4x4::class to "struct(Windows.Foundation.Numerics.Matrix4x4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4)",
+        Plane::class to "struct(Windows.Foundation.Numerics.Plane;struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4);f4)",
+        Quaternion::class to "struct(Windows.Foundation.Numerics.Quaternion;f4;f4;f4;f4)",
+        Vector2::class to "struct(Windows.Foundation.Numerics.Vector2;f4;f4)",
+        Vector3::class to "struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4)",
+        Vector4::class to "struct(Windows.Foundation.Numerics.Vector4;f4;f4;f4;f4)",
+    )
 }
 
 private fun exactAdd(left: Long, right: Long): Long {

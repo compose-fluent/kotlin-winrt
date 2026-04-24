@@ -6,25 +6,25 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 @OptIn(ExperimentalAtomicApi::class)
 internal class ComObjectReferenceState {
     private val disposed = AtomicInt(0)
-    private var referenceTrackerPointer: NativePointer = NativeInterop.nullPointer
+    private var referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr
     private var releaseFromTrackerSourceOnDispose: Boolean = false
 
     val isDisposed: Boolean
         get() = disposed.load() != 0
 
     val hasReferenceTracker: Boolean
-        get() = !NativeInterop.isNull(referenceTrackerPointer)
+        get() = !PlatformAbi.isNull(referenceTrackerPointer)
 
-    val referenceTrackerHandle: NativePointer
+    val referenceTrackerHandle: RawComPtr
         get() = referenceTrackerPointer
 
     fun beginDispose(): Boolean = disposed.compareAndSet(0, 1)
 
     fun attachReferenceTracker(
-        trackerPointer: NativePointer,
+        trackerPointer: RawComPtr,
         addRefFromTrackerSource: Boolean,
-        retainTrackerPointer: (NativePointer) -> Unit,
-        addRefFromTrackerSourceCallback: (NativePointer) -> Unit,
+        retainTrackerPointer: (RawComPtr) -> Unit,
+        addRefFromTrackerSourceCallback: (RawComPtr) -> Unit,
     ) {
         if (hasReferenceTracker) {
             return
@@ -37,26 +37,26 @@ internal class ComObjectReferenceState {
         }
     }
 
-    fun addRefFromTrackerSourceIfNeeded(addRefFromTrackerSourceCallback: (NativePointer) -> Unit) {
+    fun addRefFromTrackerSourceIfNeeded(addRefFromTrackerSourceCallback: (RawComPtr) -> Unit) {
         if (!hasReferenceTracker) {
             return
         }
         addRefFromTrackerSourceCallback(referenceTrackerPointer)
     }
 
-    fun releaseFromTrackerSourceIfNeeded(releaseFromTrackerSourceCallback: (NativePointer) -> Unit) {
+    fun releaseFromTrackerSourceIfNeeded(releaseFromTrackerSourceCallback: (RawComPtr) -> Unit) {
         if (!hasReferenceTracker || !releaseFromTrackerSourceOnDispose) {
             return
         }
         releaseFromTrackerSourceCallback(referenceTrackerPointer)
     }
 
-    fun disposeReferenceTracker(releaseTrackerPointer: (NativePointer) -> Unit) {
+    fun disposeReferenceTracker(releaseTrackerPointer: (RawComPtr) -> Unit) {
         if (!hasReferenceTracker) {
             return
         }
         releaseTrackerPointer(referenceTrackerPointer)
-        referenceTrackerPointer = NativeInterop.nullPointer
+        referenceTrackerPointer = PlatformAbi.nullComPtr
         releaseFromTrackerSourceOnDispose = false
     }
 }

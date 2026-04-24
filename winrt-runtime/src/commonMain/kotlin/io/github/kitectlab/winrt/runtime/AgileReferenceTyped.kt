@@ -9,7 +9,7 @@ class AgileReferenceTyped<T : Any>(
     @Suppress("UNCHECKED_CAST")
     fun get(): T? =
         reference.getReference(typeHandle)?.use { resolved ->
-            ComWrappersSupport.createRcwForComObject(resolved.pointer, typeHandle) as? T
+            ComWrappersSupport.createRcwForComObject(resolved.pointer.asRawAddress(), typeHandle) as? T
         }
 
     override fun close() {

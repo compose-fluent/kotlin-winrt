@@ -692,7 +692,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("private val _iWidgetStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("public fun iWidgetStatics(): IUnknownReference"))
         assertTrue(widgetContents.contains("public fun parse(`value`: String): Widget"))
-        assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics().invokeAbi("))
+        assertTrue(widgetContents.contains("ComVtableInvoker.invokeArgs"))
+        assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics().pointer"))
         assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
         assertTrue(widgetContents.contains("public val count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
@@ -1007,7 +1008,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(delegateContents.contains("): Boolean"))
         assertTrue(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(delegateContents.contains("as Boolean"))
-        assertTrue(widgetContents.contains("return WidgetHandler.Metadata.fromAbi(__resultOut.get(ValueLayout.ADDRESS, 0))"))
+        assertTrue(widgetContents.contains("return WidgetHandler.Metadata.fromAbi(PlatformAbi.readPointer(__resultOut))"))
         assertFalse(widgetContents.contains("public fun getHandler(): WidgetHandler = error(\"Not yet bound to winrt-runtime\")"))
     }
 
@@ -1461,14 +1462,15 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("public fun refresh()"))
-        assertTrue(widgetContents.contains("slot = Metadata.REFRESH_SLOT"))
+        assertTrue(widgetContents.contains("Metadata.REFRESH_SLOT"))
         assertTrue(widgetContents.contains("public fun version(): Int"))
-        assertTrue(widgetContents.contains("slot = Metadata.VERSION_SLOT"))
+        assertTrue(widgetContents.contains("Metadata.VERSION_SLOT"))
         assertTrue(widgetContents.contains("public fun isReady(): Boolean"))
-        assertTrue(widgetContents.contains("slot = Metadata.ISREADY_SLOT"))
+        assertTrue(widgetContents.contains("Metadata.ISREADY_SLOT"))
         assertTrue(widgetContents.contains("public fun label(): String"))
-        assertTrue(widgetContents.contains("invokeAbi("))
-        assertTrue(widgetContents.contains("return Arena.ofConfined().use { __arena ->"))
+        assertTrue(widgetContents.contains("ComVtableInvoker.invoke"))
+        assertFalse(widgetContents.contains("invokeAbi("))
+        assertTrue(widgetContents.contains("return PlatformAbi.confinedScope().use { __scope ->"))
         assertTrue(widgetContents.contains("HString.fromHandle("))
         assertTrue(widgetContents.contains("Metadata.LABEL_SLOT"))
         assertTrue(widgetContents.contains("Metadata.NAME_GETTER_SLOT"))
@@ -2046,7 +2048,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("public fun items(): MutableList<String>"))
         assertTrue(contents, contents.contains("public val mutableItems: MutableList<String>"))
         assertTrue(contents, contents.contains("return object : AbstractMutableList<String>(), MutableList<String>, IWinRTObject"))
-        assertTrue(contents, contents.contains("val __collectionRef = IUnknownReference(__resultOut.get(ValueLayout.ADDRESS, 0))"))
+        assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
         assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
         assertTrue(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
         assertTrue(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
@@ -2256,7 +2258,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("public fun names(): Iterable<String>"))
         assertTrue(contents, contents.contains("public fun readOnlyNames(): List<String>"))
         assertTrue(contents, contents.contains("public val nameMap: Map<String, Int>"))
-        assertTrue(contents, contents.contains("val __collectionRef = IUnknownReference(__resultOut.get(ValueLayout.ADDRESS, 0))"))
+        assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
         assertTrue(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("return object : AbstractMap<String, Int>(), Map<String, Int>, IWinRTObject"))
@@ -2267,7 +2269,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_unsupported_mapped_collection_return_element_binding() {
+    fun generator_projects_interface_mapped_collection_return_element_binding() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -2314,15 +2316,155 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("WidgetProvider.kt")
+            .contents
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(
-            error!!.message.orEmpty().contains(
-                "Generator read-only collection parity does not yet support IVectorView return element Interface(Sample.Foundation.IWidget)",
+        assertTrue(contents, contents.contains("public fun widgets(): List<IWidget>"))
+        assertTrue(contents, contents.contains("return object : AbstractList<IWidget>(), List<IWidget>, IWinRTObject"))
+        assertTrue(contents, contents.contains("IWidget.Metadata.wrap"))
+    }
+
+    @Test
+    fun generator_marshals_projected_interface_collection_parameters() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetSink",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setWidgets",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "widgets",
+                                            "Windows.Foundation.Collections.IIterable<Sample.Foundation.IWidget>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetSink",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetSink",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setWidgets",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "widgets",
+                                            "Windows.Foundation.Collections.IIterable<Sample.Foundation.IWidget>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidgetSink",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
             ),
         )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("WidgetSink.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("public fun setWidgets(widgets: Iterable<IWidget>)"))
+        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
+        assertTrue(contents, contents.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
+    fun generator_marshals_winui_bindable_collection_parameters_and_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IBindableHost",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("87654321-2222-3333-4444-555555555551"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "snapshot",
+                                    returnTypeName = "Windows.UI.Xaml.Interop.IBindableVectorView",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setItems",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("items", "Microsoft.UI.Xaml.Interop.IBindableVector"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "BindableHost",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IBindableHost",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "snapshot",
+                                    returnTypeName = "Windows.UI.Xaml.Interop.IBindableVectorView",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setItems",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("items", "Microsoft.UI.Xaml.Interop.IBindableVector"),
+                                    ),
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IBindableHost",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("BindableHost.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("public fun snapshot(): List<Any?>"))
+        assertTrue(contents, contents.contains("WinRtBindableVectorViewProjection.fromAbi"))
+        assertTrue(contents, contents.contains("public fun setItems(items: MutableList<Any?>)"))
+        assertTrue(contents, contents.contains("WinRtBindableVectorProjection.createMarshaler(items)!!.use"))
     }
 
     @Test

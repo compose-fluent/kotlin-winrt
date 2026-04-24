@@ -47,19 +47,18 @@ object ActivationFactory {
         CachedActivationFactoryPointers.clearRuntimeCache()
     }
 
-    private fun wrapFactory(pointer: NativePointer, interfaceId: Guid): IUnknownReference =
+    private fun wrapFactory(pointer: RawAddress, interfaceId: Guid): IUnknownReference =
         ComReferenceWrapperSupport.wrap(
             kind = ComReferenceWrapperSupport.kindForInterfaceId(interfaceId),
-            pointer = pointer,
-            interfaceId = interfaceId,
-            wrapUnknown = { wrappedPointer, wrappedInterfaceId ->
-                IUnknownReference(wrappedPointer, wrappedInterfaceId)
+            comPtr = ComPtr.create(pointer.asRawComPtr(), interfaceId),
+            wrapUnknown = { wrappedComPtr ->
+                IUnknownReference(wrappedComPtr)
             },
-            wrapInspectable = { wrappedPointer, wrappedInterfaceId ->
-                IUnknownReference(wrappedPointer, wrappedInterfaceId)
+            wrapInspectable = { wrappedComPtr ->
+                IUnknownReference(wrappedComPtr)
             },
-            wrapActivationFactory = { wrappedPointer, wrappedInterfaceId ->
-                ActivationFactoryReference(wrappedPointer, wrappedInterfaceId)
+            wrapActivationFactory = { wrappedComPtr ->
+                ActivationFactoryReference(wrappedComPtr)
             },
         )
 }

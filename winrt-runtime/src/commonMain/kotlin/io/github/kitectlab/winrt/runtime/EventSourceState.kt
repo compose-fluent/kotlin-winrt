@@ -8,11 +8,11 @@ package io.github.kitectlab.winrt.runtime
  * and lets subclasses expose an event-invoke delegate that iterates over snapshots.
  */
 abstract class EventSourceState<T : Any> protected constructor(
-    thisPtr: NativePointer,
+    thisPtr: RawAddress,
     private val index: Int,
 ) : AutoCloseable {
     private val lock = PlatformLock()
-    private val objectPointerKey = NativeInterop.pointerKey(thisPtr)
+    private val objectPointerKey = PlatformAbi.pointerKey(thisPtr)
     private val cacheEntry = WeakReference<Any>(this)
     private val cacheCleanupRegistration = finalizationHook.register(this, CacheCleanup(objectPointerKey, index, cacheEntry)::run)
     private var disposed = false

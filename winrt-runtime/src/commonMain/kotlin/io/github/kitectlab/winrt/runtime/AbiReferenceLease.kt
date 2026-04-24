@@ -1,7 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
 internal class AbiReferenceLease<T : AutoCloseable> internal constructor(
-    val abi: NativePointer,
+    val abi: RawAddress,
     private val ownedReference: T? = null,
     private val cleanup: (() -> Unit)? = null,
 ) : AutoCloseable {
@@ -16,7 +16,7 @@ internal class AbiReferenceLease<T : AutoCloseable> internal constructor(
 
 internal object AbiReferenceLeaseSupport {
     fun <T : AutoCloseable> create(
-        abi: NativePointer,
+        abi: RawAddress,
         ownedReference: T? = null,
         cleanup: (() -> Unit)? = null,
     ): AbiReferenceLease<T> =
@@ -29,7 +29,7 @@ internal object AbiReferenceLeaseSupport {
     fun <T : AutoCloseable> borrowed(
         reference: T,
         cloneReference: (T) -> T,
-        abiOf: (T) -> NativePointer,
+        abiOf: (T) -> RawAddress,
     ): AbiReferenceLease<T> {
         val owned = cloneReference(reference)
         return AbiReferenceLease(

@@ -13,11 +13,11 @@ class WinRtCollectionProjectionTest {
 
         try {
             ComObjectReference(
-                marshaler.abi,
+                marshaler.abi.asRawComPtr(),
                 iterableInterfaceIdFor(adapter),
                 preventReleaseOnDispose = true,
             ).use { borrowed ->
-                WinRtIterableProjection.fromAbi(borrowed.getRefPointer(), adapter)!!.use { projected ->
+                WinRtIterableProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
                     assertEquals(listOf("one", "two"), projected.toList())
                     assertEquals(iterableTypeHandleFor(adapter), projected.primaryTypeHandle)
                 }
@@ -35,13 +35,13 @@ class WinRtCollectionProjectionTest {
         val abi = WinRtReadOnlyListProjection.fromManaged(listOf("one", "two"), adapter)
 
         try {
-            ComObjectReference(abi, vectorViewInterfaceIdFor(adapter)).use { owner ->
+            ComObjectReference(abi.asRawComPtr(), vectorViewInterfaceIdFor(adapter)).use { owner ->
                 ComObjectReference(owner.pointer, vectorViewInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRtVectorViewReference(borrowed.getRefPointer(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
+                    WinRtVectorViewReference(borrowed.getRefPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
                         assertEquals(2u, vectorView.size())
                         assertEquals("one", projectBorrowedForTest(vectorView.getAtOrNull(0u), adapter))
                         val iterable = vectorView.queryInterface(iterableInterfaceIdFor(adapter)).getOrThrow()
-                        WinRtIterableReference(iterable.pointer, iterableInterfaceIdFor(adapter)).use { base ->
+                        WinRtIterableReference(iterable.pointer.asRawAddress(), iterableInterfaceIdFor(adapter)).use { base ->
                             val iterator = base.first(iteratorInterfaceIdFor(adapter))
                             iterator.use {
                                 assertTrue(it.hasCurrent())
@@ -49,7 +49,7 @@ class WinRtCollectionProjectionTest {
                             }
                         }
                     }
-                    WinRtReadOnlyListProjection.fromAbi(borrowed.getRefPointer(), adapter)!!.use { projected ->
+                    WinRtReadOnlyListProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
                         assertEquals(listOf("one", "two"), projected.toList())
                     }
                 }
@@ -67,9 +67,9 @@ class WinRtCollectionProjectionTest {
         val abi = WinRtListProjection.fromManaged(managed, adapter)
 
         try {
-            ComObjectReference(abi, vectorInterfaceIdFor(adapter)).use { owner ->
+            ComObjectReference(abi.asRawComPtr(), vectorInterfaceIdFor(adapter)).use { owner ->
                 ComObjectReference(owner.pointer, vectorInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
-                    WinRtVectorReference(borrowed.getRefPointer(), vectorInterfaceIdFor(adapter)).use { vector ->
+                    WinRtVectorReference(borrowed.getRefPointer().asRawAddress(), vectorInterfaceIdFor(adapter)).use { vector ->
                         adapter.marshaller("updated").use { value ->
                             vector.setAt(0u, value)
                         }
@@ -81,7 +81,7 @@ class WinRtCollectionProjectionTest {
 
                     assertEquals(listOf("updated", "three"), managed)
 
-                    WinRtListProjection.fromAbi(borrowed.getRefPointer(), adapter)!!.use { projected ->
+                    WinRtListProjection.fromAbi(borrowed.getRefPointer().asRawAddress(), adapter)!!.use { projected ->
                         projected.add("four")
                         assertEquals(listOf("updated", "three", "four"), projected.toList())
                     }
@@ -102,14 +102,14 @@ class WinRtCollectionProjectionTest {
         val abi = WinRtReadOnlyDictionaryProjection.fromManaged(managed, keyAdapter, valueAdapter)
 
         try {
-            ComObjectReference(abi, mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+            ComObjectReference(abi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
                 ComObjectReference(
                     owner.pointer,
                     mapViewInterfaceIdFor(keyAdapter, valueAdapter),
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRtReadOnlyDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer(),
+                        borrowed.getRefPointer().asRawAddress(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->
@@ -135,14 +135,14 @@ class WinRtCollectionProjectionTest {
         val abi = WinRtDictionaryProjection.fromManaged(managed, keyAdapter, valueAdapter)
 
         try {
-            ComObjectReference(abi, mapInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+            ComObjectReference(abi.asRawComPtr(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
                 ComObjectReference(
                     owner.pointer,
                     mapInterfaceIdFor(keyAdapter, valueAdapter),
                     preventReleaseOnDispose = true,
                 ).use { borrowed ->
                     WinRtDictionaryProjection.fromAbi(
-                        borrowed.getRefPointer(),
+                        borrowed.getRefPointer().asRawAddress(),
                         keyAdapter,
                         valueAdapter,
                     )!!.use { projected ->

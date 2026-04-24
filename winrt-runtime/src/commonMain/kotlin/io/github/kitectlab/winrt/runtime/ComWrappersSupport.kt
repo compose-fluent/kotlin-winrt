@@ -73,14 +73,14 @@ object ComWrappersSupport {
         runtimeClassNameLookups.add(lookup)
     }
 
-    fun getInspectableInfo(pointer: NativePointer): WinRtInspectableInfo? =
+    fun getInspectableInfo(pointer: RawAddress): WinRtInspectableInfo? =
         WinRtInspectableComObject.findInspectableInfo(pointer)?.let {
             WinRtInspectableInfo(it.runtimeClassName, it.interfaceIds)
         }
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> findObject(
-        pointer: NativePointer,
+        pointer: RawAddress,
         expectedType: KClass<T>,
     ): T? {
         val managedValue = WinRtInspectableComObject.findManagedValue(pointer) ?: return null
@@ -90,7 +90,7 @@ object ComWrappersSupport {
         return managedValue as T
     }
 
-    inline fun <reified T : Any> findObject(pointer: NativePointer): T? = findObject(pointer, T::class)
+    inline fun <reified T : Any> findObject(pointer: RawAddress): T? = findObject(pointer, T::class)
 
     fun tryUnwrapObject(
         value: Any?,
@@ -104,16 +104,16 @@ object ComWrappersSupport {
         )
 
     fun createRcwForComObject(
-        pointer: NativePointer,
+        pointer: RawAddress,
         staticallyDeterminedType: WinRtTypeHandle? = null,
         tryUseCache: Boolean = true,
     ): Any? {
         platformEnsureInspectableProjectionInteropRegistered()
-        if (NativeInterop.isNull(pointer)) {
+        if (PlatformAbi.isNull(pointer)) {
             return null
         }
 
-        val pointerKey = NativeInterop.pointerKey(pointer)
+        val pointerKey = PlatformAbi.pointerKey(pointer)
         if (tryUseCache) {
             rcwCache[pointerKey]?.let { cached ->
                 val cachedWinRt = cached as? IWinRTObject
@@ -183,7 +183,7 @@ object ComWrappersSupport {
     }
 
     private fun createRcwCore(
-        pointer: NativePointer,
+        pointer: RawAddress,
         staticallyDeterminedType: WinRtTypeHandle?,
     ): Any? {
         val inspectable = wrapInspectable(pointer)
@@ -216,7 +216,7 @@ object ComWrappersSupport {
         if (staticallyDeterminedType != null) {
             return SingleInterfaceOptimizedObject(
                 primaryTypeHandle = staticallyDeterminedType,
-                nativeObject = IUnknownReference(pointer, staticallyDeterminedType.interfaceId),
+                nativeObject = IUnknownReference(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId),
             )
         }
 
@@ -239,16 +239,16 @@ object ComWrappersSupport {
         return null
     }
 
-    private fun wrapInspectable(pointer: NativePointer): IInspectableReference? {
+    private fun wrapInspectable(pointer: RawAddress): IInspectableReference? {
         val existingInspectable = runCatching {
-            IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable()
+            IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable()
         }.getOrNull()
         if (existingInspectable != null) {
             return existingInspectable
         }
         return getInspectableInfo(pointer)?.let {
             if (it.interfaceIds.contains(IID.IInspectable)) {
-                IInspectableReference(pointer, IID.IInspectable)
+                IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
             } else {
                 null
             }

@@ -29,7 +29,7 @@ class WinRtAsyncInteropTest {
         }
 
         handle.use {
-            it.invokeAbiForTesting(listOf(NativeInterop.nullPointer, WinRtAsyncStatus.Completed.abiValue))
+            it.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, WinRtAsyncStatus.Completed.abiValue))
         }
 
         assertEquals(WinRtAsyncStatus.Completed, capturedStatus)
@@ -150,7 +150,7 @@ class WinRtAsyncInteropTest {
 
         fun complete(newStatus: WinRtAsyncStatus) {
             statusState = newStatus
-            completedHandle?.invokeAbiForTesting(listOf(NativeInterop.nullPointer, newStatus.abiValue))
+            completedHandle?.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, newStatus.abiValue))
         }
 
         override fun close() = Unit
@@ -185,7 +185,7 @@ class WinRtAsyncInteropTest {
 
         fun complete(newStatus: WinRtAsyncStatus) {
             statusState = newStatus
-            completedHandle?.invokeAbiForTesting(listOf(NativeInterop.nullPointer, newStatus.abiValue))
+            completedHandle?.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, newStatus.abiValue))
         }
 
         override fun close() = Unit

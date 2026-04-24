@@ -45,7 +45,7 @@ class EventHandlerEventSource<TArgs> : EventSource<EventHandlerCallback<TArgs>> 
         }
 
     override fun createEventSourceState(): EventSourceState<EventHandlerCallback<TArgs>> =
-        object : EventSourceState<EventHandlerCallback<TArgs>>(nativeObjectReference.pointer, eventIndex) {
+        object : EventSourceState<EventHandlerCallback<TArgs>>(nativeObjectReference.pointer.asRawAddress(), eventIndex) {
             override fun createEventInvoke(): EventHandlerCallback<TArgs> =
                 { sender, args ->
                     snapshotHandlers().forEach { handler -> handler(sender, args) }

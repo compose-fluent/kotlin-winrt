@@ -2,25 +2,25 @@ package io.github.kitectlab.winrt.runtime
 
 internal object ActivationFactoryReferenceSupport {
     fun <T> activateInstance(
-        invokeActivate: (NativePointer) -> Int,
-        wrapInspectable: (NativePointer) -> T,
+        invokeActivate: (RawAddress) -> Int,
+        wrapInspectable: (RawAddress) -> T,
         initializeReferenceTracker: (T) -> Unit,
     ): T =
-        NativeInterop.confinedScope().use { scope ->
-            val instanceOut = NativeInterop.allocatePointerSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val instanceOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invokeActivate(instanceOut)
             WinRtPlatformApi.checkSucceededRaw(hResult)
-            return wrapInspectable(NativeInterop.readPointer(instanceOut)).also(initializeReferenceTracker)
+            return wrapInspectable(PlatformAbi.readPointer(instanceOut)).also(initializeReferenceTracker)
         }
 }
 
 internal object InspectableReferenceSupport {
     fun getRuntimeClassName(
         noThrow: Boolean,
-        invokeGetRuntimeClassName: (NativePointer) -> Int,
+        invokeGetRuntimeClassName: (RawAddress) -> Int,
     ): String? =
-        NativeInterop.confinedScope().use { scope ->
-            val hStringOut = NativeInterop.allocatePointerSlot(scope)
+        PlatformAbi.confinedScope().use { scope ->
+            val hStringOut = PlatformAbi.allocatePointerSlot(scope)
             val hResult = invokeGetRuntimeClassName(hStringOut)
             if (HResult(hResult).isFailure) {
                 if (noThrow) {
@@ -29,8 +29,8 @@ internal object InspectableReferenceSupport {
                 WinRtPlatformApi.checkSucceededRaw(hResult)
             }
 
-            val handle = NativeInterop.readPointer(hStringOut)
-            if (NativeInterop.isNull(handle)) {
+            val handle = PlatformAbi.readPointer(hStringOut)
+            if (PlatformAbi.isNull(handle)) {
                 return null
             }
             return HString.fromHandle(handle, owner = true).use(HString::toKString)

@@ -2,11 +2,11 @@ package io.github.kitectlab.winrt.runtime
 
 @WindowsRuntimeType("rc(Windows.Foundation.Uri;{9e365e57-48b2-4160-956f-c7385120bbfc})")
 internal object UriProjection {
-    fun fromAbi(pointer: NativePointer): WinRtUri? {
-        if (NativeInterop.isNull(pointer)) {
+    fun fromAbi(pointer: RawAddress): WinRtUri? {
+        if (PlatformAbi.isNull(pointer)) {
             return null
         }
-        return IUnknownReference(pointer, IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use(::fromInspectable)
+        return IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use(::fromInspectable)
     }
 
     fun fromInspectable(inspectable: IInspectableReference): WinRtUri {
@@ -21,21 +21,18 @@ internal object UriProjection {
         val inspectable =
             ActivationFactory.get("Windows.Foundation.Uri", IID.UriRuntimeClassFactory).use { factory ->
                 HString.create(value.toString()).use { rawUri ->
-                    NativeInterop.confinedScope().use { scope ->
-                        val resultOut = NativeInterop.allocatePointerSlot(scope)
-                        val hr = factory.invokeAbi(
-                            slot = 6,
-                            descriptor = NativeFunctionDescriptor.of(
-                                NativeValueLayout.JAVA_INT,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                                NativeValueLayout.ADDRESS,
-                            ),
-                            rawUri.handle,
-                            resultOut,
-                        )
+                    PlatformAbi.confinedScope().use { scope ->
+                        val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                        factory.comPtr.throwIfDisposed()
+                        val hr =
+                            ComVtableInvoker.invokeArgs(
+                                factory.comPtr.raw,
+                                6,
+                                rawUri.handle,
+                                resultOut,
+                            )
                         WinRtPlatformApi.checkSucceededRaw(hr)
-                        IInspectableReference(NativeInterop.readPointer(resultOut), IID.IInspectable)
+                        IInspectableReference(PlatformAbi.readPointer(resultOut).asRawComPtr(), IID.IInspectable)
                     }
                 }
             }
@@ -55,24 +52,16 @@ internal object UriProjection {
         inspectable: IInspectableReference,
         slot: Int,
     ): String =
-        NativeInterop.confinedScope().use { scope ->
-            val resultOut = NativeInterop.allocatePointerSlot(scope)
-            val hr = inspectable.invokeAbi(
-                slot = slot,
-                descriptor = NativeFunctionDescriptor.of(
-                    NativeValueLayout.JAVA_INT,
-                    NativeValueLayout.ADDRESS,
-                    NativeValueLayout.ADDRESS,
-                ),
-                resultOut,
-            )
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            inspectable.comPtr.throwIfDisposed()
+            val hr = ComVtableInvoker.invokeArgs(inspectable.comPtr.raw, slot, resultOut)
             WinRtPlatformApi.checkSucceededRaw(hr)
-            val handle = NativeInterop.readPointer(resultOut)
-            if (NativeInterop.isNull(handle)) {
+            val handle = PlatformAbi.readPointer(resultOut)
+            if (PlatformAbi.isNull(handle)) {
                 ""
             } else {
                 HString.fromHandle(handle, owner = true).use(HString::toKString)
             }
         }
 }
-

@@ -1,7 +1,5 @@
 package io.github.kitectlab.winrt.runtime
 
-expect class NativePointer
-
 expect class NativeScope : AutoCloseable {
     override fun close()
 }
@@ -11,7 +9,7 @@ expect class NativeScope : AutoCloseable {
  * This is used when transferring ownership of heap allocations (e.g. array marshalling).
  */
 class OwnedNativeAllocation(
-    val pointer: NativePointer,
+    val pointer: RawAddress,
     private val onClose: () -> Unit,
 ) : AutoCloseable {
     override fun close() {
@@ -19,38 +17,15 @@ class OwnedNativeAllocation(
     }
 }
 
-enum class NativeValueLayout {
-    ADDRESS,
-    JAVA_BYTE,
-    JAVA_INT,
-    JAVA_LONG,
-    JAVA_DOUBLE,
-}
-
-data class NativeFunctionDescriptor(
-    val returnLayout: NativeValueLayout?,
-    val argumentLayouts: List<NativeValueLayout>,
-) {
-    companion object {
-        fun of(
-            returnLayout: NativeValueLayout,
-            vararg argumentLayouts: NativeValueLayout,
-        ): NativeFunctionDescriptor = NativeFunctionDescriptor(returnLayout, argumentLayouts.toList())
-
-        fun ofVoid(
-            vararg argumentLayouts: NativeValueLayout,
-        ): NativeFunctionDescriptor = NativeFunctionDescriptor(null, argumentLayouts.toList())
-    }
-}
-
 expect class NativeCallbackHandle : AutoCloseable {
-    val pointer: NativePointer
+    val pointer: RawAddress
 
     override fun close()
 }
 
-expect object NativeInterop {
-    val nullPointer: NativePointer
+expect object PlatformAbi {
+    val nullPointer: RawAddress
+    val nullComPtr: RawComPtr
 
     val hStringHeaderSizeBytes: Long
 
@@ -58,103 +33,86 @@ expect object NativeInterop {
 
     fun sharedScope(): NativeScope
 
-    fun isNull(pointer: NativePointer): Boolean
+    fun isNull(pointer: RawAddress): Boolean
+    fun isNull(pointer: RawComPtr): Boolean
 
-    fun samePointer(first: NativePointer, second: NativePointer): Boolean
+    fun samePointer(first: RawAddress, second: RawAddress): Boolean
+    fun samePointer(first: RawComPtr, second: RawComPtr): Boolean
 
-    fun allocatePointerSlot(scope: NativeScope): NativePointer
+    fun toRawComPtr(pointer: RawAddress): RawComPtr
 
-    fun allocateInt8Slot(scope: NativeScope): NativePointer
+    fun fromRawComPtr(pointer: RawComPtr): RawAddress
 
-    fun allocateInt32Slot(scope: NativeScope): NativePointer
+    fun allocatePointerSlot(scope: NativeScope): RawAddress
 
-    fun allocateInt64Slot(scope: NativeScope): NativePointer
+    fun allocateInt8Slot(scope: NativeScope): RawAddress
 
-    fun allocateDoubleSlot(scope: NativeScope): NativePointer
+    fun allocateInt32Slot(scope: NativeScope): RawAddress
 
-    fun allocateBytes(scope: NativeScope, sizeBytes: Long): NativePointer
+    fun allocateInt64Slot(scope: NativeScope): RawAddress
 
-    fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): NativePointer
+    fun allocateDoubleSlot(scope: NativeScope): RawAddress
 
-    fun allocatePointerArray(scope: NativeScope, size: Int): NativePointer
+    fun allocateBytes(scope: NativeScope, sizeBytes: Long): RawAddress
 
-    fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean = false): NativePointer
+    fun allocateBytes(scope: NativeScope, sizeBytes: Long, alignmentBytes: Long): RawAddress
 
-    fun slice(pointer: NativePointer, offsetBytes: Long, sizeBytes: Long): NativePointer
+    fun allocatePointerArray(scope: NativeScope, size: Int): RawAddress
 
-    fun readPointer(slot: NativePointer): NativePointer
+    fun allocateUtf16(scope: NativeScope, value: String, nulTerminated: Boolean = false): RawAddress
 
-    fun readPointerAt(array: NativePointer, index: Int): NativePointer
+    fun slice(pointer: RawAddress, offsetBytes: Long, sizeBytes: Long): RawAddress
 
-    fun readInt8(slot: NativePointer): Byte
+    fun readPointer(slot: RawAddress): RawAddress
 
-    fun readInt16(slot: NativePointer): Short
+    fun readPointerAt(array: RawAddress, index: Int): RawAddress
 
-    fun readInt32(slot: NativePointer): Int
+    fun readInt8(slot: RawAddress): Byte
 
-    fun readInt64(slot: NativePointer): Long
+    fun readInt16(slot: RawAddress): Short
 
-    fun readDouble(slot: NativePointer): Double
+    fun readInt32(slot: RawAddress): Int
 
-    fun readFloat(slot: NativePointer): Float
+    fun readInt64(slot: RawAddress): Long
 
-    fun readChar16(slot: NativePointer): Char
+    fun readDouble(slot: RawAddress): Double
 
-    fun readUtf16(pointer: NativePointer, length: Int): String
+    fun readFloat(slot: RawAddress): Float
 
-    fun readGuid(pointer: NativePointer): Guid
+    fun readChar16(slot: RawAddress): Char
 
-    fun writePointer(slot: NativePointer, value: NativePointer)
+    fun readUtf16(pointer: RawAddress, length: Int): String
 
-    fun writePointer(slot: NativePointer, offsetBytes: Long, value: NativePointer)
+    fun readGuid(pointer: RawAddress): Guid
 
-    fun writeInt8(slot: NativePointer, value: Byte)
+    fun writePointer(slot: RawAddress, value: RawAddress)
 
-    fun writeInt16(slot: NativePointer, value: Short)
+    fun writePointer(slot: RawAddress, offsetBytes: Long, value: RawAddress)
 
-    fun writeInt32(slot: NativePointer, value: Int)
+    fun writeInt8(slot: RawAddress, value: Byte)
 
-    fun writeInt32(slot: NativePointer, offsetBytes: Long, value: Int)
+    fun writeInt16(slot: RawAddress, value: Short)
 
-    fun writeInt64(slot: NativePointer, value: Long)
+    fun writeInt32(slot: RawAddress, value: Int)
 
-    fun writeDouble(slot: NativePointer, value: Double)
+    fun writeInt32(slot: RawAddress, offsetBytes: Long, value: Int)
 
-    fun writeFloat(slot: NativePointer, value: Float)
+    fun writeInt64(slot: RawAddress, value: Long)
 
-    fun writeChar16(slot: NativePointer, value: Char)
+    fun writeDouble(slot: RawAddress, value: Double)
 
-    fun writeGuid(pointer: NativePointer, value: Guid)
+    fun writeFloat(slot: RawAddress, value: Float)
 
-    fun writeGuid(pointer: NativePointer, offsetBytes: Long, value: Guid)
+    fun writeChar16(slot: RawAddress, value: Char)
 
-    fun writePointerAt(array: NativePointer, index: Int, value: NativePointer)
+    fun writeGuid(pointer: RawAddress, value: Guid)
 
-    fun pointerKey(pointer: NativePointer): Long
+    fun writeGuid(pointer: RawAddress, offsetBytes: Long, value: Guid)
 
-    fun invokeVtableInt32(
-        instance: NativePointer,
-        slot: Int,
-        descriptor: NativeFunctionDescriptor,
-        vararg args: Any?,
-    ): Int
+    fun writePointerAt(array: RawAddress, index: Int, value: RawAddress)
 
-    fun invokeFunctionInt32(
-        function: NativePointer,
-        descriptor: NativeFunctionDescriptor,
-        vararg args: Any?,
-    ): Int
-
-    fun invokeFunctionVoid(
-        function: NativePointer,
-        descriptor: NativeFunctionDescriptor,
-        vararg args: Any?,
-    )
-
-    fun createCallback(
-        descriptor: NativeFunctionDescriptor,
-        callback: (List<Any?>) -> Int,
-    ): NativeCallbackHandle
+    fun pointerKey(pointer: RawAddress): Long
+    fun pointerKey(pointer: RawComPtr): Long
 
     /**
      * Allocates [sizeBytes] bytes in a shared scope that is returned as an [AutoCloseable].
@@ -164,19 +122,19 @@ expect object NativeInterop {
     fun allocateBytesOwned(sizeBytes: Long, alignmentBytes: Long): OwnedNativeAllocation
 
     /** Fills [sizeBytes] bytes starting at [pointer] with zeros. */
-    fun zeroBytes(pointer: NativePointer, sizeBytes: Long)
+    fun zeroBytes(pointer: RawAddress, sizeBytes: Long)
 }
 
 expect object WinRtPlatformApi {
-    fun roGetActivationFactoryRaw(runtimeClassId: NativePointer, interfaceId: Guid): NativePointerResult
+    fun roGetActivationFactoryRaw(runtimeClassId: RawAddress, interfaceId: Guid): NativePointerResult
 
-    fun queryInterfaceRaw(unknown: NativePointer, interfaceId: Guid): NativePointerResult
+    fun queryInterfaceRaw(unknown: RawAddress, interfaceId: Guid): NativePointerResult
 
-    fun addRefRaw(unknown: NativePointer): UInt
+    fun addRefRaw(unknown: RawAddress): UInt
 
-    fun releaseRaw(unknown: NativePointer): UInt
+    fun releaseRaw(unknown: RawAddress): UInt
 
-    fun dllGetActivationFactoryRaw(getActivationFactoryProc: NativePointer, runtimeClassId: NativePointer): NativePointerResult
+    fun dllGetActivationFactoryRaw(getActivationFactoryProc: RawAddress, runtimeClassId: RawAddress): NativePointerResult
 
     fun coCreateInstanceRaw(classId: Guid, interfaceId: Guid, classContext: Int = 1): NativePointerResult
 
@@ -190,61 +148,61 @@ expect object WinRtPlatformApi {
 
     fun coIncrementMtaUsageRaw(): NativePointerResult
 
-    fun coDecrementMtaUsageRaw(cookie: NativePointer): Int
+    fun coDecrementMtaUsageRaw(cookie: RawAddress): Int
 
-    fun roGetAgileReferenceRaw(unknown: NativePointer, interfaceId: Guid = IID.IUnknown): NativePointerResult
+    fun roGetAgileReferenceRaw(unknown: RawAddress, interfaceId: Guid = IID.IUnknown): NativePointerResult
 
     fun coGetContextTokenRaw(): NativePointerResult
 
     fun coGetObjectContextRaw(interfaceId: Guid): NativePointerResult
 
-    fun setErrorInfoRaw(errorInfo: NativePointer): Int
+    fun setErrorInfoRaw(errorInfo: RawAddress): Int
 
-    fun setRestrictedErrorInfoRaw(errorInfo: NativePointer): Int?
+    fun setRestrictedErrorInfoRaw(errorInfo: RawAddress): Int?
 
-    fun borrowRestrictedErrorInfoRaw(): NativePointer?
+    fun borrowRestrictedErrorInfoRaw(): RawAddress?
 
-    fun reportUnhandledErrorRaw(errorInfo: NativePointer): Int?
+    fun reportUnhandledErrorRaw(errorInfo: RawAddress): Int?
 
-    fun sysAllocStringRaw(value: String?): NativePointer
+    fun sysAllocStringRaw(value: String?): RawAddress
 
-    fun sysFreeStringRaw(value: NativePointer)
+    fun sysFreeStringRaw(value: RawAddress)
 
-    fun readAndFreeBstrRaw(value: NativePointer): String
+    fun readAndFreeBstrRaw(value: RawAddress): String
 
-    fun coCreateFreeThreadedMarshalerRaw(outer: NativePointer = NativeInterop.nullPointer): NativePointerResult
+    fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress = PlatformAbi.nullPointer): NativePointerResult
 
-    fun windowsCreateStringRaw(utf16Chars: NativePointer, length: Int, outHandle: NativePointer): Int
+    fun windowsCreateStringRaw(utf16Chars: RawAddress, length: Int, outHandle: RawAddress): Int
 
     fun windowsCreateStringReferenceRaw(
-        utf16Chars: NativePointer,
+        utf16Chars: RawAddress,
         length: Int,
-        header: NativePointer,
-        outHandle: NativePointer,
+        header: RawAddress,
+        outHandle: RawAddress,
     ): Int
 
-    fun windowsDeleteStringRaw(handle: NativePointer)
+    fun windowsDeleteStringRaw(handle: RawAddress)
 
-    fun windowsGetStringRawBufferRaw(handle: NativePointer, lengthOut: NativePointer): NativePointer
+    fun windowsGetStringRawBufferRaw(handle: RawAddress, lengthOut: RawAddress): RawAddress
 
-    fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer
+    fun tryLoadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress
 
-    fun loadLibraryExWRaw(absolutePath: String, flags: Int): NativePointer
+    fun loadLibraryExWRaw(absolutePath: String, flags: Int): RawAddress
 
-    fun tryGetProcAddressRaw(moduleHandle: NativePointer, procedureName: String): NativePointer
+    fun tryGetProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress
 
-    fun getProcAddressRaw(moduleHandle: NativePointer, procedureName: String): NativePointer
+    fun getProcAddressRaw(moduleHandle: RawAddress, procedureName: String): RawAddress
 
-    fun freeLibraryRaw(moduleHandle: NativePointer): Boolean
+    fun freeLibraryRaw(moduleHandle: RawAddress): Boolean
 
     fun mddBootstrapInitialize2Raw(
-        initializeProc: NativePointer,
+        initializeProc: RawAddress,
         majorMinorVersion: Int,
         versionTag: String,
         minVersion: Long,
     ): Int
 
-    fun mddBootstrapShutdownRaw(shutdownProc: NativePointer)
+    fun mddBootstrapShutdownRaw(shutdownProc: RawAddress)
 
     fun tryFormatMessageRaw(hResultValue: Int): String?
 
