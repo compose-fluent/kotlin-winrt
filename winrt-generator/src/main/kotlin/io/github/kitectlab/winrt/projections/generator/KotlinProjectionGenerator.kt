@@ -8,6 +8,8 @@ import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
+import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
+import io.github.kitectlab.winrt.metadata.requireValidForProjection
 import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
@@ -518,34 +520,17 @@ data class KotlinProjectionFile(
 
 class KotlinProjectionContractValidator {
     fun validate(model: WinRtMetadataModel): WinRtMetadataModel =
-        model.normalized().also { normalized ->
-            normalized.namespaces
-                .flatMap(WinRtNamespace::types)
-                .forEach(::validateType)
-        }
+        model.requireValidForProjection(GENERATOR_VALIDATION_OPTIONS)
 
-    fun validateType(type: WinRtTypeDefinition) {
-        when (type.kind) {
-            WinRtTypeKind.Interface -> validateInterface(type)
-            WinRtTypeKind.RuntimeClass -> validateRuntimeClass(type)
-            else -> Unit
-        }
-    }
+    fun validateType(type: WinRtTypeDefinition) =
+        WinRtMetadataModel(listOf(WinRtNamespace(type.namespace, listOf(type)))).requireValidForProjection(GENERATOR_VALIDATION_OPTIONS)
 
-    private fun validateInterface(type: WinRtTypeDefinition) {
-        val hasSurface = type.methods.isNotEmpty() || type.properties.isNotEmpty() || type.events.isNotEmpty()
-        require(!hasSurface || type.iid != null) {
-            "Generator 3.1 requires interface ${type.qualifiedName} to carry metadata IID before projection planning."
-        }
-    }
-
-    private fun validateRuntimeClass(type: WinRtTypeDefinition) {
-        val hasStaticSurface = type.methods.any(WinRtMethodDefinition::isStatic) ||
-            type.properties.any { it.isStatic } ||
-            type.events.any { it.isStatic }
-        require(!hasStaticSurface || type.activation.staticInterfaceNames.isNotEmpty()) {
-            "Generator 3.1 requires runtime class ${type.qualifiedName} to carry static interface metadata before projection planning."
-        }
+    companion object {
+        private val GENERATOR_VALIDATION_OPTIONS = WinRtMetadataValidationOptions(
+            validateTypeReferences = false,
+            validateActivationFactoryReferences = false,
+            validateRuntimeClassDefaultInterface = false,
+        )
     }
 }
 
@@ -569,7 +554,6 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
     ): List<KotlinTypeProjectionPlan> =
         namespace.normalized().types.mapNotNull { type ->
-            validator.validateType(type)
             planType(type, interfaceIidsByName, typesByQualifiedName)
         }
 

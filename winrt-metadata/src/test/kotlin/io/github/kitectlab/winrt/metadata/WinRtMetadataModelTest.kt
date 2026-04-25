@@ -1,6 +1,7 @@
 package io.github.kitectlab.winrt.metadata
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WinRtMetadataModelTest {
@@ -565,6 +566,99 @@ class WinRtMetadataModelTest {
             WinRtProjectionCategory.RuntimeClass,
             classifier.classify(WinRtTypeRef.fromDisplayName("Widget"), "Sample.Foundation").projectionCategory,
         )
+    }
+
+    @Test
+    fun metadata_validator_reports_projection_blocking_diagnostics_before_generator_emission() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Transform",
+                                    returnTypeName = "M0",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("missing", "Missing.Foundation.IMissing"),
+                                    ),
+                                    returnParameterAttributes = listOf(
+                                        WinRtCustomAttributeDefinition(
+                                            typeName = "Missing.Foundation.ReturnAttribute",
+                                            fixedArguments = listOf(WinRtCustomAttributeValue.NullValue),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "BrokenProperty",
+                                    typeName = "Missing.Foundation.Value",
+                                    hasValidAccessors = false,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "BrokenEvent",
+                                    delegateTypeName = "Missing.Foundation.Handler",
+                                    hasValidAccessors = false,
+                                ),
+                            ),
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Missing.Foundation.TypeAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.TypeValue("Missing.Foundation.TypeArgument"),
+                                        WinRtCustomAttributeValue.EnumValue("Missing.Foundation.Mode", 1),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "DoWork", returnTypeName = "Unit"),
+                                WinRtMethodDefinition(name = "Create", returnTypeName = "Unit", isStatic = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val report = model.validateForProjection(
+            WinRtMetadataValidationOptions(validateCustomAttributeTypeReferences = true),
+        )
+        val codes = report.errors.map(WinRtMetadataDiagnostic::code).toSet()
+
+        assertTrue(report.hasErrors)
+        assertTrue(WinRtMetadataDiagnosticCode.MissingInterfaceIid in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.UnresolvedTypeReference in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.InvalidPropertyAccessors in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.InvalidEventAccessors in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.UnknownCustomAttributeBlob in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.MissingRuntimeClassDefaultInterface in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.MissingRuntimeClassStaticInterface in codes)
+        assertTrue(WinRtMetadataDiagnosticCode.MissingActivationFactoryMetadata in codes)
+
+        val error = runCatching {
+            model.requireValidForProjection(
+                WinRtMetadataValidationOptions(validateCustomAttributeTypeReferences = true),
+            )
+        }.exceptionOrNull()
+        assertTrue(error is WinRtMetadataDiagnosticException)
+        assertTrue(error?.message?.contains("Sample.Foundation.IWidget.Transform") == true)
     }
 
     @Test
