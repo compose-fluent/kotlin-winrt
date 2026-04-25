@@ -1278,4 +1278,217 @@ class WinRtMetadataModelTest {
         assertEquals(120_000, helpers.getGcPressureAmount(widget))
         assertEquals("Sample.Foundation.Widget", helpers.getFastAbiClassForInterface(overrides)?.classType?.qualifiedName)
     }
+
+    @Test
+    fun semantic_helpers_own_mapped_projection_type_lookup() {
+        val helpers = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.UI.Xaml", name = "IGridLengthHelperStatics", kind = WinRtTypeKind.Interface),
+                    ),
+                ),
+            ),
+        ).semanticHelpers()
+
+        val muxBindableVector = requireNotNull(helpers.getMappedType("Microsoft.UI.Xaml.Interop", "IBindableVector"))
+        assertEquals("System.Collections.IList", muxBindableVector.mappedQualifiedName)
+        assertEquals(true, muxBindableVector.requiresMarshaling)
+        assertEquals(true, muxBindableVector.hasCustomMembersOutput)
+        assertEquals(true, muxBindableVector.isXamlAlias)
+
+        val wuxBindableVector = requireNotNull(helpers.getMappedType("Windows.UI.Xaml.Interop", "IBindableVector"))
+        assertEquals("System.Collections.IList", wuxBindableVector.mappedQualifiedName)
+        assertEquals(true, wuxBindableVector.requiresMarshaling)
+        assertEquals(true, wuxBindableVector.hasCustomMembersOutput)
+
+        val helperOnly = requireNotNull(helpers.getMappedType("Windows.UI.Xaml", "IGridLengthHelperStatics"))
+        assertEquals(null, helperOnly.mappedQualifiedName)
+        assertEquals(true, helperOnly.isXamlAlias)
+        assertEquals(
+            listOf("IBindableIterable", "IBindableVector", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
+            helpers.getMappedTypesInNamespace("Microsoft.UI.Xaml.Interop").map { it.abiName },
+        )
+        assertEquals(
+            "System.Collections.IList",
+            helpers.getMappedType(
+                WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Interop.IBindableVector"),
+                "Sample.Foundation",
+            )?.mappedQualifiedName,
+        )
+    }
+
+    @Test
+    fun semantic_helpers_describe_value_type_layout_and_blittability() {
+        val point = WinRtTypeDefinition(
+            namespace = "Windows.Foundation",
+            name = "Point",
+            kind = WinRtTypeKind.Struct,
+            fields = listOf(
+                WinRtFieldDefinition("X", "Float", rowId = 1, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                WinRtFieldDefinition("Y", "Float", rowId = 2, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
+            ),
+            layout = WinRtTypeLayout(kind = WinRtTypeLayoutKind.Sequential, packingSize = 4, classSize = 8),
+            isBlittable = true,
+            abiSize = 8,
+            abiAlignment = 4,
+        )
+        val mode = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "WidgetMode",
+            kind = WinRtTypeKind.Enum,
+            enumUnderlyingType = WinRtIntegralType.UInt32,
+            enumMembers = listOf(
+                WinRtEnumMemberDefinition("None", 0u),
+                WinRtEnumMemberDefinition("Active", 1u),
+            ),
+            customAttributes = listOf(WinRtCustomAttributeDefinition("System.FlagsAttribute")),
+        )
+        val holder = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Holder",
+            kind = WinRtTypeKind.Struct,
+            fields = listOf(
+                WinRtFieldDefinition("Name", "String", rowId = 1, isBlittable = false),
+            ),
+            isBlittable = false,
+        )
+        val helpers = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace("Windows.Foundation", listOf(point)),
+                WinRtNamespace("Sample.Foundation", listOf(mode, holder)),
+            ),
+        ).semanticHelpers()
+
+        val pointDescriptor = helpers.valueTypeDescriptor(point)
+        assertEquals(true, pointDescriptor.isValueType)
+        assertEquals(true, pointDescriptor.isBlittable)
+        assertEquals(false, pointDescriptor.requiresAbiCompanionShape)
+        assertEquals(8, pointDescriptor.abiSize)
+        assertEquals(4, pointDescriptor.abiAlignment)
+        assertEquals(WinRtTypeLayoutKind.Sequential, pointDescriptor.layout.kind)
+        assertEquals(listOf("X", "Y"), pointDescriptor.fields.map { it.field.name })
+        assertEquals(listOf(0, 4), pointDescriptor.fields.map { it.offset })
+        assertEquals("Windows.Foundation.Point", pointDescriptor.mappedType?.abiQualifiedName)
+
+        val enumDescriptor = helpers.valueTypeDescriptor(mode)
+        assertEquals(true, enumDescriptor.isValueType)
+        assertEquals(true, enumDescriptor.isBlittable)
+        assertEquals(WinRtIntegralType.UInt32, enumDescriptor.enumUnderlyingType)
+        assertEquals(listOf("None", "Active"), enumDescriptor.enumMembers.map { it.name })
+        assertEquals(true, enumDescriptor.isFlagsEnum)
+
+        val holderDescriptor = helpers.valueTypeDescriptor(holder)
+        assertEquals(true, holderDescriptor.isValueType)
+        assertEquals(false, holderDescriptor.isBlittable)
+        assertEquals(true, holderDescriptor.requiresAbiCompanionShape)
+        assertEquals(false, helpers.isTypeBlittable(holder))
+    }
+
+    @Test
+    fun semantic_helpers_collect_generic_abi_inventory_from_cached_type_shapes() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "EventHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IReference", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IVector", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IMap", kind = WinRtTypeKind.Interface, genericParameterCount = 2),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("Reference", "Windows.Foundation.IReference<Int>", rowId = 1),
+                            ),
+                            isBlittable = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            isExclusiveTo = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverrides"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValues",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Sample.Foundation.Point>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("values", "Array<Int>", isInParameter = true),
+                                        WinRtParameterDefinition("map", "Windows.Foundation.Collections.IMap<String, Int>"),
+                                    ),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Current", "Windows.Foundation.IReference<Int>"),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition("Changed", "Windows.Foundation.EventHandler<Sample.Foundation.Point>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val inventory = model.semanticHelpers().genericAbiInventory()
+
+        assertEquals(
+            listOf(
+                "Int",
+                "Sample.Foundation.Point",
+            ),
+            inventory.genericAbiDelegates.map { it.abiDelegateTypesKey },
+        )
+        assertEquals(
+            listOf(
+                "Windows_Foundation_Collections_IMap_String__Int_",
+                "Windows_Foundation_Collections_IVector_Sample_Foundation_Point_",
+                "Windows_Foundation_EventHandler_Sample_Foundation_Point_",
+                "Windows_Foundation_IReference_Int_",
+            ),
+            inventory.genericTypeInstantiations.map { it.instantiationClassName },
+        )
+        assertEquals(
+            listOf(false, false, false, false),
+            inventory.genericTypeInstantiations.map { it.implementsCcwInterface },
+        )
+        assertEquals(
+            true,
+            model.semanticHelpers().doesAbiInterfaceImplementCcwInterface(
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "IWidgetOverrides",
+                    kind = WinRtTypeKind.Interface,
+                    isExclusiveTo = true,
+                ),
+            ),
+        )
+    }
 }

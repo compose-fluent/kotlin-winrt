@@ -64,10 +64,66 @@ data class WinRtFastAbiClassDescriptor(
     val propertySlots: List<WinRtFastAbiPropertySlot>,
 )
 
+data class WinRtValueTypeFieldDescriptor(
+    val field: WinRtFieldDefinition,
+    val type: WinRtTypeClassificationDescriptor,
+    val offset: Int?,
+    val abiSize: Int?,
+    val abiAlignment: Int?,
+    val isBlittable: Boolean,
+)
+
+data class WinRtValueTypeDescriptor(
+    val type: WinRtTypeDefinition,
+    val isValueType: Boolean,
+    val isBlittable: Boolean,
+    val abiSize: Int?,
+    val abiAlignment: Int?,
+    val layout: WinRtTypeLayout,
+    val fields: List<WinRtValueTypeFieldDescriptor>,
+    val enumUnderlyingType: WinRtIntegralType?,
+    val enumMembers: List<WinRtEnumMemberDefinition>,
+    val isFlagsEnum: Boolean,
+    val mappedType: WinRtMappedTypeDescriptor?,
+) {
+    val requiresAbiCompanionShape: Boolean
+        get() = isValueType && !isBlittable
+}
+
+data class WinRtGenericAbiDelegateDescriptor(
+    val abiDelegateName: String,
+    val sourceGenericType: WinRtTypeRef,
+    val abiDelegateTypesKey: String,
+    val genericArguments: List<WinRtTypeRef>,
+)
+
+data class WinRtGenericTypeInstantiationDescriptor(
+    val type: WinRtTypeRef,
+    val definitionType: WinRtTypeDefinition?,
+    val instantiationClassName: String,
+    val genericArguments: List<WinRtTypeRef>,
+    val implementsCcwInterface: Boolean,
+)
+
+data class WinRtGenericAbiInventory(
+    val genericAbiDelegates: List<WinRtGenericAbiDelegateDescriptor>,
+    val genericTypeInstantiations: List<WinRtGenericTypeInstantiationDescriptor>,
+)
+
 class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     private val normalizedModel = model.normalized()
     private val typesByQualifiedName = buildTypesByQualifiedName(normalizedModel)
     private val closureResolver = normalizedModel.closureResolver()
+    private val typeClassifier = normalizedModel.typeClassifier()
+
+    fun getMappedTypesInNamespace(namespace: String): List<WinRtMappedTypeDescriptor> =
+        typeClassifier.mappedTypesInNamespace(namespace)
+
+    fun getMappedType(namespace: String, name: String): WinRtMappedTypeDescriptor? =
+        typeClassifier.mappedType(namespace, name)
+
+    fun getMappedType(type: WinRtTypeRef, currentNamespace: String): WinRtMappedTypeDescriptor? =
+        typeClassifier.classify(type, currentNamespace).mappedType
 
     fun getAttribute(type: WinRtTypeDefinition, attributeTypeName: String): WinRtCustomAttributeDefinition? =
         type.customAttributes.firstOrNull { it.typeName == attributeTypeName }
@@ -114,6 +170,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun isExclusiveTo(type: WinRtTypeDefinition): Boolean =
         type.kind == WinRtTypeKind.Interface && type.isExclusiveTo
 
+    fun doesAbiInterfaceImplementCcwInterface(type: WinRtTypeDefinition): Boolean =
+        io.github.kitectlab.winrt.metadata.doesAbiInterfaceImplementCcwInterface(type)
+
     fun isOverridable(implementation: WinRtInterfaceImplementationDefinition): Boolean =
         implementation.isOverridable
 
@@ -121,6 +180,45 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun isFlagsEnum(type: WinRtTypeDefinition): Boolean =
         type.kind == WinRtTypeKind.Enum && type.customAttributes.any { it.typeName == SYSTEM_FLAGS_ATTRIBUTE }
+
+    fun isValueType(type: WinRtTypeDefinition): Boolean =
+        type.kind == WinRtTypeKind.Struct || type.kind == WinRtTypeKind.Enum
+
+    fun isTypeBlittable(type: WinRtTypeDefinition): Boolean =
+        valueTypeDescriptor(type).isBlittable
+
+    fun valueTypeDescriptor(type: WinRtTypeDefinition): WinRtValueTypeDescriptor {
+        val normalizedType = type.normalized()
+        val classification = typeClassifier.classify(normalizedType)
+        val fields = normalizedType.fields.map { field ->
+            val fieldType = typeClassifier.classify(field.type, normalizedType.namespace)
+            WinRtValueTypeFieldDescriptor(
+                field = field,
+                type = fieldType,
+                offset = field.offset,
+                abiSize = field.abiSize,
+                abiAlignment = field.abiAlignment,
+                isBlittable = field.isBlittable || fieldType.isBlittable || fieldType.projectionCategory == WinRtProjectionCategory.Fundamental,
+            )
+        }
+        return WinRtValueTypeDescriptor(
+            type = normalizedType,
+            isValueType = isValueType(normalizedType),
+            isBlittable = when (normalizedType.kind) {
+                WinRtTypeKind.Enum -> true
+                WinRtTypeKind.Struct -> normalizedType.isBlittable
+                else -> false
+            },
+            abiSize = normalizedType.abiSize,
+            abiAlignment = normalizedType.abiAlignment,
+            layout = normalizedType.layout,
+            fields = fields,
+            enumUnderlyingType = normalizedType.enumUnderlyingType,
+            enumMembers = normalizedType.enumMembers,
+            isFlagsEnum = isFlagsEnum(normalizedType),
+            mappedType = classification.mappedType,
+        )
+    }
 
     fun isApiContractType(type: WinRtTypeDefinition): Boolean =
         type.kind == WinRtTypeKind.Struct && type.isApiContract
@@ -235,6 +333,20 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun getGcPressureAmount(type: WinRtTypeDefinition): Int = type.gcPressureAmount
 
+    fun genericAbiInventory(): WinRtGenericAbiInventory {
+        val collector = GenericAbiInventoryCollector()
+        normalizedModel.namespaces.flatMap(WinRtNamespace::types).forEach { type ->
+            collector.addGenericTypeReferencesInType(type)
+        }
+        return collector.toInventory()
+    }
+
+    fun collectGenericAbiInventory(type: WinRtTypeDefinition): WinRtGenericAbiInventory {
+        val collector = GenericAbiInventoryCollector()
+        collector.addGenericTypeReferencesInType(type.normalized())
+        return collector.toInventory()
+    }
+
     fun resolveType(type: WinRtTypeRef, currentNamespace: String): WinRtTypeDefinition? {
         val normalized = type.normalized()
         val qualifiedName = normalized.qualifiedName ?: return null
@@ -258,6 +370,169 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             vtableStartIndex += methodCount
         }
         return slots
+    }
+
+    private inner class GenericAbiInventoryCollector {
+        private val abiDelegates = linkedMapOf<String, WinRtGenericAbiDelegateDescriptor>()
+        private val typeInstantiations = linkedMapOf<String, WinRtGenericTypeInstantiationDescriptor>()
+
+        fun addGenericTypeReferencesInType(type: WinRtTypeDefinition) {
+            when (type.kind) {
+                WinRtTypeKind.Delegate -> getDelegateInvoke(type)?.let { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
+                WinRtTypeKind.Interface -> addGenericTypeReferencesInInterfaceType(type)
+                else -> Unit
+            }
+        }
+
+        fun toInventory(): WinRtGenericAbiInventory =
+            WinRtGenericAbiInventory(
+                genericAbiDelegates = abiDelegates.values.sortedWith(compareBy({ it.abiDelegateTypesKey }, { it.abiDelegateName })),
+                genericTypeInstantiations = typeInstantiations.values.sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
+            )
+
+        private fun addGenericTypeReferencesInInterfaceType(type: WinRtTypeDefinition) {
+            type.methods.filterNot(::isSpecial).forEach { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
+            type.properties.forEach { property -> addIfGenericTypeReference(property.type, property.type.kind == WinRtTypeRefKind.Array, type.namespace) }
+            type.events.forEach { event -> addIfGenericTypeReference(event.delegateType, isArray = false, currentNamespace = type.namespace) }
+            type.implementedInterfaces.forEach { implemented ->
+                addIfGenericTypeReference(implemented.interfaceType, isArray = false, currentNamespace = type.namespace)
+            }
+        }
+
+        private fun addGenericTypeReferencesInMethod(method: WinRtMethodDefinition, currentNamespace: String) {
+            method.parameters.forEach { parameter ->
+                addIfGenericTypeReference(parameter.type, parameter.type.kind == WinRtTypeRefKind.Array, currentNamespace = currentNamespace)
+            }
+            addIfGenericTypeReference(method.returnType, method.returnType.kind == WinRtTypeRefKind.Array, currentNamespace = currentNamespace)
+        }
+
+        private fun addIfGenericTypeReference(type: WinRtTypeRef, isArray: Boolean, currentNamespace: String) {
+            val normalized = type.normalized()
+            when (normalized.kind) {
+                WinRtTypeRefKind.Named -> {
+                    normalized.typeArguments.forEach { argument ->
+                        addIfGenericTypeReference(argument, isArray = false, currentNamespace = currentNamespace)
+                    }
+                    val resolved = resolveTypeReference(normalized, currentNamespace, typesByQualifiedName)
+                    val definitionType = resolved.definitionType
+                    if (normalized.typeArguments.isNotEmpty()) {
+                        val sourceType = resolved.type
+                        val className = escapeTypeNameForIdentifier(sourceType.typeName)
+                        typeInstantiations.putIfAbsent(
+                            className,
+                            WinRtGenericTypeInstantiationDescriptor(
+                                type = sourceType,
+                                definitionType = definitionType,
+                                instantiationClassName = className,
+                                genericArguments = sourceType.typeArguments,
+                                implementsCcwInterface = definitionType?.let(::doesAbiInterfaceImplementCcwInterface) ?: false,
+                            ),
+                        )
+                        addAbiDelegatesForType(sourceType)
+                    }
+                    if (isArray) {
+                        addAbiDelegatesForArray(normalized, currentNamespace)
+                    }
+                    if (definitionType?.kind == WinRtTypeKind.Struct) {
+                        definitionType.fields.forEach { field ->
+                            addIfGenericTypeReference(field.type, field.type.kind == WinRtTypeRefKind.Array, definitionType.namespace)
+                        }
+                    }
+                }
+
+                WinRtTypeRefKind.Array -> {
+                    val element = normalized.elementType ?: WinRtTypeRef.unknown()
+                    addIfGenericTypeReference(element, isArray = false, currentNamespace = currentNamespace)
+                    addAbiDelegatesForArray(element, currentNamespace)
+                }
+
+                else -> {
+                    if (isArray) {
+                        addAbiDelegatesForArray(normalized, currentNamespace)
+                    }
+                }
+            }
+        }
+
+        private fun addAbiDelegatesForArray(elementType: WinRtTypeRef, currentNamespace: String) {
+            addAbiDelegatesForType(
+                WinRtTypeRef.named(
+                    qualifiedName = "Windows.Foundation.Collections.IVector",
+                    typeArguments = listOf(resolveTypeReference(elementType, currentNamespace, typesByQualifiedName).type),
+                ),
+            )
+        }
+
+        private fun addAbiDelegatesForType(type: WinRtTypeRef) {
+            val normalized = type.normalized()
+            val typeName = normalized.qualifiedName ?: return
+            if (normalized.typeArguments.isEmpty()) return
+            val namespace = typeName.substringBeforeLast('.', "")
+            val name = typeName.substringAfterLast('.')
+            if (namespace != "Windows.Foundation" && namespace != "Windows.Foundation.Collections") return
+            val requiredIndexes = requiredAbiDelegateArgumentIndexes(name, normalized.typeArguments)
+            requiredIndexes.forEach { index ->
+                val argument = normalized.typeArguments.getOrNull(index) ?: return@forEach
+                val argumentDescriptor = typeClassifier.classify(argument, namespace)
+                val abiTypeKey = argumentDescriptor.type.typeName
+                val delegateName = "_${delegateOperationFor(name, index)}_${escapeTypeNameForIdentifier(abiTypeKey)}"
+                abiDelegates.putIfAbsent(
+                    abiTypeKey,
+                    WinRtGenericAbiDelegateDescriptor(
+                        abiDelegateName = delegateName,
+                        sourceGenericType = normalized,
+                        abiDelegateTypesKey = abiTypeKey,
+                        genericArguments = normalized.typeArguments,
+                    ),
+                )
+            }
+        }
+
+        private fun requiredAbiDelegateArgumentIndexes(typeName: String, arguments: List<WinRtTypeRef>): List<Int> =
+            when (typeName) {
+                "IIterator", "IVector", "IVectorView", "EventHandler", "IReference", "IMapChangedEventArgs", "IAsyncOperation", "AsyncActionProgressHandler" ->
+                    listOf(0).filter { index -> arguments.getOrNull(index)?.isAbiDelegateRequired() == true }
+                "IKeyValuePair", "IMap", "IMapView", "TypedEventHandler" ->
+                    listOf(0, 1).filter { index -> arguments.getOrNull(index)?.isAbiDelegateRequired() == true }
+                "IAsyncOperationWithProgress" ->
+                    listOf(0, 1).filter { index -> arguments.getOrNull(index)?.isAbiDelegateRequired() == true }
+                "AsyncOperationProgressHandler" ->
+                    listOf(1).filter { index -> arguments.getOrNull(index)?.isAbiDelegateRequired() == true }
+                else -> emptyList()
+            }
+
+        private fun delegateOperationFor(typeName: String, argumentIndex: Int): String =
+            when (typeName) {
+                "IKeyValuePair" -> if (argumentIndex == 0) "get_Key" else "get_Value"
+                "IMap", "IMapView" -> if (argumentIndex == 0) "has_key" else "lookup"
+                "EventHandler", "TypedEventHandler", "AsyncOperationProgressHandler", "AsyncActionProgressHandler" -> "invoke"
+                "IReference" -> "get_Value"
+                "IMapChangedEventArgs", "IAsyncOperation", "IAsyncOperationWithProgress" -> "get"
+                else -> "get_at"
+            }
+
+        private fun WinRtTypeRef.isAbiDelegateRequired(): Boolean {
+            val normalized = normalized()
+            return when (normalized.kind) {
+                WinRtTypeRefKind.Named -> {
+                    val descriptor = typeClassifier.classify(normalized, "")
+                    when (descriptor.projectionCategory) {
+                        WinRtProjectionCategory.Fundamental -> descriptor.typeName != "String"
+                        WinRtProjectionCategory.Guid,
+                        WinRtProjectionCategory.Enum,
+                        WinRtProjectionCategory.Struct,
+                        -> true
+                        else -> false
+                    }
+                }
+
+                WinRtTypeRefKind.GenericTypeParameter,
+                WinRtTypeRefKind.MethodTypeParameter,
+                WinRtTypeRefKind.Array,
+                WinRtTypeRefKind.Unknown,
+                -> false
+            }
+        }
     }
 
     companion object {
@@ -285,3 +560,9 @@ internal fun metadataParameterCategoryFor(parameter: WinRtParameterDefinition): 
         else -> WinRtMetadataParameterCategory.In
     }
 }
+
+private fun doesAbiInterfaceImplementCcwInterface(type: WinRtTypeDefinition): Boolean =
+    type.kind == WinRtTypeKind.Interface && type.isExclusiveTo
+
+private fun escapeTypeNameForIdentifier(typeName: String): String =
+    typeName.replace(Regex("""[\s:<>,.]"""), "_")
