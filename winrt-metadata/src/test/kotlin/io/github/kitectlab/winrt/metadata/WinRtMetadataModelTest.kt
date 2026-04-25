@@ -1506,6 +1506,9 @@ class WinRtMetadataModelTest {
             kind = WinRtTypeKind.RuntimeClass,
             baseTypeName = "Sample.Foundation.BaseWidget",
             implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget")),
+            customAttributes = listOf(
+                WinRtCustomAttributeDefinition("Windows.Foundation.Metadata.ExperimentalAttribute"),
+            ),
         )
         val model = WinRtMetadataModel(
             listOf(
@@ -1559,6 +1562,7 @@ class WinRtMetadataModelTest {
         assertEquals(false, xaml.additionsIncluded)
         assertEquals(listOf(WinRtBaseTypeMapping("Sample.Foundation.Widget", "Sample.Foundation.BaseWidget")), inventory.baseTypeMappings)
         assertEquals(listOf("Sample.Foundation.WidgetHandler"), inventory.eventSourceMappings.map { it.eventTypeName })
+        assertEquals(listOf("_EventSource_Sample_Foundation_WidgetHandler"), inventory.eventSourceMappings.map { it.sourceClassName })
         assertEquals(
             listOf(
                 "Sample.Foundation.BaseWidget",
@@ -1569,7 +1573,79 @@ class WinRtMetadataModelTest {
             ),
             inventory.authoredMetadataTypeMappings.map { it.projectedTypeName },
         )
+        assertEquals(
+            listOf(
+                "ABI.Sample.Foundation.BaseWidget",
+                "ABI.Sample.Foundation.IWidget",
+                "ABI.Sample.Foundation.Widget",
+                "ABI.Sample.Foundation.WidgetHandler",
+                "ABI.Sample.Foundation.WidgetMode",
+            ),
+            inventory.authoredMetadataTypeMappings.map { it.metadataTypeName },
+        )
+        assertEquals(
+            listOf("Windows.Foundation.Metadata.Experimental"),
+            sample.projectedTypes.single { it.type.name == "Widget" }.projectedAttributes.map { it.projectedTypeName },
+        )
         assertEquals(true, inventory.projectionFileWritten)
+    }
+
+    @Test
+    fun projected_attributes_follow_cswinrt_custom_and_platform_filtering() {
+        val type = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "WidgetAttribute",
+            availability = WinRtAvailabilityMetadata(
+                contractVersion = WinRtContractVersionMetadata(
+                    contractName = "Windows.Foundation.UniversalApiContract",
+                    version = 0x00030000,
+                    platformVersion = "10.0.14393.0",
+                ),
+            ),
+            customAttributes = listOf(
+                WinRtCustomAttributeDefinition(
+                    typeName = "System.Runtime.InteropServices.GuidAttribute",
+                    fixedArguments = listOf(WinRtCustomAttributeValue.StringValue("11111111-1111-1111-1111-111111111111")),
+                ),
+                WinRtCustomAttributeDefinition(
+                    typeName = "Windows.Foundation.Metadata.ContractVersionAttribute",
+                    fixedArguments = listOf(
+                        WinRtCustomAttributeValue.StringValue("Windows.Foundation.UniversalApiContract"),
+                        WinRtCustomAttributeValue.IntegralValue(0x00030000),
+                    ),
+                ),
+                WinRtCustomAttributeDefinition(
+                    typeName = "Windows.Foundation.Metadata.AttributeUsageAttribute",
+                    fixedArguments = listOf(
+                        WinRtCustomAttributeValue.EnumValue("Windows.Foundation.Metadata.AttributeTargets", 4),
+                    ),
+                ),
+                WinRtCustomAttributeDefinition(
+                    typeName = "Windows.Foundation.Metadata.AllowMultipleAttribute",
+                ),
+            ),
+        )
+
+        val attributes = type.projectedAttributes()
+
+        assertEquals(
+            listOf(
+                "System.AttributeUsage",
+                "System.Runtime.Versioning.SupportedOSPlatform",
+                "Windows.Foundation.Metadata.ContractVersion",
+            ),
+            attributes.map { it.projectedTypeName },
+        )
+        assertEquals(
+            WinRtCustomAttributeValue.BooleanValue(true),
+            attributes.single { it.projectedTypeName == "System.AttributeUsage" }
+                .namedArguments.single { it.name == "AllowMultiple" }
+                .value,
+        )
+        assertEquals(
+            listOf(WinRtCustomAttributeValue.StringValue("Windows10.0.14393.0")),
+            attributes.single { it.projectedTypeName == "System.Runtime.Versioning.SupportedOSPlatform" }.arguments,
+        )
     }
 
     @Test
@@ -1589,7 +1665,7 @@ class WinRtMetadataModelTest {
                             namespace = "Sample.Foundation",
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
-                            methods = listOf(WinRtMethodDefinition("Transform", "M0")),
+                            methods = listOf(WinRtMethodDefinition("Transform", "M0", methodRowId = 12)),
                         ),
                     ),
                 ),
@@ -1603,5 +1679,9 @@ class WinRtMetadataModelTest {
         assertEquals(true, WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape in codes)
         assertEquals(true, WinRtMetadataDiagnosticCode.IntentionalKotlinGap in codes)
         assertEquals(1, report.warnings.count { it.code == WinRtMetadataDiagnosticCode.IntentionalKotlinGap })
+        assertEquals(
+            true,
+            report.format().contains("Sample.Foundation.IWidget.Transform metadata row 12"),
+        )
     }
 }

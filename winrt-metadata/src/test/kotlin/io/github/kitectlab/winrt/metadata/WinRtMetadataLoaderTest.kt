@@ -560,6 +560,14 @@ class WinRtMetadataLoaderTest {
             platformContracts = listOf("Sample.Foundation" to assembly),
             extensionContracts = listOf("Sample.Extension" to assembly),
         )
+        val packageDir = Files.createTempDirectory("kotlin-winrt-sweep-package")
+        val packageWinmd = packageDir.resolve("lib/net8.0/Sample.Foundation.winmd")
+        packageWinmd.parent.createDirectories()
+        Files.copy(assembly, packageWinmd)
+        packageDir.resolve("resources/Sample.pri").also {
+            it.parent.createDirectories()
+            it.writeText("resource")
+        }
 
         val report = WinRtMetadataFixtureSweep.run(
             listOf(
@@ -584,13 +592,35 @@ class WinRtMetadataLoaderTest {
                         include = setOf("Sample.Foundation", "Sample.Extension"),
                     ),
                 ),
+                WinRtMetadataFixtureSweepCase(
+                    name = "nuget-package",
+                    context = WinRtMetadataProjectionContext(
+                        sources = listOf(WinRtMetadataSource.nugetPackage(packageDir)),
+                        include = setOf("Sample.Foundation"),
+                    ),
+                ),
+                WinRtMetadataFixtureSweepCase(
+                    name = "optional-missing-package",
+                    context = WinRtMetadataProjectionContext(
+                        sources = listOf(WinRtMetadataSource.nugetPackage(packageDir.resolve("missing"))),
+                    ),
+                    required = false,
+                ),
             ),
             options = WinRtMetadataValidationOptions(validateRuntimeClassDefaultInterface = false),
         )
 
-        assertEquals(listOf("response-file", "windows-sdk", "windows-sdk-extensions"), report.results.map { it.name })
+        assertEquals(listOf("response-file", "windows-sdk", "windows-sdk-extensions", "nuget-package", "optional-missing-package"), report.results.map { it.name })
         assertEquals(true, report.isGreen)
-        assertEquals(listOf(1, 1, 2), report.results.map { it.resolvedFiles.size })
+        assertEquals(listOf(1, 1, 2, 1, 0), report.results.map { it.resolvedFiles.size })
+        assertEquals(
+            listOf(WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
+            report.results.single { it.name == "nuget-package" }.packageAssets.map { it.kind }.sortedBy { it.name },
+        )
+        assertEquals(
+            listOf(WinRtMetadataDiagnosticSeverity.Warning),
+            report.results.single { it.name == "optional-missing-package" }.diagnosticReport.diagnostics.map { it.severity },
+        )
     }
 
     @Test

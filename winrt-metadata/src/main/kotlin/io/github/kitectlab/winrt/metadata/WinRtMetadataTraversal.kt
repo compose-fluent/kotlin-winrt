@@ -33,6 +33,7 @@ data class WinRtProjectedTypeInventory(
     val category: WinRtProjectionCategory,
     val requiresAbi: Boolean,
     val writesMetadataTypeEntry: Boolean,
+    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
 )
 
 enum class WinRtSkippedTypeReason {
@@ -177,6 +178,7 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
             category = classification.projectionCategory,
             requiresAbi = requiresAbi,
             writesMetadataTypeEntry = writesMetadataTypeEntry,
+            projectedAttributes = type.projectedAttributes(enablePlatformAttributes = context.target != WinRtMetadataTarget.NetStandard20),
         )
 
     private fun addBaseTypeEntry(
@@ -196,7 +198,7 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
         if (!shouldWriteMetadataTypeEntry(type)) return
         mappings[type.qualifiedName] = WinRtAuthoredMetadataTypeMapping(
             projectedTypeName = type.qualifiedName,
-            metadataTypeName = "${type.qualifiedName}.Abi",
+            metadataTypeName = "ABI.${type.qualifiedName}",
         )
     }
 
@@ -230,7 +232,7 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
                 WinRtEventSourceMapping(
                     eventTypeName = eventType,
                     sourceOwnerTypeName = ownerType.qualifiedName,
-                    sourceClassName = "${escapeTypeNameForIdentifier(eventType)}EventSource",
+                    sourceClassName = escapeTypeNameForIdentifier("_EventSource_$eventType"),
                 ),
             )
         }

@@ -30,6 +30,8 @@ data class WinRtMetadataDiagnostic(
     val message: String,
     val typeName: String? = null,
     val memberName: String? = null,
+    val sourceName: String? = null,
+    val rowId: Int? = null,
 ) {
     val isError: Boolean
         get() = severity == WinRtMetadataDiagnosticSeverity.Error
@@ -56,7 +58,14 @@ data class WinRtMetadataDiagnosticReport(
     fun format(): String =
         diagnostics.joinToString(separator = System.lineSeparator()) { diagnostic ->
             val location = listOfNotNull(diagnostic.typeName, diagnostic.memberName).joinToString(".")
-            val prefix = if (location.isBlank()) "" else "$location: "
+            val source = buildList {
+                diagnostic.sourceName?.takeIf(String::isNotBlank)?.let { add(it) }
+                diagnostic.rowId?.let { add("row $it") }
+            }.joinToString(" ")
+            val fullLocation = listOf(location.takeIf(String::isNotBlank), source.takeIf(String::isNotBlank))
+                .filterNotNull()
+                .joinToString(" ")
+            val prefix = if (fullLocation.isBlank()) "" else "$fullLocation: "
             "${diagnostic.severity} ${diagnostic.code}: $prefix${diagnostic.message}"
         }
 }
@@ -122,7 +131,7 @@ class WinRtMetadataValidator private constructor(
             }
         }
         type.fields.forEach { field ->
-            validateSignatureType(field.type, type.namespace, typeName, field.name, "field type", diagnostics)
+            validateSignatureType(field.type, type.namespace, typeName, field.name, "field type", diagnostics, field.rowId)
         }
         type.customAttributes.forEach { attribute ->
             validateCustomAttribute(attribute, type.namespace, typeName, null, diagnostics)
@@ -211,7 +220,7 @@ class WinRtMetadataValidator private constructor(
     ) {
         type.methods.forEach { method ->
             method.parameters.forEach { parameter ->
-                validateSignatureType(parameter.type, type.namespace, type.qualifiedName, method.name, "delegate parameter ${parameter.name}", diagnostics)
+                validateSignatureType(parameter.type, type.namespace, type.qualifiedName, method.name, "delegate parameter ${parameter.name}", diagnostics, method.methodRowId)
             }
         }
     }
@@ -223,7 +232,7 @@ class WinRtMetadataValidator private constructor(
         type.fields
             .filterNot { it.isStatic || it.isLiteral }
             .forEach { field ->
-                validateSignatureType(field.type, type.namespace, type.qualifiedName, field.name, "struct field ${field.name}", diagnostics)
+                validateSignatureType(field.type, type.namespace, type.qualifiedName, field.name, "struct field ${field.name}", diagnostics, field.rowId)
             }
     }
 
@@ -232,9 +241,9 @@ class WinRtMetadataValidator private constructor(
         method: WinRtMethodDefinition,
         diagnostics: MutableList<WinRtMetadataDiagnostic>,
     ) {
-        validateSignatureType(method.returnType, type.namespace, type.qualifiedName, method.name, "method return type", diagnostics)
+        validateSignatureType(method.returnType, type.namespace, type.qualifiedName, method.name, "method return type", diagnostics, method.methodRowId)
         method.parameters.forEach { parameter ->
-            validateSignatureType(parameter.type, type.namespace, type.qualifiedName, method.name, "parameter ${parameter.name}", diagnostics)
+            validateSignatureType(parameter.type, type.namespace, type.qualifiedName, method.name, "parameter ${parameter.name}", diagnostics, method.methodRowId)
         }
         method.returnParameterAttributes.forEach { attribute ->
             validateCustomAttribute(attribute, type.namespace, type.qualifiedName, method.name, diagnostics)
@@ -251,10 +260,11 @@ class WinRtMetadataValidator private constructor(
                 code = WinRtMetadataDiagnosticCode.InvalidPropertyAccessors,
                 typeName = type.qualifiedName,
                 memberName = property.name,
+                rowId = property.rowId(),
                 message = "Property semantics do not resolve to a valid getter/setter accessor pair.",
             )
         }
-        validateSignatureType(property.type, type.namespace, type.qualifiedName, property.name, "property type", diagnostics)
+        validateSignatureType(property.type, type.namespace, type.qualifiedName, property.name, "property type", diagnostics, property.rowId())
     }
 
     private fun validateEvent(
@@ -267,10 +277,11 @@ class WinRtMetadataValidator private constructor(
                 code = WinRtMetadataDiagnosticCode.InvalidEventAccessors,
                 typeName = type.qualifiedName,
                 memberName = event.name,
+                rowId = event.rowId(),
                 message = "Event semantics do not resolve to a valid add/remove accessor pair.",
             )
         }
-        validateSignatureType(event.delegateType, type.namespace, type.qualifiedName, event.name, "event delegate type", diagnostics)
+        validateSignatureType(event.delegateType, type.namespace, type.qualifiedName, event.name, "event delegate type", diagnostics, event.rowId())
     }
 
     private fun validateSignatureType(
@@ -280,6 +291,7 @@ class WinRtMetadataValidator private constructor(
         memberName: String?,
         role: String,
         diagnostics: MutableList<WinRtMetadataDiagnostic>,
+        rowId: Int? = null,
     ) {
         val normalizedType = type.normalized()
         when (normalizedType.kind) {
@@ -288,12 +300,14 @@ class WinRtMetadataValidator private constructor(
                     code = WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape,
                     typeName = ownerTypeName,
                     memberName = memberName,
+                    rowId = rowId,
                     message = "$role uses method generic parameter ${normalizedType.typeName}; generic methods are not a supported projection input yet.",
                 )
                 diagnostics += error(
                     code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
                     typeName = ownerTypeName,
                     memberName = memberName,
+                    rowId = rowId,
                     message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: generic methods are not supported.",
                 )
             }
@@ -303,12 +317,14 @@ class WinRtMetadataValidator private constructor(
                     code = WinRtMetadataDiagnosticCode.UnsupportedSignatureType,
                     typeName = ownerTypeName,
                     memberName = memberName,
+                    rowId = rowId,
                     message = "$role has an unknown metadata signature type.",
                 )
                 diagnostics += error(
                     code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
                     typeName = ownerTypeName,
                     memberName = memberName,
+                    rowId = rowId,
                     message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: unknown type.",
                 )
             }
@@ -319,6 +335,7 @@ class WinRtMetadataValidator private constructor(
                         code = WinRtMetadataDiagnosticCode.UnsupportedSignatureType,
                         typeName = ownerTypeName,
                         memberName = memberName,
+                        rowId = rowId,
                         message = "$role uses array rank ${normalizedType.arrayRank}; only SZARRAY-style rank-1 arrays are supported.",
                     )
                 }
@@ -329,14 +346,15 @@ class WinRtMetadataValidator private constructor(
                     memberName,
                     "$role element",
                     diagnostics,
+                    rowId,
                 )
             }
 
             WinRtTypeRefKind.Named -> {
-                validateTypeReference(normalizedType, currentNamespace, ownerTypeName, role, diagnostics)
-                validateNamedSemanticShape(normalizedType, currentNamespace, ownerTypeName, memberName, role, diagnostics)
+                validateTypeReference(normalizedType, currentNamespace, ownerTypeName, role, diagnostics, rowId)
+                validateNamedSemanticShape(normalizedType, currentNamespace, ownerTypeName, memberName, role, diagnostics, rowId)
                 normalizedType.typeArguments.forEachIndexed { index, argument ->
-                    validateSignatureType(argument, currentNamespace, ownerTypeName, memberName, "$role generic argument $index", diagnostics)
+                    validateSignatureType(argument, currentNamespace, ownerTypeName, memberName, "$role generic argument $index", diagnostics, rowId)
                 }
             }
 
@@ -351,6 +369,7 @@ class WinRtMetadataValidator private constructor(
         memberName: String?,
         role: String,
         diagnostics: MutableList<WinRtMetadataDiagnostic>,
+        rowId: Int? = null,
     ) {
         val classification = typeClassifier.classify(type, currentNamespace)
         if (classification.projectionCategory == WinRtProjectionCategory.Unit ||
@@ -366,6 +385,7 @@ class WinRtMetadataValidator private constructor(
                     code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
                     typeName = ownerTypeName,
                     memberName = memberName,
+                    rowId = rowId,
                     message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: ${failure.message}",
                 )
             }
@@ -377,6 +397,7 @@ class WinRtMetadataValidator private constructor(
         ownerTypeName: String,
         role: String,
         diagnostics: MutableList<WinRtMetadataDiagnostic>,
+        rowId: Int? = null,
     ) {
         val normalizedType = type?.normalized() ?: return
         if (normalizedType.kind != WinRtTypeRefKind.Named) {
@@ -394,6 +415,7 @@ class WinRtMetadataValidator private constructor(
             diagnostics += error(
                 code = WinRtMetadataDiagnosticCode.UnresolvedTypeReference,
                 typeName = ownerTypeName,
+                rowId = rowId,
                 message = "$role references unresolved type ${classification.typeName}.",
             )
         }
@@ -469,6 +491,7 @@ class WinRtMetadataValidator private constructor(
         typeName: String,
         message: String,
         memberName: String? = null,
+        rowId: Int? = null,
     ): WinRtMetadataDiagnostic =
         WinRtMetadataDiagnostic(
             code = code,
@@ -476,6 +499,8 @@ class WinRtMetadataValidator private constructor(
             message = message,
             typeName = typeName,
             memberName = memberName,
+            sourceName = "metadata",
+            rowId = rowId,
         )
 
     companion object {
@@ -536,3 +561,9 @@ private fun diagnosticCodeForInputFailure(message: String): WinRtMetadataDiagnos
 
 private val WinRtTypeDefinition.hasProjectedSurface: Boolean
     get() = methods.isNotEmpty() || properties.isNotEmpty() || events.isNotEmpty()
+
+private fun WinRtPropertyDefinition.rowId(): Int? =
+    getterMethodRowId ?: setterMethodRowId
+
+private fun WinRtEventDefinition.rowId(): Int? =
+    addMethodRowId ?: removeMethodRowId

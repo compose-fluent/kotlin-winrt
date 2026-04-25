@@ -4,11 +4,13 @@ data class WinRtMetadataFixtureSweepCase(
     val name: String,
     val context: WinRtMetadataProjectionContext,
     val expectResolvable: Boolean = true,
+    val required: Boolean = expectResolvable,
 )
 
 data class WinRtMetadataFixtureSweepResult(
     val name: String,
     val resolvedFiles: List<String>,
+    val packageAssets: List<WinRtPackageAsset> = emptyList(),
     val diagnosticReport: WinRtMetadataDiagnosticReport,
 ) {
     val passed: Boolean
@@ -62,12 +64,14 @@ object WinRtMetadataFixtureSweep {
                 WinRtMetadataFixtureSweepResult(
                     name = sweepCase.name,
                     resolvedFiles = cache.files.map { it.toString() },
+                    packageAssets = cache.packageAssets,
                     diagnosticReport = report,
                 )
             } else {
                 WinRtMetadataFixtureSweepResult(
                     name = sweepCase.name,
                     resolvedFiles = cache.files.map { it.toString() },
+                    packageAssets = cache.packageAssets,
                     diagnosticReport = WinRtMetadataDiagnosticReport(
                         report.diagnostics + WinRtMetadataDiagnostic(
                             code = WinRtMetadataDiagnosticCode.InvalidCommandSpecification,
@@ -80,7 +84,7 @@ object WinRtMetadataFixtureSweep {
         } catch (error: IllegalArgumentException) {
             val diagnostic = WinRtMetadataDiagnostic(
                 code = diagnosticCodeForSweepFailure(error.message.orEmpty()),
-                severity = if (sweepCase.expectResolvable) WinRtMetadataDiagnosticSeverity.Error else WinRtMetadataDiagnosticSeverity.Warning,
+                severity = if (sweepCase.required) WinRtMetadataDiagnosticSeverity.Error else WinRtMetadataDiagnosticSeverity.Warning,
                 message = error.message ?: "Metadata fixture sweep case '${sweepCase.name}' failed.",
             )
             WinRtMetadataFixtureSweepResult(
