@@ -5,6 +5,9 @@ data class WinRtMetadataFixtureSweepCase(
     val context: WinRtMetadataProjectionContext,
     val expectResolvable: Boolean = true,
     val required: Boolean = expectResolvable,
+    val validateProjectionInputs: Boolean = true,
+    val expectedNamespaces: Set<String> = emptySet(),
+    val expectedPackageAssetKinds: Set<WinRtPackageAssetKind> = emptySet(),
 )
 
 data class WinRtMetadataFixtureSweepResult(
@@ -59,7 +62,11 @@ object WinRtMetadataFixtureSweep {
         try {
             val cache = sweepCase.context.resolveCache()
             val model = cache.load()
-            val report = model.validateForProjection(options)
+            val report = WinRtMetadataDiagnosticReport(
+                projectionDiagnostics(sweepCase, model, options) +
+                    missingNamespaceDiagnostics(sweepCase, model) +
+                    missingPackageAssetDiagnostics(sweepCase, cache),
+            )
             if (sweepCase.expectResolvable) {
                 WinRtMetadataFixtureSweepResult(
                     name = sweepCase.name,
@@ -101,3 +108,46 @@ private fun diagnosticCodeForSweepFailure(message: String): WinRtMetadataDiagnos
         "Response file" in message || "ApiContract" in message -> WinRtMetadataDiagnosticCode.InvalidCommandSpecification
         else -> WinRtMetadataDiagnosticCode.InvalidMetadataSource
     }
+
+private fun projectionDiagnostics(
+    sweepCase: WinRtMetadataFixtureSweepCase,
+    model: WinRtMetadataModel,
+    options: WinRtMetadataValidationOptions,
+): List<WinRtMetadataDiagnostic> =
+    if (sweepCase.validateProjectionInputs) {
+        model.validateForProjection(options).diagnostics
+    } else {
+        emptyList()
+    }
+
+private fun missingNamespaceDiagnostics(
+    sweepCase: WinRtMetadataFixtureSweepCase,
+    model: WinRtMetadataModel,
+): List<WinRtMetadataDiagnostic> {
+    val namespaces = model.namespaces.map(WinRtNamespace::name).toSet()
+    return sweepCase.expectedNamespaces
+        .filterNot { it in namespaces }
+        .map { namespace ->
+            WinRtMetadataDiagnostic(
+                code = WinRtMetadataDiagnosticCode.MissingReferencedMetadata,
+                severity = WinRtMetadataDiagnosticSeverity.Error,
+                message = "Sweep case '${sweepCase.name}' did not load expected namespace '$namespace'.",
+            )
+        }
+}
+
+private fun missingPackageAssetDiagnostics(
+    sweepCase: WinRtMetadataFixtureSweepCase,
+    cache: WinRtMetadataCache,
+): List<WinRtMetadataDiagnostic> {
+    val kinds = cache.packageAssets.map(WinRtPackageAsset::kind).toSet()
+    return sweepCase.expectedPackageAssetKinds
+        .filterNot { it in kinds }
+        .map { kind ->
+            WinRtMetadataDiagnostic(
+                code = WinRtMetadataDiagnosticCode.MissingReferencedMetadata,
+                severity = WinRtMetadataDiagnosticSeverity.Error,
+                message = "Sweep case '${sweepCase.name}' did not discover expected package asset kind '$kind'.",
+            )
+        }
+}

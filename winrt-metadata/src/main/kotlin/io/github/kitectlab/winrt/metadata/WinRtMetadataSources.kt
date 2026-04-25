@@ -17,6 +17,11 @@ enum class WinRtMetadataTarget {
     NetStandard20,
 }
 
+enum class WinRtWindowsSdkDiscoveryMode {
+    EnvironmentOrDefaultRoot,
+    WindowsHostRegistry,
+}
+
 data class WinRtMetadataFilter(
     val include: Set<String> = emptySet(),
     val exclude: Set<String> = emptySet(),
@@ -70,6 +75,7 @@ sealed interface WinRtMetadataSource {
         val version: String? = null,
         val includeExtensions: Boolean = false,
         val sdkRoot: Path? = null,
+        val discoveryMode: WinRtWindowsSdkDiscoveryMode = WinRtWindowsSdkDiscoveryMode.EnvironmentOrDefaultRoot,
     ) : WinRtMetadataSource
     data class NuGetPackage(
         val packagePath: Path,
@@ -83,8 +89,14 @@ sealed interface WinRtMetadataSource {
             version: String? = null,
             includeExtensions: Boolean = false,
             sdkRoot: Path? = null,
+            discoveryMode: WinRtWindowsSdkDiscoveryMode = WinRtWindowsSdkDiscoveryMode.EnvironmentOrDefaultRoot,
         ): WinRtMetadataSource =
-            WindowsSdk(version = version, includeExtensions = includeExtensions, sdkRoot = sdkRoot)
+            WindowsSdk(
+                version = version,
+                includeExtensions = includeExtensions,
+                sdkRoot = sdkRoot,
+                discoveryMode = discoveryMode,
+            )
 
         fun parse(value: String): WinRtMetadataSource {
             if (value.startsWith("nuget:", ignoreCase = true)) {
@@ -114,34 +126,72 @@ sealed interface WinRtMetadataSource {
         private fun expandResponseFileArguments(values: List<String>): List<String> =
             values.flatMap { value ->
                 if (value.startsWith("@") && value.length > 1) {
-                    tokenizeResponseFile(Path.of(value.drop(1)).readText())
+                    val responsePath = Path.of(value.drop(1))
+                    val extension = responsePath.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+                    require(!responsePath.isDirectory() && extension != "winmd") {
+                        "'@' is reserved for response files"
+                    }
+                    tokenizeResponseFile(responsePath.readText())
                 } else {
                     listOf(value)
                 }
             }
 
         private fun tokenizeResponseFile(content: String): List<String> {
-            val tokens = mutableListOf<String>()
-            val current = StringBuilder()
-            var quote: Char? = null
-            fun flush() {
-                if (current.isNotEmpty()) {
-                    tokens += current.toString()
-                    current.clear()
-                }
+            return content
+                .lineSequence()
+                .flatMap(::tokenizeResponseFileLine)
+                .toList()
+        }
+
+        private fun tokenizeResponseFileLine(line: String): Sequence<String> = sequence {
+            if (line.firstOrNull() == '#') {
+                return@sequence
             }
-            content.forEach { char ->
-                when {
-                    quote != null && char == quote -> quote = null
-                    quote != null -> current.append(char)
-                    char == '"' || char == '\'' -> quote = char
-                    char.isWhitespace() -> flush()
-                    else -> current.append(char)
+            var cursor = 0
+            var firstArgument = true
+            var inQuotes = false
+            var argument = StringBuilder()
+            while (true) {
+                while (cursor < line.length && (line[cursor] == ' ' || line[cursor] == '\t')) {
+                    cursor += 1
                 }
+                if (!firstArgument) {
+                    yield(argument.toString())
+                    argument = StringBuilder()
+                }
+                if (cursor >= line.length) {
+                    break
+                }
+                while (true) {
+                    var copyCharacter = true
+                    var backslashCount = 0
+                    while (cursor < line.length && line[cursor] == '\\') {
+                        cursor += 1
+                        backslashCount += 1
+                    }
+                    if (cursor < line.length && line[cursor] == '"') {
+                        if (backslashCount % 2 == 0) {
+                            if (inQuotes && cursor + 1 < line.length && line[cursor + 1] == '"') {
+                                cursor += 1
+                            } else {
+                                copyCharacter = false
+                                inQuotes = !inQuotes
+                            }
+                        }
+                        backslashCount /= 2
+                    }
+                    repeat(backslashCount) { argument.append('\\') }
+                    if (cursor >= line.length || (!inQuotes && (line[cursor] == ' ' || line[cursor] == '\t'))) {
+                        break
+                    }
+                    if (copyCharacter) {
+                        argument.append(line[cursor])
+                    }
+                    cursor += 1
+                }
+                firstArgument = false
             }
-            flush()
-            require(quote == null) { "Response file contains an unterminated quoted argument." }
-            return tokens
         }
 
         private val WINDOWS_SDK_VERSION_WITH_OPTIONAL_EXTENSIONS =
@@ -264,7 +314,7 @@ object WinRtMetadataSourceResolver {
     }
 
     private fun windowsSdkFiles(source: WinRtMetadataSource.WindowsSdk): List<Path> {
-        val sdkRoot = source.sdkRoot ?: locateWindowsSdkRoot()
+        val sdkRoot = source.sdkRoot ?: locateWindowsSdkRoot(source.discoveryMode)
         val version = source.version ?: latestWindowsSdkVersion(sdkRoot)
         val files = linkedSetOf<Path>()
         val platformXml = sdkRoot.resolve("Platforms").resolve("UAP").resolve(version).resolve("Platform.xml")
@@ -356,14 +406,25 @@ object WinRtMetadataSourceResolver {
         val normalized = path.replace('\\', '/').lowercase()
         return when {
             normalized.endsWith(".winmd") -> WinRtPackageAssetKind.Winmd
-            normalized.startsWith("runtimes/") || normalized.endsWith(".dll") || normalized.endsWith(".pri") -> WinRtPackageAssetKind.Native
-            normalized.startsWith("resources/") || normalized.contains("/resources/") || normalized.endsWith(".xbf") || normalized.endsWith(".resw") ->
+            normalized.startsWith("resources/") ||
+                normalized.contains("/resources/") ||
+                normalized.contains(".resources/") ||
+                normalized.endsWith(".pri") ||
+                normalized.endsWith(".xbf") ||
+                normalized.endsWith(".resw") ->
                 WinRtPackageAssetKind.Resource
+            normalized.startsWith("runtimes/") || normalized.endsWith(".dll") -> WinRtPackageAssetKind.Native
             else -> WinRtPackageAssetKind.Other
         }
     }
 
-    private fun locateWindowsSdkRoot(): Path {
+    private fun locateWindowsSdkRoot(discoveryMode: WinRtWindowsSdkDiscoveryMode): Path {
+        if (discoveryMode == WinRtWindowsSdkDiscoveryMode.WindowsHostRegistry) {
+            throw IllegalArgumentException(
+                "Windows SDK registry/module-version discovery is a Windows-host integration boundary; provide sdkRoot or use EnvironmentOrDefaultRoot discovery.",
+            )
+        }
+
         System.getenv("KOTLIN_WINRT_WINDOWS_SDK_ROOT")
             ?.takeIf(String::isNotBlank)
             ?.let(Path::of)

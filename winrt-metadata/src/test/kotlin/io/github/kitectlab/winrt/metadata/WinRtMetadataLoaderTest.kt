@@ -3,6 +3,10 @@ package io.github.kitectlab.winrt.metadata
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
+import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.name
 import kotlin.io.path.writeText
 import io.github.kitectlab.winrt.runtime.Guid
 import org.junit.Assert.assertEquals
@@ -520,9 +524,16 @@ class WinRtMetadataLoaderTest {
     fun expands_response_file_inputs_and_applies_cswinrt_style_filters() {
         val assembly = buildManagedMetadataSample()
         val responseFile = Files.createTempFile("kotlin-winrt-metadata-inputs", ".rsp")
-        responseFile.writeText("\"${assembly.parent}\"")
+        responseFile.writeText(
+            "# comment lines are ignored like cswinrt response files\n" +
+                "\"${assembly.parent}\"\n" +
+                "\"C:\\metadata\\\\quoted \\\"\"name\\\"\"\"\n" +
+                "plain\\path\n",
+        )
         val context = WinRtMetadataProjectionContext(
-            sources = WinRtMetadataSource.parseInputs("@$responseFile"),
+            sources = WinRtMetadataSource.parseInputs("@$responseFile")
+                .filterIsInstance<WinRtMetadataSource.PathSource>()
+                .take(1),
             include = setOf("Sample.Foundation"),
             exclude = setOf("Sample.Foundation.IInternal"),
             additionExclude = setOf("Sample.Foundation.Additions"),
@@ -537,6 +548,14 @@ class WinRtMetadataLoaderTest {
         val model = context.load()
 
         assertEquals(listOf(assembly.fileName.toString()), cache.files.map { it.fileName.toString() })
+        assertEquals(
+            listOf(
+                WinRtMetadataSource.path(assembly.parent),
+                WinRtMetadataSource.path(Path.of("""C:\metadata\\quoted "name"""")),
+                WinRtMetadataSource.path(Path.of("""plain\path""")),
+            ),
+            WinRtMetadataSource.parseInputs("@$responseFile"),
+        )
         assertTrue(context.filter.includes("Sample.Foundation.Widget"))
         assertFalse(context.filter.includes("Windows.Foundation.IStringable"))
         assertFalse(context.filter.includes("Sample.Foundation.IInternalContract"))
@@ -548,6 +567,35 @@ class WinRtMetadataLoaderTest {
         assertTrue(context.idicExclusiveTo)
         assertTrue(context.partialFactory)
         assertTrue(model.namespaces.any { it.name == "Sample.Foundation" })
+    }
+
+    @Test
+    fun rejects_response_file_prefix_for_metadata_files_and_models_windows_sdk_discovery_boundary() {
+        val assembly = buildManagedMetadataSample()
+
+        val responseFailure = runCatching { WinRtMetadataSource.parseInputs("@$assembly") }.exceptionOrNull()
+        assertTrue(responseFailure is IllegalArgumentException)
+        assertEquals("'@' is reserved for response files", responseFailure?.message)
+
+        val sdkRoot = buildWindowsSdkMetadataRoot(
+            version = "10.0.22621.0",
+            platformContracts = listOf("Sample.Foundation" to assembly),
+        )
+        val explicitRoot = WinRtMetadataSourceResolver.resolve(
+            WinRtMetadataSource.windowsSdk(
+                sdkRoot = sdkRoot,
+                discoveryMode = WinRtWindowsSdkDiscoveryMode.WindowsHostRegistry,
+            ),
+        )
+        assertEquals(listOf("Sample.Foundation.winmd"), explicitRoot.files.map { it.fileName.toString() })
+
+        val registryBoundary = runCatching {
+            WinRtMetadataSourceResolver.resolve(
+                WinRtMetadataSource.windowsSdk(discoveryMode = WinRtWindowsSdkDiscoveryMode.WindowsHostRegistry),
+            )
+        }.exceptionOrNull()
+        assertTrue(registryBoundary is IllegalArgumentException)
+        assertTrue(registryBoundary?.message?.contains("Windows SDK registry/module-version discovery") == true)
     }
 
     @Test
@@ -584,6 +632,7 @@ class WinRtMetadataLoaderTest {
                         sources = listOf(WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", sdkRoot = sdkRoot)),
                         include = setOf("Sample.Foundation"),
                     ),
+                    expectedNamespaces = setOf("Sample.Foundation"),
                 ),
                 WinRtMetadataFixtureSweepCase(
                     name = "windows-sdk-extensions",
@@ -591,6 +640,7 @@ class WinRtMetadataLoaderTest {
                         sources = listOf(WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", includeExtensions = true, sdkRoot = sdkRoot)),
                         include = setOf("Sample.Foundation", "Sample.Extension"),
                     ),
+                    expectedNamespaces = setOf("Sample.Foundation", "Sample.Extension"),
                 ),
                 WinRtMetadataFixtureSweepCase(
                     name = "nuget-package",
@@ -598,6 +648,8 @@ class WinRtMetadataLoaderTest {
                         sources = listOf(WinRtMetadataSource.nugetPackage(packageDir)),
                         include = setOf("Sample.Foundation"),
                     ),
+                    expectedNamespaces = setOf("Sample.Foundation"),
+                    expectedPackageAssetKinds = setOf(WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
                 ),
                 WinRtMetadataFixtureSweepCase(
                     name = "optional-missing-package",
@@ -611,7 +663,7 @@ class WinRtMetadataLoaderTest {
         )
 
         assertEquals(listOf("response-file", "windows-sdk", "windows-sdk-extensions", "nuget-package", "optional-missing-package"), report.results.map { it.name })
-        assertEquals(true, report.isGreen)
+        assertEquals(report.failed.flatMap { it.diagnosticReport.diagnostics }.joinToString("\n") { it.toString() }, true, report.isGreen)
         assertEquals(listOf(1, 1, 2, 1, 0), report.results.map { it.resolvedFiles.size })
         assertEquals(
             listOf(WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
@@ -621,6 +673,104 @@ class WinRtMetadataLoaderTest {
             listOf(WinRtMetadataDiagnosticSeverity.Warning),
             report.results.single { it.name == "optional-missing-package" }.diagnosticReport.diagnostics.map { it.severity },
         )
+    }
+
+    @Test
+    fun fixture_sweep_validates_installed_windows_sdk_and_windows_app_sdk_metadata_surfaces() {
+        val windowsSdkContracts = findWindowsSdkFoundationContracts()
+        val windowsAppSdkPackage = findWindowsAppSdkPackage()
+        assumeTrue(
+            "Installed Windows SDK Foundation and UniversalApi contract WinMDs are required for Metadata Full-Parity 4.12 real SDK sweep",
+            windowsSdkContracts != null,
+        )
+        assumeTrue(
+            "Windows App SDK nupkg is required for Metadata Full-Parity 4.12 real package sweep",
+            windowsAppSdkPackage != null,
+        )
+        val sdkContracts = windowsSdkContracts!!
+        val appSdkPackage = windowsAppSdkPackage!!
+
+        val report = WinRtMetadataFixtureSweep.run(
+            listOf(
+                WinRtMetadataFixtureSweepCase(
+                    name = "installed-windows-sdk-contract-metadata",
+                    context = WinRtMetadataProjectionContext(
+                        sources = sdkContracts.map(WinRtMetadataSource::path),
+                        include = setOf("Windows.Foundation", "Windows.Foundation.Collections"),
+                    ),
+                    validateProjectionInputs = false,
+                    expectedNamespaces = setOf("Windows.Foundation", "Windows.Foundation.Collections"),
+                ),
+                WinRtMetadataFixtureSweepCase(
+                    name = "installed-windows-app-sdk-nuget",
+                    context = WinRtMetadataProjectionContext(
+                        sources = sdkContracts.map(WinRtMetadataSource::path) + WinRtMetadataSource.nugetPackage(appSdkPackage),
+                        include = setOf("Microsoft.UI.Xaml.Data", "Microsoft.UI.Xaml.Interop"),
+                    ),
+                    validateProjectionInputs = false,
+                    expectedNamespaces = setOf("Microsoft.UI.Xaml.Data", "Microsoft.UI.Xaml.Interop"),
+                    expectedPackageAssetKinds = setOf(
+                        WinRtPackageAssetKind.Winmd,
+                        WinRtPackageAssetKind.Native,
+                        WinRtPackageAssetKind.Resource,
+                    ),
+                ),
+            ),
+            options = WinRtMetadataValidationOptions(
+                validateRuntimeClassDefaultInterface = false,
+                validateActivationFactoryReferences = false,
+            ),
+        )
+
+        assertTrue(
+            report.failed.flatMap { it.diagnosticReport.diagnostics }.joinToString("\n") { it.toString() },
+            report.isGreen,
+        )
+        val sdkResult = report.results.single { it.name == "installed-windows-sdk-contract-metadata" }
+        assertTrue(sdkResult.resolvedFiles.any { it.endsWith("Windows.Foundation.FoundationContract.winmd") })
+        assertTrue(sdkResult.resolvedFiles.any { it.endsWith("Windows.Foundation.UniversalApiContract.winmd") })
+        val packageResult = report.results.single { it.name == "installed-windows-app-sdk-nuget" }
+        assertTrue(packageResult.resolvedFiles.any { it.endsWith("Microsoft.UI.Xaml.winmd") })
+        assertTrue(packageResult.packageAssets.any { it.relativePath.endsWith("Microsoft.UI.Xaml.winmd") })
+    }
+
+    private fun findWindowsSdkFoundationContracts(): List<Path>? {
+        val roots = listOfNotNull(
+            System.getenv("KOTLIN_WINRT_WINDOWS_SDK_ROOT")?.takeIf(String::isNotBlank)?.let(Path::of),
+            Path.of("C:\\Program Files (x86)\\Windows Kits\\10"),
+        ).filter { it.isDirectory() }
+        return roots.asSequence()
+            .flatMap { root ->
+                val references = root.resolve("References")
+                if (!references.isDirectory()) {
+                    emptySequence()
+                } else {
+                    Files.walk(references, 5).use { stream ->
+                        stream
+                            .filter(Files::isRegularFile)
+                            .filter {
+                                it.name.equals("Windows.Foundation.FoundationContract.winmd", ignoreCase = true) ||
+                                    it.name.equals("Windows.Foundation.UniversalApiContract.winmd", ignoreCase = true)
+                            }
+                            .toList()
+                            .asSequence()
+                    }
+                }
+            }
+            .groupBy { sdkContractVersionKey(it) }
+            .toSortedMap(compareByDescending<String> { it })
+            .values
+            .firstOrNull { paths ->
+                paths.any { it.name.equals("Windows.Foundation.FoundationContract.winmd", ignoreCase = true) } &&
+                    paths.any { it.name.equals("Windows.Foundation.UniversalApiContract.winmd", ignoreCase = true) }
+            }
+            ?.sortedBy { it.name }
+    }
+
+    private fun sdkContractVersionKey(path: Path): String {
+        val parts = generateSequence(path) { it.parent }.toList().asReversed().map { it.fileName?.toString().orEmpty() }
+        val referencesIndex = parts.indexOf("References")
+        return parts.getOrNull(referencesIndex + 1).orEmpty()
     }
 
     @Test
@@ -667,6 +817,34 @@ class WinRtMetadataLoaderTest {
         assertTrue(inventory.table("ManifestResource").single().rowCount > 0)
         assertTrue(inventory.table("NestedClass").single().rowCount > 0)
         assertTrue(inventory.table("MethodSpec").single().modeled)
+    }
+
+    private fun findWindowsAppSdkPackage(): Path? {
+        System.getenv("KOTLIN_WINRT_WINDOWS_APP_SDK_NUGET")
+            ?.takeIf(String::isNotBlank)
+            ?.let(Path::of)
+            ?.takeIf { it.isRegularFile() }
+            ?.let { return it }
+
+        val roots = listOfNotNull(
+            System.getProperty("user.home")?.let { Path.of(it, ".nuget", "packages", "microsoft.windowsappsdk") },
+            Path.of("E:\\Documents\\Visual Studio Project"),
+            Path.of("D:\\Documents\\Visual Studio Project"),
+        ).filter { it.exists() }
+
+        return roots.asSequence()
+            .flatMap { root ->
+                Files.walk(root, 8).use { stream ->
+                    stream
+                        .filter(Files::isRegularFile)
+                        .filter { it.name.startsWith("Microsoft.WindowsAppSDK.", ignoreCase = true) }
+                        .filter { it.name.endsWith(".nupkg", ignoreCase = true) }
+                        .toList()
+                        .asSequence()
+                }
+            }
+            .sortedWith(compareBy<Path> { it.name }.reversed())
+            .firstOrNull()
     }
 
     private fun buildManagedMetadataSample(): Path {
