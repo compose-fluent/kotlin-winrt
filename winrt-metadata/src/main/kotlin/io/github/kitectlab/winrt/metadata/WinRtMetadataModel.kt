@@ -22,6 +22,34 @@ enum class WinRtIntegralType {
     UInt64,
 }
 
+enum class WinRtTypeLayoutKind {
+    Auto,
+    Sequential,
+    Explicit,
+}
+
+data class WinRtTypeLayout(
+    val kind: WinRtTypeLayoutKind = WinRtTypeLayoutKind.Auto,
+    val packingSize: Int? = null,
+    val classSize: Int? = null,
+) {
+    fun normalized(): WinRtTypeLayout =
+        copy(
+            packingSize = packingSize?.takeIf { it > 0 },
+            classSize = classSize?.takeIf { it > 0 },
+        )
+
+    internal fun merge(other: WinRtTypeLayout): WinRtTypeLayout {
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtTypeLayout(
+            kind = if (left.kind != WinRtTypeLayoutKind.Auto) left.kind else right.kind,
+            packingSize = left.packingSize ?: right.packingSize,
+            classSize = left.classSize ?: right.classSize,
+        )
+    }
+}
+
 data class WinRtEnumMemberDefinition(
     val name: String,
     val valueBits: ULong,
@@ -36,6 +64,38 @@ data class WinRtEnumMemberDefinition(
             "Can only merge enum members with identical values: $name=$valueBits vs ${other.name}=${other.valueBits}"
         }
         return normalized()
+    }
+}
+
+data class WinRtFieldDefinition(
+    val name: String,
+    val typeName: String,
+    val flags: Int = 0,
+    val rowId: Int? = null,
+    val offset: Int? = null,
+    val isStatic: Boolean = false,
+    val isLiteral: Boolean = false,
+    val isInitOnly: Boolean = false,
+    val hasConstant: Boolean = false,
+    val constantValueBits: ULong? = null,
+    val constantElementType: Int? = null,
+    val abiSize: Int? = null,
+    val abiAlignment: Int? = null,
+    val isBlittable: Boolean = false,
+) {
+    val type: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(typeName)
+
+    fun normalized(): WinRtFieldDefinition {
+        val normalizedType = type.normalized()
+        return copy(
+            name = name.trim(),
+            typeName = normalizedType.typeName,
+            rowId = rowId?.takeIf { it > 0 },
+            offset = offset?.takeIf { it >= 0 },
+            abiSize = abiSize?.takeIf { it > 0 },
+            abiAlignment = abiAlignment?.takeIf { it > 0 },
+        )
     }
 }
 
@@ -478,6 +538,11 @@ data class WinRtTypeDefinition(
     val baseTypeName: String? = null,
     val enumUnderlyingType: WinRtIntegralType? = null,
     val enumMembers: List<WinRtEnumMemberDefinition> = emptyList(),
+    val fields: List<WinRtFieldDefinition> = emptyList(),
+    val layout: WinRtTypeLayout = WinRtTypeLayout(),
+    val isBlittable: Boolean = false,
+    val abiSize: Int? = null,
+    val abiAlignment: Int? = null,
     val isProjectionInternal: Boolean = false,
     val isExclusiveTo: Boolean = false,
     val isApiContract: Boolean = false,
@@ -539,6 +604,12 @@ data class WinRtTypeDefinition(
                 }
                 .values
                 .toList(),
+            fields = fields
+                .map(WinRtFieldDefinition::normalized)
+                .sortedWith(compareBy<WinRtFieldDefinition>({ it.rowId ?: Int.MAX_VALUE }, { it.name })),
+            layout = layout.normalized(),
+            abiSize = abiSize?.takeIf { it > 0 },
+            abiAlignment = abiAlignment?.takeIf { it > 0 },
             defaultInterfaceName = defaultInterface?.normalized()?.typeName,
             implementedInterfaces = implementedInterfaces
                 .map(WinRtInterfaceImplementationDefinition::normalized)
@@ -590,6 +661,15 @@ data class WinRtTypeDefinition(
             baseTypeName = left.baseTypeName ?: right.baseTypeName,
             enumUnderlyingType = mergedEnumUnderlyingType,
             enumMembers = mergedEnumMembers.values.toList(),
+            fields = (left.fields + right.fields)
+                .groupBy { it.name }
+                .values
+                .map { duplicates -> duplicates.first().normalized() }
+                .sortedWith(compareBy<WinRtFieldDefinition>({ it.rowId ?: Int.MAX_VALUE }, { it.name })),
+            layout = left.layout.merge(right.layout),
+            isBlittable = left.isBlittable || right.isBlittable,
+            abiSize = left.abiSize ?: right.abiSize,
+            abiAlignment = left.abiAlignment ?: right.abiAlignment,
             isProjectionInternal = left.isProjectionInternal || right.isProjectionInternal,
             isExclusiveTo = left.isExclusiveTo || right.isExclusiveTo,
             isApiContract = left.isApiContract || right.isApiContract,

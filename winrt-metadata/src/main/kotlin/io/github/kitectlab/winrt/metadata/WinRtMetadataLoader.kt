@@ -201,6 +201,8 @@ private class MetadataTables private constructor(
         val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefs, typeDefNames, typeRefNames, typeSpecTypes)
         val fieldConstants = readFieldConstants()
         val parameterConstants = readParameterConstants()
+        val classLayouts = readClassLayouts()
+        val fieldOffsets = readFieldLayouts()
         val genericParametersByOwner = readGenericParameters(typeDefNames, typeRefNames, typeSpecTypes)
         val interfaceImplsByOwner = readInterfaceImplementations(typeDefNames, typeRefNames, typeSpecTypes, customAttributes)
         val propertyRowIdsByOwner = readMemberMap(TABLE_PROPERTY_MAP, TABLE_PROPERTY)
@@ -221,6 +223,18 @@ private class MetadataTables private constructor(
                 val defaultInterfaceName = implementedInterfaces.firstOrNull { it.isDefault }?.interfaceName
                 val genericParameters = genericParametersByOwner[rowId].orEmpty()
                 val kind = raw.classify(typeDefNames, typeRefNames, typeSpecTypes)
+                val fields = readFieldDefinitions(
+                    typeIndex = index,
+                    typeDefs = typeDefs,
+                    rawFields = rawFields,
+                    fieldConstants = fieldConstants,
+                    fieldOffsets = fieldOffsets,
+                    typeDefNames = typeDefNames,
+                    typeRefNames = typeRefNames,
+                    typeSpecTypes = typeSpecTypes,
+                )
+                val layout = (classLayouts[rowId] ?: WinRtTypeLayout()).copy(kind = raw.layoutKind())
+                val abiLayout = computeTypeAbiLayout(kind, fields, layout)
                 WinRtTypeDefinition(
                     namespace = raw.namespace,
                     name = raw.name,
@@ -242,6 +256,11 @@ private class MetadataTables private constructor(
                         rawFields = rawFields,
                         fieldConstants = fieldConstants,
                     ),
+                    fields = fields,
+                    layout = layout,
+                    isBlittable = abiLayout.isBlittable,
+                    abiSize = abiLayout.size,
+                    abiAlignment = abiLayout.alignment,
                     isProjectionInternal = typeAttributes.any { it.typeName == WINRT_INTEROP_PROJECTION_INTERNAL },
                     isExclusiveTo = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO },
                     isApiContract = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_API_CONTRACT },
@@ -382,6 +401,52 @@ private class MetadataTables private constructor(
             rows += RawField(flags, name, signatureBlobIndex)
         }
         return rows
+    }
+
+    private fun readClassLayouts(): Map<Int, WinRtTypeLayout> {
+        val rowCount = rowCounts[TABLE_CLASS_LAYOUT]
+        if (rowCount == 0) {
+            return emptyMap()
+        }
+        var cursor = tableOffsets[TABLE_CLASS_LAYOUT]
+        return buildMap {
+            repeat(rowCount) {
+                val packingSize = buffer.shortAt(cursor).toInt() and 0xFFFF
+                cursor += 2
+                val classSize = buffer.intAt(cursor)
+                cursor += 4
+                val parentRowId = readIndex(cursor, simpleIndexSize(TABLE_TYPE_DEF))
+                cursor += simpleIndexSize(TABLE_TYPE_DEF)
+                if (parentRowId > 0) {
+                    put(
+                        parentRowId,
+                        WinRtTypeLayout(
+                            packingSize = packingSize.takeIf { it > 0 },
+                            classSize = classSize.takeIf { it > 0 },
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun readFieldLayouts(): Map<Int, Int> {
+        val rowCount = rowCounts[TABLE_FIELD_LAYOUT]
+        if (rowCount == 0) {
+            return emptyMap()
+        }
+        var cursor = tableOffsets[TABLE_FIELD_LAYOUT]
+        return buildMap {
+            repeat(rowCount) {
+                val offset = buffer.intAt(cursor)
+                cursor += 4
+                val fieldRowId = readIndex(cursor, simpleIndexSize(TABLE_FIELD))
+                cursor += simpleIndexSize(TABLE_FIELD)
+                if (fieldRowId > 0) {
+                    put(fieldRowId, offset)
+                }
+            }
+        }
     }
 
     private fun readRawMethodDefs(): List<RawMethodDef> {
@@ -638,6 +703,38 @@ private class MetadataTables private constructor(
         )
     }
 
+    private fun readFieldDefinitions(
+        typeIndex: Int,
+        typeDefs: List<RawTypeDef>,
+        rawFields: List<RawField>,
+        fieldConstants: Map<Int, DecodedFieldConstant>,
+        fieldOffsets: Map<Int, Int>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+        typeSpecTypes: Array<WinRtTypeRef>,
+    ): List<WinRtFieldDefinition> =
+        enumFields(typeIndex, typeDefs, rawFields).map { (rowId, field) ->
+            val signature = readFieldSignature(field.signatureBlobIndex, typeDefNames, typeRefNames, typeSpecTypes)
+            val constant = fieldConstants[rowId]
+            val abiLayout = computeFieldAbiLayout(signature.type)
+            WinRtFieldDefinition(
+                name = field.name,
+                typeName = signature.type.typeName,
+                flags = field.flags,
+                rowId = rowId,
+                offset = fieldOffsets[rowId],
+                isStatic = field.flags and FIELD_ATTRIBUTE_STATIC != 0,
+                isLiteral = field.flags and FIELD_ATTRIBUTE_LITERAL != 0,
+                isInitOnly = field.flags and FIELD_ATTRIBUTE_INIT_ONLY != 0,
+                hasConstant = field.flags and FIELD_ATTRIBUTE_HAS_DEFAULT != 0 || constant != null,
+                constantValueBits = constant?.valueBits,
+                constantElementType = constant?.type,
+                abiSize = abiLayout.size,
+                abiAlignment = abiLayout.alignment,
+                isBlittable = abiLayout.isBlittable,
+            )
+        }
+
     private fun readEnumUnderlyingType(
         typeIndex: Int,
         typeDefs: List<RawTypeDef>,
@@ -719,6 +816,70 @@ private class MetadataTables private constructor(
                 )
             }
         }
+    }
+
+    private fun computeTypeAbiLayout(
+        kind: WinRtTypeKind,
+        fields: List<WinRtFieldDefinition>,
+        layout: WinRtTypeLayout,
+    ): ComputedAbiLayout {
+        if (kind == WinRtTypeKind.Enum) {
+            return ComputedAbiLayout(size = 4, alignment = 4, isBlittable = true)
+        }
+        if (kind != WinRtTypeKind.Struct) {
+            return ComputedAbiLayout()
+        }
+        val instanceFields = fields.filterNot { it.isStatic || it.isLiteral }
+        if (instanceFields.any { !it.isBlittable || it.abiSize == null || it.abiAlignment == null }) {
+            return ComputedAbiLayout(isBlittable = false)
+        }
+        if (layout.kind == WinRtTypeLayoutKind.Explicit) {
+            val size = layout.classSize ?: instanceFields.maxOfOrNull { (it.offset ?: 0) + (it.abiSize ?: 0) }
+            val alignment = instanceFields.maxOfOrNull { it.abiAlignment ?: 1 } ?: 1
+            return ComputedAbiLayout(size = size, alignment = alignment, isBlittable = true)
+        }
+
+        var offset = 0
+        var maxAlignment = 1
+        instanceFields.forEach { field ->
+            val fieldAlignment = minOf(field.abiAlignment ?: 1, layout.packingSize ?: Int.MAX_VALUE)
+            maxAlignment = maxOf(maxAlignment, fieldAlignment)
+            offset = alignTo(offset, fieldAlignment)
+            offset += field.abiSize ?: 0
+        }
+        val computedSize = alignTo(offset, maxAlignment)
+        return ComputedAbiLayout(
+            size = maxOf(layout.classSize ?: 0, computedSize).takeIf { it > 0 },
+            alignment = maxAlignment,
+            isBlittable = true,
+        )
+    }
+
+    private fun computeFieldAbiLayout(type: WinRtTypeRef): ComputedAbiLayout {
+        val normalized = type.normalized()
+        return when (normalized.kind) {
+            WinRtTypeRefKind.Named -> when (normalized.typeName) {
+                "Byte", "UByte" -> ComputedAbiLayout(size = 1, alignment = 1, isBlittable = true)
+                "Short", "UShort" -> ComputedAbiLayout(size = 2, alignment = 2, isBlittable = true)
+                "Int", "UInt", "Float" -> ComputedAbiLayout(size = 4, alignment = 4, isBlittable = true)
+                "Long", "ULong", "Double" -> ComputedAbiLayout(size = 8, alignment = 8, isBlittable = true)
+                "Boolean", "Char", "String", "Any" -> ComputedAbiLayout(isBlittable = false)
+                else -> ComputedAbiLayout(isBlittable = false)
+            }
+
+            WinRtTypeRefKind.Array,
+            WinRtTypeRefKind.GenericTypeParameter,
+            WinRtTypeRefKind.MethodTypeParameter,
+            WinRtTypeRefKind.Unknown -> ComputedAbiLayout(isBlittable = false)
+        }
+    }
+
+    private fun alignTo(value: Int, alignment: Int): Int {
+        if (alignment <= 1) {
+            return value
+        }
+        val remainder = value % alignment
+        return if (remainder == 0) value else value + alignment - remainder
     }
 
     private fun readFieldConstants(): Map<Int, DecodedFieldConstant> {
@@ -1473,6 +1634,8 @@ private class MetadataTables private constructor(
         private const val TABLE_MEMBER_REF = 0x0A
         private const val TABLE_CONSTANT = 0x0B
         private const val TABLE_CUSTOM_ATTRIBUTE = 0x0C
+        private const val TABLE_CLASS_LAYOUT = 0x0F
+        private const val TABLE_FIELD_LAYOUT = 0x10
         private const val TABLE_STANDALONE_SIG = 0x11
         private const val TABLE_EVENT_MAP = 0x12
         private const val TABLE_EVENT_PTR = 0x13
@@ -1490,8 +1653,14 @@ private class MetadataTables private constructor(
         private const val TABLE_METHOD_SPEC = 0x2B
         private const val TABLE_GENERIC_PARAM_CONSTRAINT = 0x2C
 
+        private const val TYPE_ATTRIBUTE_LAYOUT_MASK = 0x18
+        private const val TYPE_ATTRIBUTE_SEQUENTIAL_LAYOUT = 0x08
+        private const val TYPE_ATTRIBUTE_EXPLICIT_LAYOUT = 0x10
         private const val TYPE_ATTRIBUTE_INTERFACE = 0x20
         private const val FIELD_ATTRIBUTE_STATIC = 0x0010
+        private const val FIELD_ATTRIBUTE_INIT_ONLY = 0x0020
+        private const val FIELD_ATTRIBUTE_LITERAL = 0x0040
+        private const val FIELD_ATTRIBUTE_HAS_DEFAULT = 0x8000
         private const val METHOD_ATTRIBUTE_MEMBER_ACCESS_MASK = 0x0007
         private const val METHOD_ATTRIBUTE_PRIVATE = 0x0001
         private const val METHOD_ATTRIBUTE_FAM_AND_ASSEM = 0x0002
@@ -1846,6 +2015,8 @@ private class MetadataTables private constructor(
             TABLE_MEMBER_REF -> codedIndexSize(CODED_MEMBER_REF_PARENT, rowCounts) + stringIndexSize + blobIndexSize
             TABLE_CONSTANT -> 2 + codedIndexSize(CODED_HAS_CONSTANT, rowCounts) + blobIndexSize
             TABLE_CUSTOM_ATTRIBUTE -> codedIndexSize(CODED_HAS_CUSTOM_ATTRIBUTE, rowCounts) + codedIndexSize(CODED_CUSTOM_ATTRIBUTE_TYPE, rowCounts) + blobIndexSize
+            TABLE_CLASS_LAYOUT -> 6 + simpleIndexSize(TABLE_TYPE_DEF, rowCounts)
+            TABLE_FIELD_LAYOUT -> 4 + simpleIndexSize(TABLE_FIELD, rowCounts)
             TABLE_STANDALONE_SIG -> blobIndexSize
             TABLE_EVENT_MAP -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) + simpleIndexSize(TABLE_EVENT, rowCounts)
             TABLE_EVENT_PTR -> simpleIndexSize(TABLE_EVENT, rowCounts)
@@ -1884,6 +2055,13 @@ private data class RawTypeDef(
 ) {
     val qualifiedName: String
         get() = if (namespace.isEmpty()) name else "$namespace.$name"
+
+    fun layoutKind(): WinRtTypeLayoutKind =
+        when (flags and 0x18) {
+            0x08 -> WinRtTypeLayoutKind.Sequential
+            0x10 -> WinRtTypeLayoutKind.Explicit
+            else -> WinRtTypeLayoutKind.Auto
+        }
 }
 
 private data class RawField(
@@ -1945,6 +2123,12 @@ private data class DecodedCustomAttributeConstructor(
 private data class DecodedFieldConstant(
     val type: Int,
     val valueBits: ULong,
+)
+
+private data class ComputedAbiLayout(
+    val size: Int? = null,
+    val alignment: Int? = null,
+    val isBlittable: Boolean = false,
 )
 
 private data class PropertyAccessorRows(

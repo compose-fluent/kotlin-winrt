@@ -378,6 +378,20 @@ class WinRtMetadataLoaderTest {
         assertTrue(widgetStaticsClass.isFastAbi)
         assertEquals(120_000, widgetStaticsClass.gcPressureAmount)
 
+        val point = sampleNamespace.types.first { it.name == "Point" }
+        assertEquals(WinRtTypeLayoutKind.Explicit, point.layout.kind)
+        assertEquals(4, point.layout.packingSize)
+        assertEquals(16, point.layout.classSize)
+        assertTrue(point.isBlittable)
+        assertEquals(16, point.abiSize)
+        assertEquals(4, point.abiAlignment)
+        assertEquals(listOf("X", "Y", "Magic"), point.fields.map { it.name })
+        assertEquals(listOf("Int", "Short", "Int"), point.fields.map { it.typeName })
+        assertEquals(listOf(0, 8, null), point.fields.map { it.offset })
+        assertEquals(listOf(false, false, true), point.fields.map { it.isStatic })
+        assertEquals(listOf(false, false, true), point.fields.map { it.isLiteral })
+        assertEquals(42uL, point.fields.single { it.name == "Magic" }.constantValueBits)
+
         val color = sampleNamespace.types.first { it.name == "Color" }
         assertTrue(color.isSealedType)
         assertEquals(WinRtIntegralType.UInt32, color.enumUnderlyingType)
@@ -761,7 +775,15 @@ class WinRtMetadataLoaderTest {
 
                 public enum Priority { Low, High }
 
-                public struct Point { public int X; public int Y; }
+                [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit, Pack = 4, Size = 16)]
+                public struct Point
+                {
+                    [System.Runtime.InteropServices.FieldOffset(0)]
+                    public int X;
+                    [System.Runtime.InteropServices.FieldOffset(8)]
+                    public short Y;
+                    public const int Magic = 42;
+                }
 
                 [Windows.Foundation.Metadata.ApiContract]
                 public struct WidgetContract { public int Version; }
