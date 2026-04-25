@@ -88,6 +88,77 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_info_factory_exposes_completed_and_failed_action_as_winrt_async_action() {
+        var capturedStatus: WinRtAsyncStatus? = null
+        val completedHandler = WinRtDelegateBridge.createUnitDelegate(
+            iid = WinRtAsyncInterfaceIds.AsyncActionCompletedHandler,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+        ) { args ->
+            capturedStatus = WinRtAsyncStatus.fromAbi(args[1] as Int)
+        }
+
+        completedHandler.use { handle ->
+            AsyncInfo.completedAction().use { action ->
+                assertEquals(WinRtAsyncStatus.Completed, action.status())
+                action.queryInterface(WinRtAsyncInterfaceIds.IAsyncInfo).getOrThrow().use { asyncInfo ->
+                    assertEquals(WinRtAsyncInterfaceIds.IAsyncInfo, asyncInfo.interfaceId)
+                }
+                handle.createReference().use(action::setCompletedHandler)
+                action.getResults()
+            }
+        }
+        assertEquals(WinRtAsyncStatus.Completed, capturedStatus)
+
+        AsyncInfo.actionFromException(WinRtAccessDeniedException("denied", KnownHResults.E_ACCESSDENIED)).use { action ->
+            assertEquals(WinRtAsyncStatus.Error, action.status())
+            assertEquals(KnownHResults.E_ACCESSDENIED, action.errorCode())
+        }
+    }
+
+    @Test
+    fun async_info_factory_exposes_result_operation_through_abi_get_results() {
+        AsyncInfo.fromResult(
+            result = 42,
+            resultSignature = WinRtTypeSignature.int32(),
+            resultWriter = WinRtAsyncResultWriter { value, resultOut ->
+                PlatformAbi.writeInt32(resultOut, value)
+            },
+        ).use { operation ->
+            assertEquals(WinRtAsyncStatus.Completed, operation.status())
+            PlatformAbi.confinedScope().use { scope ->
+                val resultOut = PlatformAbi.allocateInt32Slot(scope)
+                val hr = ComVtableInvoker.invokeArgs(
+                    instance = operation.pointer,
+                    slot = WinRtAsyncOperationVftblSlots.GetResults,
+                    arg0 = resultOut,
+                )
+                assertEquals(KnownHResults.S_OK.value, hr)
+                assertEquals(42, PlatformAbi.readInt32(resultOut))
+            }
+        }
+    }
+
+    @Test
+    fun async_info_run_action_completes_and_cancels_backing_job() {
+        runBlocking {
+            AsyncInfo.runAction(this) {
+                // Completion flows through the TaskToAsync-style adapter rather than through a fake reference.
+            }.use { action ->
+                action.await()
+                assertEquals(WinRtAsyncStatus.Completed, action.status())
+            }
+
+            AsyncInfo.runAction(this) {
+                kotlinx.coroutines.awaitCancellation()
+            }.use { action ->
+                action.cancel()
+                kotlinx.coroutines.yield()
+                assertEquals(WinRtAsyncStatus.Canceled, action.status())
+            }
+        }
+    }
+
+    @Test
     fun async_operation_await_completes_with_result_and_maps_error_status() {
         Arena.ofConfined().use { arena ->
             runBlocking {

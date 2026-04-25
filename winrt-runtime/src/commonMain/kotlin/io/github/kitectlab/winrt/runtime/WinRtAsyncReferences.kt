@@ -4,19 +4,27 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-open class WinRtAsyncReferenceBase(
-    pointer: RawAddress,
-    interfaceId: Guid,
-) : ComObjectReference(pointer.asRawComPtr(), interfaceId) {
+open class WinRtAsyncReferenceBase internal constructor(
+    comPtr: ComPtr,
+) : ComObjectReference(comPtr) {
+    constructor(
+        pointer: RawAddress,
+        interfaceId: Guid,
+    ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId))
+
     private val asyncInfoView: WinRtAsyncInfoView = WinRtAsyncInfoView(comPtr)
 
     internal fun asAsyncInfoView(): WinRtAsyncInfoView = asyncInfoView
 }
 
-open class WinRtAsyncInfoReference(
-    pointer: RawAddress,
-    interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncInfo,
-) : WinRtAsyncReferenceBase(pointer, interfaceId) {
+open class WinRtAsyncInfoReference internal constructor(
+    comPtr: ComPtr,
+) : WinRtAsyncReferenceBase(comPtr) {
+    constructor(
+        pointer: RawAddress,
+        interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncInfo,
+    ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId))
+
     open fun id(): UInt = asAsyncInfoView().id()
 
     open fun status(): WinRtAsyncStatus =
@@ -40,10 +48,14 @@ open class WinRtAsyncInfoReference(
     }
 }
 
-open class WinRtAsyncActionReference(
-    pointer: RawAddress,
-    interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncAction,
-) : WinRtAsyncInfoReference(pointer, interfaceId) {
+open class WinRtAsyncActionReference internal constructor(
+    comPtr: ComPtr,
+) : WinRtAsyncInfoReference(comPtr) {
+    constructor(
+        pointer: RawAddress,
+        interfaceId: Guid = WinRtAsyncInterfaceIds.IAsyncAction,
+    ) : this(ComPtr.create(pointer.asRawComPtr(), interfaceId))
+
     private val asyncActionView: WinRtAsyncActionView = WinRtAsyncActionView(comPtr)
 
     internal fun asAsyncActionView(): WinRtAsyncActionView = asyncActionView
@@ -94,12 +106,22 @@ open class WinRtAsyncActionReference(
     }
 }
 
-open class WinRtAsyncOperationReference<T>(
-    pointer: RawAddress,
-    interfaceId: Guid,
+open class WinRtAsyncOperationReference<T> internal constructor(
+    comPtr: ComPtr,
     private val completedHandlerInterfaceId: Guid,
     private val resultReader: (WinRtAsyncOperationReference<T>) -> T,
-) : WinRtAsyncInfoReference(pointer, interfaceId) {
+) : WinRtAsyncInfoReference(comPtr) {
+    constructor(
+        pointer: RawAddress,
+        interfaceId: Guid,
+        completedHandlerInterfaceId: Guid,
+        resultReader: (WinRtAsyncOperationReference<T>) -> T,
+    ) : this(
+        comPtr = ComPtr.create(pointer.asRawComPtr(), interfaceId),
+        completedHandlerInterfaceId = completedHandlerInterfaceId,
+        resultReader = resultReader,
+    )
+
     private val asyncOperationView: WinRtAsyncOperationView = WinRtAsyncOperationView(comPtr, completedHandlerInterfaceId)
 
     internal fun asAsyncOperationView(): WinRtAsyncOperationView = asyncOperationView
