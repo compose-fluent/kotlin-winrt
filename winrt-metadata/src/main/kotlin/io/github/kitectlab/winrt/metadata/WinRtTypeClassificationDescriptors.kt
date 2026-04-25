@@ -173,6 +173,9 @@ private fun projectionCategoryFor(
         rawTypeName == "Any" || rawTypeName == "System.Object" -> WinRtProjectionCategory.Object
         rawTypeName == "Guid" || rawTypeName == "System.Guid" -> WinRtProjectionCategory.Guid
         rawTypeName == "Type" || rawTypeName == "System.Type" -> WinRtProjectionCategory.Type
+        rawTypeName == "System.Enum" -> WinRtProjectionCategory.Enum
+        rawTypeName == "System.ValueType" -> WinRtProjectionCategory.Struct
+        rawTypeName == "System.MulticastDelegate" -> WinRtProjectionCategory.Delegate
         resolvedType?.isApiContract == true && resolvedType.kind == WinRtTypeKind.Struct -> WinRtProjectionCategory.ApiContract
         resolvedType?.isAttributeType == true && resolvedType.kind == WinRtTypeKind.RuntimeClass -> WinRtProjectionCategory.Attribute
         resolvedType != null -> when (resolvedType.kind) {

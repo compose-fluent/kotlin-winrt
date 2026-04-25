@@ -1128,6 +1128,7 @@ class WinRtMetadataModelTest {
                     name = "Invoke",
                     returnTypeName = "Unit",
                     isSpecialName = true,
+                    methodRowId = 10,
                     parameters = listOf(
                         WinRtParameterDefinition("value", "String"),
                     ),
@@ -1135,6 +1136,7 @@ class WinRtMetadataModelTest {
                 WinRtMethodDefinition(
                     name = "UpdateArrays",
                     returnTypeName = "Unit",
+                    methodRowId = 11,
                     parameters = listOf(
                         WinRtParameterDefinition("input", "Array<Int>", isInParameter = true),
                         WinRtParameterDefinition("filled", "Array<Int>", direction = WinRtParameterDirection.Out, isOutParameter = true),
@@ -1146,6 +1148,13 @@ class WinRtMetadataModelTest {
                     returnTypeName = "Unit",
                     isSpecialName = true,
                     isRemoveOverload = true,
+                    methodRowId = 12,
+                ),
+                WinRtMethodDefinition(
+                    name = "get_Name",
+                    returnTypeName = "String",
+                    isSpecialName = true,
+                    methodRowId = 13,
                 ),
             ),
             properties = listOf(
@@ -1190,6 +1199,11 @@ class WinRtMetadataModelTest {
                 activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
                 staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
                 composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                factories = listOf(
+                    WinRtAttributedFactoryShape("Sample.Foundation.IWidgetFactory", WinRtAttributedFactoryKind.Activatable),
+                    WinRtAttributedFactoryShape("Sample.Foundation.IWidgetStatics", WinRtAttributedFactoryKind.Static),
+                    WinRtAttributedFactoryShape("Sample.Foundation.IWidgetFactory", WinRtAttributedFactoryKind.Composable, isVisible = true),
+                ),
             ),
         )
         val overrides = WinRtTypeDefinition(
@@ -1203,7 +1217,13 @@ class WinRtMetadataModelTest {
                     typeName = "Int",
                     getterMethodName = "get_Mode",
                     setterMethodName = "set_Mode",
+                    getterMethodRowId = 20,
+                    setterMethodRowId = 21,
                 ),
+            ),
+            methods = listOf(
+                WinRtMethodDefinition("get_Mode", "Int", isSpecialName = true, methodRowId = 20),
+                WinRtMethodDefinition("set_Mode", "Unit", parameters = listOf(WinRtParameterDefinition("value", "Int")), isSpecialName = true, methodRowId = 21),
             ),
         )
         val factory = WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetFactory", kind = WinRtTypeKind.Interface)
@@ -1268,6 +1288,8 @@ class WinRtMetadataModelTest {
         assertEquals(listOf(true, false), attributedTypes.map { it.activatable })
         assertEquals(listOf(false, true), attributedTypes.map { it.statics })
         assertEquals(listOf(true, false), attributedTypes.map { it.composable })
+        assertEquals(listOf(true, false), attributedTypes.map { it.visible })
+        assertEquals(listOf("Sample.Foundation.Widget"), helpers.componentActivatableClasses().map { it.className })
         val (defaultFastAbi, exclusiveFastAbi) = helpers.getDefaultAndExclusiveInterfaces(widget)
         assertEquals("Sample.Foundation.IWidget", defaultFastAbi?.interfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetOverrides"), exclusiveFastAbi.map { it.interfaceName })
@@ -1275,6 +1297,14 @@ class WinRtMetadataModelTest {
         assertEquals("Sample.Foundation.IWidget", fastAbiClass.defaultInterface?.interfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetOverrides"), fastAbiClass.otherInterfaces.map { it.interfaceName })
         assertEquals(listOf("Name", "Mode"), fastAbiClass.propertySlots.map { it.propertyName })
+        assertEquals(listOf(6, 10), fastAbiClass.propertySlots.map { it.vtableStartIndex })
+        assertEquals(listOf(9, 10), fastAbiClass.propertySlots.map { it.getterVtableIndex })
+        assertEquals(listOf(null, 11), fastAbiClass.propertySlots.map { it.setterVtableIndex })
+        assertEquals(true, fastAbiClass.containsGetter("Name"))
+        assertEquals(true, fastAbiClass.containsSetter("Mode"))
+        assertEquals(false, fastAbiClass.containsSetter("Name"))
+        assertEquals(true, fastAbiClass.containsOtherInterface("Sample.Foundation.IWidgetOverrides"))
+        assertEquals(listOf("Invoke_0", "UpdateArrays_1", "remove_Changed_2", "get_Name_3"), helpers.methodVtableDescriptors(defaultInterface).map { it.vmethodName })
         assertEquals(120_000, helpers.getGcPressureAmount(widget))
         assertEquals("Sample.Foundation.Widget", helpers.getFastAbiClassForInterface(overrides)?.classType?.qualifiedName)
     }
@@ -1386,10 +1416,13 @@ class WinRtMetadataModelTest {
         assertEquals(true, enumDescriptor.isFlagsEnum)
 
         val holderDescriptor = helpers.valueTypeDescriptor(holder)
-        assertEquals(true, holderDescriptor.isValueType)
+        assertEquals(false, holderDescriptor.isValueType)
         assertEquals(false, holderDescriptor.isBlittable)
-        assertEquals(true, holderDescriptor.requiresAbiCompanionShape)
+        assertEquals(false, holderDescriptor.requiresAbiCompanionShape)
         assertEquals(false, helpers.isTypeBlittable(holder))
+        assertEquals(false, helpers.isValueType(WinRtTypeRef.fromDisplayName("String"), "Sample.Foundation"))
+        assertEquals(false, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("Boolean"), "Sample.Foundation"))
+        assertEquals(false, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("Sample.Foundation.Mode"), "Sample.Foundation", forArray = true))
     }
 
     @Test
@@ -1415,6 +1448,12 @@ class WinRtMetadataModelTest {
                     types = listOf(
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IGenericBase",
+                            kind = WinRtTypeKind.Interface,
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Point",
                             kind = WinRtTypeKind.Struct,
                             fields = listOf(
@@ -1434,6 +1473,7 @@ class WinRtMetadataModelTest {
                             kind = WinRtTypeKind.Interface,
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverrides"),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IGenericBase<Int>"),
                             ),
                             methods = listOf(
                                 WinRtMethodDefinition(
@@ -1468,6 +1508,7 @@ class WinRtMetadataModelTest {
         )
         assertEquals(
             listOf(
+                "Sample_Foundation_IGenericBase_Int_",
                 "Windows_Foundation_Collections_IMap_String__Int_",
                 "Windows_Foundation_Collections_IVector_Sample_Foundation_Point_",
                 "Windows_Foundation_EventHandler_Sample_Foundation_Point_",
@@ -1476,8 +1517,17 @@ class WinRtMetadataModelTest {
             inventory.genericTypeInstantiations.map { it.instantiationClassName },
         )
         assertEquals(
-            listOf(false, false, false, false),
+            listOf(false, false, false, false, false),
             inventory.genericTypeInstantiations.map { it.implementsCcwInterface },
+        )
+        assertEquals(listOf("Sample.Foundation.IWidget"), inventory.derivedGenericInterfaces)
+        assertEquals(true, model.semanticHelpers().hasDerivedGenericInterface(model.namespaces[2].types.first { it.name == "IWidget" }))
+        assertEquals(
+            "Windows.Foundation.IReference<Int>",
+            model.semanticHelpers().convertGenericTypeInstanceToConcreteType(
+                WinRtTypeRef.fromDisplayName("Windows.Foundation.IReference<T0>"),
+                listOf(WinRtTypeRef.fromDisplayName("Int")),
+            ).typeName,
         )
         assertEquals(
             true,

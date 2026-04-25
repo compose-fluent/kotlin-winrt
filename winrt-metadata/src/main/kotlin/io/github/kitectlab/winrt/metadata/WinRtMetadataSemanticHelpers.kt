@@ -45,9 +45,11 @@ data class WinRtAttributedFactoryDescriptor(
     val interfaceName: String,
     val interfaceType: WinRtTypeRef,
     val type: WinRtTypeDefinition?,
+    val kind: WinRtAttributedFactoryKind? = null,
     val activatable: Boolean = false,
     val statics: Boolean = false,
     val composable: Boolean = false,
+    val visible: Boolean = false,
 )
 
 data class WinRtFastAbiPropertySlot(
@@ -55,6 +57,8 @@ data class WinRtFastAbiPropertySlot(
     val getterMethodName: String?,
     val setterMethodName: String?,
     val vtableStartIndex: Int,
+    val getterVtableIndex: Int?,
+    val setterVtableIndex: Int?,
 )
 
 data class WinRtFastAbiClassDescriptor(
@@ -62,7 +66,15 @@ data class WinRtFastAbiClassDescriptor(
     val defaultInterface: WinRtRuntimeClassInterfaceDescriptor?,
     val otherInterfaces: List<WinRtRuntimeClassInterfaceDescriptor>,
     val propertySlots: List<WinRtFastAbiPropertySlot>,
-)
+) {
+    private val otherInterfaceNames = otherInterfaces.map(WinRtRuntimeClassInterfaceDescriptor::interfaceName).toSet()
+    private val getterNames = propertySlots.mapNotNull { slot -> slot.getterMethodName?.let { slot.propertyName } }.toSet()
+    private val setterNames = propertySlots.mapNotNull { slot -> slot.setterMethodName?.let { slot.propertyName } }.toSet()
+
+    fun containsOtherInterface(interfaceName: String): Boolean = interfaceName in otherInterfaceNames
+    fun containsGetter(propertyName: String): Boolean = propertyName in getterNames
+    fun containsSetter(propertyName: String): Boolean = propertyName in setterNames
+}
 
 data class WinRtValueTypeFieldDescriptor(
     val field: WinRtFieldDefinition,
@@ -90,6 +102,15 @@ data class WinRtValueTypeDescriptor(
         get() = isValueType && !isBlittable
 }
 
+data class WinRtSemanticValueDescriptor(
+    val type: WinRtTypeRef,
+    val category: WinRtProjectionCategory,
+    val isValueType: Boolean,
+    val isBlittable: Boolean,
+    val isBlittableForArray: Boolean,
+    val mappedType: WinRtMappedTypeDescriptor?,
+)
+
 data class WinRtGenericAbiDelegateDescriptor(
     val abiDelegateName: String,
     val sourceGenericType: WinRtTypeRef,
@@ -108,6 +129,13 @@ data class WinRtGenericTypeInstantiationDescriptor(
 data class WinRtGenericAbiInventory(
     val genericAbiDelegates: List<WinRtGenericAbiDelegateDescriptor>,
     val genericTypeInstantiations: List<WinRtGenericTypeInstantiationDescriptor>,
+    val derivedGenericInterfaces: List<String> = emptyList(),
+)
+
+data class WinRtComponentActivatableClassDescriptor(
+    val className: String,
+    val classType: WinRtTypeDefinition,
+    val attributedFactories: List<WinRtAttributedFactoryDescriptor>,
 )
 
 data class WinRtGenericScopeParameterDescriptor(
@@ -132,6 +160,15 @@ data class WinRtExplicitImplementationDescriptor(
     val declarationName: String?,
     val bodyName: String?,
     val isPrivateBody: Boolean,
+)
+
+data class WinRtMethodVtableDescriptor(
+    val ownerTypeName: String,
+    val methodName: String,
+    val methodRowId: Int?,
+    val vmethodIndex: Int,
+    val vmethodName: String,
+    val slotIndex: Int,
 )
 
 class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
@@ -260,10 +297,78 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         type.kind == WinRtTypeKind.Enum && type.customAttributes.any { it.typeName == SYSTEM_FLAGS_ATTRIBUTE }
 
     fun isValueType(type: WinRtTypeDefinition): Boolean =
-        type.kind == WinRtTypeKind.Struct || type.kind == WinRtTypeKind.Enum
+        semanticValueDescriptor(WinRtTypeRef.named(type.qualifiedName), type.namespace).isValueType
 
     fun isTypeBlittable(type: WinRtTypeDefinition): Boolean =
-        valueTypeDescriptor(type).isBlittable
+        semanticValueDescriptor(WinRtTypeRef.named(type.qualifiedName), type.namespace).isBlittable
+
+    fun isTypeBlittable(type: WinRtTypeRef, currentNamespace: String, forArray: Boolean = false): Boolean =
+        semanticValueDescriptor(type, currentNamespace, forArray).isBlittable
+
+    fun isValueType(type: WinRtTypeRef, currentNamespace: String): Boolean =
+        semanticValueDescriptor(type, currentNamespace).isValueType
+
+    fun semanticValueDescriptor(
+        type: WinRtTypeRef,
+        currentNamespace: String,
+        forArray: Boolean = false,
+    ): WinRtSemanticValueDescriptor {
+        val classification = typeClassifier.classify(type, currentNamespace)
+        val resolvedType = classification.definitionType
+        val isGenericInstance = classification.type.typeArguments.isNotEmpty()
+        val isValueType = when {
+            isGenericInstance -> false
+            classification.projectionCategory == WinRtProjectionCategory.Object -> false
+            classification.projectionCategory == WinRtProjectionCategory.String -> false
+            classification.projectionCategory == WinRtProjectionCategory.Enum -> true
+            classification.projectionCategory == WinRtProjectionCategory.Struct ||
+                classification.projectionCategory == WinRtProjectionCategory.ApiContract -> {
+                val mapped = classification.mappedType
+                if (mapped != null) {
+                    true
+                } else {
+                    resolvedType?.fields.orEmpty().all { field -> isValueType(field.type, resolvedType?.namespace ?: currentNamespace) }
+                }
+            }
+            classification.projectionCategory == WinRtProjectionCategory.Fundamental -> classification.typeName != "String"
+            classification.projectionCategory == WinRtProjectionCategory.Guid ||
+                classification.projectionCategory == WinRtProjectionCategory.Type -> true
+            else -> false
+        }
+        val isBlittable = when {
+            isGenericInstance -> false
+            classification.projectionCategory == WinRtProjectionCategory.Object -> false
+            classification.projectionCategory == WinRtProjectionCategory.String -> false
+            classification.projectionCategory == WinRtProjectionCategory.Enum -> !forArray
+            classification.projectionCategory == WinRtProjectionCategory.Struct ||
+                classification.projectionCategory == WinRtProjectionCategory.ApiContract -> {
+                val mapped = classification.mappedType
+                if (mapped != null) {
+                    !mapped.requiresMarshaling
+                } else {
+                    resolvedType?.fields.orEmpty().all { field -> isTypeBlittable(field.type, resolvedType?.namespace ?: currentNamespace) }
+                }
+            }
+            classification.projectionCategory == WinRtProjectionCategory.Fundamental ->
+                classification.typeName != "String" && classification.typeName != "Char" && classification.typeName != "Boolean"
+            classification.projectionCategory == WinRtProjectionCategory.Guid ||
+                classification.projectionCategory == WinRtProjectionCategory.Type -> true
+            else -> false
+        }
+        val isBlittableForArray = if (forArray) {
+            isBlittable
+        } else {
+            semanticValueDescriptor(type, currentNamespace, forArray = true).isBlittable
+        }
+        return WinRtSemanticValueDescriptor(
+            type = classification.type,
+            category = classification.projectionCategory,
+            isValueType = isValueType,
+            isBlittable = isBlittable,
+            isBlittableForArray = isBlittableForArray,
+            mappedType = classification.mappedType,
+        )
+    }
 
     fun valueTypeDescriptor(type: WinRtTypeDefinition): WinRtValueTypeDescriptor {
         val normalizedType = type.normalized()
@@ -282,11 +387,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         return WinRtValueTypeDescriptor(
             type = normalizedType,
             isValueType = isValueType(normalizedType),
-            isBlittable = when (normalizedType.kind) {
-                WinRtTypeKind.Enum -> true
-                WinRtTypeKind.Struct -> normalizedType.isBlittable
-                else -> false
-            },
+            isBlittable = isTypeBlittable(normalizedType),
             abiSize = normalizedType.abiSize,
             abiAlignment = normalizedType.abiAlignment,
             layout = normalizedType.layout,
@@ -355,7 +456,14 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun getAttributedTypes(type: WinRtTypeDefinition): List<WinRtAttributedFactoryDescriptor> {
         val factories = linkedMapOf<String, WinRtAttributedFactoryDescriptor>()
-        fun put(interfaceType: WinRtTypeRef?, activatable: Boolean = false, statics: Boolean = false, composable: Boolean = false) {
+        fun put(
+            interfaceType: WinRtTypeRef?,
+            kind: WinRtAttributedFactoryKind? = null,
+            activatable: Boolean = false,
+            statics: Boolean = false,
+            composable: Boolean = false,
+            visible: Boolean = false,
+        ) {
             if (interfaceType == null) return
             val resolved = resolveTypeReference(interfaceType, type.namespace, typesByQualifiedName)
             val current = factories[resolved.displayName]
@@ -363,16 +471,50 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 interfaceName = resolved.displayName,
                 interfaceType = resolved.type,
                 type = resolved.definitionType,
+                kind = current?.kind ?: kind,
                 activatable = (current?.activatable ?: false) || activatable,
                 statics = (current?.statics ?: false) || statics,
                 composable = (current?.composable ?: false) || composable,
+                visible = (current?.visible ?: false) || visible,
             )
         }
-        put(type.activation.activatableFactoryInterface, activatable = type.activation.isActivatable)
-        type.activation.staticInterfaces.forEach { staticInterface -> put(staticInterface, statics = true) }
-        put(type.activation.composableFactoryInterface, composable = true)
+        if (type.activation.factories.isNotEmpty()) {
+            type.activation.factories.forEach { factory ->
+                put(
+                    interfaceType = factory.interfaceType,
+                    kind = factory.kind,
+                    activatable = factory.kind == WinRtAttributedFactoryKind.Activatable,
+                    statics = factory.kind == WinRtAttributedFactoryKind.Static,
+                    composable = factory.kind == WinRtAttributedFactoryKind.Composable,
+                    visible = factory.isVisible,
+                )
+            }
+        } else {
+            put(type.activation.activatableFactoryInterface, kind = WinRtAttributedFactoryKind.Activatable, activatable = type.activation.isActivatable)
+            type.activation.staticInterfaces.forEach { staticInterface ->
+                put(staticInterface, kind = WinRtAttributedFactoryKind.Static, statics = true)
+            }
+            put(type.activation.composableFactoryInterface, kind = WinRtAttributedFactoryKind.Composable, composable = true)
+        }
         return factories.values.toList()
     }
+
+    fun componentActivatableClasses(): List<WinRtComponentActivatableClassDescriptor> =
+        normalizedModel.namespaces
+            .flatMap(WinRtNamespace::types)
+            .filter { type -> type.kind == WinRtTypeKind.RuntimeClass }
+            .mapNotNull { type ->
+                val factories = getAttributedTypes(type)
+                if (factories.isEmpty()) {
+                    null
+                } else {
+                    WinRtComponentActivatableClassDescriptor(
+                        className = type.qualifiedName,
+                        classType = type,
+                        attributedFactories = factories,
+                    )
+                }
+            }
 
     fun getDefaultAndExclusiveInterfaces(type: WinRtTypeDefinition): Pair<WinRtRuntimeClassInterfaceDescriptor?, List<WinRtRuntimeClassInterfaceDescriptor>> {
         val closure = closureResolver.resolveRuntimeClass(type)
@@ -425,6 +567,46 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         return collector.toInventory()
     }
 
+    fun hasDerivedGenericInterface(type: WinRtTypeDefinition): Boolean {
+        if (type.isExclusiveTo) return false
+        return type.implementedInterfaces.any { implemented ->
+            val interfaceType = implemented.interfaceType
+            if (interfaceType.typeArguments.isNotEmpty()) {
+                true
+            } else {
+                resolveType(interfaceType, type.namespace)?.let(::hasDerivedGenericInterface) == true
+            }
+        }
+    }
+
+    fun convertGenericTypeInstanceToConcreteType(
+        type: WinRtTypeRef,
+        genericTypeArguments: List<WinRtTypeRef>,
+        methodTypeArguments: List<WinRtTypeRef> = emptyList(),
+    ): WinRtTypeRef =
+        type.substituteTypeParameters(genericTypeArguments, methodTypeArguments).normalized()
+
+    fun methodVtableDescriptors(type: WinRtTypeDefinition): List<WinRtMethodVtableDescriptor> {
+        val normalized = type.normalized()
+        return normalized.methods.map { method -> methodVtableDescriptor(normalized, method) }
+    }
+
+    fun methodVtableDescriptor(type: WinRtTypeDefinition, method: WinRtMethodDefinition): WinRtMethodVtableDescriptor {
+        val normalizedType = type.normalized()
+        val methodOrder = methodOrderByName(normalizedType)
+        val vmethodIndex = method.methodRowId?.let { rowId ->
+            normalizedType.methods.mapNotNull(WinRtMethodDefinition::methodRowId).minOrNull()?.let { base -> rowId - base }
+        } ?: methodOrder[method.name] ?: normalizedType.methods.indexOfFirst { it.signatureKey() == method.signatureKey() }.coerceAtLeast(0)
+        return WinRtMethodVtableDescriptor(
+            ownerTypeName = normalizedType.qualifiedName,
+            methodName = method.name,
+            methodRowId = method.methodRowId,
+            vmethodIndex = vmethodIndex,
+            vmethodName = "${method.name}_$vmethodIndex",
+            slotIndex = INSPECTABLE_METHOD_COUNT + vmethodIndex,
+        )
+    }
+
     fun resolveType(type: WinRtTypeRef, currentNamespace: String): WinRtTypeDefinition? {
         val normalized = type.normalized()
         val qualifiedName = normalized.qualifiedName ?: return null
@@ -435,29 +617,49 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     private fun fastAbiPropertySlots(closure: WinRtRuntimeClassClosureDescriptor): List<WinRtFastAbiPropertySlot> {
         var vtableStartIndex = 6
         val slots = mutableListOf<WinRtFastAbiPropertySlot>()
-        closure.fastAbiInterfaces.forEach { interfaceDescriptor ->
-            interfaceDescriptor.definitionType?.properties.orEmpty().forEach { property ->
+        closure.fastAbiInterfaces.forEachIndexed { index, interfaceDescriptor ->
+            val interfaceType = interfaceDescriptor.definitionType
+            val methodOrder = interfaceType?.let(::methodOrderByName).orEmpty()
+            interfaceType?.properties.orEmpty().forEach { property ->
+                val getterOffset = property.getterMethodName?.let { methodOrder[it] }
+                val setterOffset = property.setterMethodName?.let { methodOrder[it] }
                 slots += WinRtFastAbiPropertySlot(
                     propertyName = property.name,
                     getterMethodName = property.getterMethodName,
                     setterMethodName = property.setterMethodName,
                     vtableStartIndex = vtableStartIndex,
+                    getterVtableIndex = getterOffset?.let { vtableStartIndex + it },
+                    setterVtableIndex = setterOffset?.let { vtableStartIndex + it },
                 )
             }
-            val methodCount = interfaceDescriptor.definitionType?.methods?.size ?: 0
-            vtableStartIndex += methodCount
+            val methodCount = interfaceType?.methods?.size ?: 0
+            vtableStartIndex += methodCount + if (index == 0) closure.classHierarchyIndex else 0
         }
         return slots
     }
 
+    private fun methodOrderByName(type: WinRtTypeDefinition): Map<String, Int> =
+        type.normalized().methods
+            .mapIndexed { index, method -> method.name to method.methodRowId }
+            .let { methods ->
+                val baseRowId = methods.mapNotNull { it.second }.minOrNull()
+                methods.mapIndexed { index, (name, rowId) -> name to (rowId?.let { it - (baseRowId ?: it) } ?: index) }.toMap()
+            }
+
     private inner class GenericAbiInventoryCollector {
         private val abiDelegates = linkedMapOf<String, WinRtGenericAbiDelegateDescriptor>()
         private val typeInstantiations = linkedMapOf<String, WinRtGenericTypeInstantiationDescriptor>()
+        private val derivedGenericInterfaces = linkedSetOf<String>()
 
         fun addGenericTypeReferencesInType(type: WinRtTypeDefinition) {
             when (type.kind) {
                 WinRtTypeKind.Delegate -> getDelegateInvoke(type)?.let { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
-                WinRtTypeKind.Interface -> addGenericTypeReferencesInInterfaceType(type)
+                WinRtTypeKind.Interface -> {
+                    if (hasDerivedGenericInterface(type)) {
+                        derivedGenericInterfaces += type.qualifiedName
+                    }
+                    addGenericTypeReferencesInInterfaceType(type)
+                }
                 else -> Unit
             }
         }
@@ -466,6 +668,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             WinRtGenericAbiInventory(
                 genericAbiDelegates = abiDelegates.values.sortedWith(compareBy({ it.abiDelegateTypesKey }, { it.abiDelegateName })),
                 genericTypeInstantiations = typeInstantiations.values.sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
+                derivedGenericInterfaces = derivedGenericInterfaces.sorted(),
             )
 
         private fun addGenericTypeReferencesInInterfaceType(type: WinRtTypeDefinition) {
@@ -615,6 +818,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     companion object {
         private const val SYSTEM_FLAGS_ATTRIBUTE = "System.FlagsAttribute"
+        private const val INSPECTABLE_METHOD_COUNT = 6
     }
 }
 

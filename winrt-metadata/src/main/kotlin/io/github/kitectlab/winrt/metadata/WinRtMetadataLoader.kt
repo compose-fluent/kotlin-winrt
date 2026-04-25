@@ -1529,11 +1529,30 @@ private class MetadataTables private constructor(
         val activatable = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_ACTIVATABLE }
         val staticAttributes = attributes.filter { it.typeName == WINDOWS_FOUNDATION_METADATA_STATIC }
         val composable = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_COMPOSABLE }
+        val factories = attributes.mapNotNull { attribute ->
+            val kind = when (attribute.typeName) {
+                WINDOWS_FOUNDATION_METADATA_ACTIVATABLE -> WinRtAttributedFactoryKind.Activatable
+                WINDOWS_FOUNDATION_METADATA_STATIC -> WinRtAttributedFactoryKind.Static
+                WINDOWS_FOUNDATION_METADATA_COMPOSABLE -> WinRtAttributedFactoryKind.Composable
+                else -> return@mapNotNull null
+            }
+            val interfaceName = attribute.stringArguments.firstOrNull() ?: return@mapNotNull null
+            WinRtAttributedFactoryShape(
+                interfaceName = interfaceName,
+                kind = kind,
+                isVisible = kind == WinRtAttributedFactoryKind.Composable &&
+                    attribute.fixedArguments.any { value ->
+                        (value as? WinRtCustomAttributeValue.EnumValue)?.value == 2L ||
+                            (value as? WinRtCustomAttributeValue.IntegralValue)?.value == 2L
+                    },
+            )
+        }
         return WinRtActivationShape(
             isActivatable = activatable != null,
             activatableFactoryInterfaceName = activatable?.stringArguments?.firstOrNull(),
             staticInterfaceNames = staticAttributes.mapNotNull { it.stringArguments.firstOrNull() },
             composableFactoryInterfaceName = composable?.stringArguments?.firstOrNull(),
+            factories = factories,
         )
     }
 

@@ -241,6 +241,7 @@ data class WinRtActivationShape(
     val activatableFactoryInterfaceName: String? = null,
     val staticInterfaceNames: List<String> = emptyList(),
     val composableFactoryInterfaceName: String? = null,
+    val factories: List<WinRtAttributedFactoryShape> = emptyList(),
 ) {
     val activatableFactoryInterface: WinRtTypeRef?
         get() = activatableFactoryInterfaceName?.let(WinRtTypeRef::fromDisplayName)
@@ -260,6 +261,7 @@ data class WinRtActivationShape(
             activatableFactoryInterfaceName = activatableFactoryInterface?.normalized()?.typeName,
             staticInterfaceNames = normalizedStaticInterfaces.map(WinRtTypeRef::typeName),
             composableFactoryInterfaceName = composableFactoryInterface?.normalized()?.typeName,
+            factories = factories.normalizedAttributedFactories(),
         )
     }
 
@@ -271,8 +273,36 @@ data class WinRtActivationShape(
             activatableFactoryInterfaceName = left.activatableFactoryInterfaceName ?: right.activatableFactoryInterfaceName,
             staticInterfaceNames = (left.staticInterfaceNames + right.staticInterfaceNames).distinct().sorted(),
             composableFactoryInterfaceName = left.composableFactoryInterfaceName ?: right.composableFactoryInterfaceName,
+            factories = (left.factories + right.factories).normalizedAttributedFactories(),
         )
     }
+}
+
+enum class WinRtAttributedFactoryKind {
+    Activatable,
+    Static,
+    Composable,
+}
+
+data class WinRtAttributedFactoryShape(
+    val interfaceName: String,
+    val kind: WinRtAttributedFactoryKind,
+    val isVisible: Boolean = false,
+) {
+    val interfaceType: WinRtTypeRef
+        get() = WinRtTypeRef.fromDisplayName(interfaceName)
+
+    fun normalized(): WinRtAttributedFactoryShape =
+        copy(interfaceName = interfaceType.normalized().typeName)
+}
+
+private fun List<WinRtAttributedFactoryShape>.normalizedAttributedFactories(): List<WinRtAttributedFactoryShape> {
+    val merged = linkedMapOf<Pair<String, WinRtAttributedFactoryKind>, WinRtAttributedFactoryShape>()
+    map(WinRtAttributedFactoryShape::normalized).forEach { factory ->
+        val key = factory.interfaceName to factory.kind
+        merged[key] = merged[key]?.copy(isVisible = merged[key]?.isVisible == true || factory.isVisible) ?: factory
+    }
+    return merged.values.sortedWith(compareBy(WinRtAttributedFactoryShape::interfaceName, { it.kind.ordinal }))
 }
 
 data class WinRtContractVersionMetadata(
