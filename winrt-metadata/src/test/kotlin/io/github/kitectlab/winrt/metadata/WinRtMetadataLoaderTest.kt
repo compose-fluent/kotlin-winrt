@@ -549,6 +549,49 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun fixture_sweep_runs_metadata_only_source_shapes_before_generator_growth() {
+        val assembly = buildManagedMetadataSample()
+        val responseFile = Files.createTempFile("kotlin-winrt-metadata-sweep", ".rsp")
+        responseFile.writeText("\"$assembly\"")
+        val sdkRoot = buildWindowsSdkMetadataRoot(
+            version = "10.0.22621.0",
+            platformContracts = listOf("Sample.Foundation" to assembly),
+            extensionContracts = listOf("Sample.Extension" to assembly),
+        )
+
+        val report = WinRtMetadataFixtureSweep.run(
+            listOf(
+                WinRtMetadataFixtureSweepCase(
+                    name = "response-file",
+                    context = WinRtMetadataProjectionContext(
+                        sources = WinRtMetadataSource.parseInputs("@$responseFile"),
+                        include = setOf("Sample.Foundation"),
+                    ),
+                ),
+                WinRtMetadataFixtureSweepCase(
+                    name = "windows-sdk",
+                    context = WinRtMetadataProjectionContext(
+                        sources = listOf(WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", sdkRoot = sdkRoot)),
+                        include = setOf("Sample.Foundation"),
+                    ),
+                ),
+                WinRtMetadataFixtureSweepCase(
+                    name = "windows-sdk-extensions",
+                    context = WinRtMetadataProjectionContext(
+                        sources = listOf(WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", includeExtensions = true, sdkRoot = sdkRoot)),
+                        include = setOf("Sample.Foundation", "Sample.Extension"),
+                    ),
+                ),
+            ),
+            options = WinRtMetadataValidationOptions(validateRuntimeClassDefaultInterface = false),
+        )
+
+        assertEquals(listOf("response-file", "windows-sdk", "windows-sdk-extensions"), report.results.map { it.name })
+        assertEquals(true, report.isGreen)
+        assertEquals(listOf(1, 1, 2), report.results.map { it.resolvedFiles.size })
+    }
+
+    @Test
     fun loads_cli_metadata_with_auxiliary_tables_used_by_real_winmd_caches() {
         val assembly = buildAuxiliaryTableMetadataSample()
 

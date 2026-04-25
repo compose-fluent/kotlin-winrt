@@ -1491,4 +1491,117 @@ class WinRtMetadataModelTest {
             ),
         )
     }
+
+    @Test
+    fun projection_inventory_mirrors_cswinrt_namespace_traversal_inputs() {
+        val iWidget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            events = listOf(WinRtEventDefinition("Changed", "Sample.Foundation.WidgetHandler")),
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+            baseTypeName = "Sample.Foundation.BaseWidget",
+            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget")),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "BaseWidget", kind = WinRtTypeKind.RuntimeClass),
+                        iWidget,
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetMode", kind = WinRtTypeKind.Enum),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetContract", kind = WinRtTypeKind.Struct, isApiContract = true),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetAttribute", kind = WinRtTypeKind.RuntimeClass, isAttributeType = true),
+                        widget,
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Hidden", kind = WinRtTypeKind.Interface),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
+                    ),
+                ),
+            ),
+        )
+        val context = WinRtMetadataProjectionContext(
+            sources = emptyList(),
+            include = setOf("Sample.Foundation", "Microsoft.UI.Xaml.Interop"),
+            exclude = setOf("Sample.Foundation.Hidden"),
+            additionExclude = setOf("Microsoft.UI.Xaml"),
+            component = true,
+        )
+
+        val inventory = model.projectionInventory(context)
+        val sample = inventory.namespaces.first { it.namespace == "Sample.Foundation" }
+        val xaml = inventory.namespaces.first { it.namespace == "Microsoft.UI.Xaml.Interop" }
+
+        assertEquals(listOf("BaseWidget", "Widget", "WidgetAttribute"), sample.classes.map { it.name })
+        assertEquals(listOf("Hidden", "IWidget"), sample.interfaces.map { it.name })
+        assertEquals(listOf("WidgetMode"), sample.enums.map { it.name })
+        assertEquals(listOf("WidgetContract"), sample.structs.map { it.name })
+        assertEquals(listOf("WidgetHandler"), sample.delegates.map { it.name })
+        assertEquals(listOf("BaseWidget", "IWidget", "Widget", "WidgetAttribute", "WidgetContract", "WidgetHandler", "WidgetMode"), sample.projectedTypes.map { it.type.name })
+        assertEquals(
+            listOf(WinRtSkippedTypeReason.Filtered, WinRtSkippedTypeReason.Attribute, WinRtSkippedTypeReason.ApiContract),
+            sample.skippedTypes.map { it.reason },
+        )
+        assertEquals(true, sample.additionsIncluded)
+        assertEquals(true, sample.requiresAbi)
+        assertEquals(listOf("Microsoft.UI.Xaml.Interop.IBindableVector"), xaml.skippedTypes.map { it.type.qualifiedName })
+        assertEquals(listOf(WinRtSkippedTypeReason.MappedType), xaml.skippedTypes.map { it.reason })
+        assertEquals(false, xaml.additionsIncluded)
+        assertEquals(listOf(WinRtBaseTypeMapping("Sample.Foundation.Widget", "Sample.Foundation.BaseWidget")), inventory.baseTypeMappings)
+        assertEquals(listOf("Sample.Foundation.WidgetHandler"), inventory.eventSourceMappings.map { it.eventTypeName })
+        assertEquals(
+            listOf(
+                "Sample.Foundation.BaseWidget",
+                "Sample.Foundation.IWidget",
+                "Sample.Foundation.Widget",
+                "Sample.Foundation.WidgetHandler",
+                "Sample.Foundation.WidgetMode",
+            ),
+            inventory.authoredMetadataTypeMappings.map { it.projectedTypeName },
+        )
+        assertEquals(true, inventory.projectionFileWritten)
+    }
+
+    @Test
+    fun projection_input_diagnostics_capture_context_resolution_and_kotlin_gap_warnings() {
+        val missing = WinRtMetadataProjectionContext(
+            sources = listOf(WinRtMetadataSource.path(java.nio.file.Path.of("missing.winmd"))),
+        ).validateForProjectionInputs()
+        assertEquals(true, missing.hasErrors)
+        assertEquals(WinRtMetadataDiagnosticCode.InvalidMetadataSource, missing.errors.single().code)
+
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(WinRtMethodDefinition("Transform", "M0")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val report = model.validateForProjection(
+            WinRtMetadataValidationOptions(kotlinSpecificGaps = listOf("NuGet resource integration is planned in the Gradle plugin slice.")),
+        )
+        val codes = report.diagnostics.map(WinRtMetadataDiagnostic::code).toSet()
+        assertEquals(true, WinRtMetadataDiagnosticCode.UnsupportedSemanticShape in codes)
+        assertEquals(true, WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape in codes)
+        assertEquals(true, WinRtMetadataDiagnosticCode.IntentionalKotlinGap in codes)
+        assertEquals(1, report.warnings.count { it.code == WinRtMetadataDiagnosticCode.IntentionalKotlinGap })
+    }
 }

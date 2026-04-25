@@ -6,8 +6,12 @@ enum class WinRtMetadataDiagnosticSeverity {
 }
 
 enum class WinRtMetadataDiagnosticCode {
+    InvalidCommandSpecification,
+    InvalidMetadataSource,
+    MissingReferencedMetadata,
     UnresolvedTypeReference,
     UnsupportedSignatureType,
+    UnsupportedSemanticShape,
     UnsupportedGenericMethodShape,
     MissingInterfaceIid,
     MissingRuntimeClassDefaultInterface,
@@ -17,6 +21,7 @@ enum class WinRtMetadataDiagnosticCode {
     InvalidEventAccessors,
     UnknownCustomAttributeBlob,
     UnsupportedTypeKind,
+    IntentionalKotlinGap,
 }
 
 data class WinRtMetadataDiagnostic(
@@ -65,12 +70,14 @@ data class WinRtMetadataValidationOptions(
     val validateActivationFactoryReferences: Boolean = true,
     val validateCustomAttributeTypeReferences: Boolean = false,
     val validateRuntimeClassDefaultInterface: Boolean = true,
+    val kotlinSpecificGaps: List<String> = emptyList(),
 )
 
 class WinRtMetadataValidator private constructor(
     private val model: WinRtMetadataModel,
     private val typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     private val typeClassifier: WinRtMetadataTypeClassifier,
+    private val typeSemanticsResolver: WinRtTypeSemanticsResolver,
     private val options: WinRtMetadataValidationOptions,
 ) {
     fun validateForProjection(): WinRtMetadataDiagnosticReport {
@@ -78,6 +85,15 @@ class WinRtMetadataValidator private constructor(
             model.namespaces
                 .flatMap(WinRtNamespace::types)
                 .forEach { type -> validateType(type, this) }
+            options.kotlinSpecificGaps.map(String::trim).filter(String::isNotEmpty).forEach { gap ->
+                add(
+                    WinRtMetadataDiagnostic(
+                        code = WinRtMetadataDiagnosticCode.IntentionalKotlinGap,
+                        severity = WinRtMetadataDiagnosticSeverity.Warning,
+                        message = gap,
+                    ),
+                )
+            }
         }
         return WinRtMetadataDiagnosticReport(diagnostics)
     }
@@ -267,21 +283,35 @@ class WinRtMetadataValidator private constructor(
     ) {
         val normalizedType = type.normalized()
         when (normalizedType.kind) {
-            WinRtTypeRefKind.MethodTypeParameter ->
+            WinRtTypeRefKind.MethodTypeParameter -> {
                 diagnostics += error(
                     code = WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape,
                     typeName = ownerTypeName,
                     memberName = memberName,
                     message = "$role uses method generic parameter ${normalizedType.typeName}; generic methods are not a supported projection input yet.",
                 )
+                diagnostics += error(
+                    code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
+                    typeName = ownerTypeName,
+                    memberName = memberName,
+                    message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: generic methods are not supported.",
+                )
+            }
 
-            WinRtTypeRefKind.Unknown ->
+            WinRtTypeRefKind.Unknown -> {
                 diagnostics += error(
                     code = WinRtMetadataDiagnosticCode.UnsupportedSignatureType,
                     typeName = ownerTypeName,
                     memberName = memberName,
                     message = "$role has an unknown metadata signature type.",
                 )
+                diagnostics += error(
+                    code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
+                    typeName = ownerTypeName,
+                    memberName = memberName,
+                    message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: unknown type.",
+                )
+            }
 
             WinRtTypeRefKind.Array -> {
                 if (normalizedType.arrayRank != 1) {
@@ -304,6 +334,7 @@ class WinRtMetadataValidator private constructor(
 
             WinRtTypeRefKind.Named -> {
                 validateTypeReference(normalizedType, currentNamespace, ownerTypeName, role, diagnostics)
+                validateNamedSemanticShape(normalizedType, currentNamespace, ownerTypeName, memberName, role, diagnostics)
                 normalizedType.typeArguments.forEachIndexed { index, argument ->
                     validateSignatureType(argument, currentNamespace, ownerTypeName, memberName, "$role generic argument $index", diagnostics)
                 }
@@ -311,6 +342,33 @@ class WinRtMetadataValidator private constructor(
 
             WinRtTypeRefKind.GenericTypeParameter -> Unit
         }
+    }
+
+    private fun validateNamedSemanticShape(
+        type: WinRtTypeRef,
+        currentNamespace: String,
+        ownerTypeName: String,
+        memberName: String?,
+        role: String,
+        diagnostics: MutableList<WinRtMetadataDiagnostic>,
+    ) {
+        val classification = typeClassifier.classify(type, currentNamespace)
+        if (classification.projectionCategory == WinRtProjectionCategory.Unit ||
+            classification.isMappedType ||
+            classification.specialType != null ||
+            classification.projectionCategory == WinRtProjectionCategory.Unknown
+        ) {
+            return
+        }
+        runCatching { typeSemanticsResolver.resolve(type, currentNamespace) }
+            .onFailure { failure ->
+                diagnostics += error(
+                    code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
+                    typeName = ownerTypeName,
+                    memberName = memberName,
+                    message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: ${failure.message}",
+                )
+            }
     }
 
     private fun validateTypeReference(
@@ -430,6 +488,7 @@ class WinRtMetadataValidator private constructor(
                 model = normalized,
                 typesByQualifiedName = buildTypesByQualifiedName(normalized),
                 typeClassifier = normalized.typeClassifier(),
+                typeSemanticsResolver = normalized.typeSemanticsResolver(),
                 options = options,
             )
         }
@@ -448,6 +507,32 @@ fun WinRtMetadataModel.requireValidForProjection(
     normalized.validateForProjection(options).throwIfErrors()
     return normalized
 }
+
+fun WinRtMetadataProjectionContext.validateForProjectionInputs(
+    options: WinRtMetadataValidationOptions = WinRtMetadataValidationOptions(),
+): WinRtMetadataDiagnosticReport =
+    try {
+        load().validateForProjection(options)
+    } catch (error: IllegalArgumentException) {
+        WinRtMetadataDiagnosticReport(
+            listOf(
+                WinRtMetadataDiagnostic(
+                    code = diagnosticCodeForInputFailure(error.message.orEmpty()),
+                    severity = WinRtMetadataDiagnosticSeverity.Error,
+                    message = error.message ?: "Invalid metadata projection input.",
+                ),
+            ),
+        )
+    }
+
+private fun diagnosticCodeForInputFailure(message: String): WinRtMetadataDiagnosticCode =
+    when {
+        "missing WinMD" in message || "referenced metadata" in message ->
+            WinRtMetadataDiagnosticCode.MissingReferencedMetadata
+        "Response file" in message || "ApiContract" in message ->
+            WinRtMetadataDiagnosticCode.InvalidCommandSpecification
+        else -> WinRtMetadataDiagnosticCode.InvalidMetadataSource
+    }
 
 private val WinRtTypeDefinition.hasProjectedSurface: Boolean
     get() = methods.isNotEmpty() || properties.isNotEmpty() || events.isNotEmpty()
