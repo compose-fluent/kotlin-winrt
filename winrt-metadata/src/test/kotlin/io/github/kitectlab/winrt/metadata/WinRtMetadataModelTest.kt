@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.metadata
 
+import java.nio.file.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -1194,6 +1195,13 @@ class WinRtMetadataModelTest {
                     interfaceName = "Sample.Foundation.IWidgetOverrides",
                 ),
             ),
+            methods = listOf(
+                WinRtMethodDefinition(
+                    name = "Sample.Foundation.IWidgetOverrides.get_Mode",
+                    returnTypeName = "Int",
+                    visibility = WinRtMethodVisibility.Private,
+                ),
+            ),
             activation = WinRtActivationShape(
                 isActivatable = true,
                 activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
@@ -1206,11 +1214,28 @@ class WinRtMetadataModelTest {
                 ),
             ),
         )
+        val composableOnly = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "ComposableOnly",
+            kind = WinRtTypeKind.RuntimeClass,
+            activation = WinRtActivationShape(
+                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                factories = listOf(
+                    WinRtAttributedFactoryShape("Sample.Foundation.IWidgetFactory", WinRtAttributedFactoryKind.Composable, isVisible = true),
+                ),
+            ),
+        )
         val overrides = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "IWidgetOverrides",
             kind = WinRtTypeKind.Interface,
             isExclusiveTo = true,
+            customAttributes = listOf(
+                WinRtCustomAttributeDefinition(
+                    "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                    fixedArguments = listOf(WinRtCustomAttributeValue.TypeValue("Sample.Foundation.Widget")),
+                ),
+            ),
             properties = listOf(
                 WinRtPropertyDefinition(
                     name = "Mode",
@@ -1238,7 +1263,7 @@ class WinRtMetadataModelTest {
             listOf(
                 WinRtNamespace(
                     name = "Sample.Foundation",
-                    types = listOf(defaultInterface, widget, overrides, factory, statics, flags),
+                    types = listOf(defaultInterface, widget, composableOnly, overrides, factory, statics, flags),
                 ),
             ),
         )
@@ -1262,6 +1287,9 @@ class WinRtMetadataModelTest {
         assertEquals(true, helpers.isOverridable(widget.implementedInterfaces.first()))
         assertEquals("Invoke", helpers.getDelegateInvoke(defaultInterface)?.name)
         assertEquals("Sample.Foundation.IWidget", helpers.getDefaultInterface(widget)?.typeName)
+        assertEquals("Sample.Foundation.IWidget", (helpers.getDefaultInterfaceSemantics(widget) as WinRtTypeSemantics.TypeDefinition).type.qualifiedName)
+        assertEquals(true, helpers.isPType(WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IBox", kind = WinRtTypeKind.Interface, genericParameterCount = 1)))
+        assertEquals("Sample.Foundation.Widget", helpers.getExclusiveToType(overrides)?.qualifiedName)
         assertEquals(true, helpers.hasAttribute(defaultInterface, "Sample.Foundation.MarkerAttribute"))
         assertEquals(1, helpers.getNumberOfAttributes(defaultInterface, "Sample.Foundation.MarkerAttribute"))
         assertEquals(
@@ -1305,6 +1333,12 @@ class WinRtMetadataModelTest {
         assertEquals(false, fastAbiClass.containsSetter("Name"))
         assertEquals(true, fastAbiClass.containsOtherInterface("Sample.Foundation.IWidgetOverrides"))
         assertEquals(listOf("Invoke_0", "UpdateArrays_1", "remove_Changed_2", "get_Name_3"), helpers.methodVtableDescriptors(defaultInterface).map { it.vmethodName })
+        assertEquals(true, helpers.isImplementedAsPrivateMethod(widget, overrides, overrides.methods.first()).isImplementedAsPrivateMethod)
+        assertEquals(true, helpers.isImplementedAsPrivateMappedInterface(widget, overrides).isImplementedAsPrivateMappedInterface)
+        val queryInterface = helpers.customQueryInterfaceDescriptor(widget)
+        assertEquals(listOf("Sample.Foundation.IWidget"), queryInterface.overridableInterfaceNames)
+        assertEquals("protected", queryInterface.visibility)
+        assertEquals("virtual", queryInterface.overridableModifier)
         assertEquals(120_000, helpers.getGcPressureAmount(widget))
         assertEquals("Sample.Foundation.Widget", helpers.getFastAbiClassForInterface(overrides)?.classType?.qualifiedName)
     }
@@ -1530,7 +1564,7 @@ class WinRtMetadataModelTest {
             ).typeName,
         )
         assertEquals(
-            true,
+            false,
             model.semanticHelpers().doesAbiInterfaceImplementCcwInterface(
                 WinRtTypeDefinition(
                     namespace = "Sample.Foundation",
@@ -1540,6 +1574,63 @@ class WinRtMetadataModelTest {
                 ),
             ),
         )
+        assertEquals(
+            true,
+            model.semanticHelpers().doesAbiInterfaceImplementCcwInterface(
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "IWidgetOverrides",
+                    kind = WinRtTypeKind.Interface,
+                    isExclusiveTo = true,
+                ),
+                WinRtMetadataProjectionContext(sources = emptyList(), include = setOf("Sample.Foundation"), component = true),
+            ),
+        )
+        val worklist = model.semanticHelpers().genericInstantiationWorklist()
+        assertEquals(inventory.genericTypeInstantiations.map { it.instantiationClassName }, worklist.pending.map { it.instantiationClassName })
+        assertEquals(
+            worklist.pending.drop(1).map { it.instantiationClassName },
+            worklist.markWritten(worklist.pending.first().instantiationClassName).pending.map { it.instantiationClassName },
+        )
+    }
+
+    @Test
+    fun semantic_helpers_expose_raw_table_boundaries_and_cswinrt_audit_entries() {
+        val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
+        val boundaries = helpers.auxiliaryTableSemanticBoundaries(
+            WinRtMetadataAuxiliaryTableInventory(
+                files = listOf(
+                    WinRtMetadataFileAuxiliaryTableInventory(
+                        file = Path.of("sample.winmd"),
+                        tables = listOf(
+                            WinRtMetadataAuxiliaryTableDescriptor(0x0D, "FieldMarshal", rowCount = 1, rowSize = 4, modeled = false),
+                            WinRtMetadataAuxiliaryTableDescriptor(0x19, "MethodImpl", rowCount = 2, rowSize = 6, modeled = true),
+                            WinRtMetadataAuxiliaryTableDescriptor(0x28, "ManifestResource", rowCount = 1, rowSize = 12, modeled = true),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(listOf("FieldMarshal", "ManifestResource", "MethodImpl"), boundaries.map { it.tableName })
+        assertEquals(listOf(true, false, false), boundaries.map { it.projectionAffecting })
+        assertEquals(listOf(false, true, true), boundaries.map { it.modeled })
+        assertEquals(
+            listOf(
+                "get_exclusive_to_type",
+                "is_ptype",
+                "get_default_iface_as_type_sem",
+                "does_abi_interface_implement_ccw_interface",
+                "componentActivatableClasses pre-scan",
+                "is_implemented_as_private_method",
+                "is_implemented_as_private_mapped_interface",
+                "write_custom_query_interface_impl",
+                "generic_type_instances fixed point",
+                "auxiliary table semantic boundary",
+            ),
+            helpers.cswinrtMetadataParityAudit().map { it.cswinrtEntryPoint },
+        )
+        assertEquals(emptyList<WinRtMetadataParityAuditEntry>(), helpers.cswinrtMetadataParityAudit().filterNot { it.closed })
     }
 
     @Test

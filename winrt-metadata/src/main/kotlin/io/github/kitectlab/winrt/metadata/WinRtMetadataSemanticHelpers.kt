@@ -132,6 +132,30 @@ data class WinRtGenericAbiInventory(
     val derivedGenericInterfaces: List<String> = emptyList(),
 )
 
+data class WinRtGenericInstantiationWorklistDescriptor(
+    val pending: List<WinRtGenericTypeInstantiationDescriptor>,
+    val written: List<WinRtGenericTypeInstantiationDescriptor> = emptyList(),
+) {
+    fun markWritten(instantiationClassName: String): WinRtGenericInstantiationWorklistDescriptor {
+        val moved = pending.firstOrNull { it.instantiationClassName == instantiationClassName } ?: return this
+        return copy(
+            pending = pending.filterNot { it.instantiationClassName == instantiationClassName },
+            written = (written + moved)
+                .distinctBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName)
+                .sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
+        )
+    }
+
+    fun enqueue(discovered: List<WinRtGenericTypeInstantiationDescriptor>): WinRtGenericInstantiationWorklistDescriptor {
+        val known = (pending + written).map(WinRtGenericTypeInstantiationDescriptor::instantiationClassName).toSet()
+        return copy(
+            pending = (pending + discovered.filterNot { it.instantiationClassName in known })
+                .distinctBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName)
+                .sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
+        )
+    }
+}
+
 data class WinRtComponentActivatableClassDescriptor(
     val className: String,
     val classType: WinRtTypeDefinition,
@@ -162,6 +186,39 @@ data class WinRtExplicitImplementationDescriptor(
     val isPrivateBody: Boolean,
 )
 
+data class WinRtProjectedMethodSignatureDescriptor(
+    val methodName: String,
+    val returnTypeName: String,
+    val parameterTypeNames: List<String>,
+) {
+    fun signatureEquals(other: WinRtProjectedMethodSignatureDescriptor): Boolean =
+        returnTypeName == other.returnTypeName && parameterTypeNames == other.parameterTypeNames
+}
+
+data class WinRtPrivateImplementationDescriptor(
+    val classTypeName: String,
+    val interfaceTypeName: String,
+    val interfaceMemberName: String,
+    val privateMethodName: String,
+    val isImplementedAsPrivateMethod: Boolean,
+)
+
+data class WinRtMappedInterfaceImplementationDescriptor(
+    val classTypeName: String,
+    val interfaceTypeName: String,
+    val probeMemberName: String?,
+    val isImplementedAsPrivateMappedInterface: Boolean,
+)
+
+data class WinRtCustomQueryInterfaceDescriptor(
+    val classTypeName: String,
+    val hasBaseClass: Boolean,
+    val overridableInterfaceNames: List<String>,
+    val visibility: String,
+    val overridableModifier: String,
+    val delegatesToBase: Boolean,
+)
+
 data class WinRtMethodVtableDescriptor(
     val ownerTypeName: String,
     val methodName: String,
@@ -171,11 +228,27 @@ data class WinRtMethodVtableDescriptor(
     val slotIndex: Int,
 )
 
+data class WinRtAuxiliaryTableSemanticBoundaryDescriptor(
+    val tableName: String,
+    val rowCount: Int,
+    val modeled: Boolean,
+    val projectionAffecting: Boolean,
+    val note: String,
+)
+
+data class WinRtMetadataParityAuditEntry(
+    val cswinrtArea: String,
+    val cswinrtEntryPoint: String,
+    val kotlinOwner: String,
+    val closed: Boolean,
+)
+
 class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     private val normalizedModel = model.normalized()
     private val typesByQualifiedName = buildTypesByQualifiedName(normalizedModel)
     private val closureResolver = normalizedModel.closureResolver()
     private val typeClassifier = normalizedModel.typeClassifier()
+    private val typeSemanticsResolver = normalizedModel.typeSemanticsResolver()
 
     fun getMappedTypesInNamespace(namespace: String): List<WinRtMappedTypeDescriptor> =
         typeClassifier.mappedTypesInNamespace(namespace)
@@ -285,8 +358,34 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun isExclusiveTo(type: WinRtTypeDefinition): Boolean =
         type.kind == WinRtTypeKind.Interface && type.isExclusiveTo
 
+    fun getExclusiveToType(type: WinRtTypeDefinition): WinRtTypeDefinition? {
+        if (!isExclusiveTo(type)) return null
+        val exclusiveTypeName = type.customAttributes
+            .firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO_ATTRIBUTE }
+            ?.fixedArguments
+            ?.mapNotNull(WinRtCustomAttributeValue::stringValue)
+            ?.firstOrNull()
+        if (exclusiveTypeName != null) {
+            resolveType(WinRtTypeRef.fromDisplayName(exclusiveTypeName), type.namespace)?.let { return it }
+        }
+        return normalizedModel.namespaces
+            .flatMap(WinRtNamespace::types)
+            .firstOrNull { candidate ->
+                candidate.kind == WinRtTypeKind.RuntimeClass &&
+                    candidate.implementedInterfaces.any { implemented ->
+                        resolveTypeReference(implemented.interfaceType, candidate.namespace, typesByQualifiedName).definitionQualifiedName == type.qualifiedName
+                    }
+            }
+    }
+
     fun doesAbiInterfaceImplementCcwInterface(type: WinRtTypeDefinition): Boolean =
-        io.github.kitectlab.winrt.metadata.doesAbiInterfaceImplementCcwInterface(type)
+        doesAbiInterfaceImplementCcwInterface(type, WinRtMetadataProjectionContext(sources = emptyList()))
+
+    fun doesAbiInterfaceImplementCcwInterface(
+        type: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext,
+    ): Boolean =
+        context.component && context.filter.includes(type) && isExclusiveTo(type)
 
     fun isOverridable(implementation: WinRtInterfaceImplementationDefinition): Boolean =
         implementation.isOverridable
@@ -408,6 +507,8 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun isParameterizedType(type: WinRtTypeDefinition): Boolean =
         type.genericParameterCount > 0 || type.genericParameters.isNotEmpty()
 
+    fun isPType(type: WinRtTypeDefinition): Boolean = isParameterizedType(type)
+
     fun isStatic(type: WinRtTypeDefinition): Boolean =
         type.kind == WinRtTypeKind.RuntimeClass && type.isStaticType
 
@@ -433,6 +534,12 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             ?: if (type.implementedInterfaces.isEmpty()) null else {
                 throw IllegalArgumentException("Type '${type.qualifiedName}' does not have a default interface")
             }
+
+    fun getDefaultInterfaceSemantics(type: WinRtTypeDefinition): WinRtTypeSemantics {
+        val defaultInterface = getDefaultInterface(type)
+            ?: throw IllegalArgumentException("Class does not have a default interface: ${type.qualifiedName}")
+        return typeSemanticsResolver.resolve(defaultInterface, type.namespace, type.genericParameters)
+    }
 
     fun getPropertyMethods(property: WinRtPropertyDefinition): WinRtPropertyAccessorDescriptor =
         WinRtPropertyAccessorDescriptor(
@@ -504,7 +611,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             .flatMap(WinRtNamespace::types)
             .filter { type -> type.kind == WinRtTypeKind.RuntimeClass }
             .mapNotNull { type ->
-                val factories = getAttributedTypes(type)
+                val factories = getAttributedTypes(type).filter { factory -> factory.activatable || factory.statics }
                 if (factories.isEmpty()) {
                     null
                 } else {
@@ -553,18 +660,27 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun getGcPressureAmount(type: WinRtTypeDefinition): Int = type.gcPressureAmount
 
-    fun genericAbiInventory(): WinRtGenericAbiInventory {
+    fun genericAbiInventory(): WinRtGenericAbiInventory =
+        genericAbiInventory(WinRtMetadataProjectionContext(sources = emptyList()))
+
+    fun genericAbiInventory(context: WinRtMetadataProjectionContext): WinRtGenericAbiInventory {
         val collector = GenericAbiInventoryCollector()
         normalizedModel.namespaces.flatMap(WinRtNamespace::types).forEach { type ->
             collector.addGenericTypeReferencesInType(type)
         }
-        return collector.toInventory()
+        return collector.toInventory(context)
     }
 
-    fun collectGenericAbiInventory(type: WinRtTypeDefinition): WinRtGenericAbiInventory {
+    fun collectGenericAbiInventory(type: WinRtTypeDefinition): WinRtGenericAbiInventory =
+        collectGenericAbiInventory(type, WinRtMetadataProjectionContext(sources = emptyList()))
+
+    fun collectGenericAbiInventory(
+        type: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext,
+    ): WinRtGenericAbiInventory {
         val collector = GenericAbiInventoryCollector()
         collector.addGenericTypeReferencesInType(type.normalized())
-        return collector.toInventory()
+        return collector.toInventory(context)
     }
 
     fun hasDerivedGenericInterface(type: WinRtTypeDefinition): Boolean {
@@ -585,6 +701,77 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         methodTypeArguments: List<WinRtTypeRef> = emptyList(),
     ): WinRtTypeRef =
         type.substituteTypeParameters(genericTypeArguments, methodTypeArguments).normalized()
+
+    fun genericInstantiationWorklist(
+        context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+    ): WinRtGenericInstantiationWorklistDescriptor =
+        WinRtGenericInstantiationWorklistDescriptor(pending = genericAbiInventory(context).genericTypeInstantiations)
+
+    fun projectedMethodSignature(method: WinRtMethodDefinition): WinRtProjectedMethodSignatureDescriptor =
+        WinRtProjectedMethodSignatureDescriptor(
+            methodName = method.name,
+            returnTypeName = method.returnType.normalized().typeName,
+            parameterTypeNames = method.parameters.map { parameter -> parameter.type.normalized().typeName },
+        )
+
+    fun methodSignatureEqual(first: WinRtMethodDefinition, second: WinRtMethodDefinition): Boolean =
+        projectedMethodSignature(first).signatureEquals(projectedMethodSignature(second))
+
+    fun isImplementedAsPrivateMethod(
+        classType: WinRtTypeDefinition,
+        interfaceType: WinRtTypeDefinition,
+        interfaceMethod: WinRtMethodDefinition,
+    ): WinRtPrivateImplementationDescriptor {
+        val privateMethodName = "${interfaceType.qualifiedName}.${interfaceMethod.name}"
+        val privateMethod = classType.methods.firstOrNull { method ->
+            method.visibility == WinRtMethodVisibility.Private &&
+                method.name == privateMethodName &&
+                methodSignatureEqual(method, interfaceMethod)
+        }
+        return WinRtPrivateImplementationDescriptor(
+            classTypeName = classType.qualifiedName,
+            interfaceTypeName = interfaceType.qualifiedName,
+            interfaceMemberName = interfaceMethod.name,
+            privateMethodName = privateMethodName,
+            isImplementedAsPrivateMethod = privateMethod != null,
+        )
+    }
+
+    fun isImplementedAsPrivateMappedInterface(
+        classType: WinRtTypeDefinition,
+        interfaceType: WinRtTypeDefinition,
+    ): WinRtMappedInterfaceImplementationDescriptor {
+        val probeMethod = interfaceType.methods.firstOrNull()
+            ?: interfaceType.properties.firstOrNull()?.getterMethodName?.let { getter -> interfaceType.methods.firstOrNull { it.name == getter } }
+            ?: interfaceType.events.firstOrNull()?.addMethodName?.let { add -> interfaceType.methods.firstOrNull { it.name == add } }
+        val private = probeMethod?.let { isImplementedAsPrivateMethod(classType, interfaceType, it).isImplementedAsPrivateMethod } ?: false
+        return WinRtMappedInterfaceImplementationDescriptor(
+            classTypeName = classType.qualifiedName,
+            interfaceTypeName = interfaceType.qualifiedName,
+            probeMemberName = probeMethod?.name,
+            isImplementedAsPrivateMappedInterface = private,
+        )
+    }
+
+    fun customQueryInterfaceDescriptor(type: WinRtTypeDefinition): WinRtCustomQueryInterfaceDescriptor {
+        val hasBaseClass = type.baseTypeName?.let { it != "System.Object" && it != "Any" } ?: false
+        val overridableInterfaces = type.implementedInterfaces
+            .filter(WinRtInterfaceImplementationDefinition::isOverridable)
+            .map { implemented -> resolveTypeReference(implemented.interfaceType, type.namespace, typesByQualifiedName).displayName }
+            .sorted()
+        return WinRtCustomQueryInterfaceDescriptor(
+            classTypeName = type.qualifiedName,
+            hasBaseClass = hasBaseClass,
+            overridableInterfaceNames = overridableInterfaces,
+            visibility = if (!hasBaseClass && type.isSealedType) "private" else "protected",
+            overridableModifier = when {
+                hasBaseClass -> "override"
+                type.isSealedType -> ""
+                else -> "virtual"
+            },
+            delegatesToBase = hasBaseClass,
+        )
+    }
 
     fun methodVtableDescriptors(type: WinRtTypeDefinition): List<WinRtMethodVtableDescriptor> {
         val normalized = type.normalized()
@@ -613,6 +800,41 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         return typesByQualifiedName[qualifiedName]
             ?: if ('.' !in qualifiedName) typesByQualifiedName["$currentNamespace.$qualifiedName"] else null
     }
+
+    fun auxiliaryTableSemanticBoundaries(inventory: WinRtMetadataAuxiliaryTableInventory): List<WinRtAuxiliaryTableSemanticBoundaryDescriptor> =
+        inventory.tables
+            .groupBy(WinRtMetadataAuxiliaryTableDescriptor::tableName)
+            .map { (tableName, tables) ->
+                val rowCount = tables.sumOf(WinRtMetadataAuxiliaryTableDescriptor::rowCount)
+                val modeled = tables.any(WinRtMetadataAuxiliaryTableDescriptor::modeled)
+                val projectionAffecting = tableName in PROJECTION_AFFECTING_AUXILIARY_TABLES
+                WinRtAuxiliaryTableSemanticBoundaryDescriptor(
+                    tableName = tableName,
+                    rowCount = rowCount,
+                    modeled = modeled,
+                    projectionAffecting = projectionAffecting,
+                    note = when {
+                        modeled -> "Decoded into normalized metadata descriptors."
+                        projectionAffecting -> "Projection-affecting in ECMA metadata; decode before generator consumes this table."
+                        else -> "Cache-tolerated infrastructure table; no active CsWinRT generator semantic for the current Kotlin target."
+                    },
+                )
+            }
+            .sortedBy(WinRtAuxiliaryTableSemanticBoundaryDescriptor::tableName)
+
+    fun cswinrtMetadataParityAudit(): List<WinRtMetadataParityAuditEntry> =
+        listOf(
+            WinRtMetadataParityAuditEntry("helpers.h", "get_exclusive_to_type", "WinRtMetadataSemanticHelpers.getExclusiveToType", true),
+            WinRtMetadataParityAuditEntry("helpers.h", "is_ptype", "WinRtMetadataSemanticHelpers.isPType", true),
+            WinRtMetadataParityAuditEntry("helpers.h", "get_default_iface_as_type_sem", "WinRtMetadataSemanticHelpers.getDefaultInterfaceSemantics", true),
+            WinRtMetadataParityAuditEntry("helpers.h", "does_abi_interface_implement_ccw_interface", "WinRtMetadataSemanticHelpers.doesAbiInterfaceImplementCcwInterface(context)", true),
+            WinRtMetadataParityAuditEntry("main.cpp", "componentActivatableClasses pre-scan", "WinRtMetadataSemanticHelpers.componentActivatableClasses", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "is_implemented_as_private_method", "WinRtMetadataSemanticHelpers.isImplementedAsPrivateMethod", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "is_implemented_as_private_mapped_interface", "WinRtMetadataSemanticHelpers.isImplementedAsPrivateMappedInterface", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "write_custom_query_interface_impl", "WinRtMetadataSemanticHelpers.customQueryInterfaceDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "generic_type_instances fixed point", "WinRtMetadataSemanticHelpers.genericInstantiationWorklist", true),
+            WinRtMetadataParityAuditEntry("WinMD tables", "auxiliary table semantic boundary", "WinRtMetadataSemanticHelpers.auxiliaryTableSemanticBoundaries", true),
+        )
 
     private fun fastAbiPropertySlots(closure: WinRtRuntimeClassClosureDescriptor): List<WinRtFastAbiPropertySlot> {
         var vtableStartIndex = 6
@@ -664,10 +886,18 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             }
         }
 
-        fun toInventory(): WinRtGenericAbiInventory =
+        fun toInventory(context: WinRtMetadataProjectionContext): WinRtGenericAbiInventory =
             WinRtGenericAbiInventory(
                 genericAbiDelegates = abiDelegates.values.sortedWith(compareBy({ it.abiDelegateTypesKey }, { it.abiDelegateName })),
-                genericTypeInstantiations = typeInstantiations.values.sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
+                genericTypeInstantiations = typeInstantiations.values
+                    .map { instantiation ->
+                        instantiation.copy(
+                            implementsCcwInterface = instantiation.definitionType
+                                ?.let { definition -> doesAbiInterfaceImplementCcwInterface(definition, context) }
+                                ?: false,
+                        )
+                    }
+                    .sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
                 derivedGenericInterfaces = derivedGenericInterfaces.sorted(),
             )
 
@@ -706,7 +936,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                                 definitionType = definitionType,
                                 instantiationClassName = className,
                                 genericArguments = sourceType.typeArguments,
-                                implementsCcwInterface = definitionType?.let(::doesAbiInterfaceImplementCcwInterface) ?: false,
+                                implementsCcwInterface = false,
                             ),
                         )
                         addAbiDelegatesForType(sourceType)
@@ -818,7 +1048,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     companion object {
         private const val SYSTEM_FLAGS_ATTRIBUTE = "System.FlagsAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO_ATTRIBUTE = "Windows.Foundation.Metadata.ExclusiveToAttribute"
         private const val INSPECTABLE_METHOD_COUNT = 6
+        private val PROJECTION_AFFECTING_AUXILIARY_TABLES = setOf("FieldMarshal", "ImplMap", "FieldRVA", "DeclSecurity", "ModuleRef")
     }
 }
 
@@ -842,9 +1074,6 @@ internal fun metadataParameterCategoryFor(parameter: WinRtParameterDefinition): 
         else -> WinRtMetadataParameterCategory.In
     }
 }
-
-private fun doesAbiInterfaceImplementCcwInterface(type: WinRtTypeDefinition): Boolean =
-    type.kind == WinRtTypeKind.Interface && type.isExclusiveTo
 
 private fun escapeTypeNameForIdentifier(typeName: String): String =
     typeName.replace(Regex("""[\s:<>,.]"""), "_")

@@ -85,7 +85,7 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
             baseTypeMappings = baseTypeMappings.values.sortedBy(WinRtBaseTypeMapping::typeName),
             eventSourceMappings = eventSourceMappings.values.sortedBy(WinRtEventSourceMapping::eventTypeName),
             authoredMetadataTypeMappings = authoredMetadataTypeMappings.values.sortedBy(WinRtAuthoredMetadataTypeMapping::projectedTypeName),
-            genericAbiInventory = helpers.genericAbiInventory(),
+            genericAbiInventory = helpers.genericAbiInventory(context),
         )
     }
 
