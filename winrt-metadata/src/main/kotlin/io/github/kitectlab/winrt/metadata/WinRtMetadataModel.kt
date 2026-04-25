@@ -39,6 +39,41 @@ data class WinRtEnumMemberDefinition(
     }
 }
 
+data class WinRtGenericParameterDefinition(
+    val name: String,
+    val index: Int,
+    val flags: Int = 0,
+    val constraints: List<String> = emptyList(),
+) {
+    val constraintTypes: List<WinRtTypeRef>
+        get() = constraints.map(WinRtTypeRef::fromDisplayName)
+
+    fun normalized(): WinRtGenericParameterDefinition =
+        copy(
+            name = name.trim().ifBlank { "T${index.coerceAtLeast(0)}" },
+            index = index.coerceAtLeast(0),
+            constraints = constraintTypes
+                .map(WinRtTypeRef::normalized)
+                .map(WinRtTypeRef::typeName)
+                .distinct()
+                .sorted(),
+        )
+
+    internal fun merge(other: WinRtGenericParameterDefinition): WinRtGenericParameterDefinition {
+        require(index == other.index) {
+            "Can only merge generic parameters with the same index: $index vs ${other.index}"
+        }
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtGenericParameterDefinition(
+            name = left.name.ifBlank { right.name },
+            index = left.index,
+            flags = left.flags or right.flags,
+            constraints = (left.constraints + right.constraints).distinct().sorted(),
+        )
+    }
+}
+
 data class WinRtInterfaceImplementationDefinition(
     val interfaceName: String,
     val isDefault: Boolean = false,
@@ -312,6 +347,7 @@ data class WinRtTypeDefinition(
     val defaultInterfaceName: String? = null,
     val implementedInterfaces: List<WinRtInterfaceImplementationDefinition> = emptyList(),
     val genericParameterCount: Int = 0,
+    val genericParameters: List<WinRtGenericParameterDefinition> = emptyList(),
     val activation: WinRtActivationShape = WinRtActivationShape(),
     val methods: List<WinRtMethodDefinition> = emptyList(),
     val properties: List<WinRtPropertyDefinition> = emptyList(),
@@ -366,7 +402,16 @@ data class WinRtTypeDefinition(
                 .values
                 .map { duplicates -> duplicates.reduce(WinRtInterfaceImplementationDefinition::merge) }
                 .sortedBy(WinRtInterfaceImplementationDefinition::interfaceName),
-            genericParameterCount = genericParameterCount.coerceAtLeast(0),
+            genericParameters = genericParameters
+                .map(WinRtGenericParameterDefinition::normalized)
+                .groupBy(WinRtGenericParameterDefinition::index)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
+                .sortedBy(WinRtGenericParameterDefinition::index),
+            genericParameterCount = maxOf(
+                genericParameterCount.coerceAtLeast(0),
+                genericParameters.maxOfOrNull { it.index + 1 } ?: 0,
+            ),
             activation = activation.normalized(),
             methods = normalizedMethods,
             properties = normalizedProperties,
@@ -412,6 +457,11 @@ data class WinRtTypeDefinition(
                 .map { duplicates -> duplicates.reduce(WinRtInterfaceImplementationDefinition::merge) }
                 .sortedBy(WinRtInterfaceImplementationDefinition::interfaceName),
             genericParameterCount = maxOf(left.genericParameterCount, right.genericParameterCount),
+            genericParameters = (left.genericParameters + right.genericParameters)
+                .groupBy(WinRtGenericParameterDefinition::index)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
+                .sortedBy(WinRtGenericParameterDefinition::index),
             activation = left.activation.merge(right.activation),
             methods = (left.methods + right.methods)
                 .groupBy(WinRtMethodDefinition::signatureKey)

@@ -1475,7 +1475,7 @@ private fun KotlinProjectionReadOnlyCollectionKind.abiName(): String = when (thi
 }
 
 private fun KotlinProjectionReadOnlyCollectionKind.ownerDelegatePropertyName(ownerInterface: String): String {
-    val ownerSuffix = ownerInterface.substringAfterLast('.').replaceFirstChar(Char::lowercase)
+    val ownerSuffix = ownerInterface.collectionOwnerSuffix()
     return when (this) {
         KotlinProjectionReadOnlyCollectionKind.Iterable -> "__${ownerSuffix}IterableCollection"
         KotlinProjectionReadOnlyCollectionKind.VectorView -> "__${ownerSuffix}VectorViewCollection"
@@ -1495,12 +1495,17 @@ private fun KotlinProjectionMutableCollectionKind.abiName(): String = when (this
 }
 
 private fun KotlinProjectionMutableCollectionKind.ownerDelegatePropertyName(ownerInterface: String): String {
-    val ownerSuffix = ownerInterface.substringAfterLast('.').replaceFirstChar(Char::lowercase)
+    val ownerSuffix = ownerInterface.collectionOwnerSuffix()
     return when (this) {
         KotlinProjectionMutableCollectionKind.Vector -> "__${ownerSuffix}VectorCollection"
         KotlinProjectionMutableCollectionKind.Map -> "__${ownerSuffix}MapCollection"
     }
 }
+
+private fun String.collectionOwnerSuffix(): String =
+    substringAfterLast('.')
+        .filter(Char::isLetterOrDigit)
+        .replaceFirstChar(Char::lowercase)
 
 private fun KotlinProjectionMutableCollectionKind.returnDelegatePropertyName(): String = when (this) {
     KotlinProjectionMutableCollectionKind.Vector -> "__mappedVectorReturn"
@@ -1635,6 +1640,7 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementB
     KotlinProjectionAbiValueKind.Double,
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.MappedKeyValuePair,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true

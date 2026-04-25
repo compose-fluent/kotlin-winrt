@@ -36,6 +36,7 @@ class WinRtMetadataLoaderTest {
             listOf(
                 "Color",
                 "IBox",
+                "IConstrainedBox",
                 "IGenericWidget",
                 "IInternalContract",
                 "ISpecialShapes",
@@ -133,10 +134,19 @@ class WinRtMetadataLoaderTest {
 
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)
+        assertEquals(listOf("T"), iBox.genericParameters.map { it.name })
+
+        val iConstrainedBox = sampleNamespace.types.first { it.name == "IConstrainedBox" }
+        assertEquals(1, iConstrainedBox.genericParameterCount)
+        assertEquals(listOf("TItem"), iConstrainedBox.genericParameters.map { it.name })
+        assertEquals(listOf("Sample.Foundation.IWidgetBase"), iConstrainedBox.genericParameters.single().constraints)
+        assertEquals(listOf("Sample.Foundation.IBox<String>"), iConstrainedBox.implementedInterfaces.map { it.interfaceName })
+        assertEquals("T0", iConstrainedBox.properties.single().typeName)
 
         val iGenericWidget = sampleNamespace.types.first { it.name == "IGenericWidget" }
         assertEquals(Guid("44444444-4444-4444-4444-444444444444"), iGenericWidget.iid)
         assertEquals(1, iGenericWidget.genericParameterCount)
+        assertEquals(listOf("T"), iGenericWidget.genericParameters.map { it.name })
         assertEquals("Sample.Foundation.IBox<String>", iGenericWidget.properties.single().typeName)
         assertEquals("Sample.Foundation.IBox", iGenericWidget.properties.single().type.qualifiedName)
         assertEquals(listOf("String"), iGenericWidget.properties.single().type.typeArguments.map { it.typeName })
@@ -371,6 +381,7 @@ class WinRtMetadataLoaderTest {
             listOf(
                 "Color",
                 "IBox",
+                "IConstrainedBox",
                 "IGenericWidget",
                 "IInternalContract",
                 "ISpecialShapes",
@@ -533,6 +544,11 @@ class WinRtMetadataLoaderTest {
                 public interface IWidgetStatics {}
 
                 public interface IBox<T> {}
+
+                public interface IConstrainedBox<TItem> : IBox<string> where TItem : IWidgetBase
+                {
+                    TItem Item { get; }
+                }
 
                 public interface ISpecialShapes
                 {
