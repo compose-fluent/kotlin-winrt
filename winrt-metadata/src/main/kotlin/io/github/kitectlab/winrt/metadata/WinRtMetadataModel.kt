@@ -82,15 +82,17 @@ data class WinRtFieldDefinition(
     val abiSize: Int? = null,
     val abiAlignment: Int? = null,
     val isBlittable: Boolean = false,
+    val typeSignature: WinRtTypeRef? = null,
 ) {
     val type: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(typeName)
+        get() = typeSignature ?: WinRtTypeRef.fromDisplayName(typeName)
 
     fun normalized(): WinRtFieldDefinition {
         val normalizedType = type.normalized()
         return copy(
             name = name.trim(),
             typeName = normalizedType.typeName,
+            typeSignature = normalizedType,
             rowId = rowId?.takeIf { it > 0 },
             offset = offset?.takeIf { it >= 0 },
             abiSize = abiSize?.takeIf { it > 0 },
@@ -313,15 +315,17 @@ data class WinRtParameterDefinition(
     val hasDefaultValue: Boolean = false,
     val defaultValueBits: ULong? = null,
     val defaultValueElementType: Int? = null,
+    val typeSignature: WinRtTypeRef? = null,
 ) {
     val type: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(typeName).withByRef(typeIsByRef)
+        get() = (typeSignature ?: WinRtTypeRef.fromDisplayName(typeName)).withByRef(typeIsByRef)
 
     fun normalized(): WinRtParameterDefinition {
         val normalizedType = type.normalized()
         return copy(
             name = name.trim(),
             typeName = normalizedType.typeName,
+            typeSignature = normalizedType,
             typeIsByRef = normalizedType.isByRef,
         )
     }
@@ -358,15 +362,17 @@ data class WinRtMethodDefinition(
     val returnParameterAttributes: List<WinRtCustomAttributeDefinition> = emptyList(),
     val returnTypeIsByRef: Boolean = false,
     val methodRowId: Int? = null,
+    val returnTypeSignature: WinRtTypeRef? = null,
 ) {
     val returnType: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(returnTypeName).withByRef(returnTypeIsByRef)
+        get() = (returnTypeSignature ?: WinRtTypeRef.fromDisplayName(returnTypeName)).withByRef(returnTypeIsByRef)
 
     fun normalized(): WinRtMethodDefinition {
         val normalizedReturnType = returnType.normalized()
         return copy(
             name = name.trim(),
             returnTypeName = normalizedReturnType.typeName,
+            returnTypeSignature = normalizedReturnType,
             overloadName = overloadName?.trim()?.takeIf(String::isNotEmpty),
             returnParameterAttributes = returnParameterAttributes.map(WinRtCustomAttributeDefinition::normalized),
             returnTypeIsByRef = normalizedReturnType.isByRef,
@@ -396,6 +402,7 @@ data class WinRtMethodDefinition(
         return WinRtMethodDefinition(
             name = left.name,
             returnTypeName = left.returnTypeName,
+            returnTypeSignature = left.returnTypeSignature,
             parameters = left.parameters,
             isStatic = left.isStatic,
             visibility = left.visibility,
@@ -425,18 +432,20 @@ data class WinRtPropertyDefinition(
     val setterMethodRowId: Int? = null,
     val isNoException: Boolean = false,
     val hasValidAccessors: Boolean = true,
+    val typeSignature: WinRtTypeRef? = null,
 ) {
     val isReadOnly: Boolean
         get() = setterMethodName == null
 
     val type: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(typeName)
+        get() = typeSignature ?: WinRtTypeRef.fromDisplayName(typeName)
 
     fun normalized(): WinRtPropertyDefinition {
         val normalizedType = type.normalized()
         return copy(
             name = name.trim(),
             typeName = normalizedType.typeName,
+            typeSignature = normalizedType,
             getterMethodName = getterMethodName?.trim(),
             setterMethodName = setterMethodName?.trim(),
             getterMethodRowId = getterMethodRowId?.takeIf { it > 0 },
@@ -464,6 +473,7 @@ data class WinRtPropertyDefinition(
         return WinRtPropertyDefinition(
             name = left.name,
             typeName = left.typeName,
+            typeSignature = left.typeSignature,
             isStatic = left.isStatic || right.isStatic,
             getterMethodName = left.getterMethodName ?: right.getterMethodName,
             setterMethodName = left.setterMethodName ?: right.setterMethodName,
@@ -484,15 +494,17 @@ data class WinRtEventDefinition(
     val addMethodRowId: Int? = null,
     val removeMethodRowId: Int? = null,
     val hasValidAccessors: Boolean = true,
+    val delegateTypeSignature: WinRtTypeRef? = null,
 ) {
     val delegateType: WinRtTypeRef
-        get() = WinRtTypeRef.fromDisplayName(delegateTypeName)
+        get() = delegateTypeSignature ?: WinRtTypeRef.fromDisplayName(delegateTypeName)
 
     fun normalized(): WinRtEventDefinition {
         val normalizedDelegateType = delegateType.normalized()
         return copy(
             name = name.trim(),
             delegateTypeName = normalizedDelegateType.typeName,
+            delegateTypeSignature = normalizedDelegateType,
             addMethodName = addMethodName?.trim(),
             removeMethodName = removeMethodName?.trim(),
             addMethodRowId = addMethodRowId?.takeIf { it > 0 },
@@ -520,6 +532,7 @@ data class WinRtEventDefinition(
         return WinRtEventDefinition(
             name = left.name,
             delegateTypeName = left.delegateTypeName,
+            delegateTypeSignature = left.delegateTypeSignature,
             isStatic = left.isStatic || right.isStatic,
             addMethodName = left.addMethodName ?: right.addMethodName,
             removeMethodName = left.removeMethodName ?: right.removeMethodName,

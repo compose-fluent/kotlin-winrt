@@ -201,6 +201,7 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf("String"), iGenericWidget.properties.single().type.typeArguments.map { it.typeName })
         assertEquals("Sample.Foundation.IBox<Array<T0>>", iGenericWidget.methods.single().returnTypeName)
         assertEquals("Sample.Foundation.IBox", iGenericWidget.methods.single().returnType.qualifiedName)
+        assertTrue(iGenericWidget.methods.single().returnType.rawSignature?.isNotBlank() == true)
         assertEquals(WinRtTypeRefKind.Array, iGenericWidget.methods.single().returnType.typeArguments.single().kind)
         assertEquals("T0", iGenericWidget.methods.single().returnType.typeArguments.single().elementType?.typeName)
         assertEquals(
@@ -227,6 +228,7 @@ class WinRtMetadataLoaderTest {
             WinRtTypeRefKind.Named,
             iGenericWidget.methods.single().parameters[2].type.typeArguments.single().kind,
         )
+        assertTrue(iGenericWidget.methods.single().parameters[2].type.rawSignature?.isNotBlank() == true)
 
         val abiResolver = model.abiResolver()
         val updateArraysAbi = abiResolver.resolveMethod(updateArrays, iWidget.namespace)
@@ -592,14 +594,47 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun resolves_nuget_package_winmd_and_resource_inventory() {
+        val assembly = buildManagedMetadataSample()
+        val packageDir = Files.createTempDirectory("kotlin-winrt-package")
+        val winmdPath = packageDir.resolve("lib/net8.0/Sample.Foundation.winmd")
+        winmdPath.parent.createDirectories()
+        Files.copy(assembly, winmdPath)
+        packageDir.resolve("runtimes/win-x64/native/Sample.Native.dll").also {
+            it.parent.createDirectories()
+            it.writeText("native")
+        }
+        packageDir.resolve("resources/Sample.pri").also {
+            it.parent.createDirectories()
+            it.writeText("resource")
+        }
+
+        val cache = WinRtMetadataSourceResolver.resolve(WinRtMetadataSource.nugetPackage(packageDir))
+        val model = cache.load()
+
+        assertEquals(listOf("Sample.Foundation.winmd"), cache.files.map { it.fileName.toString() })
+        assertEquals(
+            listOf(WinRtPackageAssetKind.Native, WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
+            cache.packageAssets.map { it.kind }.sortedBy { it.name },
+        )
+        assertTrue(cache.packageAssets.any { it.relativePath == "resources/Sample.pri" })
+        assertTrue(model.namespaces.any { it.name == "Sample.Foundation" })
+    }
+
+    @Test
     fun loads_cli_metadata_with_auxiliary_tables_used_by_real_winmd_caches() {
         val assembly = buildAuxiliaryTableMetadataSample()
 
         val model = WinRtMetadataLoader.load(assembly).normalized()
+        val inventory = WinRtMetadataLoader.loadAuxiliaryTableInventory(WinRtMetadataSource.path(assembly))
 
         val namespace = model.namespaces.single { it.name == "Sample.Auxiliary" }
         val container = namespace.types.single { it.name == "Container" }
         assertTrue(container.methods.any { it.name == "Ping" })
+        assertTrue(inventory.table("ExportedType").single().rowCount > 0)
+        assertTrue(inventory.table("ManifestResource").single().rowCount > 0)
+        assertTrue(inventory.table("NestedClass").single().rowCount > 0)
+        assertTrue(inventory.table("MethodSpec").single().modeled)
     }
 
     private fun buildManagedMetadataSample(): Path {

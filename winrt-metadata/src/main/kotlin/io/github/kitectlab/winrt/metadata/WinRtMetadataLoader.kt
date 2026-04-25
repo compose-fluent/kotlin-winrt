@@ -21,6 +21,14 @@ object WinRtMetadataLoader {
         return context.load()
     }
 
+    fun loadAuxiliaryTableInventory(sources: List<WinRtMetadataSource>): WinRtMetadataAuxiliaryTableInventory {
+        val cache = WinRtMetadataSourceResolver.resolve(sources)
+        return loadAuxiliaryTableInventoryFromFiles(cache.files)
+    }
+
+    fun loadAuxiliaryTableInventory(vararg sources: WinRtMetadataSource): WinRtMetadataAuxiliaryTableInventory =
+        loadAuxiliaryTableInventory(sources.toList())
+
     internal fun loadDiscoveredFiles(files: List<Path>): WinRtMetadataModel {
         val namespaces = files
             .flatMap { WinRtCliMetadataFile.parse(it) }
@@ -40,13 +48,28 @@ object WinRtMetadataLoader {
 
     internal fun discoverMetadataFiles(paths: List<Path>): List<Path> =
         WinRtMetadataSourceResolver.resolvePathInputs(paths).files
+
+    internal fun loadAuxiliaryTableInventoryFromFiles(files: List<Path>): WinRtMetadataAuxiliaryTableInventory =
+        WinRtMetadataAuxiliaryTableInventory(
+            files = files.map { file -> WinRtCliMetadataFile.parseAuxiliaryTableInventory(file) },
+        )
 }
 
 private class WinRtCliMetadataFile private constructor(
     private val path: Path,
     private val buffer: ByteBuffer,
 ) {
+    fun parseAuxiliaryTableInventory(): WinRtMetadataFileAuxiliaryTableInventory =
+        WinRtMetadataFileAuxiliaryTableInventory(
+            file = path,
+            tables = parseTables().auxiliaryTableInventory(),
+        )
+
     fun parseTypes(): List<WinRtTypeDefinition> {
+        return parseTables().toTypeDefinitions()
+    }
+
+    private fun parseTables(): MetadataTables {
         val peHeaderOffset = buffer.intAt(DOS_PE_HEADER_POINTER)
         require(peHeaderOffset > 0) {
             "${path.name} does not contain a valid PE header pointer."
@@ -82,8 +105,7 @@ private class WinRtCliMetadataFile private constructor(
         val blobHeap = metadataRoot.requiredStream("#Blob")
         val stringsHeap = metadataRoot.requiredStream("#Strings")
         val tablesStream = metadataRoot.stream("#~") ?: metadataRoot.requiredStream("#-")
-        val tables = MetadataTables.parse(buffer, tablesStream.offset, stringsHeap, blobHeap)
-        return tables.toTypeDefinitions()
+        return MetadataTables.parse(buffer, tablesStream.offset, stringsHeap, blobHeap)
     }
 
     private fun readCliHeaderRva(optionalHeaderOffset: Int): Int {
@@ -131,6 +153,16 @@ private class WinRtCliMetadataFile private constructor(
                     path = path,
                     buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN),
                 ).parseTypes()
+            }
+        }
+
+        fun parseAuxiliaryTableInventory(path: Path): WinRtMetadataFileAuxiliaryTableInventory {
+            path.inputStream().use { input ->
+                val bytes = input.readAllBytes()
+                return WinRtCliMetadataFile(
+                    path = path,
+                    buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN),
+                ).parseAuxiliaryTableInventory()
             }
         }
     }
@@ -190,8 +222,20 @@ private class MetadataTables private constructor(
     private val rowCounts: IntArray,
     private val tableOffsets: IntArray,
     private val stringIndexSize: Int,
+    private val guidIndexSize: Int,
     private val blobIndexSize: Int,
 ) {
+    fun auxiliaryTableInventory(): List<WinRtMetadataAuxiliaryTableDescriptor> =
+        AUXILIARY_TABLE_IDS.map { tableId ->
+            WinRtMetadataAuxiliaryTableDescriptor(
+                tableId = tableId,
+                tableName = tableName(tableId),
+                rowCount = rowCounts[tableId],
+                rowSize = rowSize(tableId, rowCounts, stringIndexSize, guidIndexSize, blobIndexSize) ?: 0,
+                modeled = tableId in MODELED_AUXILIARY_TABLE_IDS,
+            )
+        }
+
     fun toTypeDefinitions(): List<WinRtTypeDefinition> {
         val typeDefs = readRawTypeDefs()
         val rawFields = readRawFields()
@@ -608,6 +652,7 @@ private class MetadataTables private constructor(
                     name = rawMethod.name,
                     returnTypeName = signature.returnType.typeName,
                     returnTypeIsByRef = signature.returnType.isByRef,
+                    returnTypeSignature = signature.returnType.type,
                     parameters = signature.parameters.mapIndexed { parameterIndex, parameterType ->
                         val parameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == parameterIndex + 1 }
                         val parameterConstant = parameterRow?.let { parameterConstants[it.rowId] }
@@ -621,6 +666,7 @@ private class MetadataTables private constructor(
                             hasDefaultValue = parameterRow?.flags?.and(PARAM_ATTRIBUTE_HAS_DEFAULT) != 0 || parameterConstant != null,
                             defaultValueBits = parameterConstant?.valueBits,
                             defaultValueElementType = parameterConstant?.type,
+                            typeSignature = parameterType.type,
                         )
                     },
                     isStatic = rawMethod.flags and METHOD_ATTRIBUTE_STATIC != 0,
@@ -670,6 +716,7 @@ private class MetadataTables private constructor(
             isNoException = customAttributes[OwnerKey(TABLE_PROPERTY, propertyRowId)].orEmpty()
                 .any { it.typeName == WINDOWS_FOUNDATION_METADATA_NO_EXCEPTION },
             hasValidAccessors = accessors.hasOnlyGetterSetter && (getter != null || setter != null),
+            typeSignature = signature.type.type,
         )
     }
 
@@ -687,23 +734,24 @@ private class MetadataTables private constructor(
         val accessors = eventAccessors[eventRowId] ?: EventAccessorRows()
         val addMethod = accessors.addMethodRowId?.let { rawMethods.getOrNull(it - 1) }
         val removeMethod = accessors.removeMethodRowId?.let { rawMethods.getOrNull(it - 1) }
-        val delegateTypeName = listOfNotNull(addMethod, removeMethod)
+        val delegateType = listOfNotNull(addMethod, removeMethod)
             .firstNotNullOfOrNull { method ->
                 readMethodSignature(method.signatureBlobIndex, typeDefNames, typeRefNames, typeSpecTypes)
                     .parameters
                     .firstOrNull()
-                    ?.typeName
+                    ?.type
             }
-            ?: rawEvent.delegateTypeName
+            ?: WinRtTypeRef.fromDisplayName(rawEvent.delegateTypeName)
         return WinRtEventDefinition(
             name = rawEvent.name,
-            delegateTypeName = delegateTypeName,
+            delegateTypeName = delegateType.typeName,
             isStatic = listOfNotNull(addMethod, removeMethod).any { it.flags and METHOD_ATTRIBUTE_STATIC != 0 },
             addMethodName = addMethod?.name,
             removeMethodName = removeMethod?.name,
             addMethodRowId = accessors.addMethodRowId,
             removeMethodRowId = accessors.removeMethodRowId,
             hasValidAccessors = accessors.hasOnlyAddRemove && addMethod != null && removeMethod != null,
+            delegateTypeSignature = delegateType,
         )
     }
 
@@ -736,6 +784,7 @@ private class MetadataTables private constructor(
                 abiSize = abiLayout.size,
                 abiAlignment = abiLayout.alignment,
                 isBlittable = abiLayout.isBlittable,
+                typeSignature = signature.type,
             )
         }
 
@@ -1671,6 +1720,30 @@ private class MetadataTables private constructor(
         private const val TABLE_METHOD_SPEC = 0x2B
         private const val TABLE_GENERIC_PARAM_CONSTRAINT = 0x2C
 
+        private val AUXILIARY_TABLE_IDS = intArrayOf(
+            TABLE_FIELD_MARSHAL,
+            TABLE_DECL_SECURITY,
+            TABLE_STANDALONE_SIG,
+            TABLE_METHOD_IMPL,
+            TABLE_MODULE_REF,
+            TABLE_IMPL_MAP,
+            TABLE_FIELD_RVA,
+            TABLE_FILE,
+            TABLE_EXPORTED_TYPE,
+            TABLE_MANIFEST_RESOURCE,
+            TABLE_NESTED_CLASS,
+            TABLE_METHOD_SPEC,
+        )
+
+        private val MODELED_AUXILIARY_TABLE_IDS = intArrayOf(
+            TABLE_STANDALONE_SIG,
+            TABLE_FILE,
+            TABLE_EXPORTED_TYPE,
+            TABLE_MANIFEST_RESOURCE,
+            TABLE_NESTED_CLASS,
+            TABLE_METHOD_SPEC,
+        ).toSet()
+
         private const val TYPE_ATTRIBUTE_LAYOUT_MASK = 0x18
         private const val TYPE_ATTRIBUTE_SEQUENTIAL_LAYOUT = 0x08
         private const val TYPE_ATTRIBUTE_EXPLICIT_LAYOUT = 0x10
@@ -2029,6 +2102,7 @@ private class MetadataTables private constructor(
                 rowCounts = rowCounts,
                 tableOffsets = tableOffsets,
                 stringIndexSize = stringIndexSize,
+                guidIndexSize = guidIndexSize,
                 blobIndexSize = blobIndexSize,
             )
         }
@@ -2086,6 +2160,22 @@ private class MetadataTables private constructor(
             TABLE_METHOD_SPEC -> codedIndexSize(CODED_METHOD_DEF_OR_REF, rowCounts) + blobIndexSize
             TABLE_GENERIC_PARAM_CONSTRAINT -> simpleIndexSize(TABLE_GENERIC_PARAM, rowCounts) + codedIndexSize(CODED_TYPE_DEF_OR_REF, rowCounts)
             else -> null
+        }
+
+        private fun tableName(tableId: Int): String = when (tableId) {
+            TABLE_FIELD_MARSHAL -> "FieldMarshal"
+            TABLE_DECL_SECURITY -> "DeclSecurity"
+            TABLE_STANDALONE_SIG -> "StandAloneSig"
+            TABLE_METHOD_IMPL -> "MethodImpl"
+            TABLE_MODULE_REF -> "ModuleRef"
+            TABLE_IMPL_MAP -> "ImplMap"
+            TABLE_FIELD_RVA -> "FieldRVA"
+            TABLE_FILE -> "File"
+            TABLE_EXPORTED_TYPE -> "ExportedType"
+            TABLE_MANIFEST_RESOURCE -> "ManifestResource"
+            TABLE_NESTED_CLASS -> "NestedClass"
+            TABLE_METHOD_SPEC -> "MethodSpec"
+            else -> "Table0x${tableId.toString(16)}"
         }
 
         private fun simpleIndexSize(tableId: Int, rowCounts: IntArray): Int =
@@ -2241,11 +2331,26 @@ private class SignatureReader(
     }
 
     fun readType(): ParsedTypeSignature {
+        val requiredModifiers = mutableListOf<String>()
+        val optionalModifiers = mutableListOf<String>()
+        fun parsed(type: WinRtTypeRef): ParsedTypeSignature =
+            ParsedTypeSignature(
+                type.withSignatureFidelity(
+                    rawSignature = bytes.toHexSignature(),
+                    requiredModifiers = requiredModifiers,
+                    optionalModifiers = optionalModifiers,
+                ),
+            )
         while (cursor < bytes.size) {
             when (peekByte()) {
-                ELEMENT_TYPE_CMOD_REQD, ELEMENT_TYPE_CMOD_OPT -> {
+                ELEMENT_TYPE_CMOD_REQD -> {
                     readByte()
-                    readCompressedUnsignedInt()
+                    requiredModifiers += normalizeSignatureTypeReferenceName(decodeTypeToken(readCompressedUnsignedInt()))
+                }
+
+                ELEMENT_TYPE_CMOD_OPT -> {
+                    readByte()
+                    optionalModifiers += normalizeSignatureTypeReferenceName(decodeTypeToken(readCompressedUnsignedInt()))
                 }
 
                 ELEMENT_TYPE_SENTINEL, ELEMENT_TYPE_PINNED -> readByte()
@@ -2253,36 +2358,36 @@ private class SignatureReader(
             }
         }
         if (cursor >= bytes.size) {
-            return ParsedTypeSignature(WinRtTypeRef.unknown())
+            return parsed(WinRtTypeRef.unknown())
         }
 
         return when (val elementType = readByte()) {
-            ELEMENT_TYPE_VOID -> ParsedTypeSignature(WinRtTypeRef.named("Unit"))
-            ELEMENT_TYPE_BOOLEAN -> ParsedTypeSignature(WinRtTypeRef.named("Boolean"))
-            ELEMENT_TYPE_CHAR -> ParsedTypeSignature(WinRtTypeRef.named("Char"))
-            ELEMENT_TYPE_I1 -> ParsedTypeSignature(WinRtTypeRef.named("Byte"))
-            ELEMENT_TYPE_U1 -> ParsedTypeSignature(WinRtTypeRef.named("UByte"))
-            ELEMENT_TYPE_I2 -> ParsedTypeSignature(WinRtTypeRef.named("Short"))
-            ELEMENT_TYPE_U2 -> ParsedTypeSignature(WinRtTypeRef.named("UShort"))
-            ELEMENT_TYPE_I4 -> ParsedTypeSignature(WinRtTypeRef.named("Int"))
-            ELEMENT_TYPE_U4 -> ParsedTypeSignature(WinRtTypeRef.named("UInt"))
-            ELEMENT_TYPE_I8 -> ParsedTypeSignature(WinRtTypeRef.named("Long"))
-            ELEMENT_TYPE_U8 -> ParsedTypeSignature(WinRtTypeRef.named("ULong"))
-            ELEMENT_TYPE_R4 -> ParsedTypeSignature(WinRtTypeRef.named("Float"))
-            ELEMENT_TYPE_R8 -> ParsedTypeSignature(WinRtTypeRef.named("Double"))
-            ELEMENT_TYPE_STRING -> ParsedTypeSignature(WinRtTypeRef.named("String"))
-            ELEMENT_TYPE_OBJECT -> ParsedTypeSignature(WinRtTypeRef.unknown())
-            ELEMENT_TYPE_I -> ParsedTypeSignature(WinRtTypeRef.named("Long"))
-            ELEMENT_TYPE_U -> ParsedTypeSignature(WinRtTypeRef.named("ULong"))
-            ELEMENT_TYPE_BYREF -> ParsedTypeSignature(readType().type.withByRef())
+            ELEMENT_TYPE_VOID -> parsed(WinRtTypeRef.named("Unit"))
+            ELEMENT_TYPE_BOOLEAN -> parsed(WinRtTypeRef.named("Boolean"))
+            ELEMENT_TYPE_CHAR -> parsed(WinRtTypeRef.named("Char"))
+            ELEMENT_TYPE_I1 -> parsed(WinRtTypeRef.named("Byte"))
+            ELEMENT_TYPE_U1 -> parsed(WinRtTypeRef.named("UByte"))
+            ELEMENT_TYPE_I2 -> parsed(WinRtTypeRef.named("Short"))
+            ELEMENT_TYPE_U2 -> parsed(WinRtTypeRef.named("UShort"))
+            ELEMENT_TYPE_I4 -> parsed(WinRtTypeRef.named("Int"))
+            ELEMENT_TYPE_U4 -> parsed(WinRtTypeRef.named("UInt"))
+            ELEMENT_TYPE_I8 -> parsed(WinRtTypeRef.named("Long"))
+            ELEMENT_TYPE_U8 -> parsed(WinRtTypeRef.named("ULong"))
+            ELEMENT_TYPE_R4 -> parsed(WinRtTypeRef.named("Float"))
+            ELEMENT_TYPE_R8 -> parsed(WinRtTypeRef.named("Double"))
+            ELEMENT_TYPE_STRING -> parsed(WinRtTypeRef.named("String"))
+            ELEMENT_TYPE_OBJECT -> parsed(WinRtTypeRef.unknown())
+            ELEMENT_TYPE_I -> parsed(WinRtTypeRef.named("Long"))
+            ELEMENT_TYPE_U -> parsed(WinRtTypeRef.named("ULong"))
+            ELEMENT_TYPE_BYREF -> parsed(readType().type.withByRef())
             ELEMENT_TYPE_PTR -> readType()
-            ELEMENT_TYPE_CLASS, ELEMENT_TYPE_VALUETYPE -> ParsedTypeSignature(
+            ELEMENT_TYPE_CLASS, ELEMENT_TYPE_VALUETYPE -> parsed(
                 WinRtTypeRef.named(normalizeSignatureTypeReferenceName(decodeTypeToken(readCompressedUnsignedInt()))),
             )
 
-            ELEMENT_TYPE_VAR -> ParsedTypeSignature(WinRtTypeRef.genericTypeParameter(readCompressedUnsignedInt()))
-            ELEMENT_TYPE_MVAR -> ParsedTypeSignature(WinRtTypeRef.methodTypeParameter(readCompressedUnsignedInt()))
-            ELEMENT_TYPE_SZARRAY -> ParsedTypeSignature(WinRtTypeRef.array(readType().type))
+            ELEMENT_TYPE_VAR -> parsed(WinRtTypeRef.genericTypeParameter(readCompressedUnsignedInt()))
+            ELEMENT_TYPE_MVAR -> parsed(WinRtTypeRef.methodTypeParameter(readCompressedUnsignedInt()))
+            ELEMENT_TYPE_SZARRAY -> parsed(WinRtTypeRef.array(readType().type))
             ELEMENT_TYPE_ARRAY -> {
                 val element = readType()
                 val rank = readCompressedUnsignedInt()
@@ -2290,7 +2395,7 @@ private class SignatureReader(
                 repeat(sizes) { readCompressedUnsignedInt() }
                 val lowerBounds = readCompressedUnsignedInt()
                 repeat(lowerBounds) { readCompressedUnsignedInt() }
-                ParsedTypeSignature(WinRtTypeRef.array(element.type, rank = rank))
+                parsed(WinRtTypeRef.array(element.type, rank = rank))
             }
 
             ELEMENT_TYPE_GENERICINST -> {
@@ -2306,11 +2411,11 @@ private class SignatureReader(
                         add(readType().type)
                     }
                 }
-                ParsedTypeSignature(WinRtTypeRef.named(genericTypeName, arguments))
+                parsed(WinRtTypeRef.named(genericTypeName, arguments))
             }
 
-            ELEMENT_TYPE_TYPEDBYREF, ELEMENT_TYPE_FNPTR, ELEMENT_TYPE_INTERNAL -> ParsedTypeSignature(WinRtTypeRef.unknown())
-            else -> ParsedTypeSignature(if (elementType == ELEMENT_TYPE_END) WinRtTypeRef.unknown() else WinRtTypeRef.unknown())
+            ELEMENT_TYPE_TYPEDBYREF, ELEMENT_TYPE_FNPTR, ELEMENT_TYPE_INTERNAL -> parsed(WinRtTypeRef.unknown())
+            else -> parsed(if (elementType == ELEMENT_TYPE_END) WinRtTypeRef.unknown() else WinRtTypeRef.unknown())
         }
     }
 
@@ -2784,6 +2889,9 @@ private fun ByteArray.readCompressedUnsignedInt(offset: Int): Pair<Int, Int> {
         }
     }
 }
+
+private fun ByteArray.toHexSignature(): String =
+    joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xFF) }
 
 private fun ByteArray.readCompressedUnsignedIntOrNull(offset: Int): Pair<Int, Int>? {
     if (offset >= size) {

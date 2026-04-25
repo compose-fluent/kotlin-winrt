@@ -16,6 +16,9 @@ data class WinRtTypeRef(
     val arrayRank: Int = 0,
     val genericParameterIndex: Int? = null,
     val isByRef: Boolean = false,
+    val rawSignature: String? = null,
+    val requiredModifiers: List<String> = emptyList(),
+    val optionalModifiers: List<String> = emptyList(),
 ) {
     val typeName: String
         get() = when (kind) {
@@ -41,6 +44,9 @@ data class WinRtTypeRef(
                     qualifiedName = qualifiedName?.trim(),
                     typeArguments = typeArguments.map(WinRtTypeRef::normalized),
                     isByRef = isByRef,
+                    rawSignature = rawSignature?.trim()?.takeIf(String::isNotEmpty),
+                    requiredModifiers = requiredModifiers.normalizedModifiers(),
+                    optionalModifiers = optionalModifiers.normalizedModifiers(),
                 )
 
             WinRtTypeRefKind.Array ->
@@ -48,24 +54,50 @@ data class WinRtTypeRef(
                     elementType = (elementType ?: unknown()).normalized(),
                     rank = arrayRank.coerceAtLeast(1),
                     isByRef = isByRef,
+                    rawSignature = rawSignature?.trim()?.takeIf(String::isNotEmpty),
+                    requiredModifiers = requiredModifiers.normalizedModifiers(),
+                    optionalModifiers = optionalModifiers.normalizedModifiers(),
                 )
 
             WinRtTypeRefKind.GenericTypeParameter ->
                 genericTypeParameter(
                     index = (genericParameterIndex ?: 0).coerceAtLeast(0),
                     isByRef = isByRef,
+                    rawSignature = rawSignature?.trim()?.takeIf(String::isNotEmpty),
+                    requiredModifiers = requiredModifiers.normalizedModifiers(),
+                    optionalModifiers = optionalModifiers.normalizedModifiers(),
                 )
 
             WinRtTypeRefKind.MethodTypeParameter ->
                 methodTypeParameter(
                     index = (genericParameterIndex ?: 0).coerceAtLeast(0),
                     isByRef = isByRef,
+                    rawSignature = rawSignature?.trim()?.takeIf(String::isNotEmpty),
+                    requiredModifiers = requiredModifiers.normalizedModifiers(),
+                    optionalModifiers = optionalModifiers.normalizedModifiers(),
                 )
 
-            WinRtTypeRefKind.Unknown -> unknown(isByRef = isByRef)
+            WinRtTypeRefKind.Unknown ->
+                unknown(
+                    isByRef = isByRef,
+                    rawSignature = rawSignature?.trim()?.takeIf(String::isNotEmpty),
+                    requiredModifiers = requiredModifiers.normalizedModifiers(),
+                    optionalModifiers = optionalModifiers.normalizedModifiers(),
+                )
         }
 
     fun withByRef(value: Boolean = true): WinRtTypeRef = copy(isByRef = value)
+
+    fun withSignatureFidelity(
+        rawSignature: String? = this.rawSignature,
+        requiredModifiers: List<String> = this.requiredModifiers,
+        optionalModifiers: List<String> = this.optionalModifiers,
+    ): WinRtTypeRef =
+        copy(
+            rawSignature = rawSignature,
+            requiredModifiers = requiredModifiers,
+            optionalModifiers = optionalModifiers,
+        ).normalized()
 
     fun substituteTypeParameters(
         genericTypeArguments: List<WinRtTypeRef>,
@@ -79,6 +111,9 @@ data class WinRtTypeRef(
                         argument.substituteTypeParameters(genericTypeArguments, methodTypeArguments)
                     },
                     isByRef = isByRef,
+                    rawSignature = rawSignature,
+                    requiredModifiers = requiredModifiers,
+                    optionalModifiers = optionalModifiers,
                 )
 
             WinRtTypeRefKind.Array ->
@@ -86,6 +121,9 @@ data class WinRtTypeRef(
                     elementType = (elementType ?: unknown()).substituteTypeParameters(genericTypeArguments, methodTypeArguments),
                     rank = arrayRank,
                     isByRef = isByRef,
+                    rawSignature = rawSignature,
+                    requiredModifiers = requiredModifiers,
+                    optionalModifiers = optionalModifiers,
                 )
 
             WinRtTypeRefKind.GenericTypeParameter ->
@@ -106,16 +144,27 @@ data class WinRtTypeRef(
             qualifiedName: String?,
             typeArguments: List<WinRtTypeRef> = emptyList(),
             isByRef: Boolean = false,
+            rawSignature: String? = null,
+            requiredModifiers: List<String> = emptyList(),
+            optionalModifiers: List<String> = emptyList(),
         ): WinRtTypeRef {
             val normalizedName = qualifiedName?.trim().takeUnless(String?::isNullOrEmpty)
             if (normalizedName == null || normalizedName == "Any") {
-                return unknown(isByRef = isByRef)
+                return unknown(
+                    isByRef = isByRef,
+                    rawSignature = rawSignature,
+                    requiredModifiers = requiredModifiers,
+                    optionalModifiers = optionalModifiers,
+                )
             }
             return WinRtTypeRef(
                 kind = WinRtTypeRefKind.Named,
                 qualifiedName = normalizedName,
                 typeArguments = typeArguments,
                 isByRef = isByRef,
+                rawSignature = rawSignature,
+                requiredModifiers = requiredModifiers,
+                optionalModifiers = optionalModifiers,
             )
         }
 
@@ -123,38 +172,64 @@ data class WinRtTypeRef(
             elementType: WinRtTypeRef,
             rank: Int = 1,
             isByRef: Boolean = false,
+            rawSignature: String? = null,
+            requiredModifiers: List<String> = emptyList(),
+            optionalModifiers: List<String> = emptyList(),
         ): WinRtTypeRef =
             WinRtTypeRef(
                 kind = WinRtTypeRefKind.Array,
                 elementType = elementType,
                 arrayRank = rank.coerceAtLeast(1),
                 isByRef = isByRef,
+                rawSignature = rawSignature,
+                requiredModifiers = requiredModifiers,
+                optionalModifiers = optionalModifiers,
             )
 
         fun genericTypeParameter(
             index: Int,
             isByRef: Boolean = false,
+            rawSignature: String? = null,
+            requiredModifiers: List<String> = emptyList(),
+            optionalModifiers: List<String> = emptyList(),
         ): WinRtTypeRef =
             WinRtTypeRef(
                 kind = WinRtTypeRefKind.GenericTypeParameter,
                 genericParameterIndex = index.coerceAtLeast(0),
                 isByRef = isByRef,
+                rawSignature = rawSignature,
+                requiredModifiers = requiredModifiers,
+                optionalModifiers = optionalModifiers,
             )
 
         fun methodTypeParameter(
             index: Int,
             isByRef: Boolean = false,
+            rawSignature: String? = null,
+            requiredModifiers: List<String> = emptyList(),
+            optionalModifiers: List<String> = emptyList(),
         ): WinRtTypeRef =
             WinRtTypeRef(
                 kind = WinRtTypeRefKind.MethodTypeParameter,
                 genericParameterIndex = index.coerceAtLeast(0),
                 isByRef = isByRef,
+                rawSignature = rawSignature,
+                requiredModifiers = requiredModifiers,
+                optionalModifiers = optionalModifiers,
             )
 
-        fun unknown(isByRef: Boolean = false): WinRtTypeRef =
+        fun unknown(
+            isByRef: Boolean = false,
+            rawSignature: String? = null,
+            requiredModifiers: List<String> = emptyList(),
+            optionalModifiers: List<String> = emptyList(),
+        ): WinRtTypeRef =
             WinRtTypeRef(
                 kind = WinRtTypeRefKind.Unknown,
                 isByRef = isByRef,
+                rawSignature = rawSignature,
+                requiredModifiers = requiredModifiers,
+                optionalModifiers = optionalModifiers,
             )
 
         fun fromDisplayName(typeName: String?): WinRtTypeRef {
@@ -183,6 +258,9 @@ data class WinRtTypeRef(
         }
     }
 }
+
+private fun List<String>.normalizedModifiers(): List<String> =
+    map(String::trim).filter(String::isNotEmpty).distinct().sorted()
 
 private fun splitGenericTypeArguments(arguments: String): List<String> {
     if (arguments.isBlank()) {

@@ -2,11 +2,14 @@ package io.github.kitectlab.winrt.metadata
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.io.path.createDirectories
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.readText
+import kotlin.io.path.writeBytes
 import kotlin.streams.asSequence
 
 enum class WinRtMetadataTarget {
@@ -68,10 +71,14 @@ sealed interface WinRtMetadataSource {
         val includeExtensions: Boolean = false,
         val sdkRoot: Path? = null,
     ) : WinRtMetadataSource
+    data class NuGetPackage(
+        val packagePath: Path,
+    ) : WinRtMetadataSource
 
     companion object {
         fun path(path: Path): WinRtMetadataSource = PathSource(path)
         fun local(): WinRtMetadataSource = LocalMachine
+        fun nugetPackage(packagePath: Path): WinRtMetadataSource = NuGetPackage(packagePath)
         fun windowsSdk(
             version: String? = null,
             includeExtensions: Boolean = false,
@@ -80,6 +87,9 @@ sealed interface WinRtMetadataSource {
             WindowsSdk(version = version, includeExtensions = includeExtensions, sdkRoot = sdkRoot)
 
         fun parse(value: String): WinRtMetadataSource {
+            if (value.startsWith("nuget:", ignoreCase = true)) {
+                return nugetPackage(Path.of(value.substringAfter(':')))
+            }
             if (value == "local") {
                 return local()
             }
@@ -139,22 +149,42 @@ sealed interface WinRtMetadataSource {
     }
 }
 
+enum class WinRtPackageAssetKind {
+    Winmd,
+    Resource,
+    Native,
+    Other,
+}
+
+data class WinRtPackageAsset(
+    val packagePath: Path,
+    val relativePath: String,
+    val kind: WinRtPackageAssetKind,
+    val extractedPath: Path? = null,
+)
+
 data class WinRtMetadataCache(
     val files: List<Path>,
+    val packageAssets: List<WinRtPackageAsset> = emptyList(),
 ) {
     fun load(): WinRtMetadataModel = WinRtMetadataLoader.loadDiscoveredFiles(files)
 }
 
 object WinRtMetadataSourceResolver {
     fun resolve(sources: List<WinRtMetadataSource>): WinRtMetadataCache {
-        val files = sources
+        val resolvedSources = sources.map(::resolveSource)
+        val files = resolvedSources
             .asSequence()
-            .flatMap { source -> resolveSource(source).asSequence() }
+            .flatMap { source -> source.files.asSequence() }
             .map(::canonicalizePath)
             .distinctBy(::canonicalPathKey)
             .sortedBy(::canonicalPathKey)
             .toList()
-        return WinRtMetadataCache(files)
+        val packageAssets = resolvedSources
+            .flatMap(ResolvedMetadataSource::packageAssets)
+            .distinctBy { asset -> "${canonicalPathKey(asset.packagePath)}:${asset.relativePath}" }
+            .sortedWith(compareBy({ canonicalPathKey(it.packagePath) }, { it.relativePath }))
+        return WinRtMetadataCache(files, packageAssets)
     }
 
     fun resolve(vararg sources: WinRtMetadataSource): WinRtMetadataCache = resolve(sources.toList())
@@ -162,10 +192,11 @@ object WinRtMetadataSourceResolver {
     internal fun resolvePathInputs(paths: List<Path>): WinRtMetadataCache =
         resolve(paths.map(WinRtMetadataSource::path))
 
-    private fun resolveSource(source: WinRtMetadataSource): List<Path> = when (source) {
-        WinRtMetadataSource.LocalMachine -> localWinMetadataFiles()
-        is WinRtMetadataSource.PathSource -> discoverPathSource(source.path)
-        is WinRtMetadataSource.WindowsSdk -> windowsSdkFiles(source)
+    private fun resolveSource(source: WinRtMetadataSource): ResolvedMetadataSource = when (source) {
+        WinRtMetadataSource.LocalMachine -> ResolvedMetadataSource(localWinMetadataFiles())
+        is WinRtMetadataSource.PathSource -> ResolvedMetadataSource(discoverPathSource(source.path))
+        is WinRtMetadataSource.WindowsSdk -> ResolvedMetadataSource(windowsSdkFiles(source))
+        is WinRtMetadataSource.NuGetPackage -> resolveNuGetPackage(source.packagePath)
     }
 
     private fun discoverPathSource(path: Path): List<Path> = when {
@@ -211,6 +242,75 @@ object WinRtMetadataSourceResolver {
         }
 
         return files.toList()
+    }
+
+    private fun resolveNuGetPackage(packagePath: Path): ResolvedMetadataSource {
+        val canonicalPackagePath = canonicalizePath(packagePath)
+        return when {
+            canonicalPackagePath.isDirectory() -> resolveNuGetPackageDirectory(canonicalPackagePath)
+            canonicalPackagePath.isRegularFile() && canonicalPackagePath.name.endsWith(".nupkg", ignoreCase = true) ->
+                resolveNuGetPackageArchive(canonicalPackagePath)
+            else -> throw IllegalArgumentException("NuGet package '$packagePath' is not a package directory or .nupkg file.")
+        }
+    }
+
+    private fun resolveNuGetPackageDirectory(packagePath: Path): ResolvedMetadataSource {
+        val assets = Files.walk(packagePath).use { stream ->
+            stream.asSequence()
+                .filter(Files::isRegularFile)
+                .map { file ->
+                    WinRtPackageAsset(
+                        packagePath = packagePath,
+                        relativePath = packagePath.relativize(file).toString().replace('\\', '/'),
+                        kind = packageAssetKind(file.name),
+                        extractedPath = file,
+                    )
+                }
+                .toList()
+        }
+        return ResolvedMetadataSource(
+            files = assets.filter { it.kind == WinRtPackageAssetKind.Winmd }.mapNotNull(WinRtPackageAsset::extractedPath),
+            packageAssets = assets,
+        )
+    }
+
+    private fun resolveNuGetPackageArchive(packagePath: Path): ResolvedMetadataSource {
+        val extractRoot = Files.createTempDirectory("kotlin-winrt-nuget-")
+        val assets = ZipFile(packagePath.toFile()).use { zip ->
+            zip.entries().asSequence()
+                .filterNot { it.isDirectory }
+                .map { entry ->
+                    val kind = packageAssetKind(entry.name)
+                    val extractedPath = extractRoot.resolve(entry.name).normalize()
+                    require(extractedPath.startsWith(extractRoot)) {
+                        "NuGet package '$packagePath' contains an invalid relative path '${entry.name}'."
+                    }
+                    extractedPath.parent?.createDirectories()
+                    extractedPath.writeBytes(zip.getInputStream(entry).use { it.readAllBytes() })
+                    WinRtPackageAsset(
+                        packagePath = packagePath,
+                        relativePath = entry.name,
+                        kind = kind,
+                        extractedPath = extractedPath,
+                    )
+                }
+                .toList()
+        }
+        return ResolvedMetadataSource(
+            files = assets.filter { it.kind == WinRtPackageAssetKind.Winmd }.mapNotNull(WinRtPackageAsset::extractedPath),
+            packageAssets = assets,
+        )
+    }
+
+    private fun packageAssetKind(path: String): WinRtPackageAssetKind {
+        val normalized = path.replace('\\', '/').lowercase()
+        return when {
+            normalized.endsWith(".winmd") -> WinRtPackageAssetKind.Winmd
+            normalized.startsWith("runtimes/") || normalized.endsWith(".dll") || normalized.endsWith(".pri") -> WinRtPackageAssetKind.Native
+            normalized.startsWith("resources/") || normalized.contains("/resources/") || normalized.endsWith(".xbf") || normalized.endsWith(".resw") ->
+                WinRtPackageAssetKind.Resource
+            else -> WinRtPackageAssetKind.Other
+        }
     }
 
     private fun locateWindowsSdkRoot(): Path {
@@ -314,3 +414,8 @@ object WinRtMetadataSourceResolver {
 
     private val WINDOWS_SDK_VERSION = Regex("""\d+\.\d+\.\d+\.\d+""")
 }
+
+private data class ResolvedMetadataSource(
+    val files: List<Path>,
+    val packageAssets: List<WinRtPackageAsset> = emptyList(),
+)
