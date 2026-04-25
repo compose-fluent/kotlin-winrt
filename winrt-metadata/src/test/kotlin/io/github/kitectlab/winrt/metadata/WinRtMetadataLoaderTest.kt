@@ -135,9 +135,12 @@ class WinRtMetadataLoaderTest {
         val iWidget = sampleNamespace.types.first { it.name == "IWidget" }
         assertEquals(Guid("22222222-2222-2222-2222-222222222222"), iWidget.iid)
         assertEquals(listOf("Sample.Foundation.IWidgetBase"), iWidget.implementedInterfaces.map { it.interfaceName })
-        assertEquals(listOf("Update", "UpdateArrays"), iWidget.methods.map { it.name })
+        assertEquals(listOf("Update", "UpdateArrays", "WithDefault"), iWidget.methods.map { it.name })
         assertEquals("Unit", iWidget.methods.first().returnTypeName)
         assertTrue((iWidget.methods.first().methodRowId ?: 0) > 0)
+        assertEquals(WinRtMethodVisibility.Public, iWidget.methods.first().visibility)
+        assertEquals("UpdateWithState", iWidget.methods.first().overloadName)
+        assertTrue(iWidget.methods.first().isDefaultOverload)
         assertEquals(listOf("input", "written", "state"), iWidget.methods.first().parameters.map { it.name })
         assertEquals(listOf("String", "Int", "Int"), iWidget.methods.first().parameters.map { it.typeName })
         assertEquals(
@@ -154,7 +157,15 @@ class WinRtMetadataLoaderTest {
         assertEquals(listOf(false, false, true), updateArrays.parameters.map { it.typeIsByRef })
         assertEquals(listOf(true, false, false), updateArrays.parameters.map { it.isInParameter })
         assertEquals(listOf(false, true, true), updateArrays.parameters.map { it.isOutParameter })
+        assertTrue(updateArrays.isNoException)
+        val withDefault = iWidget.methods.last()
+        assertEquals(listOf(true), withDefault.parameters.map { it.hasDefaultValue })
+        assertEquals(listOf(7uL), withDefault.parameters.map { it.defaultValueBits })
+        assertEquals(listOf(8), withDefault.parameters.map { it.defaultValueElementType })
         assertEquals(listOf("Name", "Value"), iWidget.properties.map { it.name })
+        assertTrue(iWidget.properties.first { it.name == "Value" }.isNoException)
+        assertTrue(iWidget.properties.all { it.hasValidAccessors })
+        assertTrue(iWidget.events.single { it.name == "Changed" }.hasValidAccessors)
         assertEquals(listOf("String", "Int"), iWidget.properties.map { it.typeName })
         assertEquals(listOf(true, false), iWidget.properties.map { it.isReadOnly })
         assertEquals(listOf("get_Name", "get_Value"), iWidget.properties.map { it.getterMethodName })
@@ -617,6 +628,18 @@ class WinRtMetadataLoaderTest {
                 {
                     public GCPressureAmount Amount { get; set; }
                 }
+
+                [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+                public sealed class OverloadAttribute : Attribute
+                {
+                    public OverloadAttribute(string method) {}
+                }
+
+                [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+                public sealed class DefaultOverloadAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.Method | AttributeTargets.Property, AllowMultiple = false)]
+                public sealed class NoExceptionAttribute : Attribute {}
             }
 
             namespace Sample.Foundation
@@ -628,13 +651,18 @@ class WinRtMetadataLoaderTest {
                 public interface IWidget : IWidgetBase
                 {
                     string Name { get; }
+                    [Windows.Foundation.Metadata.NoException]
                     int Value { get; set; }
                     event WidgetHandler Changed;
+                    [Windows.Foundation.Metadata.Overload("UpdateWithState")]
+                    [Windows.Foundation.Metadata.DefaultOverload]
                     void Update(string input, out int written, ref int state);
+                    [Windows.Foundation.Metadata.NoException]
                     void UpdateArrays(
                         [System.Runtime.InteropServices.In] int[] input,
                         [System.Runtime.InteropServices.Out] int[] filled,
                         out int[] received);
+                    int WithDefault(int amount = 7);
                 }
 
                 public interface IWidgetFactory {}
@@ -725,6 +753,8 @@ class WinRtMetadataLoaderTest {
                         filled = input;
                         received = input;
                     }
+
+                    public int WithDefault(int amount = 7) => amount;
                 }
 
                 public enum Color : uint { Red, Blue }

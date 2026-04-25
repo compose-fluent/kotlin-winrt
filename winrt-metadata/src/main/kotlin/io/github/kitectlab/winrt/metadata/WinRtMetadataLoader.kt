@@ -200,6 +200,7 @@ private class MetadataTables private constructor(
         val memberRefs = readRawMemberRefs(typeDefNames, typeRefNames, typeSpecTypes, methodOwnerTypeNames)
         val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefs, typeDefNames, typeRefNames, typeSpecTypes)
         val fieldConstants = readFieldConstants()
+        val parameterConstants = readParameterConstants()
         val genericParametersByOwner = readGenericParameters(typeDefNames, typeRefNames, typeSpecTypes)
         val interfaceImplsByOwner = readInterfaceImplementations(typeDefNames, typeRefNames, typeSpecTypes, customAttributes)
         val propertyRowIdsByOwner = readMemberMap(TABLE_PROPERTY_MAP, TABLE_PROPERTY)
@@ -266,6 +267,8 @@ private class MetadataTables private constructor(
                         typeRefNames = typeRefNames,
                         typeSpecTypes = typeSpecTypes,
                         semanticMethodRowIds = methodSemantics.semanticMethodRowIds,
+                        customAttributes = customAttributes,
+                        parameterConstants = parameterConstants,
                     ),
                     properties = propertyRowIdsByOwner[rowId].orEmpty().mapNotNull { propertyRowId ->
                         buildPropertyDefinition(
@@ -276,6 +279,7 @@ private class MetadataTables private constructor(
                             typeDefNames = typeDefNames,
                             typeRefNames = typeRefNames,
                             typeSpecTypes = typeSpecTypes,
+                            customAttributes = customAttributes,
                         )
                     },
                     events = eventRowIdsByOwner[rowId].orEmpty().mapNotNull { eventRowId ->
@@ -287,6 +291,7 @@ private class MetadataTables private constructor(
                             typeDefNames = typeDefNames,
                             typeRefNames = typeRefNames,
                             typeSpecTypes = typeSpecTypes,
+                            customAttributes = customAttributes,
                         )
                     },
                 )
@@ -411,14 +416,14 @@ private class MetadataTables private constructor(
 
         val rows = ArrayList<RawParam>(rowCount)
         var cursor = tableOffsets[TABLE_PARAM]
-        repeat(rowCount) {
+        repeat(rowCount) { rowIndex ->
             val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
             cursor += 2
             val sequence = buffer.shortAt(cursor).toInt() and 0xFFFF
             cursor += 2
             val name = readStringAt(cursor)
             cursor += stringIndexSize
-            rows += RawParam(flags, sequence, name)
+            rows += RawParam(rowIndex + 1, flags, sequence, name)
         }
         return rows
     }
@@ -432,12 +437,13 @@ private class MetadataTables private constructor(
         val rows = ArrayList<RawProperty>(rowCount)
         var cursor = tableOffsets[TABLE_PROPERTY]
         repeat(rowCount) {
+            val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
             cursor += 2
             val name = readStringAt(cursor)
             cursor += stringIndexSize
             val signatureBlobIndex = readIndex(cursor, blobIndexSize)
             cursor += blobIndexSize
-            rows += RawProperty(name, signatureBlobIndex)
+            rows += RawProperty(flags, name, signatureBlobIndex)
         }
         return rows
     }
@@ -505,6 +511,8 @@ private class MetadataTables private constructor(
         typeRefNames: Array<String>,
         typeSpecTypes: Array<WinRtTypeRef>,
         semanticMethodRowIds: Set<Int>,
+        customAttributes: Map<OwnerKey, List<DecodedCustomAttribute>>,
+        parameterConstants: Map<Int, DecodedFieldConstant>,
     ): List<WinRtMethodDefinition> {
         if (rawMethods.isEmpty()) {
             return emptyList()
@@ -525,12 +533,15 @@ private class MetadataTables private constructor(
                     return@mapNotNull null
                 }
                 val signature = readMethodSignature(rawMethod.signatureBlobIndex, typeDefNames, typeRefNames, typeSpecTypes)
+                val methodAttributes = customAttributes[OwnerKey(TABLE_METHOD_DEF, methodRowId)].orEmpty()
+                val returnParameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == 0 }
                 WinRtMethodDefinition(
                     name = rawMethod.name,
                     returnTypeName = signature.returnType.typeName,
                     returnTypeIsByRef = signature.returnType.isByRef,
                     parameters = signature.parameters.mapIndexed { parameterIndex, parameterType ->
                         val parameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == parameterIndex + 1 }
+                        val parameterConstant = parameterRow?.let { parameterConstants[it.rowId] }
                         WinRtParameterDefinition(
                             name = parameterRow?.name?.takeIf(String::isNotBlank) ?: "arg${parameterIndex + 1}",
                             typeName = parameterType.typeName,
@@ -538,9 +549,27 @@ private class MetadataTables private constructor(
                             typeIsByRef = parameterType.isByRef,
                             isInParameter = parameterRow?.flags?.and(PARAM_ATTRIBUTE_IN) != 0,
                             isOutParameter = parameterRow?.flags?.and(PARAM_ATTRIBUTE_OUT) != 0,
+                            hasDefaultValue = parameterRow?.flags?.and(PARAM_ATTRIBUTE_HAS_DEFAULT) != 0 || parameterConstant != null,
+                            defaultValueBits = parameterConstant?.valueBits,
+                            defaultValueElementType = parameterConstant?.type,
                         )
                     },
                     isStatic = rawMethod.flags and METHOD_ATTRIBUTE_STATIC != 0,
+                    visibility = methodVisibility(rawMethod.flags),
+                    isSpecialName = rawMethod.flags and METHOD_ATTRIBUTE_SPECIAL_NAME != 0,
+                    isRuntimeSpecialName = rawMethod.flags and METHOD_ATTRIBUTE_RT_SPECIAL_NAME != 0,
+                    overloadName = methodAttributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_OVERLOAD }
+                        ?.fixedArguments
+                        ?.stringAt(0),
+                    isDefaultOverload = methodAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_DEFAULT_OVERLOAD },
+                    isNoException = methodAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_NO_EXCEPTION } || isRemoveOverload(rawMethod),
+                    isRemoveOverload = isRemoveOverload(rawMethod),
+                    isObjectEquals = isObjectEquals(rawMethod, signature),
+                    isClassEquals = isClassEquals(rawMethod, signature, typeDefs[typeIndex].qualifiedName),
+                    isObjectGetHashCode = isObjectGetHashCode(rawMethod, signature),
+                    returnParameterAttributes = returnParameterRow?.let {
+                        customAttributes[OwnerKey(TABLE_PARAM, it.rowId)]
+                    }.orEmpty(),
                     methodRowId = methodRowId,
                 )
             }
@@ -554,6 +583,7 @@ private class MetadataTables private constructor(
         typeDefNames: Array<String>,
         typeRefNames: Array<String>,
         typeSpecTypes: Array<WinRtTypeRef>,
+        customAttributes: Map<OwnerKey, List<DecodedCustomAttribute>>,
     ): WinRtPropertyDefinition? {
         val rawProperty = rawProperties.getOrNull(propertyRowId - 1) ?: return null
         val accessors = propertyAccessors[propertyRowId] ?: PropertyAccessorRows()
@@ -568,6 +598,9 @@ private class MetadataTables private constructor(
             setterMethodName = setter?.name,
             getterMethodRowId = accessors.getterMethodRowId,
             setterMethodRowId = accessors.setterMethodRowId,
+            isNoException = customAttributes[OwnerKey(TABLE_PROPERTY, propertyRowId)].orEmpty()
+                .any { it.typeName == WINDOWS_FOUNDATION_METADATA_NO_EXCEPTION },
+            hasValidAccessors = accessors.hasOnlyGetterSetter && (getter != null || setter != null),
         )
     }
 
@@ -579,6 +612,7 @@ private class MetadataTables private constructor(
         typeDefNames: Array<String>,
         typeRefNames: Array<String>,
         typeSpecTypes: Array<WinRtTypeRef>,
+        customAttributes: Map<OwnerKey, List<DecodedCustomAttribute>>,
     ): WinRtEventDefinition? {
         val rawEvent = rawEvents.getOrNull(eventRowId - 1) ?: return null
         val accessors = eventAccessors[eventRowId] ?: EventAccessorRows()
@@ -600,6 +634,7 @@ private class MetadataTables private constructor(
             removeMethodName = removeMethod?.name,
             addMethodRowId = accessors.addMethodRowId,
             removeMethodRowId = accessors.removeMethodRowId,
+            hasValidAccessors = accessors.hasOnlyAddRemove && addMethod != null && removeMethod != null,
         )
     }
 
@@ -687,6 +722,14 @@ private class MetadataTables private constructor(
     }
 
     private fun readFieldConstants(): Map<Int, DecodedFieldConstant> {
+        return readConstants(CODED_HAS_CONSTANT_FIELD)
+    }
+
+    private fun readParameterConstants(): Map<Int, DecodedFieldConstant> {
+        return readConstants(CODED_HAS_CONSTANT_PARAM)
+    }
+
+    private fun readConstants(ownerTagToRead: Int): Map<Int, DecodedFieldConstant> {
         val rowCount = rowCounts[TABLE_CONSTANT]
         if (rowCount == 0) {
             return emptyMap()
@@ -705,7 +748,7 @@ private class MetadataTables private constructor(
 
                 val ownerTag = ownerToken and CODED_HAS_CONSTANT_TAG_MASK
                 val ownerRowId = ownerToken ushr CODED_HAS_CONSTANT_TAG_BITS
-                if (ownerTag == CODED_HAS_CONSTANT_FIELD && ownerRowId > 0) {
+                if (ownerTag == ownerTagToRead && ownerRowId > 0) {
                     put(ownerRowId, decodeFieldConstant(type, blobIndex))
                 }
             }
@@ -957,6 +1000,11 @@ private class MetadataTables private constructor(
                     semanticMethodRowIds += methodRowId
                 }
 
+                associationTag == CODED_HAS_SEMANTICS_PROPERTY -> {
+                    propertyAccessors[associationRowId] = (propertyAccessors[associationRowId] ?: PropertyAccessorRows()).copy(hasOnlyGetterSetter = false)
+                    semanticMethodRowIds += methodRowId
+                }
+
                 associationTag == CODED_HAS_SEMANTICS_EVENT && semantics == METHOD_SEMANTICS_ADD_ON -> {
                     eventAccessors[associationRowId] = (eventAccessors[associationRowId] ?: EventAccessorRows()).copy(addMethodRowId = methodRowId)
                     semanticMethodRowIds += methodRowId
@@ -964,6 +1012,11 @@ private class MetadataTables private constructor(
 
                 associationTag == CODED_HAS_SEMANTICS_EVENT && semantics == METHOD_SEMANTICS_REMOVE_ON -> {
                     eventAccessors[associationRowId] = (eventAccessors[associationRowId] ?: EventAccessorRows()).copy(removeMethodRowId = methodRowId)
+                    semanticMethodRowIds += methodRowId
+                }
+
+                associationTag == CODED_HAS_SEMANTICS_EVENT -> {
+                    eventAccessors[associationRowId] = (eventAccessors[associationRowId] ?: EventAccessorRows()).copy(hasOnlyAddRemove = false)
                     semanticMethodRowIds += methodRowId
                 }
             }
@@ -1071,6 +1124,8 @@ private class MetadataTables private constructor(
             CODED_HAS_CUSTOM_ATTRIBUTE_PARAM -> OwnerKey(TABLE_PARAM, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL -> OwnerKey(TABLE_INTERFACE_IMPL, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_MEMBER_REF -> OwnerKey(TABLE_MEMBER_REF, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_PROPERTY -> OwnerKey(TABLE_PROPERTY, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_EVENT -> OwnerKey(TABLE_EVENT, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_MODULE -> OwnerKey(TABLE_MODULE, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_STANDALONE_SIG -> OwnerKey(TABLE_STANDALONE_SIG, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_MODULE_REF -> OwnerKey(TABLE_MODULE_REF, rowId)
@@ -1363,6 +1418,36 @@ private class MetadataTables private constructor(
         else -> WinRtParameterDirection.Ref
     }
 
+    private fun methodVisibility(flags: Int): WinRtMethodVisibility =
+        when (flags and METHOD_ATTRIBUTE_MEMBER_ACCESS_MASK) {
+            METHOD_ATTRIBUTE_PRIVATE -> WinRtMethodVisibility.Private
+            METHOD_ATTRIBUTE_FAM_AND_ASSEM -> WinRtMethodVisibility.FamilyAndAssembly
+            METHOD_ATTRIBUTE_ASSEM -> WinRtMethodVisibility.Assembly
+            METHOD_ATTRIBUTE_FAMILY -> WinRtMethodVisibility.Family
+            METHOD_ATTRIBUTE_FAM_OR_ASSEM -> WinRtMethodVisibility.FamilyOrAssembly
+            METHOD_ATTRIBUTE_PUBLIC -> WinRtMethodVisibility.Public
+            else -> WinRtMethodVisibility.Unknown
+        }
+
+    private fun isRemoveOverload(rawMethod: RawMethodDef): Boolean =
+        rawMethod.flags and METHOD_ATTRIBUTE_SPECIAL_NAME != 0 && rawMethod.name.startsWith("remove_")
+
+    private fun isObjectEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature): Boolean =
+        rawMethod.name == "Equals" &&
+        signature.parameters.size == 1 &&
+            signature.parameters.single().typeName == "Any" &&
+            signature.returnType.typeName == "Boolean"
+
+    private fun isClassEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature, qualifiedTypeName: String): Boolean =
+        rawMethod.name == "Equals" &&
+        signature.parameters.size == 1 &&
+            signature.parameters.single().typeName == qualifiedTypeName &&
+            signature.returnType.typeName == "Boolean"
+
+    private fun isObjectGetHashCode(rawMethod: RawMethodDef, signature: ParsedMethodSignature): Boolean =
+        rawMethod.name == "GetHashCode" &&
+        signature.parameters.isEmpty() && signature.returnType.typeName == "Int"
+
     private fun readStringAt(indexOffset: Int): String =
         buffer.readHeapString(stringsHeap.offset, readIndex(indexOffset, stringIndexSize))
 
@@ -1407,9 +1492,19 @@ private class MetadataTables private constructor(
 
         private const val TYPE_ATTRIBUTE_INTERFACE = 0x20
         private const val FIELD_ATTRIBUTE_STATIC = 0x0010
+        private const val METHOD_ATTRIBUTE_MEMBER_ACCESS_MASK = 0x0007
+        private const val METHOD_ATTRIBUTE_PRIVATE = 0x0001
+        private const val METHOD_ATTRIBUTE_FAM_AND_ASSEM = 0x0002
+        private const val METHOD_ATTRIBUTE_ASSEM = 0x0003
+        private const val METHOD_ATTRIBUTE_FAMILY = 0x0004
+        private const val METHOD_ATTRIBUTE_FAM_OR_ASSEM = 0x0005
+        private const val METHOD_ATTRIBUTE_PUBLIC = 0x0006
         private const val METHOD_ATTRIBUTE_STATIC = 0x0010
+        private const val METHOD_ATTRIBUTE_SPECIAL_NAME = 0x0800
+        private const val METHOD_ATTRIBUTE_RT_SPECIAL_NAME = 0x1000
         private const val PARAM_ATTRIBUTE_IN = 0x0001
         private const val PARAM_ATTRIBUTE_OUT = 0x0002
+        private const val PARAM_ATTRIBUTE_HAS_DEFAULT = 0x1000
 
         private const val METHOD_SEMANTICS_SETTER = 0x0001
         private const val METHOD_SEMANTICS_GETTER = 0x0002
@@ -1438,6 +1533,8 @@ private class MetadataTables private constructor(
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL = 5
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_MEMBER_REF = 6
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_MODULE = 7
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_PROPERTY = 9
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_EVENT = 10
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_STANDALONE_SIG = 11
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_MODULE_REF = 12
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_SPEC = 13
@@ -1448,6 +1545,7 @@ private class MetadataTables private constructor(
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_MASK = (1 shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) - 1
 
         private const val CODED_HAS_CONSTANT_FIELD = 0
+        private const val CODED_HAS_CONSTANT_PARAM = 1
         private const val CODED_HAS_CONSTANT_TAG_BITS = 2
         private const val CODED_HAS_CONSTANT_TAG_MASK = (1 shl CODED_HAS_CONSTANT_TAG_BITS) - 1
 
@@ -1474,6 +1572,9 @@ private class MetadataTables private constructor(
         private const val WINDOWS_FOUNDATION_METADATA_WEB_HOST_HIDDEN = "Windows.Foundation.Metadata.WebHostHiddenAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_FAST_ABI = "Windows.Foundation.Metadata.FastAbiAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_GC_PRESSURE = "Windows.Foundation.Metadata.GCPressureAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_OVERLOAD = "Windows.Foundation.Metadata.OverloadAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_DEFAULT_OVERLOAD = "Windows.Foundation.Metadata.DefaultOverloadAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_NO_EXCEPTION = "Windows.Foundation.Metadata.NoExceptionAttribute"
         private const val SYSTEM_ATTRIBUTE = "System.Attribute"
         private const val TYPE_ATTRIBUTE_ABSTRACT = 0x00000080
         private const val TYPE_ATTRIBUTE_SEALED = 0x00000100
@@ -1799,12 +1900,14 @@ private data class RawMethodDef(
 )
 
 private data class RawParam(
+    val rowId: Int,
     val flags: Int,
     val sequence: Int,
     val name: String,
 )
 
 private data class RawProperty(
+    val flags: Int,
     val name: String,
     val signatureBlobIndex: Int,
 )
@@ -1847,6 +1950,7 @@ private data class DecodedFieldConstant(
 private data class PropertyAccessorRows(
     val getterMethodRowId: Int? = null,
     val setterMethodRowId: Int? = null,
+    val hasOnlyGetterSetter: Boolean = true,
 ) {
     fun orEmpty(): PropertyAccessorRows = this
 }
@@ -1854,6 +1958,7 @@ private data class PropertyAccessorRows(
 private data class EventAccessorRows(
     val addMethodRowId: Int? = null,
     val removeMethodRowId: Int? = null,
+    val hasOnlyAddRemove: Boolean = true,
 ) {
     fun orEmpty(): EventAccessorRows = this
 }

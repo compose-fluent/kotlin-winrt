@@ -250,6 +250,9 @@ data class WinRtParameterDefinition(
     val typeIsByRef: Boolean = false,
     val isInParameter: Boolean = false,
     val isOutParameter: Boolean = false,
+    val hasDefaultValue: Boolean = false,
+    val defaultValueBits: ULong? = null,
+    val defaultValueElementType: Int? = null,
 ) {
     val type: WinRtTypeRef
         get() = WinRtTypeRef.fromDisplayName(typeName).withByRef(typeIsByRef)
@@ -264,7 +267,17 @@ data class WinRtParameterDefinition(
     }
 
     internal fun signatureKey(): String =
-        "$name:${type.renderSignatureKey()}:$direction:$isInParameter:$isOutParameter"
+        "$name:${type.renderSignatureKey()}:$direction:$isInParameter:$isOutParameter:$hasDefaultValue:$defaultValueBits:$defaultValueElementType"
+}
+
+enum class WinRtMethodVisibility {
+    Private,
+    FamilyAndAssembly,
+    Assembly,
+    Family,
+    FamilyOrAssembly,
+    Public,
+    Unknown,
 }
 
 data class WinRtMethodDefinition(
@@ -272,6 +285,17 @@ data class WinRtMethodDefinition(
     val returnTypeName: String,
     val parameters: List<WinRtParameterDefinition> = emptyList(),
     val isStatic: Boolean = false,
+    val visibility: WinRtMethodVisibility = WinRtMethodVisibility.Unknown,
+    val isSpecialName: Boolean = false,
+    val isRuntimeSpecialName: Boolean = false,
+    val overloadName: String? = null,
+    val isDefaultOverload: Boolean = false,
+    val isNoException: Boolean = false,
+    val isRemoveOverload: Boolean = false,
+    val isObjectEquals: Boolean = false,
+    val isClassEquals: Boolean = false,
+    val isObjectGetHashCode: Boolean = false,
+    val returnParameterAttributes: List<WinRtCustomAttributeDefinition> = emptyList(),
     val returnTypeIsByRef: Boolean = false,
     val methodRowId: Int? = null,
 ) {
@@ -283,6 +307,8 @@ data class WinRtMethodDefinition(
         return copy(
             name = name.trim(),
             returnTypeName = normalizedReturnType.typeName,
+            overloadName = overloadName?.trim()?.takeIf(String::isNotEmpty),
+            returnParameterAttributes = returnParameterAttributes.map(WinRtCustomAttributeDefinition::normalized),
             returnTypeIsByRef = normalizedReturnType.isByRef,
             parameters = parameters.map(WinRtParameterDefinition::normalized),
             methodRowId = methodRowId?.takeIf { it > 0 },
@@ -312,6 +338,17 @@ data class WinRtMethodDefinition(
             returnTypeName = left.returnTypeName,
             parameters = left.parameters,
             isStatic = left.isStatic,
+            visibility = left.visibility,
+            isSpecialName = left.isSpecialName || right.isSpecialName,
+            isRuntimeSpecialName = left.isRuntimeSpecialName || right.isRuntimeSpecialName,
+            overloadName = left.overloadName ?: right.overloadName,
+            isDefaultOverload = left.isDefaultOverload || right.isDefaultOverload,
+            isNoException = left.isNoException || right.isNoException,
+            isRemoveOverload = left.isRemoveOverload || right.isRemoveOverload,
+            isObjectEquals = left.isObjectEquals || right.isObjectEquals,
+            isClassEquals = left.isClassEquals || right.isClassEquals,
+            isObjectGetHashCode = left.isObjectGetHashCode || right.isObjectGetHashCode,
+            returnParameterAttributes = left.returnParameterAttributes + right.returnParameterAttributes,
             returnTypeIsByRef = left.returnTypeIsByRef || right.returnTypeIsByRef,
             methodRowId = listOfNotNull(left.methodRowId, right.methodRowId).minOrNull(),
         )
@@ -326,6 +363,8 @@ data class WinRtPropertyDefinition(
     val setterMethodName: String? = null,
     val getterMethodRowId: Int? = null,
     val setterMethodRowId: Int? = null,
+    val isNoException: Boolean = false,
+    val hasValidAccessors: Boolean = true,
 ) {
     val isReadOnly: Boolean
         get() = setterMethodName == null
@@ -370,6 +409,8 @@ data class WinRtPropertyDefinition(
             setterMethodName = left.setterMethodName ?: right.setterMethodName,
             getterMethodRowId = listOfNotNull(left.getterMethodRowId, right.getterMethodRowId).minOrNull(),
             setterMethodRowId = listOfNotNull(left.setterMethodRowId, right.setterMethodRowId).minOrNull(),
+            isNoException = left.isNoException || right.isNoException,
+            hasValidAccessors = left.hasValidAccessors && right.hasValidAccessors,
         )
     }
 }
@@ -382,6 +423,7 @@ data class WinRtEventDefinition(
     val removeMethodName: String? = null,
     val addMethodRowId: Int? = null,
     val removeMethodRowId: Int? = null,
+    val hasValidAccessors: Boolean = true,
 ) {
     val delegateType: WinRtTypeRef
         get() = WinRtTypeRef.fromDisplayName(delegateTypeName)
@@ -423,6 +465,7 @@ data class WinRtEventDefinition(
             removeMethodName = left.removeMethodName ?: right.removeMethodName,
             addMethodRowId = listOfNotNull(left.addMethodRowId, right.addMethodRowId).minOrNull(),
             removeMethodRowId = listOfNotNull(left.removeMethodRowId, right.removeMethodRowId).minOrNull(),
+            hasValidAccessors = left.hasValidAccessors && right.hasValidAccessors,
         )
     }
 }
