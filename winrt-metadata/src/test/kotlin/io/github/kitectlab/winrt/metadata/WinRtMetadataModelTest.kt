@@ -1109,6 +1109,20 @@ class WinRtMetadataModelTest {
             namespace = "Sample.Foundation",
             name = "IWidget",
             kind = WinRtTypeKind.Interface,
+            availability = WinRtAvailabilityMetadata(
+                contractVersion = WinRtContractVersionMetadata(
+                    contractName = "Windows.Foundation.UniversalApiContract",
+                    version = 0x00030000,
+                    platformVersion = "10.0.14393.0",
+                ),
+                version = 0x00020000,
+            ),
+            customAttributes = listOf(
+                WinRtCustomAttributeDefinition(
+                    typeName = "Sample.Foundation.MarkerAttribute",
+                    fixedArguments = listOf(WinRtCustomAttributeValue.StringValue("marked")),
+                ),
+            ),
             methods = listOf(
                 WinRtMethodDefinition(
                     name = "Invoke",
@@ -1158,6 +1172,8 @@ class WinRtMetadataModelTest {
             name = "Widget",
             kind = WinRtTypeKind.RuntimeClass,
             isStaticType = true,
+            isFastAbi = true,
+            gcPressureAmount = 120_000,
             defaultInterfaceName = "Sample.Foundation.IWidget",
             implementedInterfaces = listOf(
                 WinRtInterfaceImplementationDefinition(
@@ -1165,8 +1181,33 @@ class WinRtMetadataModelTest {
                     isDefault = true,
                     isOverridable = true,
                 ),
+                WinRtInterfaceImplementationDefinition(
+                    interfaceName = "Sample.Foundation.IWidgetOverrides",
+                ),
+            ),
+            activation = WinRtActivationShape(
+                isActivatable = true,
+                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
             ),
         )
+        val overrides = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidgetOverrides",
+            kind = WinRtTypeKind.Interface,
+            isExclusiveTo = true,
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Mode",
+                    typeName = "Int",
+                    getterMethodName = "get_Mode",
+                    setterMethodName = "set_Mode",
+                ),
+            ),
+        )
+        val factory = WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetFactory", kind = WinRtTypeKind.Interface)
+        val statics = WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetStatics", kind = WinRtTypeKind.Interface)
         val flags = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "WidgetOptions",
@@ -1177,7 +1218,7 @@ class WinRtMetadataModelTest {
             listOf(
                 WinRtNamespace(
                     name = "Sample.Foundation",
-                    types = listOf(defaultInterface, widget, flags),
+                    types = listOf(defaultInterface, widget, overrides, factory, statics, flags),
                 ),
             ),
         )
@@ -1198,9 +1239,21 @@ class WinRtMetadataModelTest {
         assertEquals(true, helpers.isNoException(defaultInterface.methods[2]))
         assertEquals(true, helpers.isFlagsEnum(flags))
         assertEquals(true, helpers.isStatic(widget))
-        assertEquals(true, helpers.isOverridable(widget.implementedInterfaces.single()))
+        assertEquals(true, helpers.isOverridable(widget.implementedInterfaces.first()))
         assertEquals("Invoke", helpers.getDelegateInvoke(defaultInterface)?.name)
         assertEquals("Sample.Foundation.IWidget", helpers.getDefaultInterface(widget)?.typeName)
+        assertEquals(true, helpers.hasAttribute(defaultInterface, "Sample.Foundation.MarkerAttribute"))
+        assertEquals(1, helpers.getNumberOfAttributes(defaultInterface, "Sample.Foundation.MarkerAttribute"))
+        assertEquals(
+            WinRtCustomAttributeValue.StringValue("marked"),
+            helpers.getAttributeValue(
+                requireNotNull(helpers.getAttribute(defaultInterface, "Sample.Foundation.MarkerAttribute")),
+                0,
+            ),
+        )
+        assertEquals(0x00030000L, helpers.getContractVersion(defaultInterface))
+        assertEquals(0x00020000L, helpers.getVersion(defaultInterface))
+        assertEquals("10.0.14393.0", helpers.getContractPlatform(defaultInterface))
 
         val propertyAccessors = helpers.getPropertyMethods(defaultInterface.properties.single())
         assertEquals("get_Name", propertyAccessors.getterMethodName)
@@ -1209,5 +1262,20 @@ class WinRtMetadataModelTest {
         val eventAccessors = helpers.getEventMethods(defaultInterface.events.single())
         assertEquals("add_Changed", eventAccessors.addMethodName)
         assertEquals("remove_Changed", eventAccessors.removeMethodName)
+
+        val attributedTypes = helpers.getAttributedTypes(widget)
+        assertEquals(listOf("Sample.Foundation.IWidgetFactory", "Sample.Foundation.IWidgetStatics"), attributedTypes.map { it.interfaceName })
+        assertEquals(listOf(true, false), attributedTypes.map { it.activatable })
+        assertEquals(listOf(false, true), attributedTypes.map { it.statics })
+        assertEquals(listOf(true, false), attributedTypes.map { it.composable })
+        val (defaultFastAbi, exclusiveFastAbi) = helpers.getDefaultAndExclusiveInterfaces(widget)
+        assertEquals("Sample.Foundation.IWidget", defaultFastAbi?.interfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidgetOverrides"), exclusiveFastAbi.map { it.interfaceName })
+        val fastAbiClass = requireNotNull(helpers.getFastAbiClassForClass(widget))
+        assertEquals("Sample.Foundation.IWidget", fastAbiClass.defaultInterface?.interfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidgetOverrides"), fastAbiClass.otherInterfaces.map { it.interfaceName })
+        assertEquals(listOf("Name", "Mode"), fastAbiClass.propertySlots.map { it.propertyName })
+        assertEquals(120_000, helpers.getGcPressureAmount(widget))
+        assertEquals("Sample.Foundation.Widget", helpers.getFastAbiClassForInterface(overrides)?.classType?.qualifiedName)
     }
 }
