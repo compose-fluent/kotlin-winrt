@@ -441,6 +441,8 @@ data class WinRtTypeDefinition(
     val isAttributeType: Boolean = false,
     val isStaticType: Boolean = false,
     val isSealedType: Boolean = false,
+    val isFastAbi: Boolean = false,
+    val gcPressureAmount: Int = 0,
     val defaultInterfaceName: String? = null,
     val implementedInterfaces: List<WinRtInterfaceImplementationDefinition> = emptyList(),
     val genericParameterCount: Int = 0,
@@ -551,6 +553,8 @@ data class WinRtTypeDefinition(
             isAttributeType = left.isAttributeType || right.isAttributeType,
             isStaticType = left.isStaticType || right.isStaticType,
             isSealedType = left.isSealedType || right.isSealedType,
+            isFastAbi = left.isFastAbi || right.isFastAbi,
+            gcPressureAmount = maxOf(left.gcPressureAmount, right.gcPressureAmount),
             defaultInterfaceName = left.defaultInterfaceName ?: right.defaultInterfaceName,
             implementedInterfaces = (left.implementedInterfaces + right.implementedInterfaces)
                 .groupBy(WinRtInterfaceImplementationDefinition::interfaceName)

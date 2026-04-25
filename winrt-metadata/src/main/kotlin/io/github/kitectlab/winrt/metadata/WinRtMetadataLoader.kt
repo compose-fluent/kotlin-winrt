@@ -248,6 +248,8 @@ private class MetadataTables private constructor(
                     isStaticType = raw.classify(typeDefNames, typeRefNames, typeSpecTypes) == WinRtTypeKind.RuntimeClass &&
                         (raw.flags and TYPE_ATTRIBUTE_ABSTRACT) != 0,
                     isSealedType = (raw.flags and TYPE_ATTRIBUTE_SEALED) != 0,
+                    isFastAbi = typeAttributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_FAST_ABI },
+                    gcPressureAmount = extractGcPressureAmount(raw.flags, typeAttributes),
                     defaultInterfaceName = defaultInterfaceName,
                     implementedInterfaces = implementedInterfaces,
                     genericParameterCount = maxOf(raw.genericParameterCount, genericParameters.size),
@@ -1217,6 +1219,24 @@ private class MetadataTables private constructor(
             isWebHostHidden = attributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_WEB_HOST_HIDDEN },
         )
 
+    private fun extractGcPressureAmount(typeFlags: Int, attributes: List<DecodedCustomAttribute>): Int {
+        if ((typeFlags and TYPE_ATTRIBUTE_SEALED) == 0) {
+            return 0
+        }
+        val amount = attributes
+            .firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_GC_PRESSURE }
+            ?.namedArguments
+            ?.firstOrNull()
+            ?.value
+            ?.enumOrIntegralValue()
+            ?: return 0
+        return when (amount) {
+            0L -> 12_000
+            1L -> 120_000
+            else -> 1_200_000
+        }
+    }
+
     private fun DecodedCustomAttribute.toContractVersionMetadata(): WinRtContractVersionMetadata? {
         val contractName = fixedArguments.contractNameAt(0) ?: return null
         val version = fixedArguments.integralAt(1) ?: return null
@@ -1246,6 +1266,13 @@ private class MetadataTables private constructor(
         when (val value = getOrNull(index)) {
             is WinRtCustomAttributeValue.EnumValue -> value.value
             is WinRtCustomAttributeValue.IntegralValue -> value.value
+            else -> null
+        }
+
+    private fun WinRtCustomAttributeValue.enumOrIntegralValue(): Long? =
+        when (this) {
+            is WinRtCustomAttributeValue.EnumValue -> value
+            is WinRtCustomAttributeValue.IntegralValue -> value
             else -> null
         }
 
@@ -1445,6 +1472,8 @@ private class MetadataTables private constructor(
         private const val WINDOWS_FOUNDATION_METADATA_MARSHALING_BEHAVIOR = "Windows.Foundation.Metadata.MarshalingBehaviorAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_MUSE = "Windows.Foundation.Metadata.MuseAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_WEB_HOST_HIDDEN = "Windows.Foundation.Metadata.WebHostHiddenAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_FAST_ABI = "Windows.Foundation.Metadata.FastAbiAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_GC_PRESSURE = "Windows.Foundation.Metadata.GCPressureAttribute"
         private const val SYSTEM_ATTRIBUTE = "System.Attribute"
         private const val TYPE_ATTRIBUTE_ABSTRACT = 0x00000080
         private const val TYPE_ATTRIBUTE_SEALED = 0x00000100

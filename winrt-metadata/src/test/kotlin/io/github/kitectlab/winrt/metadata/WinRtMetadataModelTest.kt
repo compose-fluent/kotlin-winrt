@@ -455,6 +455,32 @@ class WinRtMetadataModelTest {
                             name = "IWidgetOverrides",
                             kind = WinRtTypeKind.Interface,
                             isExclusiveTo = true,
+                            availability = WinRtAvailabilityMetadata(
+                                contractVersion = WinRtContractVersionMetadata(
+                                    contractName = "Windows.Foundation.UniversalApiContract",
+                                    version = 0x00030000,
+                                    platformVersion = "10.0.14393.0",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetLegacy",
+                            kind = WinRtTypeKind.Interface,
+                            isExclusiveTo = true,
+                            availability = WinRtAvailabilityMetadata(
+                                contractVersion = WinRtContractVersionMetadata(
+                                    contractName = "Windows.Foundation.UniversalApiContract",
+                                    version = 0x00020000,
+                                    platformVersion = "10.0.10586.0",
+                                ),
+                                previousContractVersions = listOf(
+                                    WinRtContractVersionMetadata(
+                                        contractName = "Windows.Foundation.UniversalApiContract",
+                                        version = 0x00010000,
+                                    ),
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -465,15 +491,20 @@ class WinRtMetadataModelTest {
                             ),
                         ),
                         WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidgetFactory", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "BaseWidget", kind = WinRtTypeKind.RuntimeClass),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Foundation.BaseWidget",
+                            isFastAbi = true,
+                            gcPressureAmount = 120_000,
                             defaultInterfaceName = "Sample.Foundation.IVector<String>",
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IVector<String>", isDefault = true),
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetExtra", isOverridable = true),
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverrides", isProtected = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetLegacy"),
                             ),
                             activation = WinRtActivationShape(
                                 isActivatable = true,
@@ -498,10 +529,14 @@ class WinRtMetadataModelTest {
         val widget = model.normalized().namespaces.single().types.first { it.name == "Widget" }
         val widgetClosure = resolver.resolveRuntimeClass(widget)
         assertEquals("Sample.Foundation.IVector<String>", widgetClosure.defaultInterfaceName)
+        assertEquals(1, widgetClosure.classHierarchyIndex)
+        assertEquals(true, widgetClosure.isFastAbi)
+        assertEquals(120_000, widgetClosure.gcPressureAmount)
         assertEquals(
             listOf(
                 "Sample.Foundation.IVector<String>",
                 "Sample.Foundation.IWidgetExtra",
+                "Sample.Foundation.IWidgetLegacy",
                 "Sample.Foundation.IWidgetOverrides",
             ),
             widgetClosure.instanceInterfaces.map { it.interfaceName },
@@ -511,19 +546,29 @@ class WinRtMetadataModelTest {
                 WinRtRuntimeClassInterfaceKind.Default,
                 WinRtRuntimeClassInterfaceKind.Implemented,
                 WinRtRuntimeClassInterfaceKind.Implemented,
+                WinRtRuntimeClassInterfaceKind.Implemented,
             ),
             widgetClosure.instanceInterfaces.map { it.kind },
         )
-        assertEquals(listOf(true, false, false), widgetClosure.instanceInterfaces.map { it.isDefault })
-        assertEquals(listOf(false, true, false), widgetClosure.instanceInterfaces.map { it.isOverridable })
-        assertEquals(listOf(false, false, true), widgetClosure.instanceInterfaces.map { it.isProtected })
-        assertEquals(listOf(false, false, true), widgetClosure.instanceInterfaces.map { it.isExclusiveTo })
+        assertEquals(listOf(true, false, false, false), widgetClosure.instanceInterfaces.map { it.isDefault })
+        assertEquals(listOf(false, true, false, false), widgetClosure.instanceInterfaces.map { it.isOverridable })
+        assertEquals(listOf(false, false, false, true), widgetClosure.instanceInterfaces.map { it.isProtected })
+        assertEquals(listOf(false, false, true, true), widgetClosure.instanceInterfaces.map { it.isExclusiveTo })
+        assertEquals(
+            listOf(
+                "Sample.Foundation.IVector<String>",
+                "Sample.Foundation.IWidgetLegacy",
+                "Sample.Foundation.IWidgetOverrides",
+            ),
+            widgetClosure.fastAbiInterfaces.map { it.interfaceName },
+        )
         assertEquals(
             listOf(
                 "Sample.Foundation.IVector<String>",
                 "Sample.Foundation.IIterable<String>",
                 "Sample.Foundation.IWidgetExtra",
                 "Sample.Foundation.IIterable<Int>",
+                "Sample.Foundation.IWidgetLegacy",
                 "Sample.Foundation.IWidgetOverrides",
             ),
             widgetClosure.instanceInterfaceClosure.map { it.interfaceName },

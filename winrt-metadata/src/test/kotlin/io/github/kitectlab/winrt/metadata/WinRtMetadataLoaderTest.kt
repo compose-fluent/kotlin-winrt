@@ -364,6 +364,8 @@ class WinRtMetadataLoaderTest {
 
         val widgetStaticsClass = sampleNamespace.types.first { it.name == "WidgetStaticsClass" }
         assertTrue(widgetStaticsClass.isStaticType)
+        assertTrue(widgetStaticsClass.isFastAbi)
+        assertEquals(120_000, widgetStaticsClass.gcPressureAmount)
 
         val color = sampleNamespace.types.first { it.name == "Color" }
         assertTrue(color.isSealedType)
@@ -561,6 +563,7 @@ class WinRtMetadataLoaderTest {
                 public enum DeprecationType { Deprecate, Remove }
                 public enum ThreadingModel { STA, MTA, Both }
                 public enum MarshalingType { None, Agile, Standard }
+                public enum GCPressureAmount { Low, Medium, High }
 
                 [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
                 public sealed class ContractVersionAttribute : Attribute
@@ -605,6 +608,15 @@ class WinRtMetadataLoaderTest {
 
                 [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
                 public sealed class WebHostHiddenAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class FastAbiAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+                public sealed class GCPressureAttribute : Attribute
+                {
+                    public GCPressureAmount Amount { get; set; }
+                }
             }
 
             namespace Sample.Foundation
@@ -726,7 +738,9 @@ class WinRtMetadataLoaderTest {
 
                 public sealed class WidgetAttribute : System.Attribute {}
 
-                public abstract class WidgetStaticsClass {}
+                [Windows.Foundation.Metadata.FastAbi]
+                [Windows.Foundation.Metadata.GCPressure(Amount = Windows.Foundation.Metadata.GCPressureAmount.Medium)]
+                public static class WidgetStaticsClass {}
 
                 public delegate void WidgetHandler();
             }

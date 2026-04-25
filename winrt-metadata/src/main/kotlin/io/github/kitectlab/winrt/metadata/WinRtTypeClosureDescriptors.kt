@@ -15,6 +15,7 @@ data class WinRtResolvedInterfaceDescriptor(
     val definitionType: WinRtTypeDefinition? = null,
     val depth: Int = 0,
     val isExclusiveTo: Boolean = definitionType?.isExclusiveTo ?: false,
+    val availability: WinRtAvailabilityMetadata = definitionType?.availability ?: WinRtAvailabilityMetadata(),
 )
 
 data class WinRtInterfaceClosureDescriptor(
@@ -35,6 +36,7 @@ data class WinRtRuntimeClassInterfaceDescriptor(
     val isOverridable: Boolean = false,
     val isProtected: Boolean = false,
     val isExclusiveTo: Boolean = definitionType?.isExclusiveTo ?: false,
+    val availability: WinRtAvailabilityMetadata = definitionType?.availability ?: WinRtAvailabilityMetadata(),
     val closure: WinRtInterfaceClosureDescriptor? = null,
 )
 
@@ -48,7 +50,11 @@ data class WinRtRuntimeClassActivationDescriptor(
 data class WinRtRuntimeClassClosureDescriptor(
     val qualifiedTypeName: String,
     val defaultInterfaceName: String? = null,
+    val classHierarchyIndex: Int = 0,
+    val isFastAbi: Boolean = false,
+    val gcPressureAmount: Int = 0,
     val instanceInterfaces: List<WinRtRuntimeClassInterfaceDescriptor> = emptyList(),
+    val fastAbiInterfaces: List<WinRtRuntimeClassInterfaceDescriptor> = emptyList(),
     val instanceInterfaceClosure: List<WinRtResolvedInterfaceDescriptor> = emptyList(),
     val activation: WinRtRuntimeClassActivationDescriptor = WinRtRuntimeClassActivationDescriptor(),
 )
@@ -99,7 +105,11 @@ class WinRtMetadataClosureResolver private constructor(
         return WinRtRuntimeClassClosureDescriptor(
             qualifiedTypeName = type.qualifiedName,
             defaultInterfaceName = defaultInterface?.displayName,
+            classHierarchyIndex = classHierarchyIndex(type),
+            isFastAbi = type.isFastAbi,
+            gcPressureAmount = type.gcPressureAmount,
             instanceInterfaces = instanceInterfaces,
+            fastAbiInterfaces = if (type.isFastAbi) fastAbiInterfaces(instanceInterfaces) else emptyList(),
             instanceInterfaceClosure = collapseRuntimeClassInterfaceClosure(instanceInterfaces),
             activation = WinRtRuntimeClassActivationDescriptor(
                 isActivatable = type.activation.isActivatable,
@@ -194,6 +204,7 @@ class WinRtMetadataClosureResolver private constructor(
             isOverridable = isOverridable,
             isProtected = isProtected,
             isExclusiveTo = resolvedInterface.definitionType?.isExclusiveTo ?: false,
+            availability = resolvedInterface.definitionType?.availability ?: WinRtAvailabilityMetadata(),
             closure = closure,
         )
     }
@@ -245,6 +256,7 @@ class WinRtMetadataClosureResolver private constructor(
                                 definitionType = resolvedBase.definitionType,
                                 depth = depth,
                                 isExclusiveTo = resolvedBase.definitionType?.isExclusiveTo ?: false,
+                                availability = resolvedBase.definitionType?.availability ?: WinRtAvailabilityMetadata(),
                             ),
                         )
                     }
@@ -268,6 +280,38 @@ class WinRtMetadataClosureResolver private constructor(
         fun create(model: WinRtMetadataModel): WinRtMetadataClosureResolver =
             WinRtMetadataClosureResolver(buildTypesByQualifiedName(model))
     }
+
+    private fun fastAbiInterfaces(
+        instanceInterfaces: List<WinRtRuntimeClassInterfaceDescriptor>,
+    ): List<WinRtRuntimeClassInterfaceDescriptor> {
+        val defaultInterface = instanceInterfaces.firstOrNull(WinRtRuntimeClassInterfaceDescriptor::isDefault)
+        val otherInterfaces = instanceInterfaces
+            .filter { !it.isDefault && it.isExclusiveTo }
+            .sortedWith(fastAbiInterfaceComparator())
+        return listOfNotNull(defaultInterface) + otherInterfaces
+    }
+
+    private fun fastAbiInterfaceComparator(): Comparator<WinRtRuntimeClassInterfaceDescriptor> =
+        compareBy<WinRtRuntimeClassInterfaceDescriptor> { -it.availability.previousContractVersions.size }
+            .thenBy { it.availability.contractVersion?.version ?: Long.MAX_VALUE }
+            .thenBy { it.availability.version ?: Long.MAX_VALUE }
+            .thenBy { it.definitionType?.namespace ?: it.interfaceType.qualifiedName?.substringBeforeLast('.', "") }
+            .thenBy { it.definitionType?.name ?: it.interfaceType.qualifiedName?.substringAfterLast('.') }
+
+    private fun classHierarchyIndex(type: WinRtTypeDefinition): Int {
+        var depth = 0
+        var current = type
+        val seen = linkedSetOf<String>()
+        while (seen.add(current.qualifiedName)) {
+            val baseName = current.baseTypeName ?: return depth
+            val baseType = resolveTypeReference(WinRtTypeRef.fromDisplayName(baseName), current.namespace, typesByQualifiedName)
+                .definitionType
+                ?: return depth
+            depth += 1
+            current = baseType
+        }
+        return depth
+    }
 }
 
 fun WinRtMetadataModel.closureResolver(): WinRtMetadataClosureResolver = WinRtMetadataClosureResolver.create(this)
@@ -280,4 +324,5 @@ private fun WinRtRuntimeClassInterfaceDescriptor.toResolvedInterfaceDescriptor()
         definitionType = definitionType,
         depth = 0,
         isExclusiveTo = isExclusiveTo,
+        availability = availability,
     )
