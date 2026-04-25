@@ -1102,4 +1102,112 @@ class WinRtMetadataModelTest {
             generic.genericArguments.single(),
         )
     }
+
+    @Test
+    fun semantic_helpers_mirror_cswinrt_method_type_and_accessor_helpers() {
+        val defaultInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            methods = listOf(
+                WinRtMethodDefinition(
+                    name = "Invoke",
+                    returnTypeName = "Unit",
+                    isSpecialName = true,
+                    parameters = listOf(
+                        WinRtParameterDefinition("value", "String"),
+                    ),
+                ),
+                WinRtMethodDefinition(
+                    name = "UpdateArrays",
+                    returnTypeName = "Unit",
+                    parameters = listOf(
+                        WinRtParameterDefinition("input", "Array<Int>", isInParameter = true),
+                        WinRtParameterDefinition("filled", "Array<Int>", direction = WinRtParameterDirection.Out, isOutParameter = true),
+                        WinRtParameterDefinition("received", "Array<Int>", direction = WinRtParameterDirection.Out, typeIsByRef = true, isOutParameter = true),
+                    ),
+                ),
+                WinRtMethodDefinition(
+                    name = "remove_Changed",
+                    returnTypeName = "Unit",
+                    isSpecialName = true,
+                    isRemoveOverload = true,
+                ),
+            ),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Name",
+                    typeName = "String",
+                    getterMethodName = "get_Name",
+                    getterMethodRowId = 10,
+                ),
+            ),
+            events = listOf(
+                WinRtEventDefinition(
+                    name = "Changed",
+                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                    addMethodName = "add_Changed",
+                    removeMethodName = "remove_Changed",
+                    addMethodRowId = 20,
+                    removeMethodRowId = 21,
+                ),
+            ),
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+            isStaticType = true,
+            defaultInterfaceName = "Sample.Foundation.IWidget",
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition(
+                    interfaceName = "Sample.Foundation.IWidget",
+                    isDefault = true,
+                    isOverridable = true,
+                ),
+            ),
+        )
+        val flags = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "WidgetOptions",
+            kind = WinRtTypeKind.Enum,
+            customAttributes = listOf(WinRtCustomAttributeDefinition("System.FlagsAttribute")),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(defaultInterface, widget, flags),
+                ),
+            ),
+        )
+        val helpers = model.semanticHelpers()
+
+        val signature = helpers.methodSignature(defaultInterface.methods[1])
+        assertEquals("Unit", signature.returnType.typeName)
+        assertEquals(true, signature.hasParams())
+        assertEquals(
+            listOf(
+                WinRtMetadataParameterCategory.PassArray,
+                WinRtMetadataParameterCategory.FillArray,
+                WinRtMetadataParameterCategory.ReceiveArray,
+            ),
+            signature.parameters.map { it.category },
+        )
+        assertEquals(true, helpers.isRemoveOverload(defaultInterface.methods[2]))
+        assertEquals(true, helpers.isNoException(defaultInterface.methods[2]))
+        assertEquals(true, helpers.isFlagsEnum(flags))
+        assertEquals(true, helpers.isStatic(widget))
+        assertEquals(true, helpers.isOverridable(widget.implementedInterfaces.single()))
+        assertEquals("Invoke", helpers.getDelegateInvoke(defaultInterface)?.name)
+        assertEquals("Sample.Foundation.IWidget", helpers.getDefaultInterface(widget)?.typeName)
+
+        val propertyAccessors = helpers.getPropertyMethods(defaultInterface.properties.single())
+        assertEquals("get_Name", propertyAccessors.getterMethodName)
+        assertEquals(null, propertyAccessors.setterMethodName)
+
+        val eventAccessors = helpers.getEventMethods(defaultInterface.events.single())
+        assertEquals("add_Changed", eventAccessors.addMethodName)
+        assertEquals("remove_Changed", eventAccessors.removeMethodName)
+    }
 }

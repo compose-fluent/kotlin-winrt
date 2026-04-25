@@ -145,20 +145,13 @@ private fun abiCategoryFor(
     parameter: WinRtParameterDefinition,
     typeDescriptor: WinRtAbiTypeDescriptor,
 ): WinRtAbiParameterCategory {
-    if (typeDescriptor.category == WinRtAbiTypeCategory.Array) {
-        return when {
-            parameter.isInParameter -> WinRtAbiParameterCategory.PassArray
-            parameter.typeIsByRef && parameter.isOutParameter -> WinRtAbiParameterCategory.ReceiveArray
-            parameter.isOutParameter -> WinRtAbiParameterCategory.FillArray
-            parameter.direction == WinRtParameterDirection.Out && parameter.typeIsByRef -> WinRtAbiParameterCategory.ReceiveArray
-            parameter.direction == WinRtParameterDirection.Out -> WinRtAbiParameterCategory.FillArray
-            else -> WinRtAbiParameterCategory.PassArray
-        }
-    }
-
-    return when (parameter.direction) {
-        WinRtParameterDirection.In -> WinRtAbiParameterCategory.In
-        WinRtParameterDirection.Ref -> WinRtAbiParameterCategory.Ref
-        WinRtParameterDirection.Out -> WinRtAbiParameterCategory.Out
+    val metadataCategory = metadataParameterCategoryFor(parameter)
+    return when (metadataCategory) {
+        WinRtMetadataParameterCategory.In -> WinRtAbiParameterCategory.In
+        WinRtMetadataParameterCategory.Ref -> WinRtAbiParameterCategory.Ref
+        WinRtMetadataParameterCategory.Out -> WinRtAbiParameterCategory.Out
+        WinRtMetadataParameterCategory.PassArray -> WinRtAbiParameterCategory.PassArray
+        WinRtMetadataParameterCategory.FillArray -> WinRtAbiParameterCategory.FillArray
+        WinRtMetadataParameterCategory.ReceiveArray -> WinRtAbiParameterCategory.ReceiveArray
     }
 }
