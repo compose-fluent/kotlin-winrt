@@ -5,3 +5,7 @@ plugins {
 kotlin {
     jvmToolchain(22)
 }
+
+dependencies {
+    implementation(projects.winrtRuntime)
+}

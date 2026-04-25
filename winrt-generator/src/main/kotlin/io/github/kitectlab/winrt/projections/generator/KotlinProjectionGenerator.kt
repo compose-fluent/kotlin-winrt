@@ -1367,8 +1367,12 @@ class KotlinProjectionPlanner(
     }
 
     private fun shouldEmitMetadataCompanion(type: WinRtTypeDefinition): Boolean = when (type.kind) {
-        WinRtTypeKind.Interface -> !type.isExclusiveTo
-        WinRtTypeKind.RuntimeClass -> !type.isStaticType && !type.isAttributeType
+        WinRtTypeKind.Interface -> !type.isExclusiveTo ||
+            type.methods.isNotEmpty() ||
+            type.properties.isNotEmpty() ||
+            type.events.isNotEmpty()
+        WinRtTypeKind.RuntimeClass -> (!type.isStaticType && !type.isAttributeType) ||
+            (type.isStaticType && type.activation.staticInterfaceNames.isNotEmpty())
         else -> false
     }
 
@@ -1743,6 +1747,15 @@ private fun WinRtEventDefinition.projectionSignatureKey(): String = buildString 
     append(delegateTypeName)
 }
 
+private fun WinRtMethodDefinition.methodRowConstantName(methods: List<WinRtMethodDefinition>): String {
+    val baseName = "${name.uppercase()}_METHOD_ROW_ID"
+    if (methods.count { it.name == name } == 1) {
+        return baseName
+    }
+    val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_METHOD_ROW_ID"
+    return "${name.uppercase()}_${rowId}_METHOD_ROW_ID"
+}
+
 private fun WinRtTypeDefinition.localAbiMembers(): List<String> =
     buildList<AbiMemberOrder> {
         methods.forEach { method ->
@@ -1985,7 +1998,7 @@ class KotlinProjectionRenderer {
         if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
             builder.addFunction(
                 FunSpec.constructorBuilder()
-                    .callThisConstructor("ActivationFactory.activate()")
+                    .callThisConstructor(CodeBlock.of("%T.activateInstance(Metadata.TYPE_NAME)", ACTIVATION_FACTORY_CLASS_NAME))
                     .build(),
             )
         }
@@ -2905,12 +2918,16 @@ class KotlinProjectionRenderer {
             .returns(resolveTypeName(method.returnTypeName))
             .build()
 
-    private fun renderStubMethod(method: WinRtMethodDefinition): FunSpec =
-        FunSpec.builder(method.name)
+    private fun renderStubMethod(method: WinRtMethodDefinition, override: Boolean = false): FunSpec {
+        val builder = FunSpec.builder(method.name)
             .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
             .returns(resolveTypeName(method.returnTypeName))
             .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
-            .build()
+        if (override) {
+            builder.addModifiers(KModifier.OVERRIDE)
+        }
+        return builder.build()
+    }
 
     private fun renderRuntimeMethod(
         plan: KotlinTypeProjectionPlan,
@@ -2924,11 +2941,14 @@ class KotlinProjectionRenderer {
             .addModifiers(KModifier.ABSTRACT)
             .build()
 
-    private fun renderStubProperty(property: WinRtPropertyDefinition): PropertySpec {
+    private fun renderStubProperty(property: WinRtPropertyDefinition, override: Boolean = false): PropertySpec {
         val builder = PropertySpec.builder(
             property.name.replaceFirstChar(Char::lowercase),
             resolveTypeName(property.typeName),
         ).mutable(!property.isReadOnly)
+        if (override) {
+            builder.addModifiers(KModifier.OVERRIDE)
+        }
         builder.getter(
             FunSpec.getterBuilder()
                 .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
@@ -2958,6 +2978,7 @@ class KotlinProjectionRenderer {
         val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${method.name.uppercase()}_SLOT" } ?: return null
         val invocation = renderBoundInvocation(binding)
         return FunSpec.builder(method.name)
+            .addModifiers(KModifier.OVERRIDE)
             .returns(resolveTypeName(method.returnTypeName))
             .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
             .addCode("%L\n", invocation)
@@ -2972,6 +2993,7 @@ class KotlinProjectionRenderer {
             property.name.replaceFirstChar(Char::lowercase),
             resolveTypeName(property.typeName),
         ).mutable(!property.isReadOnly)
+            .addModifiers(KModifier.OVERRIDE)
         val getterBinding = plan.instanceMemberBindings.firstOrNull {
             it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
         } ?: return null
@@ -3085,7 +3107,7 @@ class KotlinProjectionRenderer {
                 name = parameterName,
                 typeBinding = parameterBinding.typeBinding,
                 isReturn = false,
-                abiArgumentExpression = CodeBlock.of("if (%L) 1.toByte() else 0.toByte()", parameterName),
+                abiArgumentExpression = CodeBlock.of("if (%L) 1 else 0", parameterName),
             )
             KotlinProjectionAbiValueKind.Double -> KotlinProjectionAbiMarshalerPlan(
                 name = parameterName,
@@ -3210,7 +3232,7 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
                 resolvedReturnClassName(returnBinding)?.let { returnType ->
                     CodeBlock.of(
-                        "return %T(%T.toRawComPtr(%T.readPointer(__resultOut))).use { %T.Metadata.wrap(it.asInspectable()) }\n",
+                        "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn %T.Metadata.wrap(__resultRef.asInspectable())\n",
                         IUNKNOWN_REFERENCE_CLASS_NAME,
                         PLATFORM_ABI_CLASS_NAME,
                         PLATFORM_ABI_CLASS_NAME,
@@ -3230,7 +3252,7 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.InspectableReference ->
                 if (resolvedReturnClassName(returnBinding) == IINSPECTABLE_REFERENCE_CLASS_NAME) {
                     CodeBlock.of(
-                        "return %T(%T.toRawComPtr(%T.readPointer(__resultOut))).use { it.asInspectable() }\n",
+                    "return (%T(%T.toRawComPtr(%T.readPointer(__resultOut))).use({ it.asInspectable() }))\n",
                         IUNKNOWN_REFERENCE_CLASS_NAME,
                         PLATFORM_ABI_CLASS_NAME,
                         PLATFORM_ABI_CLASS_NAME,
@@ -4332,7 +4354,7 @@ class KotlinProjectionRenderer {
                     .addParameter("iid", GUID_CLASS_NAME)
                     .returns(IUNKNOWN_REFERENCE_CLASS_NAME)
                     .addCode(
-                        "return instance.queryInterface(iid).getOrThrow().use { %T(it.getRef(), iid) }\n",
+                        "return instance.queryInterface(iid).getOrThrow().use { %T(it.getRefPointer(), iid) }\n",
                         IUNKNOWN_REFERENCE_CLASS_NAME,
                     )
                     .build(),
@@ -4377,7 +4399,7 @@ class KotlinProjectionRenderer {
         plan.type.methods.forEach { method ->
             method.methodRowId?.let { rowId ->
                 builder.addProperty(
-                    PropertySpec.builder("${method.name.uppercase()}_METHOD_ROW_ID", Int::class)
+                    PropertySpec.builder(method.methodRowConstantName(plan.type.methods), Int::class)
                         .addModifiers(KModifier.INTERNAL, KModifier.CONST)
                         .initializer("%L", rowId)
                         .build(),
@@ -4483,6 +4505,9 @@ class KotlinProjectionRenderer {
             val rawType = trimmed.substring(0, genericStart)
             val arguments = splitGenericArguments(trimmed.substring(genericStart + 1, trimmed.length - 1))
                 .map(::resolveTypeName)
+            if (rawType == "Array") {
+                return Array::class.asClassName().parameterizedBy(arguments)
+            }
             mappedTypeByAbiName(rawType)?.let { mappedType ->
                 return mappedType.projectedTypeResolver(arguments)
             }

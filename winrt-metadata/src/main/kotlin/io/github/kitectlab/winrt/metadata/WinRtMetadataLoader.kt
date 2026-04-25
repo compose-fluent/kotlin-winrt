@@ -763,7 +763,7 @@ private class MetadataTables private constructor(
                 val owner = decodeHasCustomAttribute(parentToken) ?: return@repeat
                 val attributeTypeName = decodeCustomAttributeTypeName(typeToken, methodOwnerTypeNames, memberRefOwnerTypeNames)
                     ?: return@repeat
-                add(owner to DecodedCustomAttribute(attributeTypeName, readCustomAttributeStringArguments(valueIndex)))
+                add(owner to DecodedCustomAttribute(attributeTypeName, readCustomAttributeStringArguments(valueIndex, attributeTypeName)))
             }
         }.groupBy({ it.first }, { it.second })
     }
@@ -936,12 +936,15 @@ private class MetadataTables private constructor(
         }
     }
 
-    private fun readCustomAttributeStringArguments(blobIndex: Int): List<String> {
+    private fun readCustomAttributeStringArguments(blobIndex: Int, attributeTypeName: String): List<String> {
         val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
         if (bytes.size < 2 || bytes[0] != 0x01.toByte() || bytes[1] != 0x00.toByte()) {
             return emptyList()
         }
         val values = mutableListOf<String>()
+        if (attributeTypeName in GUID_ATTRIBUTE_NAMES) {
+            bytes.readGuidAttributeValue()?.let(values::add)
+        }
         var cursor = 2
         while (cursor < bytes.size) {
             if (bytes.size - cursor <= 2) {
@@ -951,6 +954,9 @@ private class MetadataTables private constructor(
             values += decoded.first
             cursor = decoded.second
         }
+        bytes.findAsciiAttributeStrings()
+            .filterNot { it in values }
+            .forEach(values::add)
         return values
     }
 
@@ -1654,11 +1660,73 @@ private fun ByteArray.readSerializedString(offset: Int): Pair<String, Int>? {
     if (this[offset] == 0xFF.toByte()) {
         return "" to (offset + 1)
     }
-    val (length, cursor) = readCompressedUnsignedInt(offset)
+    val (length, cursor) = readCompressedUnsignedIntOrNull(offset) ?: return null
     if (cursor + length > size) {
         return null
     }
     return copyOfRange(cursor, cursor + length).decodeToString() to (cursor + length)
+}
+
+private fun ByteArray.findAsciiAttributeStrings(): List<String> {
+    val values = mutableListOf<String>()
+    var cursor = 0
+    while (cursor < size) {
+        while (cursor < size && !this[cursor].isAttributeStringByte()) {
+            cursor++
+        }
+        val start = cursor
+        while (cursor < size && this[cursor].isAttributeStringByte()) {
+            cursor++
+        }
+        if (cursor - start >= 8) {
+            values += copyOfRange(start, cursor).decodeToString()
+        }
+    }
+    return values
+}
+
+private fun ByteArray.readGuidAttributeValue(): String? {
+    if (size < 18) {
+        return null
+    }
+    val data1 = readUInt32Le(2)
+    val data2 = readUInt16Le(6)
+    val data3 = readUInt16Le(8)
+    val data4 = copyOfRange(10, 18)
+    return "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X".format(
+        data1,
+        data2,
+        data3,
+        data4[0].toInt() and 0xFF,
+        data4[1].toInt() and 0xFF,
+        data4[2].toInt() and 0xFF,
+        data4[3].toInt() and 0xFF,
+        data4[4].toInt() and 0xFF,
+        data4[5].toInt() and 0xFF,
+        data4[6].toInt() and 0xFF,
+        data4[7].toInt() and 0xFF,
+    )
+}
+
+private fun ByteArray.readUInt16Le(offset: Int): Int =
+    (this[offset].toInt() and 0xFF) or
+        ((this[offset + 1].toInt() and 0xFF) shl 8)
+
+private fun ByteArray.readUInt32Le(offset: Int): Long =
+    (this[offset].toLong() and 0xFF) or
+        ((this[offset + 1].toLong() and 0xFF) shl 8) or
+        ((this[offset + 2].toLong() and 0xFF) shl 16) or
+        ((this[offset + 3].toLong() and 0xFF) shl 24)
+
+private fun Byte.isAttributeStringByte(): Boolean {
+    val value = toInt() and 0xFF
+    return value in 0x30..0x39 ||
+        value in 0x41..0x5A ||
+        value in 0x61..0x7A ||
+        value == '.'.code ||
+        value == '_'.code ||
+        value == '-'.code ||
+        value == '`'.code
 }
 
 private fun ByteBuffer.readCompressedUnsignedInt(offset: Int): Pair<Int, Int> {
@@ -1694,6 +1762,30 @@ private fun ByteArray.readCompressedUnsignedInt(offset: Int): Pair<Int, Int> {
             val third = this[offset + 2].toInt() and 0xFF
             val fourth = this[offset + 3].toInt() and 0xFF
             (((first and 0x1F) shl 24) or (second shl 16) or (third shl 8) or fourth) to (offset + 4)
+        }
+    }
+}
+
+private fun ByteArray.readCompressedUnsignedIntOrNull(offset: Int): Pair<Int, Int>? {
+    if (offset >= size) {
+        return null
+    }
+    val first = this[offset].toInt() and 0xFF
+    return when {
+        first and 0x80 == 0 -> first to (offset + 1)
+        first and 0xC0 == 0x80 -> {
+            if (offset + 1 >= size) null
+            else (((first and 0x3F) shl 8) or (this[offset + 1].toInt() and 0xFF)) to (offset + 2)
+        }
+        else -> {
+            if (offset + 3 >= size) {
+                null
+            } else {
+                val second = this[offset + 1].toInt() and 0xFF
+                val third = this[offset + 2].toInt() and 0xFF
+                val fourth = this[offset + 3].toInt() and 0xFF
+                (((first and 0x1F) shl 24) or (second shl 16) or (third shl 8) or fourth) to (offset + 4)
+            }
         }
     }
 }

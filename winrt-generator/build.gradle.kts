@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
+    application
 }
 
 kotlin {
@@ -11,4 +12,8 @@ dependencies {
     implementation(projects.winrtMetadata)
     implementation(libs.kotlinpoet)
     testImplementation(libs.junit)
+}
+
+application {
+    mainClass.set("io.github.kitectlab.winrt.projections.generator.KotlinProjectionGeneratorCliKt")
 }

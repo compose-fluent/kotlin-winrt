@@ -11,14 +11,53 @@ import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
+import io.github.kitectlab.winrt.metadata.WinRtMetadataLoader
 import io.github.kitectlab.winrt.runtime.Guid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
+import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    @Test
+    fun generator_reproduces_cswinrt_json_value_function_calls_surface_from_real_winmd() {
+        // Mirrors .cswinrt/src/Tests/FunctionalTests/JsonValueFunctionCalls/Program.cs.
+        val filesByName = generateWindowsDataJsonFromInstalledWinmd()
+
+        val jsonValue = filesByName.getValue("JsonValue.kt").contents
+        val iJsonValue = filesByName.getValue("IJsonValue.kt").contents
+
+        assertTrue(jsonValue, jsonValue.contains("IStringable"))
+        assertTrue(jsonValue, jsonValue.contains("fun CreateNumberValue(input: Double): JsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("fun GetNumber(): Double"))
+        assertTrue(jsonValue, jsonValue.contains("fun ToString(): String"))
+        assertTrue(iJsonValue, iJsonValue.contains("fun GetNumber(): Double"))
+    }
+
+    @Test
+    fun generator_reproduces_cswinrt_json_api_compat_surface_from_real_winmd() {
+        // Mirrors the Windows.Data.Json block in .cswinrt/src/Tests/UnitTest/ApiCompatTests.cs.
+        val filesByName = generateWindowsDataJsonFromInstalledWinmd()
+
+        val jsonObject = filesByName.getValue("JsonObject.kt").contents
+        val iJsonObject = filesByName.getValue("IJsonObject.kt").contents
+        val jsonArray = filesByName.getValue("JsonArray.kt").contents
+        val iJsonValue = filesByName.getValue("IJsonValue.kt").contents
+
+        assertTrue(jsonObject, jsonObject.contains("fun Parse(input: String): JsonObject"))
+        assertTrue(jsonObject, jsonObject.contains("fun GetNamedString(name: String, defaultValue: String): String"))
+        assertTrue(jsonObject, jsonObject.contains("fun GetNamedValue(name: String): JsonValue"))
+        assertTrue(jsonObject, jsonObject.contains("fun GetNamedBoolean(name: String, defaultValue: Boolean): Boolean"))
+        assertTrue(jsonObject, jsonObject.contains("fun GetNamedArray(name: String, defaultValue: JsonArray): JsonArray"))
+        assertTrue(iJsonObject, iJsonObject.contains("fun GetNamedArray(name: String): JsonArray"))
+        assertTrue(jsonArray, jsonArray.contains("public constructor()"))
+        assertTrue(iJsonValue, iJsonValue.contains("val valueType: JsonValueType"))
+        assertTrue(iJsonValue, iJsonValue.contains("fun GetObject(): JsonObject"))
+    }
+
     @Test
     fun generator_reproduces_windows_data_json_smoke_slice_declaration_set() {
         val filesByName = KotlinProjectionGenerator()
@@ -56,11 +95,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("IWinRTObject"))
         assertTrue(jsonObject, jsonObject.contains("private val _inner: InspectableReference"))
         assertTrue(jsonObject, jsonObject.contains("override val nativeObject: ComObjectReference"))
-        assertTrue(jsonObject, jsonObject.contains("public fun getNamedString(name: String): String"))
-        assertTrue(jsonObject, jsonObject.contains("public fun setNamedValue(name: String, `value`: JsonValue)"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedString(name: String): String"))
+        assertTrue(jsonObject, jsonObject.contains("fun setNamedValue(name: String, `value`: JsonValue)"))
         assertTrue(jsonObject, jsonObject.contains("(value as IWinRTObject).nativeObject.pointer"))
-        assertTrue(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject"))
-        assertFalse(jsonObject, jsonObject.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject"))
+        assertFalse(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(jsonObject, jsonObject.contains("HString.create(json).use { __jsonAbi ->"))
         assertTrue(jsonObject, jsonObject.contains("internal val STATIC_PARSE_SLOT: Int = IJsonObjectStatics.Metadata.PARSE_SLOT"))
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
@@ -69,27 +108,27 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
-        assertTrue(jsonArray, jsonArray.contains("public fun getStringAt(index: UInt): String"))
-        assertTrue(jsonArray, jsonArray.contains("public fun create(): JsonArray = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonArray, jsonArray.contains("fun getStringAt(index: UInt): String"))
+        assertTrue(jsonArray, jsonArray.contains("fun create(): JsonArray = error(\"Not yet bound to winrt-runtime\")"))
 
         assertTrue(jsonValue, jsonValue.contains("public class JsonValue internal constructor("))
-        assertTrue(jsonValue, jsonValue.contains("public fun stringify(): String"))
-        assertTrue(jsonValue, jsonValue.contains("public fun createStringValue(`value`: String): JsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("fun stringify(): String"))
+        assertTrue(jsonValue, jsonValue.contains("fun createStringValue(`value`: String): JsonValue"))
         assertTrue(jsonValue, jsonValue.contains("internal val STATIC_CREATESTRINGVALUE_SLOT: Int ="))
         assertTrue(jsonValue, jsonValue.contains("IJsonValueStatics.Metadata.CREATESTRINGVALUE_SLOT"))
         assertTrue(jsonValue, jsonValue.contains("JsonValueType.Metadata.fromAbi"))
         assertFalse(jsonValue, jsonValue.contains("JsonValueType.Metadata.wrap"))
 
         assertTrue(jsonError, jsonError.contains("public class JsonError internal constructor("))
-        assertTrue(jsonError, jsonError.contains("public fun getJsonStatus(hResult: Int): JsonErrorStatus"))
+        assertTrue(jsonError, jsonError.contains("fun getJsonStatus(hResult: Int): JsonErrorStatus"))
         assertTrue(jsonError, jsonError.contains("JsonErrorStatus.Metadata.fromAbi"))
 
-        assertTrue(iJsonObject, iJsonObject.contains("public fun getNamedArray(name: String): JsonArray"))
-        assertTrue(iJsonObject, iJsonObject.contains("public fun setNamedValue(name: String, `value`: JsonValue)"))
+        assertTrue(iJsonObject, iJsonObject.contains("fun getNamedArray(name: String): JsonArray"))
+        assertTrue(iJsonObject, iJsonObject.contains("fun setNamedValue(name: String, `value`: JsonValue)"))
 
-        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("public fun createBooleanValue(`value`: Boolean): JsonValue"))
-        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("public fun createNumberValue(`value`: Double): JsonValue"))
-        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("public fun createStringValue(`value`: String): JsonValue"))
+        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("fun createBooleanValue(`value`: Boolean): JsonValue"))
+        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("fun createNumberValue(`value`: Double): JsonValue"))
+        assertTrue(iJsonValueStatics, iJsonValueStatics.contains("fun createStringValue(`value`: String): JsonValue"))
     }
 
     @Test
@@ -167,9 +206,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
         assertTrue(file.contents.contains("public class JsonObject internal constructor("))
         assertTrue(file.contents.contains("private val _inner: InspectableReference"))
-        assertTrue(file.contents.contains("public fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(file.contents.contains("fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(file.contents.contains("companion object"))
-        assertTrue(file.contents.contains("public fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(file.contents.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
         assertFalse(file.contents.contains("JsonValueType"))
     }
 
@@ -563,16 +602,16 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_ADD_SLOT: Int = 7"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_REMOVE_SLOT: Int = 8"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public val name: String"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun addChanged(handler: WidgetHandler): Int"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("public fun removeChanged(token: Int)"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val name: String"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): Int"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun removeChanged(token: Int)"))
 
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains("private val _inner: InspectableReference"))
         assertTrue(widgetContents.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(widgetContents.contains("public constructor() : this(ActivationFactory.activate())"))
-        assertTrue(widgetContents.contains("public val name: String"))
+        assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
+        assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: InspectableReference, iid: Guid): IUnknownReference"))
         assertTrue(widgetContents.contains("internal fun wrap(instance: InspectableReference): Widget = Widget(instance)"))
@@ -583,30 +622,30 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 24"))
         assertTrue(widgetContents.contains("internal const val LOADED_ADD_METHOD_ROW_ID: Int = 25"))
         assertTrue(widgetContents.contains("internal const val LOADED_REMOVE_METHOD_ROW_ID: Int = 26"))
-        assertTrue(widgetContents.contains("public fun acquireDefaultInterface(instance: InspectableReference): IUnknownReference"))
+        assertTrue(widgetContents.contains("fun acquireDefaultInterface(instance: InspectableReference): IUnknownReference"))
         assertTrue(widgetContents.contains("acquireInterface(instance, DEFAULT_INTERFACE_IID)"))
-        assertTrue(widgetContents.contains("public fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
-        assertTrue(widgetContents.contains("public val count: Int"))
-        assertTrue(widgetContents.contains("public fun addChanged(handler: WidgetHandler): Int"))
-        assertTrue(widgetContents.contains("public fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
-        assertTrue(widgetContents.contains("public fun removeChanged(token: Int)"))
-        assertTrue(widgetContents.contains("public fun addLoaded(handler: WidgetHandler): Int"))
-        assertTrue(widgetContents.contains("public fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("val count: Int"))
+        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("fun removeChanged(token: Int)"))
+        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
-        assertTrue(widgetContents.contains("public val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
-        assertTrue(widgetContents.contains("public fun acquire(): IUnknownReference"))
+        assertTrue(widgetContents.contains("val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
+        assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(widgetContents.contains("io.github.kitectlab.winrt.runtime.ActivationFactory.get(RUNTIME_CLASS,"))
-        assertTrue(widgetContents.contains("public fun activate(): InspectableReference"))
+        assertTrue(widgetContents.contains("fun activate(): InspectableReference"))
         assertTrue(widgetContents.contains("public object StaticInterfaces"))
-        assertTrue(widgetContents.contains("public val IWIDGETSTATICS_IID: Guid = Guid(\"33333333-2222-3333-4444-555555555555\")"))
-        assertTrue(widgetContents.contains("public fun iWidgetStatics(): IUnknownReference"))
+        assertTrue(widgetContents.contains("val IWIDGETSTATICS_IID: Guid = Guid(\"33333333-2222-3333-4444-555555555555\")"))
+        assertTrue(widgetContents.contains("fun iWidgetStatics(): IUnknownReference"))
         assertTrue(widgetContents.contains("io.github.kitectlab.winrt.runtime.ActivationFactory.get(Metadata.TYPE_NAME,"))
         assertTrue(widgetContents.contains("public object ComposableFactory"))
         assertTrue(widgetContents.contains("public const val DEFAULT_INTERFACE: String = \"Sample.Foundation.IWidget\""))
-        assertTrue(widgetContents.contains("public val DEFAULT_INTERFACE_IID: Guid = Guid(\"22222222-2222-3333-4444-555555555555\")"))
+        assertTrue(widgetContents.contains("val DEFAULT_INTERFACE_IID: Guid = Guid(\"22222222-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
-        assertTrue(widgetContents.contains("public fun acquire(): IUnknownReference"))
+        assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("public class WidgetStatics"))
@@ -690,12 +729,12 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(widgetContents.contains("private val _iWidgetStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(widgetContents.contains("public fun iWidgetStatics(): IUnknownReference"))
-        assertTrue(widgetContents.contains("public fun parse(`value`: String): Widget"))
+        assertTrue(widgetContents.contains("fun iWidgetStatics(): IUnknownReference"))
+        assertTrue(widgetContents.contains("fun parse(`value`: String): Widget"))
         assertTrue(widgetContents.contains("ComVtableInvoker.invokeArgs"))
         assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics().pointer"))
         assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
-        assertTrue(widgetContents.contains("public val count: Int"))
+        assertTrue(widgetContents.contains("val count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
     }
 
@@ -782,9 +821,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("IWidget"))
         assertTrue(widgetContents.contains("IWinRTObject"))
         assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
-        assertTrue(widgetContents.contains("public fun setValue(`value`: WidgetValue)"))
+        assertTrue(widgetContents.contains("fun setValue(`value`: WidgetValue)"))
         assertTrue(widgetContents.contains("(value as IWinRTObject).nativeObject.pointer"))
-        assertTrue(widgetContents.contains("public fun setNamedValue(name: String, `value`: WidgetValue)"))
+        assertTrue(widgetContents.contains("fun setNamedValue(name: String, `value`: WidgetValue)"))
         assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
     }
 
@@ -934,14 +973,14 @@ class KotlinProjectionGeneratorTest {
             .getValue("Widget.kt")
             .contents
 
-        assertTrue(widgetContents.contains("public fun setHandler(handler: WidgetHandler)"))
-        assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler)"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int"))
         assertTrue(widgetContents.contains("WinRtDelegateBridge.createUnitDelegate"))
         assertTrue(widgetContents.contains("parameterKinds = listOf(WinRtDelegateValueKind.HSTRING)"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
         assertTrue(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
-        assertFalse(widgetContents.contains("public fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
-        assertFalse(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
     }
 
     @Test
@@ -1009,7 +1048,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(delegateContents.contains("as Boolean"))
         assertTrue(widgetContents.contains("return WidgetHandler.Metadata.fromAbi(PlatformAbi.readPointer(__resultOut))"))
-        assertFalse(widgetContents.contains("public fun getHandler(): WidgetHandler = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"Not yet bound to winrt-runtime\")"))
     }
 
     @Test
@@ -1330,11 +1369,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
         assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
         assertTrue(widgetContents.contains("internal val TITLE_GETTER_SLOT: Int = IWidget.Metadata.TITLE_GETTER_SLOT"))
-        assertTrue(widgetContents.contains("public var title: String"))
-        assertTrue(widgetContents.contains("public val maxCount: Int"))
-        assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int"))
-        assertTrue(widgetContents.contains("public fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
-        assertTrue(widgetContents.contains("public fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("var title: String"))
+        assertTrue(widgetContents.contains("val maxCount: Int"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
     }
 
@@ -1461,13 +1500,13 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
-        assertTrue(widgetContents.contains("public fun refresh()"))
+        assertTrue(widgetContents.contains("fun refresh()"))
         assertTrue(widgetContents.contains("Metadata.REFRESH_SLOT"))
-        assertTrue(widgetContents.contains("public fun version(): Int"))
+        assertTrue(widgetContents.contains("fun version(): Int"))
         assertTrue(widgetContents.contains("Metadata.VERSION_SLOT"))
-        assertTrue(widgetContents.contains("public fun isReady(): Boolean"))
+        assertTrue(widgetContents.contains("fun isReady(): Boolean"))
         assertTrue(widgetContents.contains("Metadata.ISREADY_SLOT"))
-        assertTrue(widgetContents.contains("public fun label(): String"))
+        assertTrue(widgetContents.contains("fun label(): String"))
         assertTrue(widgetContents.contains("ComVtableInvoker.invoke"))
         assertFalse(widgetContents.contains("invokeAbi("))
         assertTrue(widgetContents.contains("return PlatformAbi.confinedScope().use { __scope ->"))
@@ -1577,18 +1616,18 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
-        assertTrue(widgetContents.contains("public fun getNamedString(name: String): String"))
+        assertTrue(widgetContents.contains("fun getNamedString(name: String): String"))
         assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
         assertFalse(widgetContents.contains("-> {"))
         assertTrue(widgetContents.contains("Metadata.GETNAMEDSTRING_SLOT"))
-        assertTrue(widgetContents.contains("public fun getStringAt(index: UInt): String"))
+        assertTrue(widgetContents.contains("fun getStringAt(index: UInt): String"))
         assertTrue(widgetContents.contains("index.toInt()"))
         assertTrue(widgetContents.contains("Metadata.GETSTRINGAT_SLOT"))
-        assertTrue(widgetContents.contains("public fun rename(name: String)"))
+        assertTrue(widgetContents.contains("fun rename(name: String)"))
         assertTrue(widgetContents.contains("Metadata.RENAME_SLOT"))
-        assertTrue(widgetContents.contains("public fun setSelectedIndex(index: UInt)"))
+        assertTrue(widgetContents.contains("fun setSelectedIndex(index: UInt)"))
         assertTrue(widgetContents.contains("Metadata.SETSELECTEDINDEX_SLOT"))
-        assertTrue(widgetContents.contains("public var title: String"))
+        assertTrue(widgetContents.contains("var title: String"))
         assertTrue(widgetContents.contains("Metadata.TITLE_SETTER_SLOT"))
     }
 
@@ -1685,14 +1724,14 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
-        assertTrue(widgetContents.contains("public fun setReady(ready: Boolean)"))
-        assertTrue(widgetContents.contains("if (ready) 1.toByte() else 0.toByte()"))
+        assertTrue(widgetContents.contains("fun setReady(ready: Boolean)"))
+        assertTrue(widgetContents.contains("if (ready) 1 else 0"))
         assertTrue(widgetContents.contains("Metadata.SETREADY_SLOT"))
-        assertTrue(widgetContents.contains("public fun createNumberValue("))
+        assertTrue(widgetContents.contains("fun createNumberValue("))
         assertTrue(widgetContents.contains("Double): WidgetValue"))
         assertTrue(widgetContents.contains("Metadata.CREATENUMBERVALUE_SLOT"))
         assertTrue(widgetContents.contains("WidgetValue.Metadata.wrap"))
-        assertTrue(widgetContents.contains("public var ready: Boolean"))
+        assertTrue(widgetContents.contains("var ready: Boolean"))
         assertTrue(widgetContents.contains("Metadata.READY_SETTER_SLOT"))
     }
 
@@ -1755,12 +1794,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtAsyncActionReference"))
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationReference"))
         assertTrue(file.contents, file.contents.contains("public interface IWidgetCollection : Iterable<String>"))
-        assertTrue(file.contents, file.contents.contains("public fun asReadOnly(): List<String>"))
-        assertTrue(file.contents, file.contents.contains("public fun asMap(): MutableMap<String, Int>"))
-        assertTrue(file.contents, file.contents.contains("public fun refreshAsync(): WinRtAsyncActionReference"))
-        assertTrue(file.contents, file.contents.contains("public fun fetchAsync(): WinRtAsyncOperationReference<String>"))
-        assertTrue(file.contents, file.contents.contains("public val sourceUri: URI"))
-        assertTrue(file.contents, file.contents.contains("public val selection: Int?"))
+        assertTrue(file.contents, file.contents.contains("fun asReadOnly(): List<String>"))
+        assertTrue(file.contents, file.contents.contains("fun asMap(): MutableMap<String, Int>"))
+        assertTrue(file.contents, file.contents.contains("fun refreshAsync(): WinRtAsyncActionReference"))
+        assertTrue(file.contents, file.contents.contains("fun fetchAsync(): WinRtAsyncOperationReference<String>"))
+        assertTrue(file.contents, file.contents.contains("val sourceUri: URI"))
+        assertTrue(file.contents, file.contents.contains("val selection: Int?"))
     }
 
     @Test
@@ -1809,9 +1848,9 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertFalse(widgetContents.contains("CompletableFuture"))
-        assertTrue(widgetContents.contains("public fun refreshAsync(): WinRtAsyncActionReference"))
+        assertTrue(widgetContents.contains("fun refreshAsync(): WinRtAsyncActionReference"))
         assertTrue(widgetContents.contains("return WinRtAsyncActionReference(PlatformAbi.readPointer(__resultOut))"))
-        assertTrue(widgetContents.contains("public fun fetchAsync(): WinRtAsyncOperationReference<String>"))
+        assertTrue(widgetContents.contains("fun fetchAsync(): WinRtAsyncOperationReference<String>"))
         assertTrue(widgetContents.contains("interfaceId = WinRtAsyncOperationReference.interfaceId(WinRtTypeSignature.string())"))
         assertTrue(widgetContents.contains("completedHandlerInterfaceId ="))
         assertTrue(widgetContents.contains("WinRtAsyncOperationReference.completedHandlerInterfaceId(WinRtTypeSignature.string())"))
@@ -1819,11 +1858,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtAsyncOperationVftblSlots.GetResults, __operationResultOut)"))
         assertTrue(widgetContents.contains("HString.fromHandle(PlatformAbi.readPointer(__operationResultOut), owner = true).use"))
         assertTrue(widgetContents.contains("it.toKString()"))
-        assertTrue(widgetContents.contains("public fun refreshWithProgressAsync(): WinRtAsyncActionWithProgressReference<Int>"))
+        assertTrue(widgetContents.contains("fun refreshWithProgressAsync(): WinRtAsyncActionWithProgressReference<Int>"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.interfaceId(WinRtTypeSignature.int32())"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(WinRtTypeSignature.int32())"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.completedHandlerInterfaceId(WinRtTypeSignature.int32())"))
-        assertTrue(widgetContents.contains("public fun fetchWithProgressAsync(): WinRtAsyncOperationWithProgressReference<String, UInt>"))
+        assertTrue(widgetContents.contains("fun fetchWithProgressAsync(): WinRtAsyncOperationWithProgressReference<String, UInt>"))
         assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressReference.interfaceId("))
         assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressReference.progressHandlerInterfaceId("))
         assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressReference.completedHandlerInterfaceId("))
@@ -1871,8 +1910,8 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model).single()
 
         assertTrue(file.contents, file.contents.contains("public interface IBindableItemsView : Iterable<Any?>"))
-        assertTrue(file.contents, file.contents.contains("public fun snapshot(): MutableList<Any?>"))
-        assertTrue(file.contents, file.contents.contains("public val items: MutableList<Any?>"))
+        assertTrue(file.contents, file.contents.contains("fun snapshot(): MutableList<Any?>"))
+        assertTrue(file.contents, file.contents.contains("val items: MutableList<Any?>"))
     }
 
     @Test
@@ -2115,8 +2154,8 @@ class KotlinProjectionGeneratorTest {
             .getValue("VectorProvider.kt")
             .contents
 
-        assertTrue(contents, contents.contains("public fun items(): MutableList<String>"))
-        assertTrue(contents, contents.contains("public val mutableItems: MutableList<String>"))
+        assertTrue(contents, contents.contains("fun items(): MutableList<String>"))
+        assertTrue(contents, contents.contains("val mutableItems: MutableList<String>"))
         assertTrue(contents, contents.contains("return object : AbstractMutableList<String>(), MutableList<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
         assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
@@ -2242,8 +2281,8 @@ class KotlinProjectionGeneratorTest {
             .getValue("MapProvider.kt")
             .contents
 
-        assertTrue(contents, contents.contains("public fun items(): MutableMap<String, Int>"))
-        assertTrue(contents, contents.contains("public val mutableItems: MutableMap<String, Int>"))
+        assertTrue(contents, contents.contains("fun items(): MutableMap<String, Int>"))
+        assertTrue(contents, contents.contains("val mutableItems: MutableMap<String, Int>"))
         assertTrue(contents, contents.contains("return object : AbstractMutableMap<String, Int>(), MutableMap<String, Int>, IWinRTObject"))
         assertTrue(contents, contents.contains("AbstractMutableSet<MutableMap.MutableEntry<String, Int>>()"))
         assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
@@ -2325,9 +2364,9 @@ class KotlinProjectionGeneratorTest {
             .getValue("CollectionProvider.kt")
             .contents
 
-        assertTrue(contents, contents.contains("public fun names(): Iterable<String>"))
-        assertTrue(contents, contents.contains("public fun readOnlyNames(): List<String>"))
-        assertTrue(contents, contents.contains("public val nameMap: Map<String, Int>"))
+        assertTrue(contents, contents.contains("fun names(): Iterable<String>"))
+        assertTrue(contents, contents.contains("fun readOnlyNames(): List<String>"))
+        assertTrue(contents, contents.contains("val nameMap: Map<String, Int>"))
         assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
         assertTrue(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
@@ -2392,7 +2431,7 @@ class KotlinProjectionGeneratorTest {
             .getValue("WidgetProvider.kt")
             .contents
 
-        assertTrue(contents, contents.contains("public fun widgets(): List<IWidget>"))
+        assertTrue(contents, contents.contains("fun widgets(): List<IWidget>"))
         assertTrue(contents, contents.contains("return object : AbstractList<IWidget>(), List<IWidget>, IWinRTObject"))
         assertTrue(contents, contents.contains("IWidget.Metadata.wrap"))
     }
@@ -2463,7 +2502,7 @@ class KotlinProjectionGeneratorTest {
             .getValue("WidgetSink.kt")
             .contents
 
-        assertTrue(contents, contents.contains("public fun setWidgets(widgets: Iterable<IWidget>)"))
+        assertTrue(contents, contents.contains("fun setWidgets(widgets: Iterable<IWidget>)"))
         assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
         assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
         assertTrue(contents, contents.contains("ComVtableInvoker.invokeArgs"))
@@ -2531,9 +2570,9 @@ class KotlinProjectionGeneratorTest {
             .getValue("BindableHost.kt")
             .contents
 
-        assertTrue(contents, contents.contains("public fun snapshot(): List<Any?>"))
+        assertTrue(contents, contents.contains("fun snapshot(): List<Any?>"))
         assertTrue(contents, contents.contains("WinRtBindableVectorViewProjection.fromAbi"))
-        assertTrue(contents, contents.contains("public fun setItems(items: MutableList<Any?>)"))
+        assertTrue(contents, contents.contains("fun setItems(items: MutableList<Any?>)"))
         assertTrue(contents, contents.contains("WinRtBindableVectorProjection.createMarshaler(items)!!.use"))
     }
 
@@ -2818,5 +2857,19 @@ class KotlinProjectionGeneratorTest {
                 ),
             ),
         )
+
+    private fun generateWindowsDataJsonFromInstalledWinmd(): Map<String, KotlinProjectionFile> {
+        val windowsWinmd = runCatching { KotlinProjectionGeneratorOptions.locateWindowsWinmd() }.getOrNull()
+        assumeTrue("Windows SDK Windows.winmd is required for CsWinRT parity fixture.", windowsWinmd?.isRegularFile() == true)
+        val model = WinRtMetadataLoader
+            .load(windowsWinmd!!)
+            .filterToWindowsDataJson()
+        return KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+    }
+
+    private fun WinRtMetadataModel.filterToWindowsDataJson(): WinRtMetadataModel =
+        WinRtMetadataModel(namespaces.filter { it.name == "Windows.Data.Json" }).normalized()
 
 }
