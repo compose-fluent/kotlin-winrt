@@ -3,18 +3,21 @@ package io.github.kitectlab.winrt.metadata
 import io.github.kitectlab.winrt.runtime.Guid
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.extension
 import kotlin.io.path.inputStream
-import kotlin.io.path.isDirectory
 import kotlin.io.path.name
-import kotlin.streams.asSequence
 
 object WinRtMetadataLoader {
     fun load(paths: List<Path>): WinRtMetadataModel {
-        val discoveredFiles = discoverMetadataFiles(paths)
-        val namespaces = discoveredFiles
+        return WinRtMetadataSourceResolver.resolvePathInputs(paths).load()
+    }
+
+    fun loadSources(sources: List<WinRtMetadataSource>): WinRtMetadataModel {
+        return WinRtMetadataSourceResolver.resolve(sources).load()
+    }
+
+    internal fun loadDiscoveredFiles(files: List<Path>): WinRtMetadataModel {
+        val namespaces = files
             .flatMap { WinRtCliMetadataFile.parse(it) }
             .groupBy { it.namespace }
             .map { (namespace, types) ->
@@ -28,39 +31,10 @@ object WinRtMetadataLoader {
 
     fun load(vararg paths: Path): WinRtMetadataModel = load(paths.toList())
 
+    fun load(vararg sources: WinRtMetadataSource): WinRtMetadataModel = loadSources(sources.toList())
+
     internal fun discoverMetadataFiles(paths: List<Path>): List<Path> =
-        paths.asSequence()
-            .flatMap { path ->
-                when {
-                    path.isDirectory() -> Files.walk(path).use { stream ->
-                        stream.asSequence()
-                            .filter(Files::isRegularFile)
-                            .filter(::looksLikeCliMetadataCandidate)
-                            .toList()
-                            .asSequence()
-                    }
-
-                    Files.isRegularFile(path) -> sequenceOf(path)
-                    else -> emptySequence()
-                }
-            }
-            .map(::canonicalizePath)
-            .distinctBy(::canonicalPathKey)
-            .sortedBy(::canonicalPathKey)
-            .toList()
-
-    private fun looksLikeCliMetadataCandidate(path: Path): Boolean =
-        path.extension.lowercase() in setOf("winmd", "dll", "exe")
-
-    private fun canonicalizePath(path: Path): Path =
-        runCatching { path.toAbsolutePath().normalize() }.getOrElse { path.normalize() }
-
-    private fun canonicalPathKey(path: Path): String =
-        canonicalizePath(path).toString().let { value ->
-            if (isWindows()) value.lowercase() else value
-        }
-
-    private fun isWindows(): Boolean = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+        WinRtMetadataSourceResolver.resolvePathInputs(paths).files
 }
 
 private class WinRtCliMetadataFile private constructor(

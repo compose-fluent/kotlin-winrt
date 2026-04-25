@@ -391,6 +391,53 @@ class WinRtMetadataLoaderTest {
         )
     }
 
+    @Test
+    fun resolves_windows_sdk_platform_contract_metadata_sources() {
+        val assembly = buildManagedMetadataSample()
+        val sdkRoot = buildWindowsSdkMetadataRoot(
+            version = "10.0.22621.0",
+            platformContracts = listOf("Sample.Foundation" to assembly),
+        )
+
+        val cache = WinRtMetadataSourceResolver.resolve(
+            WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", sdkRoot = sdkRoot),
+        )
+        val model = WinRtMetadataLoader.load(
+            WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", sdkRoot = sdkRoot),
+        )
+
+        assertEquals(listOf("Sample.Foundation.winmd"), cache.files.map { it.fileName.toString() })
+        assertTrue(model.namespaces.any { it.name == "Sample.Foundation" })
+    }
+
+    @Test
+    fun resolves_latest_windows_sdk_version_and_extension_contracts() {
+        val assembly = buildManagedMetadataSample()
+        val sdkRoot = buildWindowsSdkMetadataRoot(
+            version = "10.0.19041.0",
+            platformContracts = listOf("Old.Contract" to assembly),
+        )
+        addWindowsSdkVersion(
+            sdkRoot = sdkRoot,
+            version = "10.0.22621.0",
+            platformContracts = listOf("Sample.Foundation" to assembly),
+            extensionContracts = listOf("Sample.Extension" to assembly),
+        )
+
+        val withoutExtensions = WinRtMetadataSourceResolver.resolve(
+            WinRtMetadataSource.windowsSdk(sdkRoot = sdkRoot),
+        )
+        val withExtensions = WinRtMetadataSourceResolver.resolve(
+            WinRtMetadataSource.windowsSdk(includeExtensions = true, sdkRoot = sdkRoot),
+        )
+
+        assertEquals(listOf("Sample.Foundation.winmd"), withoutExtensions.files.map { it.fileName.toString() })
+        assertEquals(
+            listOf("Sample.Extension.winmd", "Sample.Foundation.winmd"),
+            withExtensions.files.map { it.fileName.toString() },
+        )
+    }
+
     private fun buildManagedMetadataSample(): Path {
         val dotnet = findDotnet()
         assumeTrue("dotnet CLI is required for Metadata 2.1 tests", dotnet != null)
@@ -638,6 +685,73 @@ class WinRtMetadataLoaderTest {
             command = listOf(dotnet!!.toString(), "build", "-nologo", "-clp:ErrorsOnly"),
         )
         return projectDir.resolve("bin/Debug/net8.0/SampleMetadata.dll")
+    }
+
+    private fun buildWindowsSdkMetadataRoot(
+        version: String,
+        platformContracts: List<Pair<String, Path>>,
+        extensionContracts: List<Pair<String, Path>> = emptyList(),
+    ): Path {
+        val root = Files.createTempDirectory("kotlin-winrt-sdk-test")
+        addWindowsSdkVersion(root, version, platformContracts, extensionContracts)
+        return root
+    }
+
+    private fun addWindowsSdkVersion(
+        sdkRoot: Path,
+        version: String,
+        platformContracts: List<Pair<String, Path>>,
+        extensionContracts: List<Pair<String, Path>> = emptyList(),
+    ) {
+        writeApiContractXml(
+            sdkRoot.resolve("Platforms").resolve("UAP").resolve(version).resolve("Platform.xml"),
+            platformContracts.map { it.first },
+        )
+        platformContracts.forEach { (contractName, sourceAssembly) ->
+            copyContractWinmd(sdkRoot, version, contractName, sourceAssembly)
+        }
+        if (extensionContracts.isNotEmpty()) {
+            val manifest = sdkRoot
+                .resolve("Extension SDKs")
+                .resolve("SampleExtension")
+                .resolve(version)
+                .resolve("SDKManifest.xml")
+            writeApiContractXml(manifest, extensionContracts.map { it.first })
+            extensionContracts.forEach { (contractName, sourceAssembly) ->
+                copyContractWinmd(sdkRoot, version, contractName, sourceAssembly)
+            }
+        }
+    }
+
+    private fun writeApiContractXml(path: Path, contractNames: List<String>) {
+        path.parent.createDirectories()
+        path.writeText(
+            buildString {
+                appendLine("""<ApplicationPlatform xmlns="urn:schemas-microsoft-com:platform">""")
+                appendLine("  <ContainedApiContracts>")
+                contractNames.forEach { contractName ->
+                    appendLine("""    <ApiContract name="$contractName" version="1.0.0.0" />""")
+                }
+                appendLine("  </ContainedApiContracts>")
+                appendLine("</ApplicationPlatform>")
+            },
+        )
+    }
+
+    private fun copyContractWinmd(
+        sdkRoot: Path,
+        sdkVersion: String,
+        contractName: String,
+        sourceAssembly: Path,
+    ) {
+        val target = sdkRoot
+            .resolve("References")
+            .resolve(sdkVersion)
+            .resolve(contractName)
+            .resolve("1.0.0.0")
+            .resolve("$contractName.winmd")
+        target.parent.createDirectories()
+        Files.copy(sourceAssembly, target)
     }
 
     private fun findDotnet(): Path? =

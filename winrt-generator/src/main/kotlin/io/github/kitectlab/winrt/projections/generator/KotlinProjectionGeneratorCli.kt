@@ -3,6 +3,7 @@ package io.github.kitectlab.winrt.projections.generator
 import io.github.kitectlab.winrt.metadata.WinRtMetadataLoader
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
+import io.github.kitectlab.winrt.metadata.WinRtMetadataSource
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -12,8 +13,8 @@ import kotlin.streams.asSequence
 
 fun main(args: Array<String>) {
     val options = KotlinProjectionGeneratorOptions.parse(args.toList())
-    val metadataPaths = options.metadataPaths.ifEmpty { listOf(KotlinProjectionGeneratorOptions.locateWindowsWinmd()) }
-    val model = WinRtMetadataLoader.load(metadataPaths).filterProjectionSurface(options.namespaces, options.types)
+    val metadataSources = options.metadataSources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
+    val model = WinRtMetadataLoader.loadSources(metadataSources).filterProjectionSurface(options.namespaces, options.types)
     val files = KotlinProjectionGenerator().generate(model)
 
     files.forEach { file ->
@@ -27,14 +28,14 @@ fun main(args: Array<String>) {
 
 internal data class KotlinProjectionGeneratorOptions(
     val outputDirectory: Path,
-    val metadataPaths: List<Path>,
+    val metadataSources: List<WinRtMetadataSource>,
     val namespaces: Set<String>,
     val types: Set<String>,
 ) {
     companion object {
         fun parse(args: List<String>): KotlinProjectionGeneratorOptions {
             var outputDirectory: Path? = null
-            val metadataPaths = mutableListOf<Path>()
+            val metadataSources = mutableListOf<WinRtMetadataSource>()
             val namespaces = mutableSetOf<String>()
             val types = mutableSetOf<String>()
             var index = 0
@@ -42,7 +43,7 @@ internal data class KotlinProjectionGeneratorOptions(
                 when (val arg = args[index]) {
                     "--output" -> outputDirectory = Path.of(args.valueAfter(index, arg)).also { index++ }
                     "--winmd", "--metadata" -> {
-                        metadataPaths.add(Path.of(args.valueAfter(index, arg)))
+                        metadataSources.add(WinRtMetadataSource.parse(args.valueAfter(index, arg)))
                         index++
                     }
                     "--namespace" -> namespaces += args.valueAfter(index, arg).also { index++ }
@@ -55,7 +56,7 @@ internal data class KotlinProjectionGeneratorOptions(
 
             return KotlinProjectionGeneratorOptions(
                 outputDirectory = requireNotNull(outputDirectory) { "--output is required." },
-                metadataPaths = metadataPaths,
+                metadataSources = metadataSources,
                 namespaces = namespaces,
                 types = types,
             )
@@ -88,9 +89,9 @@ internal data class KotlinProjectionGeneratorOptions(
         private fun printUsageAndExit(): Nothing {
             println(
                 """
-                Usage: winrt-generator --output <dir> [--namespace <name>] [--type <full.name>] [--winmd <path>...]
+                Usage: winrt-generator --output <dir> [--namespace <name>] [--type <full.name>] [--winmd <path|sdk|sdk+|version[+]>...]
 
-                If --winmd is omitted, the latest Windows SDK UnionMetadata Windows.winmd is used.
+                If --winmd is omitted, the latest Windows SDK Platform.xml API-contract set is used.
                 """.trimIndent(),
             )
             kotlin.system.exitProcess(0)
