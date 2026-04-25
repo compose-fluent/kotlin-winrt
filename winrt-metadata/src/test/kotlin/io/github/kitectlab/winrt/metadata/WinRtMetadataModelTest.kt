@@ -426,6 +426,148 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun type_classifier_converges_mapped_types_special_shapes_and_projection_categories() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IReference", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation.Collections", name = "IVector", kind = WinRtTypeKind.Interface, genericParameterCount = 1),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml.Interop", name = "IBindableVector", kind = WinRtTypeKind.Interface),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "UniversalApiContract",
+                            kind = WinRtTypeKind.Struct,
+                            isApiContract = true,
+                            isBlittable = true,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetAttribute",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isAttributeType = true,
+                            isProjectionInternal = true,
+                        ),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "IWidget", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Widget", kind = WinRtTypeKind.RuntimeClass),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "WidgetHandler", kind = WinRtTypeKind.Delegate),
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct, isBlittable = true),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Priority",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val classifier = model.typeClassifier()
+        assertEquals(
+            listOf("IBindableIterable", "IBindableVector", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
+            classifier.mappedTypesInNamespace("Microsoft.UI.Xaml.Interop").map { it.abiName },
+        )
+        assertEquals(
+            "System.Collections.IList",
+            classifier.mappedType("Microsoft.UI.Xaml.Interop", "IBindableVector")?.mappedQualifiedName,
+        )
+
+        val vector = classifier.classify(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.Collections.IVector<String>"),
+            "Sample.Foundation",
+        )
+        assertEquals(WinRtProjectionCategory.Interface, vector.projectionCategory)
+        assertEquals(WinRtAbiTypeCategory.Interface, vector.abiCategory)
+        assertEquals("Windows.Foundation.Collections.IVector", vector.mappedType?.abiQualifiedName)
+        assertEquals("System.Collections.Generic.IList`1", vector.mappedType?.mappedQualifiedName)
+        assertEquals(true, vector.requiresMarshaling)
+        assertEquals(true, vector.hasCustomMembersOutput)
+        assertEquals(WinRtSpecialTypeFamily.Collection, vector.specialType?.family)
+        assertEquals(WinRtCollectionInterfaceKind.Vector, (vector.specialType as WinRtCollectionTypeDescriptor).kind)
+
+        val bindable = classifier.classify(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.Interop.IBindableVector"),
+            "Sample.Foundation",
+        )
+        assertEquals("System.Collections.IList", bindable.mappedType?.mappedQualifiedName)
+        assertEquals(true, bindable.requiresMarshaling)
+        assertEquals(true, bindable.hasCustomMembersOutput)
+        assertEquals(true, bindable.isXamlAlias)
+        assertEquals(WinRtSpecialTypeFamily.BindableCollection, bindable.specialType?.family)
+
+        val reference = classifier.classify(
+            WinRtTypeRef.fromDisplayName("Windows.Foundation.IReference<Int>"),
+            "Sample.Foundation",
+        )
+        assertEquals("System.Nullable", reference.mappedType?.mappedQualifiedName)
+        assertEquals(true, reference.requiresMarshaling)
+        assertEquals(WinRtSpecialTypeFamily.Reference, reference.specialType?.family)
+        assertEquals(WinRtReferenceInterfaceKind.Reference, (reference.specialType as WinRtReferenceTypeDescriptor).kind)
+
+        val xamlHelper = classifier.classify(
+            WinRtTypeRef.fromDisplayName("Microsoft.UI.Xaml.GridLengthHelper"),
+            "Sample.Foundation",
+        )
+        assertEquals(true, xamlHelper.isMappedType)
+        assertEquals(null, xamlHelper.mappedType?.mappedQualifiedName)
+        assertEquals(true, xamlHelper.isXamlAlias)
+
+        val apiContract = classifier.classify(WinRtTypeRef.fromDisplayName("UniversalApiContract"), "Sample.Foundation")
+        assertEquals(WinRtProjectionCategory.ApiContract, apiContract.projectionCategory)
+        assertEquals(WinRtAbiTypeCategory.Struct, apiContract.abiCategory)
+        assertEquals(true, apiContract.isApiContract)
+        assertEquals(true, apiContract.isBlittable)
+
+        val attribute = classifier.classify(WinRtTypeRef.fromDisplayName("WidgetAttribute"), "Sample.Foundation")
+        assertEquals(WinRtProjectionCategory.Attribute, attribute.projectionCategory)
+        assertEquals(WinRtAbiTypeCategory.RuntimeClass, attribute.abiCategory)
+        assertEquals(true, attribute.isAttributeType)
+        assertEquals(true, attribute.isProjectionInternal)
+
+        assertEquals(
+            WinRtProjectionCategory.Fundamental,
+            classifier.classify(WinRtTypeRef.fromDisplayName("Int"), "Sample.Foundation").projectionCategory,
+        )
+        assertEquals(
+            WinRtProjectionCategory.Enum,
+            classifier.classify(WinRtTypeRef.fromDisplayName("Priority"), "Sample.Foundation").projectionCategory,
+        )
+        assertEquals(
+            WinRtProjectionCategory.Struct,
+            classifier.classify(WinRtTypeRef.fromDisplayName("Point"), "Sample.Foundation").projectionCategory,
+        )
+        assertEquals(
+            WinRtProjectionCategory.Interface,
+            classifier.classify(WinRtTypeRef.fromDisplayName("IWidget"), "Sample.Foundation").projectionCategory,
+        )
+        assertEquals(
+            WinRtProjectionCategory.Delegate,
+            classifier.classify(WinRtTypeRef.fromDisplayName("WidgetHandler"), "Sample.Foundation").projectionCategory,
+        )
+        assertEquals(
+            WinRtProjectionCategory.RuntimeClass,
+            classifier.classify(WinRtTypeRef.fromDisplayName("Widget"), "Sample.Foundation").projectionCategory,
+        )
+    }
+
+    @Test
     fun closure_resolver_materializes_default_precedence_and_generic_interface_closure() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

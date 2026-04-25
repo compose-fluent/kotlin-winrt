@@ -52,7 +52,7 @@ data class WinRtAbiMethodDescriptor(
 )
 
 class WinRtMetadataAbiResolver private constructor(
-    private val typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    private val typeClassifier: WinRtMetadataTypeClassifier,
 ) {
     fun resolveType(
         type: WinRtTypeRef,
@@ -85,19 +85,16 @@ class WinRtMetadataAbiResolver private constructor(
                 )
 
             WinRtTypeRefKind.Named -> {
-                val resolvedReference = resolveTypeReference(normalizedType, currentNamespace, typesByQualifiedName)
-                val rawTypeName = resolvedReference.definitionQualifiedName ?: normalizedType.qualifiedName ?: "Any"
-                val resolvedTypeName = resolvedReference.definitionQualifiedName ?: rawTypeName
-                val resolvedType = resolvedReference.definitionType
+                val classification = typeClassifier.classify(normalizedType, currentNamespace)
                 val resolvedArguments = normalizedType.typeArguments.map { argument ->
                     resolveType(argument, currentNamespace)
                 }
                 WinRtAbiTypeDescriptor(
-                    category = abiCategoryFor(rawTypeName, resolvedType),
-                    type = normalizedType,
-                    resolvedTypeName = resolvedTypeName,
-                    resolvedType = resolvedType,
-                    enumUnderlyingType = resolvedType?.enumUnderlyingType,
+                    category = classification.abiCategory,
+                    type = classification.type,
+                    resolvedTypeName = classification.definitionQualifiedName ?: classification.typeName,
+                    resolvedType = classification.definitionType,
+                    enumUnderlyingType = classification.definitionType?.enumUnderlyingType,
                     typeArguments = resolvedArguments,
                 )
             }
@@ -137,34 +134,12 @@ class WinRtMetadataAbiResolver private constructor(
 
     companion object {
         fun create(model: WinRtMetadataModel): WinRtMetadataAbiResolver {
-            return WinRtMetadataAbiResolver(buildTypesByQualifiedName(model))
+            return WinRtMetadataAbiResolver(model.typeClassifier())
         }
     }
 }
 
 fun WinRtMetadataModel.abiResolver(): WinRtMetadataAbiResolver = WinRtMetadataAbiResolver.create(this)
-
-private fun abiCategoryFor(
-    rawTypeName: String,
-    resolvedType: WinRtTypeDefinition?,
-): WinRtAbiTypeCategory = when {
-    rawTypeName == "Unit" -> WinRtAbiTypeCategory.Unit
-    rawTypeName in FUNDAMENTAL_TYPE_NAMES -> WinRtAbiTypeCategory.Fundamental
-    rawTypeName == "String" -> WinRtAbiTypeCategory.String
-    rawTypeName == "Any" || rawTypeName == "System.Object" -> WinRtAbiTypeCategory.Object
-    rawTypeName == "Guid" || rawTypeName == "System.Guid" -> WinRtAbiTypeCategory.Guid
-    rawTypeName == "Type" || rawTypeName == "System.Type" -> WinRtAbiTypeCategory.Type
-    resolvedType != null -> when (resolvedType.kind) {
-        WinRtTypeKind.Enum -> WinRtAbiTypeCategory.Enum
-        WinRtTypeKind.Struct -> WinRtAbiTypeCategory.Struct
-        WinRtTypeKind.Interface -> WinRtAbiTypeCategory.Interface
-        WinRtTypeKind.Delegate -> WinRtAbiTypeCategory.Delegate
-        WinRtTypeKind.RuntimeClass -> WinRtAbiTypeCategory.RuntimeClass
-        WinRtTypeKind.Unknown -> WinRtAbiTypeCategory.Unknown
-    }
-
-    else -> WinRtAbiTypeCategory.Unknown
-}
 
 private fun abiCategoryFor(
     parameter: WinRtParameterDefinition,
@@ -187,18 +162,3 @@ private fun abiCategoryFor(
         WinRtParameterDirection.Out -> WinRtAbiParameterCategory.Out
     }
 }
-
-private val FUNDAMENTAL_TYPE_NAMES = setOf(
-    "Boolean",
-    "Char",
-    "Byte",
-    "UByte",
-    "Short",
-    "UShort",
-    "Int",
-    "UInt",
-    "Long",
-    "ULong",
-    "Float",
-    "Double",
-)
