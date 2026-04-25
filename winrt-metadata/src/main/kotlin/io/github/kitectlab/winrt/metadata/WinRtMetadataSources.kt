@@ -6,7 +6,59 @@ import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
+import kotlin.io.path.readText
 import kotlin.streams.asSequence
+
+enum class WinRtMetadataTarget {
+    Net8,
+    NetStandard20,
+}
+
+data class WinRtMetadataFilter(
+    val include: Set<String> = emptySet(),
+    val exclude: Set<String> = emptySet(),
+) {
+    fun includes(name: String): Boolean {
+        val included = include.isEmpty() || include.any { prefix -> name.startsWith(prefix) }
+        val excluded = exclude.any { prefix -> name.startsWith(prefix) }
+        return included && !excluded
+    }
+
+    fun includes(type: WinRtTypeDefinition): Boolean = includes(type.qualifiedName)
+
+    fun normalized(): WinRtMetadataFilter =
+        copy(
+            include = include.map(String::trim).filter(String::isNotEmpty).toSortedSet(),
+            exclude = exclude.map(String::trim).filter(String::isNotEmpty).toSortedSet(),
+        )
+}
+
+data class WinRtMetadataProjectionContext(
+    val sources: List<WinRtMetadataSource>,
+    val outputFolder: Path? = null,
+    val include: Set<String> = emptySet(),
+    val exclude: Set<String> = emptySet(),
+    val additionExclude: Set<String> = emptySet(),
+    val target: WinRtMetadataTarget = WinRtMetadataTarget.Net8,
+    val component: Boolean = false,
+    val internal: Boolean = false,
+    val embedded: Boolean = false,
+    val publicEnums: Boolean = false,
+    val publicExclusiveTo: Boolean = false,
+    val idicExclusiveTo: Boolean = false,
+    val partialFactory: Boolean = false,
+    val verbose: Boolean = false,
+) {
+    val filter: WinRtMetadataFilter
+        get() = WinRtMetadataFilter(include, exclude).normalized()
+
+    val additionFilter: WinRtMetadataFilter
+        get() = WinRtMetadataFilter(include, additionExclude).normalized()
+
+    fun resolveCache(): WinRtMetadataCache = WinRtMetadataSourceResolver.resolve(sources)
+
+    fun load(): WinRtMetadataModel = resolveCache().load()
+}
 
 sealed interface WinRtMetadataSource {
     data class PathSource(val path: Path) : WinRtMetadataSource
@@ -42,6 +94,44 @@ sealed interface WinRtMetadataSource {
                 )
             }
             return path(Path.of(value))
+        }
+
+        fun parseInputs(values: List<String>): List<WinRtMetadataSource> =
+            expandResponseFileArguments(values).map(::parse)
+
+        fun parseInputs(vararg values: String): List<WinRtMetadataSource> = parseInputs(values.toList())
+
+        private fun expandResponseFileArguments(values: List<String>): List<String> =
+            values.flatMap { value ->
+                if (value.startsWith("@") && value.length > 1) {
+                    tokenizeResponseFile(Path.of(value.drop(1)).readText())
+                } else {
+                    listOf(value)
+                }
+            }
+
+        private fun tokenizeResponseFile(content: String): List<String> {
+            val tokens = mutableListOf<String>()
+            val current = StringBuilder()
+            var quote: Char? = null
+            fun flush() {
+                if (current.isNotEmpty()) {
+                    tokens += current.toString()
+                    current.clear()
+                }
+            }
+            content.forEach { char ->
+                when {
+                    quote != null && char == quote -> quote = null
+                    quote != null -> current.append(char)
+                    char == '"' || char == '\'' -> quote = char
+                    char.isWhitespace() -> flush()
+                    else -> current.append(char)
+                }
+            }
+            flush()
+            require(quote == null) { "Response file contains an unterminated quoted argument." }
+            return tokens
         }
 
         private val WINDOWS_SDK_VERSION_WITH_OPTIONAL_EXTENSIONS =

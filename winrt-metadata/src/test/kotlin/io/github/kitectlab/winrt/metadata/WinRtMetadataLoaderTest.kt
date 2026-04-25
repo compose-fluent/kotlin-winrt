@@ -515,6 +515,40 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun expands_response_file_inputs_and_applies_cswinrt_style_filters() {
+        val assembly = buildManagedMetadataSample()
+        val responseFile = Files.createTempFile("kotlin-winrt-metadata-inputs", ".rsp")
+        responseFile.writeText("\"${assembly.parent}\"")
+        val context = WinRtMetadataProjectionContext(
+            sources = WinRtMetadataSource.parseInputs("@$responseFile"),
+            include = setOf("Sample.Foundation"),
+            exclude = setOf("Sample.Foundation.IInternal"),
+            additionExclude = setOf("Sample.Foundation.Additions"),
+            component = true,
+            embedded = true,
+            publicExclusiveTo = true,
+            idicExclusiveTo = true,
+            partialFactory = true,
+        )
+
+        val cache = context.resolveCache()
+        val model = context.load()
+
+        assertEquals(listOf(assembly.fileName.toString()), cache.files.map { it.fileName.toString() })
+        assertTrue(context.filter.includes("Sample.Foundation.Widget"))
+        assertFalse(context.filter.includes("Windows.Foundation.IStringable"))
+        assertFalse(context.filter.includes("Sample.Foundation.IInternalContract"))
+        assertTrue(context.additionFilter.includes("Sample.Foundation.Widget"))
+        assertFalse(context.additionFilter.includes("Sample.Foundation.Additions.Custom"))
+        assertTrue(context.component)
+        assertTrue(context.embedded)
+        assertTrue(context.publicExclusiveTo)
+        assertTrue(context.idicExclusiveTo)
+        assertTrue(context.partialFactory)
+        assertTrue(model.namespaces.any { it.name == "Sample.Foundation" })
+    }
+
+    @Test
     fun loads_cli_metadata_with_auxiliary_tables_used_by_real_winmd_caches() {
         val assembly = buildAuxiliaryTableMetadataSample()
 

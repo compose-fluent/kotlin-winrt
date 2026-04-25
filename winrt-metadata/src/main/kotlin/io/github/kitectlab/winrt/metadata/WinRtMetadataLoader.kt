@@ -17,6 +17,10 @@ object WinRtMetadataLoader {
         return WinRtMetadataSourceResolver.resolve(sources).load()
     }
 
+    fun load(context: WinRtMetadataProjectionContext): WinRtMetadataModel {
+        return context.load()
+    }
+
     internal fun loadDiscoveredFiles(files: List<Path>): WinRtMetadataModel {
         val namespaces = files
             .flatMap { WinRtCliMetadataFile.parse(it) }
@@ -1634,6 +1638,8 @@ private class MetadataTables private constructor(
         private const val TABLE_MEMBER_REF = 0x0A
         private const val TABLE_CONSTANT = 0x0B
         private const val TABLE_CUSTOM_ATTRIBUTE = 0x0C
+        private const val TABLE_FIELD_MARSHAL = 0x0D
+        private const val TABLE_DECL_SECURITY = 0x0E
         private const val TABLE_CLASS_LAYOUT = 0x0F
         private const val TABLE_FIELD_LAYOUT = 0x10
         private const val TABLE_STANDALONE_SIG = 0x11
@@ -1647,6 +1653,10 @@ private class MetadataTables private constructor(
         private const val TABLE_METHOD_IMPL = 0x19
         private const val TABLE_MODULE_REF = 0x1A
         private const val TABLE_TYPE_SPEC = 0x1B
+        private const val TABLE_IMPL_MAP = 0x1C
+        private const val TABLE_FIELD_RVA = 0x1D
+        private const val TABLE_ENC_LOG = 0x1E
+        private const val TABLE_ENC_MAP = 0x1F
         private const val TABLE_ASSEMBLY = 0x20
         private const val TABLE_ASSEMBLY_PROCESSOR = 0x21
         private const val TABLE_ASSEMBLY_OS = 0x22
@@ -1725,6 +1735,10 @@ private class MetadataTables private constructor(
         private const val CODED_HAS_CONSTANT_PARAM = 1
         private const val CODED_HAS_CONSTANT_TAG_BITS = 2
         private const val CODED_HAS_CONSTANT_TAG_MASK = (1 shl CODED_HAS_CONSTANT_TAG_BITS) - 1
+
+        private const val CODED_HAS_FIELD_MARSHAL_TAG_BITS = 1
+        private const val CODED_HAS_DECL_SECURITY_TAG_BITS = 2
+        private const val CODED_MEMBER_FORWARDED_TAG_BITS = 1
 
         private val GUID_ATTRIBUTE_NAMES = setOf(
             "System.Runtime.InteropServices.GuidAttribute",
@@ -1949,9 +1963,21 @@ private class MetadataTables private constructor(
             tagBits = 2,
             tables = intArrayOf(TABLE_FIELD, TABLE_PARAM, -1),
         )
+        private val CODED_HAS_FIELD_MARSHAL = CodedIndex(
+            tagBits = CODED_HAS_FIELD_MARSHAL_TAG_BITS,
+            tables = intArrayOf(TABLE_FIELD, TABLE_PARAM),
+        )
+        private val CODED_HAS_DECL_SECURITY = CodedIndex(
+            tagBits = CODED_HAS_DECL_SECURITY_TAG_BITS,
+            tables = intArrayOf(TABLE_TYPE_DEF, TABLE_METHOD_DEF, TABLE_ASSEMBLY),
+        )
         private val CODED_HAS_SEMANTICS = CodedIndex(
             tagBits = CODED_HAS_SEMANTICS_TAG_BITS,
             tables = intArrayOf(TABLE_EVENT, TABLE_PROPERTY),
+        )
+        private val CODED_MEMBER_FORWARDED = CodedIndex(
+            tagBits = CODED_MEMBER_FORWARDED_TAG_BITS,
+            tables = intArrayOf(TABLE_FIELD, TABLE_METHOD_DEF),
         )
         private val CODED_METHOD_DEF_OR_REF = CodedIndex(
             tagBits = 1,
@@ -2027,6 +2053,8 @@ private class MetadataTables private constructor(
             TABLE_MEMBER_REF -> codedIndexSize(CODED_MEMBER_REF_PARENT, rowCounts) + stringIndexSize + blobIndexSize
             TABLE_CONSTANT -> 2 + codedIndexSize(CODED_HAS_CONSTANT, rowCounts) + blobIndexSize
             TABLE_CUSTOM_ATTRIBUTE -> codedIndexSize(CODED_HAS_CUSTOM_ATTRIBUTE, rowCounts) + codedIndexSize(CODED_CUSTOM_ATTRIBUTE_TYPE, rowCounts) + blobIndexSize
+            TABLE_FIELD_MARSHAL -> codedIndexSize(CODED_HAS_FIELD_MARSHAL, rowCounts) + blobIndexSize
+            TABLE_DECL_SECURITY -> 2 + codedIndexSize(CODED_HAS_DECL_SECURITY, rowCounts) + blobIndexSize
             TABLE_CLASS_LAYOUT -> 6 + simpleIndexSize(TABLE_TYPE_DEF, rowCounts)
             TABLE_FIELD_LAYOUT -> 4 + simpleIndexSize(TABLE_FIELD, rowCounts)
             TABLE_STANDALONE_SIG -> blobIndexSize
@@ -2040,6 +2068,10 @@ private class MetadataTables private constructor(
             TABLE_METHOD_IMPL -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) + codedIndexSize(CODED_METHOD_DEF_OR_REF, rowCounts) * 2
             TABLE_MODULE_REF -> stringIndexSize
             TABLE_TYPE_SPEC -> blobIndexSize
+            TABLE_IMPL_MAP -> 2 + codedIndexSize(CODED_MEMBER_FORWARDED, rowCounts) + stringIndexSize + simpleIndexSize(TABLE_MODULE_REF, rowCounts)
+            TABLE_FIELD_RVA -> 4 + simpleIndexSize(TABLE_FIELD, rowCounts)
+            TABLE_ENC_LOG -> 8
+            TABLE_ENC_MAP -> 4
             TABLE_ASSEMBLY -> 16 + blobIndexSize + stringIndexSize * 2
             TABLE_ASSEMBLY_PROCESSOR -> 4
             TABLE_ASSEMBLY_OS -> 12

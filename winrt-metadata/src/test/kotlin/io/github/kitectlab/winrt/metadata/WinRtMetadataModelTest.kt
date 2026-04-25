@@ -1052,4 +1052,54 @@ class WinRtMetadataModelTest {
         ) as WinRtEventHandlerTypeDescriptor
         assertEquals(WinRtEventHandlerKind.NotifyCollectionChangedEventHandler, collectionChanged.kind)
     }
+    @Test
+    fun resolves_type_semantics_like_cswinrt_helper_kernel() {
+        val iBox = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IBox",
+            kind = WinRtTypeKind.Interface,
+            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(iBox, widget),
+                ),
+            ),
+        )
+        val resolver = model.typeSemanticsResolver()
+
+        assertEquals(
+            WinRtTypeSemantics.Fundamental(WinRtFundamentalType.String),
+            resolver.resolve(WinRtTypeRef.named("System.String"), "Sample.Foundation"),
+        )
+        assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("System.Object"), "Sample.Foundation"))
+        assertEquals(WinRtTypeSemantics.Guid, resolver.resolve(WinRtTypeRef.named("System.Guid"), "Sample.Foundation"))
+        assertEquals(WinRtTypeSemantics.Type, resolver.resolve(WinRtTypeRef.named("System.Type"), "Sample.Foundation"))
+        assertEquals(
+            WinRtTypeSemantics.TypeDefinition(widget),
+            resolver.resolve(WinRtTypeRef.named("Widget"), "Sample.Foundation"),
+        )
+
+        val generic = resolver.resolve(
+            WinRtTypeRef.named(
+                "Sample.Foundation.IBox",
+                listOf(WinRtTypeRef.genericTypeParameter(0)),
+            ),
+            currentNamespace = "Sample.Foundation",
+            genericParameters = iBox.genericParameters,
+        ) as WinRtTypeSemantics.GenericTypeInstance
+
+        assertEquals(iBox.qualifiedName, generic.genericType.qualifiedName)
+        assertEquals(
+            WinRtTypeSemantics.GenericTypeParameter(iBox.genericParameters.single()),
+            generic.genericArguments.single(),
+        )
+    }
 }
