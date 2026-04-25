@@ -22,6 +22,7 @@ plugins {
 include(
     ":winrt-runtime",
     ":winrt-metadata",
+    ":winrt-generator",
     ":winrt-authoring",
     ":winrt-projections",
     ":winrt-samples",
