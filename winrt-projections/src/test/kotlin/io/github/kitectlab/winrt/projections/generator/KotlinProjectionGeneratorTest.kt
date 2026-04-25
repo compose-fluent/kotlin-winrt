@@ -1778,6 +1778,8 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction", methodRowId = 6),
                                 WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>", methodRowId = 7),
+                                WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>", methodRowId = 8),
+                                WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>", methodRowId = 9),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -1791,6 +1793,8 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction"),
                                 WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>"),
+                                WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>"),
+                                WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>"),
                             ),
                         ),
                     ),
@@ -1815,6 +1819,17 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtAsyncOperationVftblSlots.GetResults, __operationResultOut)"))
         assertTrue(widgetContents.contains("HString.fromHandle(PlatformAbi.readPointer(__operationResultOut), owner = true).use"))
         assertTrue(widgetContents.contains("it.toKString()"))
+        assertTrue(widgetContents.contains("public fun refreshWithProgressAsync(): WinRtAsyncActionWithProgressReference<Int>"))
+        assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.interfaceId(WinRtTypeSignature.int32())"))
+        assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(WinRtTypeSignature.int32())"))
+        assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.completedHandlerInterfaceId(WinRtTypeSignature.int32())"))
+        assertTrue(widgetContents.contains("public fun fetchWithProgressAsync(): WinRtAsyncOperationWithProgressReference<String, UInt>"))
+        assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressReference.interfaceId("))
+        assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressReference.progressHandlerInterfaceId("))
+        assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressReference.completedHandlerInterfaceId("))
+        assertTrue(widgetContents.contains("WinRtTypeSignature.string()"))
+        assertTrue(widgetContents.contains("WinRtTypeSignature.uint32()"))
+        assertTrue(widgetContents.contains("WinRtAsyncOperationWithProgressVftblSlots.GetResults, __operationResultOut)"))
     }
 
     @Test

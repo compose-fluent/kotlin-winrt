@@ -26,7 +26,11 @@ import io.github.kitectlab.winrt.runtime.WinRtDictionaryProjection
 import io.github.kitectlab.winrt.runtime.WinRtIterableProjection
 import io.github.kitectlab.winrt.runtime.WinRtListProjection
 import io.github.kitectlab.winrt.runtime.WinRtAsyncActionReference
+import io.github.kitectlab.winrt.runtime.WinRtAsyncActionWithProgressReference
+import io.github.kitectlab.winrt.runtime.WinRtAsyncActionWithProgressVftblSlots
 import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationReference
+import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationWithProgressReference
+import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
 import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationVftblSlots
 import io.github.kitectlab.winrt.runtime.WinRtReadOnlyDictionaryProjection
 import io.github.kitectlab.winrt.runtime.WinRtReadOnlyListProjection
@@ -76,7 +80,11 @@ private val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRtDictionaryProjection::
 private val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRtIterableProjection::class.asClassName()
 private val WINRT_LIST_PROJECTION_CLASS_NAME = WinRtListProjection::class.asClassName()
 private val WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME = WinRtAsyncActionReference::class.asClassName()
+private val WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncActionWithProgressReference::class.asClassName()
+private val WINRT_ASYNC_ACTION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncActionWithProgressVftblSlots::class.asClassName()
 private val WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME = WinRtAsyncOperationReference::class.asClassName()
+private val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncOperationWithProgressReference::class.asClassName()
+private val WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationWithProgressVftblSlots::class.asClassName()
 private val WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationVftblSlots::class.asClassName()
 private val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRtReadOnlyDictionaryProjection::class.asClassName()
 private val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProjection::class.asClassName()
@@ -249,7 +257,9 @@ enum class KotlinProjectionAbiValueKind {
     MappedBindableVector,
     MappedBindableVectorView,
     MappedAsyncAction,
+    MappedAsyncActionWithProgress,
     MappedAsyncOperation,
+    MappedAsyncOperationWithProgress,
     ProjectedInterface,
     ProjectedRuntimeClass,
     Struct,
@@ -346,7 +356,12 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncAction,
         descriptionName = "IAsyncAction",
     ),
-    KotlinProjectionMappedType("Windows.Foundation.IAsyncActionWithProgress", { WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME }, descriptionName = "IAsyncActionWithProgress"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IAsyncActionWithProgress",
+        { arguments -> WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(arguments.single()) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        descriptionName = "IAsyncActionWithProgress",
+    ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IAsyncOperation",
         { arguments -> WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(arguments.single()) },
@@ -355,7 +370,8 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IAsyncOperationWithProgress",
-        { arguments -> WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(arguments.first()) },
+        { arguments -> WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(arguments[0], arguments[1]) },
+        abiValueKind = KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
         descriptionName = "IAsyncOperationWithProgress",
     ),
     KotlinProjectionMappedType(
@@ -3131,7 +3147,9 @@ class KotlinProjectionRenderer {
             else -> when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.String,
             KotlinProjectionAbiValueKind.MappedAsyncAction,
+            KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
             KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -3173,8 +3191,12 @@ class KotlinProjectionRenderer {
                     WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                 )
+            KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress ->
+                asyncActionWithProgressReturnReadback(returnBinding) ?: return null
             KotlinProjectionAbiValueKind.MappedAsyncOperation ->
                 asyncOperationReturnReadback(returnBinding) ?: return null
+            KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
+                asyncOperationWithProgressReturnReadback(returnBinding) ?: return null
             KotlinProjectionAbiValueKind.Boolean ->
                 CodeBlock.of("return %T.readInt8(__resultOut).toInt() != 0\n", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Int32 ->
@@ -3267,6 +3289,24 @@ class KotlinProjectionRenderer {
         runCatching { resolveTypeName(returnBinding.typeName) as? ClassName }.getOrNull()
             ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName) as? ClassName }.getOrNull()
 
+    private fun asyncActionWithProgressReturnReadback(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val progressBinding = returnBinding.typeArguments.singleOrNull() ?: return null
+        val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+        val asyncActionType = WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resolveTypeName(progressBinding.typeName))
+        return CodeBlock.builder()
+            .add("return %T(\n", asyncActionType)
+            .indent()
+            .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
+            .add("interfaceId = %T.interfaceId(%L),\n", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressTypeSignature)
+            .add("progressHandlerInterfaceId = %T.progressHandlerInterfaceId(%L),\n", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressTypeSignature)
+            .add("completedHandlerInterfaceId = %T.completedHandlerInterfaceId(%L),\n", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressTypeSignature)
+            .unindent()
+            .add(")\n")
+            .build()
+    }
+
     private fun asyncOperationReturnReadback(
         returnBinding: KotlinProjectionAbiTypeBinding,
     ): CodeBlock? {
@@ -3290,6 +3330,47 @@ class KotlinProjectionRenderer {
                 "val __operationHr = %T.invokeArgs(__operation.pointer, %T.GetResults, __operationResultOut)\n",
                 COM_VTABLE_INVOKER_CLASS_NAME,
                 WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME,
+            )
+            .add("%T.checkSucceededRaw(__operationHr)\n", WINRT_PLATFORM_API_CLASS_NAME)
+            .add("%L\n", resultReadbackExpression)
+            .unindent()
+            .add("}\n")
+            .unindent()
+            .add("},\n")
+            .unindent()
+            .add(")\n")
+            .build()
+    }
+
+    private fun asyncOperationWithProgressReturnReadback(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val resultBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
+        val progressBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
+        val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
+        val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+        val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
+        val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
+        val asyncOperationType = WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(
+            resolveTypeName(resultBinding.typeName),
+            resolveTypeName(progressBinding.typeName),
+        )
+        return CodeBlock.builder()
+            .add("return %T(\n", asyncOperationType)
+            .indent()
+            .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
+            .add("interfaceId = %T.interfaceId(%L, %L),\n", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultTypeSignature, progressTypeSignature)
+            .add("progressHandlerInterfaceId = %T.progressHandlerInterfaceId(%L, %L),\n", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultTypeSignature, progressTypeSignature)
+            .add("completedHandlerInterfaceId = %T.completedHandlerInterfaceId(%L, %L),\n", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultTypeSignature, progressTypeSignature)
+            .add("resultReader = { __operation ->\n")
+            .indent()
+            .add("%T.confinedScope().use { __operationScope ->\n", PLATFORM_ABI_CLASS_NAME)
+            .indent()
+            .add("val __operationResultOut = %L\n", resultOutAllocation)
+            .add(
+                "val __operationHr = %T.invokeArgs(__operation.pointer, %T.GetResults, __operationResultOut)\n",
+                COM_VTABLE_INVOKER_CLASS_NAME,
+                WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME,
             )
             .add("%T.checkSucceededRaw(__operationHr)\n", WINRT_PLATFORM_API_CLASS_NAME)
             .add("%L\n", resultReadbackExpression)

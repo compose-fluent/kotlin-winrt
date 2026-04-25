@@ -159,6 +159,71 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_info_factory_exposes_progress_action_and_reports_progress() {
+        runBlocking {
+            val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+            var capturedProgress: Int? = null
+            val progressSignature = WinRtTypeSignature.int32()
+            val progressHandler = WinRtDelegateBridge.createUnitDelegate(
+                iid = WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(progressSignature),
+                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+            ) { args ->
+                capturedProgress = args[1] as Int
+            }
+
+            progressHandler.use { handler ->
+                AsyncInfo.runActionWithProgress<Int>(
+                    scope = this,
+                    progressSignature = progressSignature,
+                    progressValueKind = WinRtDelegateValueKind.INT32,
+                ) { _, progress ->
+                    gate.await()
+                    progress.report(7)
+                }.use { action ->
+                    action.queryInterface(WinRtAsyncInterfaceIds.IAsyncInfo).getOrThrow().use { asyncInfo ->
+                        assertEquals(WinRtAsyncInterfaceIds.IAsyncInfo, asyncInfo.interfaceId)
+                    }
+                    handler.createReference().use(action::setProgressHandler)
+                    gate.complete(Unit)
+                    action.await()
+                    assertEquals(7, capturedProgress)
+                    assertEquals(WinRtAsyncStatus.Completed, action.status())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun async_info_factory_exposes_operation_with_progress_result_through_abi() {
+        val resultSignature = WinRtTypeSignature.int32()
+        val progressSignature = WinRtTypeSignature.uint32()
+        AsyncInfo.fromResultWithProgress<Int, UInt>(
+            result = 42,
+            resultSignature = resultSignature,
+            progressSignature = progressSignature,
+            progressValueKind = WinRtDelegateValueKind.UINT32,
+            resultWriter = WinRtAsyncResultWriter { value, resultOut ->
+                PlatformAbi.writeInt32(resultOut, value)
+            },
+        ).use { operation ->
+            assertEquals(
+                WinRtAsyncOperationWithProgressReference.interfaceId(resultSignature, progressSignature),
+                operation.interfaceId,
+            )
+            PlatformAbi.confinedScope().use { scope ->
+                val resultOut = PlatformAbi.allocateInt32Slot(scope)
+                val hr = ComVtableInvoker.invokeArgs(
+                    instance = operation.pointer,
+                    slot = WinRtAsyncOperationWithProgressVftblSlots.GetResults,
+                    arg0 = resultOut,
+                )
+                assertEquals(KnownHResults.S_OK.value, hr)
+                assertEquals(42, PlatformAbi.readInt32(resultOut))
+            }
+        }
+    }
+
+    @Test
     fun async_operation_await_completes_with_result_and_maps_error_status() {
         Arena.ofConfined().use { arena ->
             runBlocking {

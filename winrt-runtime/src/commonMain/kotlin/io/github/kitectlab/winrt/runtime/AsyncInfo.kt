@@ -18,6 +18,15 @@ class WinRtAsyncCancellation internal constructor(
         get() = adapter.status() == WinRtAsyncStatus.Canceled
 }
 
+class WinRtAsyncProgressReporter<T> internal constructor(
+    private val adapter: WinRtTaskToAsyncInfoAdapter<*>,
+    private val progressValueKind: WinRtDelegateValueKind,
+) {
+    fun report(value: T) {
+        adapter.reportProgress(value, progressValueKind)
+    }
+}
+
 object AsyncInfo {
     fun completedAction(): WinRtAsyncActionReference =
         actionReference(WinRtTaskToAsyncInfoAdapter.completed(Unit))
@@ -39,6 +48,55 @@ object AsyncInfo {
             },
         )
         return actionReference(adapter)
+    }
+
+    fun <TProgress> completedActionWithProgress(
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+    ): WinRtAsyncActionWithProgressReference<TProgress> =
+        actionWithProgressReference(
+            adapter = WinRtTaskToAsyncInfoAdapter.completed(Unit),
+            progressSignature = progressSignature,
+            progressValueKind = progressValueKind,
+        )
+
+    fun <TProgress> canceledActionWithProgress(
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+    ): WinRtAsyncActionWithProgressReference<TProgress> =
+        actionWithProgressReference(
+            adapter = WinRtTaskToAsyncInfoAdapter.canceled(),
+            progressSignature = progressSignature,
+            progressValueKind = progressValueKind,
+        )
+
+    fun <TProgress> actionWithProgressFromException(
+        error: Throwable,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+    ): WinRtAsyncActionWithProgressReference<TProgress> =
+        actionWithProgressReference(
+            adapter = WinRtTaskToAsyncInfoAdapter.failed(error),
+            progressSignature = progressSignature,
+            progressValueKind = progressValueKind,
+        )
+
+    fun <TProgress> runActionWithProgress(
+        scope: CoroutineScope,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+        block: suspend (WinRtAsyncCancellation, WinRtAsyncProgressReporter<TProgress>) -> Unit,
+    ): WinRtAsyncActionWithProgressReference<TProgress> {
+        val adapter = WinRtTaskToAsyncInfoAdapter.started<Unit>()
+        adapter.attachJob(
+            scope.launch {
+                block(
+                    WinRtAsyncCancellation(adapter),
+                    WinRtAsyncProgressReporter(adapter, progressValueKind),
+                )
+            },
+        )
+        return actionWithProgressReference(adapter, progressSignature, progressValueKind)
     }
 
     fun <T> fromResult(
@@ -73,6 +131,50 @@ object AsyncInfo {
             resultWriter = resultWriter,
         )
 
+    fun <T, TProgress> fromResultWithProgress(
+        result: T,
+        resultSignature: WinRtTypeSignature,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+        resultWriter: WinRtAsyncResultWriter<T>,
+    ): WinRtAsyncOperationWithProgressReference<T, TProgress> =
+        operationWithProgressReference(
+            adapter = WinRtTaskToAsyncInfoAdapter.completed(result),
+            resultSignature = resultSignature,
+            progressSignature = progressSignature,
+            progressValueKind = progressValueKind,
+            resultWriter = resultWriter,
+        )
+
+    fun <T, TProgress> operationWithProgressFromException(
+        error: Throwable,
+        resultSignature: WinRtTypeSignature,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+        resultWriter: WinRtAsyncResultWriter<T>,
+    ): WinRtAsyncOperationWithProgressReference<T, TProgress> =
+        operationWithProgressReference(
+            adapter = WinRtTaskToAsyncInfoAdapter.failed(error),
+            resultSignature = resultSignature,
+            progressSignature = progressSignature,
+            progressValueKind = progressValueKind,
+            resultWriter = resultWriter,
+        )
+
+    fun <T, TProgress> canceledOperationWithProgress(
+        resultSignature: WinRtTypeSignature,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+        resultWriter: WinRtAsyncResultWriter<T>,
+    ): WinRtAsyncOperationWithProgressReference<T, TProgress> =
+        operationWithProgressReference(
+            adapter = WinRtTaskToAsyncInfoAdapter.canceled(),
+            resultSignature = resultSignature,
+            progressSignature = progressSignature,
+            progressValueKind = progressValueKind,
+            resultWriter = resultWriter,
+        )
+
     private fun actionReference(
         adapter: WinRtTaskToAsyncInfoAdapter<Unit>,
     ): WinRtAsyncActionReference {
@@ -86,6 +188,35 @@ object AsyncInfo {
         )
         adapter.selfReference = { host.createReference(WinRtAsyncInterfaceIds.IAsyncAction) }
         return WinRtAsyncActionReference(host.createReference(WinRtAsyncInterfaceIds.IAsyncAction).comPtr)
+    }
+
+    private fun <TProgress> actionWithProgressReference(
+        adapter: WinRtTaskToAsyncInfoAdapter<Unit>,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+    ): WinRtAsyncActionWithProgressReference<TProgress> {
+        val interfaceId = WinRtAsyncActionWithProgressReference.interfaceId(progressSignature)
+        val progressHandlerInterfaceId = WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(progressSignature)
+        val completedHandlerInterfaceId = WinRtAsyncActionWithProgressReference.completedHandlerInterfaceId(progressSignature)
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                adapter.createAsyncInfoInterfaceDefinition(),
+                adapter.createAsyncActionWithProgressInterfaceDefinition(
+                    interfaceId = interfaceId,
+                    progressHandlerInterfaceId = progressHandlerInterfaceId,
+                    completedHandlerInterfaceId = completedHandlerInterfaceId,
+                    progressValueKind = progressValueKind,
+                ),
+            ),
+            runtimeClassName = "Windows.Foundation.IAsyncActionWithProgress",
+            managedValue = adapter,
+        )
+        adapter.selfReference = { host.createReference(interfaceId) }
+        return WinRtAsyncActionWithProgressReference(
+            comPtr = host.createReference(interfaceId).comPtr,
+            progressHandlerInterfaceId = progressHandlerInterfaceId,
+            completedHandlerInterfaceId = completedHandlerInterfaceId,
+        )
     }
 
     private fun <T> operationReference(
@@ -114,6 +245,41 @@ object AsyncInfo {
             resultReader = { adapter.result() },
         )
     }
+
+    private fun <T, TProgress> operationWithProgressReference(
+        adapter: WinRtTaskToAsyncInfoAdapter<T>,
+        resultSignature: WinRtTypeSignature,
+        progressSignature: WinRtTypeSignature,
+        progressValueKind: WinRtDelegateValueKind,
+        resultWriter: WinRtAsyncResultWriter<T>,
+    ): WinRtAsyncOperationWithProgressReference<T, TProgress> {
+        val interfaceId = WinRtAsyncOperationWithProgressReference.interfaceId(resultSignature, progressSignature)
+        val progressHandlerInterfaceId =
+            WinRtAsyncOperationWithProgressReference.progressHandlerInterfaceId(resultSignature, progressSignature)
+        val completedHandlerInterfaceId =
+            WinRtAsyncOperationWithProgressReference.completedHandlerInterfaceId(resultSignature, progressSignature)
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                adapter.createAsyncInfoInterfaceDefinition(),
+                adapter.createAsyncOperationWithProgressInterfaceDefinition(
+                    interfaceId = interfaceId,
+                    progressHandlerInterfaceId = progressHandlerInterfaceId,
+                    completedHandlerInterfaceId = completedHandlerInterfaceId,
+                    progressValueKind = progressValueKind,
+                    resultWriter = resultWriter,
+                ),
+            ),
+            runtimeClassName = "Windows.Foundation.IAsyncOperationWithProgress",
+            managedValue = adapter,
+        )
+        adapter.selfReference = { host.createReference(interfaceId) }
+        return WinRtAsyncOperationWithProgressReference(
+            comPtr = host.createReference(interfaceId).comPtr,
+            progressHandlerInterfaceId = progressHandlerInterfaceId,
+            completedHandlerInterfaceId = completedHandlerInterfaceId,
+            resultReader = { adapter.result() },
+        )
+    }
 }
 
 @OptIn(ExperimentalAtomicApi::class)
@@ -128,6 +294,7 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
     private var errorValue: Throwable? = initialError
     private var job: Job? = null
     private var completedHandler: ComObjectReference? = null
+    private var progressHandler: ComObjectReference? = null
     internal var selfReference: (() -> ComObjectReference)? = null
 
     private val idValue: UInt = nextId()
@@ -151,6 +318,8 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
     fun close() {
         completedHandler?.close()
         completedHandler = null
+        progressHandler?.close()
+        progressHandler = null
         job?.cancel()
     }
 
@@ -174,6 +343,51 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
             resultOut,
             completedHandler?.getRefPointer()?.asRawAddress() ?: PlatformAbi.nullPointer,
         )
+    }
+
+    fun setProgressHandler(handlerPointer: RawAddress, handlerInterfaceId: Guid) {
+        progressHandler?.close()
+        progressHandler = null
+        if (!PlatformAbi.isNull(handlerPointer)) {
+            val borrowed = ComObjectReference(
+                pointer = handlerPointer.asRawComPtr(),
+                interfaceId = handlerInterfaceId,
+                preventReleaseOnDispose = true,
+            )
+            borrowed.addRef()
+            progressHandler = ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
+        }
+    }
+
+    fun getProgressHandler(resultOut: RawAddress) {
+        PlatformAbi.writePointer(
+            resultOut,
+            progressHandler?.getRefPointer()?.asRawAddress() ?: PlatformAbi.nullPointer,
+        )
+    }
+
+    fun reportProgress(value: Any?, progressValueKind: WinRtDelegateValueKind) {
+        val handler = progressHandler ?: return
+        if (status() != WinRtAsyncStatus.Started) {
+            return
+        }
+        val self = selfReference?.invoke()
+        val lease = WinRtDelegateAbiMarshaller.encodeArgumentsLease(
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, progressValueKind),
+            abiArguments = listOf(self?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer, value),
+        )
+        try {
+            val hResult = ComVtableInvoker.invokeGeneric(
+                instance = handler.pointer,
+                slot = WinRtDelegateVftblSlots.Invoke,
+                signature = ComMethodSignature.of(ComAbiValueKind.Pointer, abiKindForDelegateValue(progressValueKind)),
+                args = lease.values.map(::delegateAbiWord).toLongArray(),
+            )
+            WinRtPlatformApi.checkSucceededRaw(hResult)
+        } finally {
+            lease.close()
+            self?.close()
+        }
     }
 
     fun result(): T {
@@ -250,6 +464,69 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
                     KnownHResults.S_OK.value
                 },
             ),
+        )
+
+    fun createAsyncActionWithProgressInterfaceDefinition(
+        interfaceId: Guid,
+        progressHandlerInterfaceId: Guid,
+        completedHandlerInterfaceId: Guid,
+        progressValueKind: WinRtDelegateValueKind,
+    ): WinRtInspectableInterfaceDefinition =
+        WinRtInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = asyncInfoMethods() + progressMethods(progressHandlerInterfaceId) + listOf(
+                WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                    setCompletedHandler(args[0] as RawAddress, completedHandlerInterfaceId)
+                    KnownHResults.S_OK.value
+                },
+                WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                    getCompletedHandler(args[0] as RawAddress)
+                    KnownHResults.S_OK.value
+                },
+                WinRtInspectableMethodDefinition(ComMethodSignature()) {
+                    result()
+                    KnownHResults.S_OK.value
+                },
+            ),
+        )
+
+    fun createAsyncOperationWithProgressInterfaceDefinition(
+        interfaceId: Guid,
+        progressHandlerInterfaceId: Guid,
+        completedHandlerInterfaceId: Guid,
+        progressValueKind: WinRtDelegateValueKind,
+        resultWriter: WinRtAsyncResultWriter<T>,
+    ): WinRtInspectableInterfaceDefinition =
+        WinRtInspectableInterfaceDefinition(
+            interfaceId = interfaceId,
+            methods = asyncInfoMethods() + progressMethods(progressHandlerInterfaceId) + listOf(
+                WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                    setCompletedHandler(args[0] as RawAddress, completedHandlerInterfaceId)
+                    KnownHResults.S_OK.value
+                },
+                WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                    getCompletedHandler(args[0] as RawAddress)
+                    KnownHResults.S_OK.value
+                },
+                WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                    resultWriter.writeResult(result(), args[0] as RawAddress)
+                    KnownHResults.S_OK.value
+                },
+            ),
+        )
+
+    private fun progressMethods(
+        progressHandlerInterfaceId: Guid,
+    ): List<WinRtInspectableMethodDefinition> =
+        listOf(
+            WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                setProgressHandler(args[0] as RawAddress, progressHandlerInterfaceId)
+                KnownHResults.S_OK.value
+            },
+            WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                getProgressHandler(args[0] as RawAddress)
+                KnownHResults.S_OK.value
+            },
         )
 
     private fun asyncInfoMethods(): List<WinRtInspectableMethodDefinition> =
@@ -346,3 +623,32 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
         }
     }
 }
+
+private fun abiKindForDelegateValue(kind: WinRtDelegateValueKind): ComAbiValueKind =
+    when (kind) {
+        WinRtDelegateValueKind.UNIT -> error("UNIT is not a valid progress ABI value kind.")
+        WinRtDelegateValueKind.BOOLEAN -> ComAbiValueKind.Int8
+        WinRtDelegateValueKind.OBJECT,
+        WinRtDelegateValueKind.HSTRING,
+        WinRtDelegateValueKind.IUNKNOWN,
+        WinRtDelegateValueKind.IINSPECTABLE,
+        -> ComAbiValueKind.Pointer
+        WinRtDelegateValueKind.INT32,
+        WinRtDelegateValueKind.UINT32,
+        -> ComAbiValueKind.Int32
+        WinRtDelegateValueKind.INT64 -> ComAbiValueKind.Int64
+        WinRtDelegateValueKind.DOUBLE -> ComAbiValueKind.Double
+    }
+
+private fun delegateAbiWord(value: Any?): Long =
+    when (value) {
+        null -> 0L
+        is RawAddress -> value.value
+        is RawComPtr -> value.value
+        is Byte -> value.toLong()
+        is Int -> value.toLong()
+        is UInt -> value.toLong()
+        is Long -> value
+        is Double -> value.toRawBits()
+        else -> error("Unsupported encoded delegate ABI word: ${value::class.qualifiedName}")
+    }
