@@ -6,7 +6,11 @@ data class WinRtProjectedAttributeDescriptor(
     val arguments: List<WinRtCustomAttributeValue>,
     val namedArguments: List<WinRtCustomAttributeNamedArgument>,
     val isPlatformAttribute: Boolean = false,
-)
+) {
+    val renderedArguments: List<String>
+        get() = arguments.map(::renderAttributeValue) +
+            namedArguments.map { argument -> "${argument.name} = ${renderAttributeValue(argument.value)}" }
+}
 
 class WinRtMetadataProjectionAttributeResolver {
     fun resolve(
@@ -58,6 +62,15 @@ class WinRtMetadataProjectionAttributeResolver {
                 )
             }
         }
+        val usage = projected["System.AttributeUsage"]
+        if (usage != null && usage.namedArguments.none { it.name == "AllowMultiple" }) {
+            projected["System.AttributeUsage"] = usage.copy(
+                namedArguments = usage.namedArguments + WinRtCustomAttributeNamedArgument(
+                    name = "AllowMultiple",
+                    value = WinRtCustomAttributeValue.BooleanValue(false),
+                ),
+            )
+        }
         return projected.values.sortedBy(WinRtProjectedAttributeDescriptor::projectedTypeName)
     }
 
@@ -95,6 +108,44 @@ class WinRtMetadataProjectionAttributeResolver {
         )
     }
 }
+
+private fun renderAttributeValue(value: WinRtCustomAttributeValue): String =
+    when (value) {
+        is WinRtCustomAttributeValue.StringValue -> value.value?.let { "\"${it.escapeAttributeString()}\"" } ?: "null"
+        is WinRtCustomAttributeValue.TypeValue -> value.typeName?.let { "typeof($it)" } ?: "null"
+        is WinRtCustomAttributeValue.BooleanValue -> value.value.toString()
+        is WinRtCustomAttributeValue.IntegralValue -> value.value.toString()
+        is WinRtCustomAttributeValue.FloatingPointValue -> value.value.toString()
+        is WinRtCustomAttributeValue.EnumValue -> renderEnumAttributeValue(value)
+        is WinRtCustomAttributeValue.ArrayValue -> value.values.joinToString(prefix = "new[] { ", postfix = " }", transform = ::renderAttributeValue)
+        WinRtCustomAttributeValue.NullValue -> "null"
+    }
+
+private fun renderEnumAttributeValue(value: WinRtCustomAttributeValue.EnumValue): String {
+    if (value.enumTypeName == "Windows.Foundation.Metadata.AttributeTargets") {
+        val flags = listOf(
+            0x1L to "Delegate",
+            0x2L to "Enum",
+            0x4L to "Event",
+            0x8L to "Field",
+            0x10L to "Interface",
+            0x20L to "Method",
+            0x40L to "Parameter",
+            0x80L to "Property",
+            0x100L to "RuntimeClass",
+            0x200L to "Struct",
+            0x400L to "InterfaceImpl",
+            0x800L to "ApiContract",
+        ).filter { (mask, _) -> value.value and mask != 0L }
+        if (flags.isNotEmpty()) {
+            return flags.joinToString(" | ") { (_, name) -> "System.AttributeTargets.$name" }
+        }
+    }
+    return "${value.enumTypeName}.${value.value}"
+}
+
+private fun String.escapeAttributeString(): String =
+    replace("\\", "\\\\").replace("\"", "\\\"")
 
 fun WinRtTypeDefinition.projectedAttributes(
     enablePlatformAttributes: Boolean = true,

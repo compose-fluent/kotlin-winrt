@@ -163,8 +163,28 @@ data class WinRtPackageAsset(
     val extractedPath: Path? = null,
 )
 
+enum class WinRtMetadataSourceKind {
+    Path,
+    LocalMachine,
+    WindowsSdk,
+    NuGetPackage,
+}
+
+data class WinRtResolvedMetadataFile(
+    val file: Path,
+    val sourceKind: WinRtMetadataSourceKind,
+    val sourceDescription: String,
+)
+
 data class WinRtMetadataCache(
     val files: List<Path>,
+    val resolvedFiles: List<WinRtResolvedMetadataFile> = files.map {
+        WinRtResolvedMetadataFile(
+            file = it,
+            sourceKind = WinRtMetadataSourceKind.Path,
+            sourceDescription = it.toString(),
+        )
+    },
     val packageAssets: List<WinRtPackageAsset> = emptyList(),
 ) {
     fun load(): WinRtMetadataModel = WinRtMetadataLoader.loadDiscoveredFiles(files)
@@ -173,18 +193,19 @@ data class WinRtMetadataCache(
 object WinRtMetadataSourceResolver {
     fun resolve(sources: List<WinRtMetadataSource>): WinRtMetadataCache {
         val resolvedSources = sources.map(::resolveSource)
-        val files = resolvedSources
+        val resolvedFiles = resolvedSources
             .asSequence()
             .flatMap { source -> source.files.asSequence() }
-            .map(::canonicalizePath)
-            .distinctBy(::canonicalPathKey)
-            .sortedBy(::canonicalPathKey)
+            .map { resolved -> resolved.copy(file = canonicalizePath(resolved.file)) }
+            .distinctBy { resolved -> canonicalPathKey(resolved.file) }
+            .sortedBy { resolved -> canonicalPathKey(resolved.file) }
             .toList()
+        val files = resolvedFiles.map(WinRtResolvedMetadataFile::file)
         val packageAssets = resolvedSources
             .flatMap(ResolvedMetadataSource::packageAssets)
             .distinctBy { asset -> "${canonicalPathKey(asset.packagePath)}:${asset.relativePath}" }
             .sortedWith(compareBy({ canonicalPathKey(it.packagePath) }, { it.relativePath }))
-        return WinRtMetadataCache(files, packageAssets)
+        return WinRtMetadataCache(files, resolvedFiles, packageAssets)
     }
 
     fun resolve(vararg sources: WinRtMetadataSource): WinRtMetadataCache = resolve(sources.toList())
@@ -193,9 +214,29 @@ object WinRtMetadataSourceResolver {
         resolve(paths.map(WinRtMetadataSource::path))
 
     private fun resolveSource(source: WinRtMetadataSource): ResolvedMetadataSource = when (source) {
-        WinRtMetadataSource.LocalMachine -> ResolvedMetadataSource(localWinMetadataFiles())
-        is WinRtMetadataSource.PathSource -> ResolvedMetadataSource(discoverPathSource(source.path))
-        is WinRtMetadataSource.WindowsSdk -> ResolvedMetadataSource(windowsSdkFiles(source))
+        WinRtMetadataSource.LocalMachine -> ResolvedMetadataSource(
+            localWinMetadataFiles().map { file ->
+                WinRtResolvedMetadataFile(file, WinRtMetadataSourceKind.LocalMachine, "local")
+            },
+        )
+        is WinRtMetadataSource.PathSource -> ResolvedMetadataSource(
+            discoverPathSource(source.path).map { file ->
+                WinRtResolvedMetadataFile(file, WinRtMetadataSourceKind.Path, source.path.toString())
+            },
+        )
+        is WinRtMetadataSource.WindowsSdk -> ResolvedMetadataSource(
+            windowsSdkFiles(source).map { file ->
+                WinRtResolvedMetadataFile(
+                    file = file,
+                    sourceKind = WinRtMetadataSourceKind.WindowsSdk,
+                    sourceDescription = buildString {
+                        append("sdk")
+                        source.version?.let { append(":").append(it) }
+                        if (source.includeExtensions) append("+")
+                    },
+                )
+            },
+        )
         is WinRtMetadataSource.NuGetPackage -> resolveNuGetPackage(source.packagePath)
     }
 
@@ -236,6 +277,7 @@ object WinRtMetadataSourceResolver {
                     stream.asSequence()
                         .map { it.resolve(version).resolve("SDKManifest.xml") }
                         .filter { it.isRegularFile() }
+                        .sortedWith(compareBy { canonicalPathKey(it) })
                         .forEach { manifest -> addFilesFromApiContractXml(files, sdkRoot, version, manifest) }
                 }
             }
@@ -269,7 +311,11 @@ object WinRtMetadataSourceResolver {
                 .toList()
         }
         return ResolvedMetadataSource(
-            files = assets.filter { it.kind == WinRtPackageAssetKind.Winmd }.mapNotNull(WinRtPackageAsset::extractedPath),
+            files = assets.filter { it.kind == WinRtPackageAssetKind.Winmd }.mapNotNull { asset ->
+                asset.extractedPath?.let {
+                    WinRtResolvedMetadataFile(it, WinRtMetadataSourceKind.NuGetPackage, packagePath.toString())
+                }
+            },
             packageAssets = assets,
         )
     }
@@ -297,7 +343,11 @@ object WinRtMetadataSourceResolver {
                 .toList()
         }
         return ResolvedMetadataSource(
-            files = assets.filter { it.kind == WinRtPackageAssetKind.Winmd }.mapNotNull(WinRtPackageAsset::extractedPath),
+            files = assets.filter { it.kind == WinRtPackageAssetKind.Winmd }.mapNotNull { asset ->
+                asset.extractedPath?.let {
+                    WinRtResolvedMetadataFile(it, WinRtMetadataSourceKind.NuGetPackage, packagePath.toString())
+                }
+            },
             packageAssets = assets,
         )
     }
@@ -416,6 +466,6 @@ object WinRtMetadataSourceResolver {
 }
 
 private data class ResolvedMetadataSource(
-    val files: List<Path>,
+    val files: List<WinRtResolvedMetadataFile>,
     val packageAssets: List<WinRtPackageAsset> = emptyList(),
 )

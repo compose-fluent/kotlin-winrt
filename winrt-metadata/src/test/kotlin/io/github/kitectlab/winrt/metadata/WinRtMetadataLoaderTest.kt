@@ -643,6 +643,8 @@ class WinRtMetadataLoaderTest {
         val model = cache.load()
 
         assertEquals(listOf("Sample.Foundation.winmd"), cache.files.map { it.fileName.toString() })
+        assertEquals(listOf(WinRtMetadataSourceKind.NuGetPackage), cache.resolvedFiles.map { it.sourceKind })
+        assertEquals(listOf(packageDir.toString()), cache.resolvedFiles.map { it.sourceDescription })
         assertEquals(
             listOf(WinRtPackageAssetKind.Native, WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
             cache.packageAssets.map { it.kind }.sortedBy { it.name },

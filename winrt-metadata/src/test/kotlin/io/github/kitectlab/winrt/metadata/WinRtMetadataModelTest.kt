@@ -1646,6 +1646,83 @@ class WinRtMetadataModelTest {
             listOf(WinRtCustomAttributeValue.StringValue("Windows10.0.14393.0")),
             attributes.single { it.projectedTypeName == "System.Runtime.Versioning.SupportedOSPlatform" }.arguments,
         )
+        assertEquals(
+            listOf("System.AttributeTargets.Event", "AllowMultiple = true"),
+            attributes.single { it.projectedTypeName == "System.AttributeUsage" }.renderedArguments,
+        )
+
+        val singleUse = type.copy(
+            customAttributes = type.customAttributes.filterNot {
+                it.typeName == "Windows.Foundation.Metadata.AllowMultipleAttribute"
+            },
+        ).projectedAttributes().single { it.projectedTypeName == "System.AttributeUsage" }
+        assertEquals("AllowMultiple = false", singleUse.renderedArguments.last())
+    }
+
+    @Test
+    fun metadata_helpers_expose_explicit_implementation_and_generic_writer_scope_inputs() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(WinRtMethodDefinition("GetValue", "T0", methodRowId = 1)),
+                            genericParameterCount = 1,
+                            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Sample.Foundation.IWidget.GetValue",
+                                    returnTypeName = "String",
+                                    visibility = WinRtMethodVisibility.Private,
+                                    methodRowId = 2,
+                                ),
+                            ),
+                            methodImplementations = listOf(
+                                WinRtMethodImplementationDefinition(
+                                    classTypeName = "Sample.Foundation.Widget",
+                                    body = WinRtMethodImplementationMember(
+                                        kind = WinRtMethodImplementationMemberKind.MethodDefinition,
+                                        rowId = 2,
+                                        name = "Sample.Foundation.IWidget.GetValue",
+                                        ownerTypeName = "Sample.Foundation.Widget",
+                                    ),
+                                    declaration = WinRtMethodImplementationMember(
+                                        kind = WinRtMethodImplementationMemberKind.MemberReference,
+                                        rowId = 3,
+                                        name = "GetValue",
+                                        ownerTypeName = "Sample.Foundation.IWidget",
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ).normalized()
+
+        val helpers = model.semanticHelpers()
+        val widget = model.namespaces.single().types.single { it.name == "Widget" }
+        val explicit = helpers.explicitImplementations(widget).single()
+        assertEquals("Sample.Foundation.IWidget", explicit.interfaceTypeName)
+        assertEquals("GetValue", explicit.declarationName)
+        assertEquals(true, explicit.isPrivateBody)
+
+        val scope = helpers.genericScope(model.namespaces.single().types.single { it.name == "IWidget" })
+        assertEquals(listOf("T"), scope.parameters.map { it.projectedName })
+        assertEquals(listOf("TAbi"), scope.parameters.map { it.abiName })
+
+        val usage = helpers.genericSignatureUsage(WinRtTypeRef.fromDisplayName("Sample.Foundation.IWidget<T0>"))
+        assertEquals(true, usage.containsProjectedGenericParameter)
+        assertEquals(true, usage.containsAbiGenericParameter)
     }
 
     @Test

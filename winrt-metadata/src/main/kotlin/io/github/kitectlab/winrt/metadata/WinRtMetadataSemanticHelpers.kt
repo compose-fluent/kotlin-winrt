@@ -110,6 +110,30 @@ data class WinRtGenericAbiInventory(
     val genericTypeInstantiations: List<WinRtGenericTypeInstantiationDescriptor>,
 )
 
+data class WinRtGenericScopeParameterDescriptor(
+    val parameter: WinRtGenericParameterDefinition,
+    val projectedName: String,
+    val abiName: String,
+)
+
+data class WinRtGenericScopeDescriptor(
+    val ownerType: WinRtTypeDefinition,
+    val parameters: List<WinRtGenericScopeParameterDescriptor>,
+)
+
+data class WinRtGenericSignatureUsageDescriptor(
+    val containsProjectedGenericParameter: Boolean,
+    val containsAbiGenericParameter: Boolean,
+)
+
+data class WinRtExplicitImplementationDescriptor(
+    val classTypeName: String,
+    val interfaceTypeName: String?,
+    val declarationName: String?,
+    val bodyName: String?,
+    val isPrivateBody: Boolean,
+)
+
 class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     private val normalizedModel = model.normalized()
     private val typesByQualifiedName = buildTypesByQualifiedName(normalizedModel)
@@ -137,6 +161,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun getAttributeValue(attribute: WinRtCustomAttributeDefinition, index: Int): WinRtCustomAttributeValue? =
         attribute.fixedArguments.getOrNull(index)
 
+    fun projectedAttributes(type: WinRtTypeDefinition, enablePlatformAttributes: Boolean = true): List<WinRtProjectedAttributeDescriptor> =
+        type.projectedAttributes(enablePlatformAttributes)
+
     fun getContractVersion(type: WinRtTypeDefinition): Long? = type.availability.contractVersion?.version
 
     fun getVersion(type: WinRtTypeDefinition): Long? = type.availability.version
@@ -158,6 +185,57 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun parameterCategory(parameter: WinRtParameterDefinition): WinRtMetadataParameterCategory {
         return metadataParameterCategoryFor(parameter)
     }
+
+    fun genericScope(type: WinRtTypeDefinition): WinRtGenericScopeDescriptor {
+        val normalized = type.normalized()
+        val parameters = if (normalized.genericParameters.isNotEmpty()) {
+            normalized.genericParameters
+        } else {
+            (0 until normalized.genericParameterCount).map { index ->
+                WinRtGenericParameterDefinition(name = "T$index", index = index)
+            }
+        }
+        return WinRtGenericScopeDescriptor(
+            ownerType = normalized,
+            parameters = parameters.map { parameter ->
+                val projectedName = parameter.name.ifBlank { "T${parameter.index}" }
+                WinRtGenericScopeParameterDescriptor(
+                    parameter = parameter,
+                    projectedName = projectedName,
+                    abiName = "${projectedName}Abi",
+                )
+            },
+        )
+    }
+
+    fun genericSignatureUsage(type: WinRtTypeRef): WinRtGenericSignatureUsageDescriptor {
+        var contains = false
+        fun visit(current: WinRtTypeRef) {
+            if (current.kind == WinRtTypeRefKind.GenericTypeParameter) {
+                contains = true
+            }
+            current.elementType?.let(::visit)
+            current.typeArguments.forEach(::visit)
+        }
+        visit(type.normalized())
+        return WinRtGenericSignatureUsageDescriptor(
+            containsProjectedGenericParameter = contains,
+            containsAbiGenericParameter = contains,
+        )
+    }
+
+    fun explicitImplementations(type: WinRtTypeDefinition): List<WinRtExplicitImplementationDescriptor> =
+        type.normalized().methodImplementations.map { implementation ->
+            val body = implementation.body.name
+                ?.let { bodyName -> type.methods.firstOrNull { it.name == bodyName } }
+            WinRtExplicitImplementationDescriptor(
+                classTypeName = implementation.classTypeName,
+                interfaceTypeName = implementation.declaration.ownerTypeName,
+                declarationName = implementation.declaration.name,
+                bodyName = implementation.body.name,
+                isPrivateBody = body?.visibility == WinRtMethodVisibility.Private,
+            )
+        }
 
     fun isRemoveOverload(method: WinRtMethodDefinition): Boolean =
         method.isRemoveOverload || (method.isSpecialName && method.name.startsWith("remove_"))

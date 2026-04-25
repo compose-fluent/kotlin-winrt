@@ -204,6 +204,38 @@ data class WinRtInterfaceImplementationDefinition(
     }
 }
 
+enum class WinRtMethodImplementationMemberKind {
+    MethodDefinition,
+    MemberReference,
+    Unknown,
+}
+
+data class WinRtMethodImplementationMember(
+    val kind: WinRtMethodImplementationMemberKind,
+    val rowId: Int,
+    val name: String? = null,
+    val ownerTypeName: String? = null,
+) {
+    fun normalized(): WinRtMethodImplementationMember =
+        copy(
+            name = name?.trim()?.takeIf(String::isNotEmpty),
+            ownerTypeName = ownerTypeName?.trim()?.takeIf(String::isNotEmpty),
+        )
+}
+
+data class WinRtMethodImplementationDefinition(
+    val classTypeName: String,
+    val body: WinRtMethodImplementationMember,
+    val declaration: WinRtMethodImplementationMember,
+) {
+    fun normalized(): WinRtMethodImplementationDefinition =
+        copy(
+            classTypeName = WinRtTypeRef.fromDisplayName(classTypeName).normalized().typeName,
+            body = body.normalized(),
+            declaration = declaration.normalized(),
+        )
+}
+
 data class WinRtActivationShape(
     val isActivatable: Boolean = false,
     val activatableFactoryInterfaceName: String? = null,
@@ -566,6 +598,7 @@ data class WinRtTypeDefinition(
     val gcPressureAmount: Int = 0,
     val defaultInterfaceName: String? = null,
     val implementedInterfaces: List<WinRtInterfaceImplementationDefinition> = emptyList(),
+    val methodImplementations: List<WinRtMethodImplementationDefinition> = emptyList(),
     val genericParameterCount: Int = 0,
     val genericParameters: List<WinRtGenericParameterDefinition> = emptyList(),
     val customAttributes: List<WinRtCustomAttributeDefinition> = emptyList(),
@@ -630,6 +663,9 @@ data class WinRtTypeDefinition(
                 .values
                 .map { duplicates -> duplicates.reduce(WinRtInterfaceImplementationDefinition::merge) }
                 .sortedBy(WinRtInterfaceImplementationDefinition::interfaceName),
+            methodImplementations = methodImplementations
+                .map(WinRtMethodImplementationDefinition::normalized)
+                .sortedWith(compareBy({ it.declaration.ownerTypeName.orEmpty() }, { it.declaration.name.orEmpty() }, { it.body.name.orEmpty() })),
             genericParameters = genericParameters
                 .map(WinRtGenericParameterDefinition::normalized)
                 .groupBy(WinRtGenericParameterDefinition::index)
@@ -697,6 +733,10 @@ data class WinRtTypeDefinition(
                 .values
                 .map { duplicates -> duplicates.reduce(WinRtInterfaceImplementationDefinition::merge) }
                 .sortedBy(WinRtInterfaceImplementationDefinition::interfaceName),
+            methodImplementations = (left.methodImplementations + right.methodImplementations)
+                .map(WinRtMethodImplementationDefinition::normalized)
+                .distinct()
+                .sortedWith(compareBy({ it.declaration.ownerTypeName.orEmpty() }, { it.declaration.name.orEmpty() }, { it.body.name.orEmpty() })),
             genericParameterCount = maxOf(left.genericParameterCount, right.genericParameterCount),
             genericParameters = (left.genericParameters + right.genericParameters)
                 .groupBy(WinRtGenericParameterDefinition::index)

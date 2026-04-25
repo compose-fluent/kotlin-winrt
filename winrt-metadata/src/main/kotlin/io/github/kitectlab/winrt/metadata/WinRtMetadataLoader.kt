@@ -246,6 +246,7 @@ private class MetadataTables private constructor(
         val typeSpecTypes = readTypeSpecTypes(typeDefNames, typeRefNames)
         val methodOwnerTypeNames = buildMethodOwnerTypeNames(typeDefs, typeDefNames)
         val memberRefs = readRawMemberRefs(typeDefNames, typeRefNames, typeSpecTypes, methodOwnerTypeNames)
+        val methodImplementationsByOwner = readMethodImplementations(typeDefNames, rawMethods, memberRefs, methodOwnerTypeNames)
         val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefs, typeDefNames, typeRefNames, typeSpecTypes)
         val fieldConstants = readFieldConstants()
         val parameterConstants = readParameterConstants()
@@ -320,6 +321,7 @@ private class MetadataTables private constructor(
                     gcPressureAmount = extractGcPressureAmount(raw.flags, typeAttributes),
                     defaultInterfaceName = defaultInterfaceName,
                     implementedInterfaces = implementedInterfaces,
+                    methodImplementations = methodImplementationsByOwner[rowId].orEmpty(),
                     genericParameterCount = maxOf(raw.genericParameterCount, genericParameters.size),
                     genericParameters = genericParameters,
                     customAttributes = typeAttributes,
@@ -1086,6 +1088,83 @@ private class MetadataTables private constructor(
             }
     }
 
+    private fun readMethodImplementations(
+        typeDefNames: Array<String>,
+        rawMethods: List<RawMethodDef>,
+        memberRefs: Array<RawMemberRef?>,
+        methodOwnerTypeNames: Array<String?>,
+    ): Map<Int, List<WinRtMethodImplementationDefinition>> {
+        val rowCount = rowCounts[TABLE_METHOD_IMPL]
+        if (rowCount == 0) {
+            return emptyMap()
+        }
+
+        var cursor = tableOffsets[TABLE_METHOD_IMPL]
+        return buildList<Pair<Int, WinRtMethodImplementationDefinition>>(rowCount) {
+            repeat(rowCount) {
+                val classRowId = readIndex(cursor, simpleIndexSize(TABLE_TYPE_DEF))
+                cursor += simpleIndexSize(TABLE_TYPE_DEF)
+                val bodyToken = readIndex(cursor, codedIndexSize(CODED_METHOD_DEF_OR_REF))
+                cursor += codedIndexSize(CODED_METHOD_DEF_OR_REF)
+                val declarationToken = readIndex(cursor, codedIndexSize(CODED_METHOD_DEF_OR_REF))
+                cursor += codedIndexSize(CODED_METHOD_DEF_OR_REF)
+                val classTypeName = typeDefNames.getOrNull(classRowId - 1) ?: return@repeat
+                add(
+                    classRowId to WinRtMethodImplementationDefinition(
+                        classTypeName = classTypeName,
+                        body = decodeMethodDefOrRef(bodyToken, rawMethods, memberRefs, methodOwnerTypeNames),
+                        declaration = decodeMethodDefOrRef(declarationToken, rawMethods, memberRefs, methodOwnerTypeNames),
+                    ),
+                )
+            }
+        }.groupBy({ it.first }, { it.second.normalized() })
+            .mapValues { (_, implementations) ->
+                implementations.distinct().sortedWith(
+                    compareBy(
+                        { it.declaration.ownerTypeName.orEmpty() },
+                        { it.declaration.name.orEmpty() },
+                        { it.body.name.orEmpty() },
+                    ),
+                )
+            }
+    }
+
+    private fun decodeMethodDefOrRef(
+        token: Int,
+        rawMethods: List<RawMethodDef>,
+        memberRefs: Array<RawMemberRef?>,
+        methodOwnerTypeNames: Array<String?>,
+    ): WinRtMethodImplementationMember {
+        val tag = token and CODED_METHOD_DEF_OR_REF_TAG_MASK
+        val rowId = token ushr CODED_METHOD_DEF_OR_REF_TAG_BITS
+        return when (tag) {
+            CODED_METHOD_DEF_OR_REF_METHOD_DEF -> {
+                val method = rawMethods.getOrNull(rowId - 1)
+                WinRtMethodImplementationMember(
+                    kind = WinRtMethodImplementationMemberKind.MethodDefinition,
+                    rowId = rowId,
+                    name = method?.name,
+                    ownerTypeName = methodOwnerTypeNames.getOrNull(rowId),
+                )
+            }
+
+            CODED_METHOD_DEF_OR_REF_MEMBER_REF -> {
+                val memberRef = memberRefs.getOrNull(rowId - 1)
+                WinRtMethodImplementationMember(
+                    kind = WinRtMethodImplementationMemberKind.MemberReference,
+                    rowId = rowId,
+                    name = memberRef?.name,
+                    ownerTypeName = memberRef?.ownerTypeName,
+                )
+            }
+
+            else -> WinRtMethodImplementationMember(
+                kind = WinRtMethodImplementationMemberKind.Unknown,
+                rowId = rowId,
+            )
+        }
+    }
+
     private fun readCustomAttributes(
         methodOwnerTypeNames: Array<String?>,
         memberRefs: Array<RawMemberRef?>,
@@ -1737,6 +1816,7 @@ private class MetadataTables private constructor(
 
         private val MODELED_AUXILIARY_TABLE_IDS = intArrayOf(
             TABLE_STANDALONE_SIG,
+            TABLE_METHOD_IMPL,
             TABLE_FILE,
             TABLE_EXPORTED_TYPE,
             TABLE_MANIFEST_RESOURCE,
@@ -1812,6 +1892,10 @@ private class MetadataTables private constructor(
         private const val CODED_HAS_FIELD_MARSHAL_TAG_BITS = 1
         private const val CODED_HAS_DECL_SECURITY_TAG_BITS = 2
         private const val CODED_MEMBER_FORWARDED_TAG_BITS = 1
+        private const val CODED_METHOD_DEF_OR_REF_METHOD_DEF = 0
+        private const val CODED_METHOD_DEF_OR_REF_MEMBER_REF = 1
+        private const val CODED_METHOD_DEF_OR_REF_TAG_BITS = 1
+        private const val CODED_METHOD_DEF_OR_REF_TAG_MASK = (1 shl CODED_METHOD_DEF_OR_REF_TAG_BITS) - 1
 
         private val GUID_ATTRIBUTE_NAMES = setOf(
             "System.Runtime.InteropServices.GuidAttribute",
