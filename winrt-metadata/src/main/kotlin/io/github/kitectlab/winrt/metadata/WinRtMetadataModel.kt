@@ -74,6 +74,47 @@ data class WinRtGenericParameterDefinition(
     }
 }
 
+sealed interface WinRtCustomAttributeValue {
+    data class StringValue(val value: String?) : WinRtCustomAttributeValue
+    data class TypeValue(val typeName: String?) : WinRtCustomAttributeValue
+    data class BooleanValue(val value: Boolean) : WinRtCustomAttributeValue
+    data class IntegralValue(val value: Long) : WinRtCustomAttributeValue
+    data class FloatingPointValue(val value: Double) : WinRtCustomAttributeValue
+    data class EnumValue(val enumTypeName: String, val value: Long) : WinRtCustomAttributeValue
+    data class ArrayValue(val values: List<WinRtCustomAttributeValue>) : WinRtCustomAttributeValue
+    data object NullValue : WinRtCustomAttributeValue
+
+    val stringValue: String?
+        get() = when (this) {
+            is StringValue -> value
+            is TypeValue -> typeName
+            else -> null
+        }
+}
+
+data class WinRtCustomAttributeNamedArgument(
+    val name: String,
+    val value: WinRtCustomAttributeValue,
+    val isField: Boolean = false,
+) {
+    fun normalized(): WinRtCustomAttributeNamedArgument = copy(name = name.trim())
+}
+
+data class WinRtCustomAttributeDefinition(
+    val typeName: String,
+    val fixedArguments: List<WinRtCustomAttributeValue> = emptyList(),
+    val namedArguments: List<WinRtCustomAttributeNamedArgument> = emptyList(),
+) {
+    val stringArguments: List<String>
+        get() = fixedArguments.mapNotNull(WinRtCustomAttributeValue::stringValue)
+
+    fun normalized(): WinRtCustomAttributeDefinition =
+        copy(
+            typeName = WinRtTypeRef.fromDisplayName(typeName).normalized().typeName,
+            namedArguments = namedArguments.map(WinRtCustomAttributeNamedArgument::normalized),
+        )
+}
+
 data class WinRtInterfaceImplementationDefinition(
     val interfaceName: String,
     val isDefault: Boolean = false,
@@ -348,6 +389,7 @@ data class WinRtTypeDefinition(
     val implementedInterfaces: List<WinRtInterfaceImplementationDefinition> = emptyList(),
     val genericParameterCount: Int = 0,
     val genericParameters: List<WinRtGenericParameterDefinition> = emptyList(),
+    val customAttributes: List<WinRtCustomAttributeDefinition> = emptyList(),
     val activation: WinRtActivationShape = WinRtActivationShape(),
     val methods: List<WinRtMethodDefinition> = emptyList(),
     val properties: List<WinRtPropertyDefinition> = emptyList(),
@@ -412,6 +454,7 @@ data class WinRtTypeDefinition(
                 genericParameterCount.coerceAtLeast(0),
                 genericParameters.maxOfOrNull { it.index + 1 } ?: 0,
             ),
+            customAttributes = customAttributes.map(WinRtCustomAttributeDefinition::normalized),
             activation = activation.normalized(),
             methods = normalizedMethods,
             properties = normalizedProperties,
@@ -462,6 +505,7 @@ data class WinRtTypeDefinition(
                 .values
                 .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
                 .sortedBy(WinRtGenericParameterDefinition::index),
+            customAttributes = left.customAttributes + right.customAttributes,
             activation = left.activation.merge(right.activation),
             methods = (left.methods + right.methods)
                 .groupBy(WinRtMethodDefinition::signatureKey)

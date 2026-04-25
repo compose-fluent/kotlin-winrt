@@ -4,6 +4,7 @@ import io.github.kitectlab.winrt.runtime.Guid
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Path
+import java.util.Locale
 import kotlin.io.path.inputStream
 import kotlin.io.path.name
 
@@ -196,8 +197,8 @@ private class MetadataTables private constructor(
         val typeDefNames = typeDefs.map { raw -> raw.qualifiedName }.toTypedArray()
         val typeSpecTypes = readTypeSpecTypes(typeDefNames, typeRefNames)
         val methodOwnerTypeNames = buildMethodOwnerTypeNames(typeDefs, typeDefNames)
-        val memberRefOwnerTypeNames = readMemberRefOwnerTypeNames(typeDefNames, typeRefNames, methodOwnerTypeNames)
-        val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefOwnerTypeNames)
+        val memberRefs = readRawMemberRefs(typeDefNames, typeRefNames, typeSpecTypes, methodOwnerTypeNames)
+        val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefs, typeDefNames, typeRefNames, typeSpecTypes)
         val fieldConstants = readFieldConstants()
         val genericParametersByOwner = readGenericParameters(typeDefNames, typeRefNames, typeSpecTypes)
         val interfaceImplsByOwner = readInterfaceImplementations(typeDefNames, typeRefNames, typeSpecTypes, customAttributes)
@@ -251,6 +252,7 @@ private class MetadataTables private constructor(
                     implementedInterfaces = implementedInterfaces,
                     genericParameterCount = maxOf(raw.genericParameterCount, genericParameters.size),
                     genericParameters = genericParameters,
+                    customAttributes = typeAttributes,
                     activation = extractActivationShape(typeAttributes),
                     methods = readMethodDefinitions(
                         typeIndex = index,
@@ -826,7 +828,10 @@ private class MetadataTables private constructor(
 
     private fun readCustomAttributes(
         methodOwnerTypeNames: Array<String?>,
-        memberRefOwnerTypeNames: Array<String?>,
+        memberRefs: Array<RawMemberRef?>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+        typeSpecTypes: Array<WinRtTypeRef>,
     ): Map<OwnerKey, List<DecodedCustomAttribute>> {
         val rowCount = rowCounts[TABLE_CUSTOM_ATTRIBUTE]
         if (rowCount == 0) {
@@ -844,37 +849,55 @@ private class MetadataTables private constructor(
                 cursor += blobIndexSize
 
                 val owner = decodeHasCustomAttribute(parentToken) ?: return@repeat
-                val attributeTypeName = decodeCustomAttributeTypeName(typeToken, methodOwnerTypeNames, memberRefOwnerTypeNames)
+                val attributeConstructor = decodeCustomAttributeConstructor(
+                    token = typeToken,
+                    methodOwnerTypeNames = methodOwnerTypeNames,
+                    memberRefs = memberRefs,
+                    typeDefNames = typeDefNames,
+                    typeRefNames = typeRefNames,
+                    typeSpecTypes = typeSpecTypes,
+                )
                     ?: return@repeat
-                add(owner to DecodedCustomAttribute(attributeTypeName, readCustomAttributeStringArguments(valueIndex, attributeTypeName)))
+                add(owner to readCustomAttribute(valueIndex, attributeConstructor))
             }
         }.groupBy({ it.first }, { it.second })
     }
 
-    private fun readMemberRefOwnerTypeNames(
+    private fun readRawMemberRefs(
         typeDefNames: Array<String>,
         typeRefNames: Array<String>,
+        typeSpecTypes: Array<WinRtTypeRef>,
         methodOwnerTypeNames: Array<String?>,
-    ): Array<String?> {
+    ): Array<RawMemberRef?> {
         val rowCount = rowCounts[TABLE_MEMBER_REF]
         if (rowCount == 0) {
             return emptyArray()
         }
 
-        val rows = arrayOfNulls<String>(rowCount)
+        val rows = arrayOfNulls<RawMemberRef>(rowCount)
         var cursor = tableOffsets[TABLE_MEMBER_REF]
         repeat(rowCount) { rowIndex ->
             val parentToken = readIndex(cursor, codedIndexSize(CODED_MEMBER_REF_PARENT))
             cursor += codedIndexSize(CODED_MEMBER_REF_PARENT)
+            val name = readStringAt(cursor)
             cursor += stringIndexSize
+            val signatureBlobIndex = readIndex(cursor, blobIndexSize)
             cursor += blobIndexSize
             val parentTag = parentToken and CODED_MEMBER_REF_PARENT_TAG_MASK
             val parentRowId = parentToken ushr CODED_MEMBER_REF_PARENT_TAG_BITS
-            rows[rowIndex] = when (parentTag) {
+            val ownerTypeName = when (parentTag) {
                 CODED_MEMBER_REF_PARENT_TYPE_DEF -> typeDefNames.getOrNull(parentRowId - 1)
                 CODED_MEMBER_REF_PARENT_TYPE_REF -> typeRefNames.getOrNull(parentRowId - 1)
+                CODED_MEMBER_REF_PARENT_TYPE_SPEC -> typeSpecTypes.getOrNull(parentRowId - 1)?.typeName
                 CODED_MEMBER_REF_PARENT_METHOD_DEF -> methodOwnerTypeNames.getOrNull(parentRowId)
                 else -> null
+            }
+            rows[rowIndex] = ownerTypeName?.let {
+                RawMemberRef(
+                    ownerTypeName = it,
+                    name = name,
+                    signatureBlobIndex = signatureBlobIndex,
+                )
             }
         }
         return rows
@@ -989,11 +1012,14 @@ private class MetadataTables private constructor(
         }
     }
 
-    private fun decodeCustomAttributeTypeName(
+    private fun decodeCustomAttributeConstructor(
         token: Int,
         methodOwnerTypeNames: Array<String?>,
-        memberRefOwnerTypeNames: Array<String?>,
-    ): String? {
+        memberRefs: Array<RawMemberRef?>,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+        typeSpecTypes: Array<WinRtTypeRef>,
+    ): DecodedCustomAttributeConstructor? {
         if (token == 0) {
             return null
         }
@@ -1003,8 +1029,24 @@ private class MetadataTables private constructor(
             return null
         }
         return when (tag) {
-            CODED_CUSTOM_ATTRIBUTE_TYPE_METHOD_DEF -> methodOwnerTypeNames.getOrNull(rowId)
-            CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF -> memberRefOwnerTypeNames.getOrNull(rowId - 1)
+            CODED_CUSTOM_ATTRIBUTE_TYPE_METHOD_DEF ->
+                methodOwnerTypeNames.getOrNull(rowId)?.let { typeName ->
+                    DecodedCustomAttributeConstructor(typeName = typeName)
+                }
+
+            CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF ->
+                memberRefs.getOrNull(rowId - 1)?.let { memberRef ->
+                    DecodedCustomAttributeConstructor(
+                        typeName = memberRef.ownerTypeName,
+                        fixedArgumentTypes = readCustomAttributeConstructorArgumentTypes(
+                            memberRef.signatureBlobIndex,
+                            typeDefNames,
+                            typeRefNames,
+                            typeSpecTypes,
+                        ),
+                    )
+                }
+
             else -> null
         }
     }
@@ -1019,34 +1061,67 @@ private class MetadataTables private constructor(
             return null
         }
         return when (tag) {
+            CODED_HAS_CUSTOM_ATTRIBUTE_METHOD_DEF -> OwnerKey(TABLE_METHOD_DEF, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_FIELD -> OwnerKey(TABLE_FIELD, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_REF -> OwnerKey(TABLE_TYPE_REF, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF -> OwnerKey(TABLE_TYPE_DEF, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_PARAM -> OwnerKey(TABLE_PARAM, rowId)
             CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL -> OwnerKey(TABLE_INTERFACE_IMPL, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_MEMBER_REF -> OwnerKey(TABLE_MEMBER_REF, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_MODULE -> OwnerKey(TABLE_MODULE, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_STANDALONE_SIG -> OwnerKey(TABLE_STANDALONE_SIG, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_MODULE_REF -> OwnerKey(TABLE_MODULE_REF, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_SPEC -> OwnerKey(TABLE_TYPE_SPEC, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_ASSEMBLY -> OwnerKey(TABLE_ASSEMBLY, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_ASSEMBLY_REF -> OwnerKey(TABLE_ASSEMBLY_REF, rowId)
+            CODED_HAS_CUSTOM_ATTRIBUTE_GENERIC_PARAM -> OwnerKey(TABLE_GENERIC_PARAM, rowId)
             else -> null
         }
     }
 
-    private fun readCustomAttributeStringArguments(blobIndex: Int, attributeTypeName: String): List<String> {
+    private fun readCustomAttributeConstructorArgumentTypes(
+        blobIndex: Int,
+        typeDefNames: Array<String>,
+        typeRefNames: Array<String>,
+        typeSpecTypes: Array<WinRtTypeRef>,
+    ): List<WinRtTypeRef> {
         val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
-        if (bytes.size < 2 || bytes[0] != 0x01.toByte() || bytes[1] != 0x00.toByte()) {
+        if (bytes.isEmpty()) {
             return emptyList()
         }
-        val values = mutableListOf<String>()
-        if (attributeTypeName in GUID_ATTRIBUTE_NAMES) {
-            bytes.readGuidAttributeValue()?.let(values::add)
+        val reader = SignatureReader(bytes, typeDefNames, typeRefNames, typeSpecTypes)
+        val callingConvention = reader.readByte()
+        if (callingConvention and CALL_CONV_GENERIC != 0) {
+            reader.readCompressedUnsignedInt()
         }
-        var cursor = 2
-        while (cursor < bytes.size) {
-            if (bytes.size - cursor <= 2) {
-                break
+        val parameterCount = reader.readCompressedUnsignedInt()
+        reader.readType()
+        return buildList(parameterCount) {
+            repeat(parameterCount) {
+                add(reader.readType().type)
             }
-            val decoded = bytes.readSerializedString(cursor) ?: break
-            values += decoded.first
-            cursor = decoded.second
         }
-        bytes.findAsciiAttributeStrings()
-            .filterNot { it in values }
-            .forEach(values::add)
-        return values
+    }
+
+    private fun readCustomAttribute(
+        blobIndex: Int,
+        constructor: DecodedCustomAttributeConstructor,
+    ): DecodedCustomAttribute {
+        val bytes = buffer.readBlob(blobHeap.offset, blobIndex)
+        if (bytes.size < 2 || bytes[0] != 0x01.toByte() || bytes[1] != 0x00.toByte()) {
+            return DecodedCustomAttribute(typeName = constructor.typeName)
+        }
+        val reader = CustomAttributeBlobReader(bytes)
+        reader.readUInt16()
+        val fixedArguments = constructor.fixedArgumentTypes.map { type ->
+            reader.readFixedArgument(type)
+        }
+        val namedArguments = reader.readNamedArguments()
+        return DecodedCustomAttribute(
+            typeName = constructor.typeName,
+            fixedArguments = fixedArguments,
+            namedArguments = namedArguments,
+        )
     }
 
     private fun decodeFieldConstant(type: Int, blobIndex: Int): DecodedFieldConstant {
@@ -1066,11 +1141,37 @@ private class MetadataTables private constructor(
     }
 
     private fun extractGuid(attributes: List<DecodedCustomAttribute>): Guid? {
-        val value = attributes.firstOrNull { it.typeName in GUID_ATTRIBUTE_NAMES }
-            ?.stringArguments
-            ?.firstOrNull()
+        val guidAttribute = attributes.firstOrNull { it.typeName in GUID_ATTRIBUTE_NAMES } ?: return null
+        val value = guidAttribute.stringArguments.firstOrNull()
+            ?: guidAttribute.fixedArguments.toGuidAttributeString()
             ?: return null
         return runCatching { Guid(value) }.getOrNull()
+    }
+
+    private fun List<WinRtCustomAttributeValue>.toGuidAttributeString(): String? {
+        if (size != 11) {
+            return null
+        }
+        val values = map { (it as? WinRtCustomAttributeValue.IntegralValue)?.value ?: return null }
+        val data1 = values[0] and 0xFFFF_FFFFL
+        val data2 = values[1] and 0xFFFFL
+        val data3 = values[2] and 0xFFFFL
+        val data4 = values.drop(3).map { it and 0xFFL }
+        return String.format(
+            Locale.ROOT,
+            "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+            data1,
+            data2,
+            data3,
+            data4[0],
+            data4[1],
+            data4[2],
+            data4[3],
+            data4[4],
+            data4[5],
+            data4[6],
+            data4[7],
+        )
     }
 
     private fun extractActivationShape(attributes: List<DecodedCustomAttribute>): WinRtActivationShape {
@@ -1226,6 +1327,7 @@ private class MetadataTables private constructor(
 
         private const val CODED_MEMBER_REF_PARENT_TYPE_DEF = 0
         private const val CODED_MEMBER_REF_PARENT_TYPE_REF = 1
+        private const val CODED_MEMBER_REF_PARENT_TYPE_SPEC = 4
         private const val CODED_MEMBER_REF_PARENT_METHOD_DEF = 3
         private const val CODED_MEMBER_REF_PARENT_TAG_BITS = 3
         private const val CODED_MEMBER_REF_PARENT_TAG_MASK = (1 shl CODED_MEMBER_REF_PARENT_TAG_BITS) - 1
@@ -1235,8 +1337,20 @@ private class MetadataTables private constructor(
         private const val CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_BITS = 3
         private const val CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_MASK = (1 shl CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_BITS) - 1
 
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_METHOD_DEF = 0
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_FIELD = 1
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_REF = 2
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF = 3
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_PARAM = 4
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL = 5
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_MEMBER_REF = 6
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_MODULE = 7
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_STANDALONE_SIG = 11
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_MODULE_REF = 12
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_SPEC = 13
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_ASSEMBLY = 14
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_ASSEMBLY_REF = 15
+        private const val CODED_HAS_CUSTOM_ATTRIBUTE_GENERIC_PARAM = 19
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS = 5
         private const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_MASK = (1 shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) - 1
 
@@ -1466,6 +1580,12 @@ private data class RawEvent(
     val delegateTypeName: String,
 )
 
+private data class RawMemberRef(
+    val ownerTypeName: String,
+    val name: String,
+    val signatureBlobIndex: Int,
+)
+
 private data class CodedIndex(
     val tagBits: Int,
     val tables: IntArray,
@@ -1478,9 +1598,11 @@ private data class OwnerKey(
     val rowId: Int,
 )
 
-private data class DecodedCustomAttribute(
+private typealias DecodedCustomAttribute = WinRtCustomAttributeDefinition
+
+private data class DecodedCustomAttributeConstructor(
     val typeName: String,
-    val stringArguments: List<String>,
+    val fixedArgumentTypes: List<WinRtTypeRef> = emptyList(),
 )
 
 private data class DecodedFieldConstant(
@@ -1674,6 +1796,207 @@ private class SignatureReader(
         private const val ELEMENT_TYPE_INTERNAL = 0x21
         private const val ELEMENT_TYPE_SENTINEL = 0x41
         private const val ELEMENT_TYPE_PINNED = 0x45
+    }
+}
+
+private class CustomAttributeBlobReader(
+    private val bytes: ByteArray,
+) {
+    private var cursor: Int = 0
+
+    fun readUInt16(): Int {
+        val value = bytes.readUInt16Le(cursor)
+        cursor += 2
+        return value
+    }
+
+    fun readFixedArgument(type: WinRtTypeRef): WinRtCustomAttributeValue =
+        readValue(type.toCustomAttributeElementType())
+
+    fun readNamedArguments(): List<WinRtCustomAttributeNamedArgument> {
+        if (cursor + 2 > bytes.size) {
+            return emptyList()
+        }
+        val count = readUInt16()
+        return buildList(count) {
+            repeat(count) {
+                val kind = readByte()
+                val isField = when (kind) {
+                    SERIALIZATION_TYPE_FIELD -> true
+                    SERIALIZATION_TYPE_PROPERTY -> false
+                    else -> false
+                }
+                val type = readFieldOrPropType()
+                val name = readSerializedString() ?: ""
+                add(
+                    WinRtCustomAttributeNamedArgument(
+                        name = name,
+                        value = readValue(type),
+                        isField = isField,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun readFieldOrPropType(): CustomAttributeElementType {
+        val marker = readByte()
+        return when (marker) {
+            ELEMENT_TYPE_BOOLEAN -> CustomAttributeElementType.Boolean
+            ELEMENT_TYPE_CHAR -> CustomAttributeElementType.Char
+            ELEMENT_TYPE_I1 -> CustomAttributeElementType.Int8
+            ELEMENT_TYPE_U1 -> CustomAttributeElementType.UInt8
+            ELEMENT_TYPE_I2 -> CustomAttributeElementType.Int16
+            ELEMENT_TYPE_U2 -> CustomAttributeElementType.UInt16
+            ELEMENT_TYPE_I4 -> CustomAttributeElementType.Int32
+            ELEMENT_TYPE_U4 -> CustomAttributeElementType.UInt32
+            ELEMENT_TYPE_I8 -> CustomAttributeElementType.Int64
+            ELEMENT_TYPE_U8 -> CustomAttributeElementType.UInt64
+            ELEMENT_TYPE_R4 -> CustomAttributeElementType.Float32
+            ELEMENT_TYPE_R8 -> CustomAttributeElementType.Float64
+            ELEMENT_TYPE_STRING -> CustomAttributeElementType.String
+            SERIALIZATION_TYPE_TYPE -> CustomAttributeElementType.Type
+            SERIALIZATION_TYPE_OBJECT -> CustomAttributeElementType.Object
+            SERIALIZATION_TYPE_ENUM -> CustomAttributeElementType.Enum(readSerializedString().orEmpty())
+            ELEMENT_TYPE_SZARRAY -> CustomAttributeElementType.Array(readFieldOrPropType())
+            else -> CustomAttributeElementType.Unknown
+        }
+    }
+
+    private fun readValue(type: CustomAttributeElementType): WinRtCustomAttributeValue =
+        when (type) {
+            CustomAttributeElementType.Boolean -> WinRtCustomAttributeValue.BooleanValue(readByte() != 0)
+            CustomAttributeElementType.Char -> WinRtCustomAttributeValue.IntegralValue(readUInt16().toLong())
+            CustomAttributeElementType.Int8 -> WinRtCustomAttributeValue.IntegralValue(readByte().toByte().toLong())
+            CustomAttributeElementType.UInt8 -> WinRtCustomAttributeValue.IntegralValue(readByte().toLong())
+            CustomAttributeElementType.Int16 -> WinRtCustomAttributeValue.IntegralValue(readInt16().toLong())
+            CustomAttributeElementType.UInt16 -> WinRtCustomAttributeValue.IntegralValue(readUInt16().toLong())
+            CustomAttributeElementType.Int32 -> WinRtCustomAttributeValue.IntegralValue(readInt32().toLong())
+            CustomAttributeElementType.UInt32 -> WinRtCustomAttributeValue.IntegralValue(readUInt32().toLong())
+            CustomAttributeElementType.Int64 -> WinRtCustomAttributeValue.IntegralValue(readInt64())
+            CustomAttributeElementType.UInt64 -> WinRtCustomAttributeValue.IntegralValue(readInt64())
+            CustomAttributeElementType.Float32 -> WinRtCustomAttributeValue.FloatingPointValue(Float.fromBits(readInt32()).toDouble())
+            CustomAttributeElementType.Float64 -> WinRtCustomAttributeValue.FloatingPointValue(Double.fromBits(readInt64()))
+            CustomAttributeElementType.String -> WinRtCustomAttributeValue.StringValue(readSerializedString())
+            CustomAttributeElementType.Type -> WinRtCustomAttributeValue.TypeValue(readSerializedString())
+            is CustomAttributeElementType.Enum -> WinRtCustomAttributeValue.EnumValue(type.typeName, readInt32().toLong())
+            is CustomAttributeElementType.Array -> readArrayValue(type.elementType)
+            CustomAttributeElementType.Object -> readBoxedValue()
+            CustomAttributeElementType.Unknown -> WinRtCustomAttributeValue.NullValue
+        }
+
+    private fun readArrayValue(elementType: CustomAttributeElementType): WinRtCustomAttributeValue {
+        val count = readInt32()
+        if (count < 0) {
+            return WinRtCustomAttributeValue.NullValue
+        }
+        return WinRtCustomAttributeValue.ArrayValue(
+            buildList(count) {
+                repeat(count) {
+                    add(readValue(elementType))
+                }
+            },
+        )
+    }
+
+    private fun readBoxedValue(): WinRtCustomAttributeValue =
+        readValue(readFieldOrPropType())
+
+    private fun readByte(): Int = bytes[cursor++].toInt() and 0xFF
+
+    private fun readInt16(): Short {
+        val value = java.nio.ByteBuffer.wrap(bytes, cursor, 2).order(ByteOrder.LITTLE_ENDIAN).short
+        cursor += 2
+        return value
+    }
+
+    private fun readInt32(): Int {
+        val value = java.nio.ByteBuffer.wrap(bytes, cursor, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        cursor += 4
+        return value
+    }
+
+    private fun readUInt32(): Long = readInt32().toLong() and 0xFFFF_FFFFL
+
+    private fun readInt64(): Long {
+        val value = java.nio.ByteBuffer.wrap(bytes, cursor, 8).order(ByteOrder.LITTLE_ENDIAN).long
+        cursor += 8
+        return value
+    }
+
+    private fun readSerializedString(): String? {
+        val decoded = bytes.readSerializedString(cursor) ?: return null
+        cursor = decoded.second
+        return decoded.first
+    }
+
+    private fun WinRtTypeRef.toCustomAttributeElementType(): CustomAttributeElementType =
+        when (typeName) {
+            "Boolean", "System.Boolean" -> CustomAttributeElementType.Boolean
+            "Char", "System.Char" -> CustomAttributeElementType.Char
+            "Byte", "System.SByte" -> CustomAttributeElementType.Int8
+            "UByte", "System.Byte" -> CustomAttributeElementType.UInt8
+            "Short", "System.Int16" -> CustomAttributeElementType.Int16
+            "UShort", "System.UInt16" -> CustomAttributeElementType.UInt16
+            "Int", "System.Int32" -> CustomAttributeElementType.Int32
+            "UInt", "System.UInt32" -> CustomAttributeElementType.UInt32
+            "Long", "System.Int64" -> CustomAttributeElementType.Int64
+            "ULong", "System.UInt64" -> CustomAttributeElementType.UInt64
+            "Float", "System.Single" -> CustomAttributeElementType.Float32
+            "Double", "System.Double" -> CustomAttributeElementType.Float64
+            "String", "System.String" -> CustomAttributeElementType.String
+            "System.Type" -> CustomAttributeElementType.Type
+            else -> when (kind) {
+                WinRtTypeRefKind.Array -> CustomAttributeElementType.Array(
+                    (elementType ?: WinRtTypeRef.unknown()).toCustomAttributeElementType(),
+                )
+
+                WinRtTypeRefKind.Named -> CustomAttributeElementType.Enum(typeName)
+                else -> CustomAttributeElementType.Unknown
+            }
+        }
+
+    private sealed interface CustomAttributeElementType {
+        data object Boolean : CustomAttributeElementType
+        data object Char : CustomAttributeElementType
+        data object Int8 : CustomAttributeElementType
+        data object UInt8 : CustomAttributeElementType
+        data object Int16 : CustomAttributeElementType
+        data object UInt16 : CustomAttributeElementType
+        data object Int32 : CustomAttributeElementType
+        data object UInt32 : CustomAttributeElementType
+        data object Int64 : CustomAttributeElementType
+        data object UInt64 : CustomAttributeElementType
+        data object Float32 : CustomAttributeElementType
+        data object Float64 : CustomAttributeElementType
+        data object String : CustomAttributeElementType
+        data object Type : CustomAttributeElementType
+        data object Object : CustomAttributeElementType
+        data class Enum(val typeName: kotlin.String) : CustomAttributeElementType
+        data class Array(val elementType: CustomAttributeElementType) : CustomAttributeElementType
+        data object Unknown : CustomAttributeElementType
+    }
+
+    private companion object {
+        private const val ELEMENT_TYPE_BOOLEAN = 0x02
+        private const val ELEMENT_TYPE_CHAR = 0x03
+        private const val ELEMENT_TYPE_I1 = 0x04
+        private const val ELEMENT_TYPE_U1 = 0x05
+        private const val ELEMENT_TYPE_I2 = 0x06
+        private const val ELEMENT_TYPE_U2 = 0x07
+        private const val ELEMENT_TYPE_I4 = 0x08
+        private const val ELEMENT_TYPE_U4 = 0x09
+        private const val ELEMENT_TYPE_I8 = 0x0A
+        private const val ELEMENT_TYPE_U8 = 0x0B
+        private const val ELEMENT_TYPE_R4 = 0x0C
+        private const val ELEMENT_TYPE_R8 = 0x0D
+        private const val ELEMENT_TYPE_STRING = 0x0E
+        private const val ELEMENT_TYPE_SZARRAY = 0x1D
+        private const val SERIALIZATION_TYPE_TYPE = 0x50
+        private const val SERIALIZATION_TYPE_OBJECT = 0x51
+        private const val SERIALIZATION_TYPE_FIELD = 0x53
+        private const val SERIALIZATION_TYPE_PROPERTY = 0x54
+        private const val SERIALIZATION_TYPE_ENUM = 0x55
     }
 }
 

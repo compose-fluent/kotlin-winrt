@@ -93,6 +93,27 @@ class WinRtMetadataLoaderTest {
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.activatableFactoryInterfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), widget.activation.staticInterfaceNames)
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.composableFactoryInterfaceName)
+        val probeAttribute = widget.customAttributes.first { it.typeName == "Sample.Foundation.AttributeProbeAttribute" }
+        assertEquals("widget", (probeAttribute.fixedArguments[0] as WinRtCustomAttributeValue.StringValue).value)
+        assertEquals("Sample.Foundation.IWidget", (probeAttribute.fixedArguments[1] as WinRtCustomAttributeValue.TypeValue).typeName)
+        assertEquals(
+            WinRtCustomAttributeValue.EnumValue("Sample.Foundation.AttributeMode", 1),
+            probeAttribute.fixedArguments[2],
+        )
+        assertEquals(
+            listOf(1L, 2L, 3L),
+            ((probeAttribute.fixedArguments[3] as WinRtCustomAttributeValue.ArrayValue).values)
+                .map { (it as WinRtCustomAttributeValue.IntegralValue).value },
+        )
+        assertEquals(
+            WinRtCustomAttributeValue.BooleanValue(true),
+            probeAttribute.namedArguments.first { it.name == "Enabled" }.value,
+        )
+        assertEquals(
+            listOf("alpha", "beta"),
+            ((probeAttribute.namedArguments.first { it.name == "Tags" }.value as WinRtCustomAttributeValue.ArrayValue).values)
+                .map { (it as WinRtCustomAttributeValue.StringValue).value },
+        )
 
         val iWidget = sampleNamespace.types.first { it.name == "IWidget" }
         assertEquals(Guid("22222222-2222-2222-2222-222222222222"), iWidget.iid)
@@ -583,10 +604,21 @@ class WinRtMetadataLoaderTest {
                 [WinRT.Interop.ProjectionInternal]
                 public interface IInternalContract {}
 
+                public enum AttributeMode { Default, Important }
+
+                [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = false)]
+                public sealed class AttributeProbeAttribute : System.Attribute
+                {
+                    public AttributeProbeAttribute(string name, System.Type targetType, AttributeMode mode, int[] values) {}
+                    public bool Enabled { get; set; }
+                    public string[] Tags { get; set; }
+                }
+
                 [Windows.Foundation.Metadata.Guid("33333333-3333-3333-3333-333333333333")]
                 [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
                 [Windows.Foundation.Metadata.Static("Sample.Foundation.IWidgetStatics")]
                 [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetFactory")]
+                [AttributeProbe("widget", typeof(IWidget), AttributeMode.Important, new int[] { 1, 2, 3 }, Enabled = true, Tags = new string[] { "alpha", "beta" })]
                 public class Widget<T> : IWidget
                 {
                     public string Name => "widget";
