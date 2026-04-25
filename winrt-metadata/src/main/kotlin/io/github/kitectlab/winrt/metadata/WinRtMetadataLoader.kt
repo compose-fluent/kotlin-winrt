@@ -254,6 +254,7 @@ private class MetadataTables private constructor(
                     genericParameters = genericParameters,
                     customAttributes = typeAttributes,
                     activation = extractActivationShape(typeAttributes),
+                    availability = extractAvailability(typeAttributes),
                     methods = readMethodDefinitions(
                         typeIndex = index,
                         typeDefs = typeDefs,
@@ -1186,6 +1187,71 @@ private class MetadataTables private constructor(
         )
     }
 
+    private fun extractAvailability(attributes: List<DecodedCustomAttribute>): WinRtAvailabilityMetadata =
+        WinRtAvailabilityMetadata(
+            contractVersion = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_CONTRACT_VERSION }
+                ?.toContractVersionMetadata(),
+            version = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_VERSION }
+                ?.fixedArguments
+                ?.integralAt(0),
+            previousContractVersions = attributes
+                .filter { it.typeName == WINDOWS_FOUNDATION_METADATA_PREVIOUS_CONTRACT_VERSION }
+                .mapNotNull { it.toContractVersionMetadata() },
+            deprecations = attributes
+                .filter { it.typeName == WINDOWS_FOUNDATION_METADATA_DEPRECATED }
+                .map { attribute ->
+                    WinRtDeprecationMetadata(
+                        message = attribute.fixedArguments.stringAt(0),
+                        kind = attribute.fixedArguments.enumOrIntegralAt(1),
+                        version = attribute.fixedArguments.integralAt(2),
+                        contractName = attribute.fixedArguments.contractNameAt(3),
+                    )
+                },
+            threadingModel = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_THREADING }
+                ?.fixedArguments
+                ?.enumOrIntegralAt(0),
+            marshalingBehavior = attributes.firstOrNull { it.typeName == WINDOWS_FOUNDATION_METADATA_MARSHALING_BEHAVIOR }
+                ?.fixedArguments
+                ?.enumOrIntegralAt(0),
+            isMuse = attributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_MUSE },
+            isWebHostHidden = attributes.any { it.typeName == WINDOWS_FOUNDATION_METADATA_WEB_HOST_HIDDEN },
+        )
+
+    private fun DecodedCustomAttribute.toContractVersionMetadata(): WinRtContractVersionMetadata? {
+        val contractName = fixedArguments.contractNameAt(0) ?: return null
+        val version = fixedArguments.integralAt(1) ?: return null
+        val majorVersion = (version ushr 16).toInt()
+        return WinRtContractVersionMetadata(
+            contractName = contractName,
+            version = version,
+            majorVersion = majorVersion,
+            platformVersion = getContractPlatform(contractName, majorVersion),
+        )
+    }
+
+    private fun List<WinRtCustomAttributeValue>.contractNameAt(index: Int): String? =
+        when (val value = getOrNull(index)) {
+            is WinRtCustomAttributeValue.TypeValue -> value.typeName
+            is WinRtCustomAttributeValue.StringValue -> value.value
+            else -> null
+        }
+
+    private fun List<WinRtCustomAttributeValue>.stringAt(index: Int): String? =
+        (getOrNull(index) as? WinRtCustomAttributeValue.StringValue)?.value
+
+    private fun List<WinRtCustomAttributeValue>.integralAt(index: Int): Long? =
+        (getOrNull(index) as? WinRtCustomAttributeValue.IntegralValue)?.value
+
+    private fun List<WinRtCustomAttributeValue>.enumOrIntegralAt(index: Int): Long? =
+        when (val value = getOrNull(index)) {
+            is WinRtCustomAttributeValue.EnumValue -> value.value
+            is WinRtCustomAttributeValue.IntegralValue -> value.value
+            else -> null
+        }
+
+    private fun getContractPlatform(contractName: String, contractVersion: Int): String? =
+        CONTRACT_PLATFORM_VERSIONS[contractName]?.get(contractVersion)
+
     private fun readMethodSignature(
         blobIndex: Int,
         typeDefNames: Array<String>,
@@ -1371,9 +1437,148 @@ private class MetadataTables private constructor(
         private const val WINDOWS_FOUNDATION_METADATA_ACTIVATABLE = "Windows.Foundation.Metadata.ActivatableAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_STATIC = "Windows.Foundation.Metadata.StaticAttribute"
         private const val WINDOWS_FOUNDATION_METADATA_COMPOSABLE = "Windows.Foundation.Metadata.ComposableAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_CONTRACT_VERSION = "Windows.Foundation.Metadata.ContractVersionAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_VERSION = "Windows.Foundation.Metadata.VersionAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_PREVIOUS_CONTRACT_VERSION = "Windows.Foundation.Metadata.PreviousContractVersionAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_DEPRECATED = "Windows.Foundation.Metadata.DeprecatedAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_THREADING = "Windows.Foundation.Metadata.ThreadingAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_MARSHALING_BEHAVIOR = "Windows.Foundation.Metadata.MarshalingBehaviorAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_MUSE = "Windows.Foundation.Metadata.MuseAttribute"
+        private const val WINDOWS_FOUNDATION_METADATA_WEB_HOST_HIDDEN = "Windows.Foundation.Metadata.WebHostHiddenAttribute"
         private const val SYSTEM_ATTRIBUTE = "System.Attribute"
         private const val TYPE_ATTRIBUTE_ABSTRACT = 0x00000080
         private const val TYPE_ATTRIBUTE_SEALED = 0x00000100
+
+        private val CONTRACT_PLATFORM_VERSIONS: Map<String, Map<Int, String>> = mapOf(
+            "Windows.AI.MachineLearning.MachineLearningContract" to mapOf(
+                1 to "10.0.17763.0",
+                2 to "10.0.18362.0",
+                3 to "10.0.19041.0",
+            ),
+            "Windows.AI.MachineLearning.Preview.MachineLearningPreviewContract" to mapOf(
+                1 to "10.0.17134.0",
+                2 to "10.0.17763.0",
+            ),
+            "Windows.ApplicationModel.Calls.Background.CallsBackgroundContract" to mapOf(
+                1 to "10.0.17763.0",
+                2 to "10.0.18362.0",
+            ),
+            "Windows.ApplicationModel.Calls.CallsPhoneContract" to mapOf(
+                4 to "10.0.17763.0",
+                5 to "10.0.18362.0",
+            ),
+            "Windows.ApplicationModel.Calls.CallsVoipContract" to mapOf(
+                1 to "10.0.10586.0",
+                2 to "10.0.16299.0",
+                3 to "10.0.17134.0",
+                4 to "10.0.17763.0",
+            ),
+            "Windows.ApplicationModel.CommunicationBlocking.CommunicationBlockingContract" to mapOf(
+                2 to "10.0.17763.0",
+            ),
+            "Windows.ApplicationModel.SocialInfo.SocialInfoContract" to mapOf(
+                1 to "10.0.14393.0",
+                2 to "10.0.15063.0",
+            ),
+            "Windows.ApplicationModel.StartupTaskContract" to mapOf(
+                2 to "10.0.16299.0",
+                3 to "10.0.17134.0",
+            ),
+            "Windows.Devices.Custom.CustomDeviceContract" to mapOf(
+                1 to "10.0.16299.0",
+            ),
+            "Windows.Devices.DevicesLowLevelContract" to mapOf(
+                2 to "10.0.14393.0",
+                3 to "10.0.15063.0",
+            ),
+            "Windows.Devices.Printers.PrintersContract" to mapOf(
+                1 to "10.0.10586.0",
+            ),
+            "Windows.Devices.SmartCards.SmartCardBackgroundTriggerContract" to mapOf(
+                3 to "10.0.16299.0",
+            ),
+            "Windows.Devices.SmartCards.SmartCardEmulatorContract" to mapOf(
+                5 to "10.0.16299.0",
+                6 to "10.0.17763.0",
+            ),
+            "Windows.Foundation.FoundationContract" to mapOf(
+                1 to "10.0.10240.0",
+                2 to "10.0.10586.0",
+                3 to "10.0.15063.0",
+                4 to "10.0.19041.0",
+            ),
+            "Windows.Foundation.UniversalApiContract" to mapOf(
+                1 to "10.0.10240.0",
+                2 to "10.0.10586.0",
+                3 to "10.0.14393.0",
+                4 to "10.0.15063.0",
+                5 to "10.0.16299.0",
+                6 to "10.0.17134.0",
+                7 to "10.0.17763.0",
+                8 to "10.0.18362.0",
+                10 to "10.0.19041.0",
+            ),
+            "Windows.Foundation.VelocityIntegration.VelocityIntegrationContract" to mapOf(
+                1 to "10.0.17134.0",
+            ),
+            "Windows.Gaming.XboxLive.StorageApiContract" to mapOf(
+                1 to "10.0.16299.0",
+            ),
+            "Windows.Graphics.Printing3D.Printing3DContract" to mapOf(
+                2 to "10.0.10586.0",
+                3 to "10.0.14393.0",
+                4 to "10.0.16299.0",
+            ),
+            "Windows.Networking.Connectivity.WwanContract" to mapOf(
+                1 to "10.0.10240.0",
+                2 to "10.0.17134.0",
+            ),
+            "Windows.Networking.Sockets.ControlChannelTriggerContract" to mapOf(
+                3 to "10.0.17763.0",
+            ),
+            "Windows.Security.Isolation.IsolatedWindowsEnvironmentContract" to mapOf(
+                1 to "10.0.19041.0",
+            ),
+            "Windows.Services.Maps.GuidanceContract" to mapOf(
+                3 to "10.0.17763.0",
+            ),
+            "Windows.Services.Maps.LocalSearchContract" to mapOf(
+                4 to "10.0.17763.0",
+            ),
+            "Windows.Services.Store.StoreContract" to mapOf(
+                1 to "10.0.14393.0",
+                2 to "10.0.15063.0",
+                3 to "10.0.17134.0",
+                4 to "10.0.17763.0",
+            ),
+            "Windows.Services.TargetedContent.TargetedContentContract" to mapOf(
+                1 to "10.0.15063.0",
+            ),
+            "Windows.Storage.Provider.CloudFilesContract" to mapOf(
+                4 to "10.0.19041.0",
+            ),
+            "Windows.System.Profile.ProfileHardwareTokenContract" to mapOf(
+                1 to "10.0.14393.0",
+            ),
+            "Windows.System.Profile.ProfileSharedModeContract" to mapOf(
+                1 to "10.0.14393.0",
+                2 to "10.0.15063.0",
+            ),
+            "Windows.System.Profile.SystemManufacturers.SystemManufacturersContract" to mapOf(
+                3 to "10.0.17763.0",
+            ),
+            "Windows.System.SystemManagementContract" to mapOf(
+                6 to "10.0.17763.0",
+                7 to "10.0.19041.0",
+            ),
+            "Windows.UI.ViewManagement.ViewManagementViewScalingContract" to mapOf(
+                1 to "10.0.14393.0",
+            ),
+            "Windows.UI.Xaml.Core.Direct.XamlDirectContract" to mapOf(
+                1 to "10.0.17763.0",
+                2 to "10.0.18362.0",
+            ),
+        )
 
         private const val CODED_TYPE_DEF_OR_REF_TYPE_DEF = 0
         private const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1

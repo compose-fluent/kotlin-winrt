@@ -93,6 +93,23 @@ class WinRtMetadataLoaderTest {
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.activatableFactoryInterfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetStatics"), widget.activation.staticInterfaceNames)
         assertEquals("Sample.Foundation.IWidgetFactory", widget.activation.composableFactoryInterfaceName)
+        assertEquals("Windows.Foundation.UniversalApiContract", widget.availability.contractVersion?.contractName)
+        assertEquals(0x00030000L, widget.availability.contractVersion?.version)
+        assertEquals(3, widget.availability.contractVersion?.majorVersion)
+        assertEquals("10.0.14393.0", widget.availability.contractVersion?.platformVersion)
+        assertEquals(0x00020000L, widget.availability.version)
+        assertEquals(
+            listOf("Windows.Foundation.UniversalApiContract" to 0x00010000L),
+            widget.availability.previousContractVersions.map { it.contractName to it.version },
+        )
+        assertEquals("Use Widget2", widget.availability.deprecations.single().message)
+        assertEquals(1L, widget.availability.deprecations.single().kind)
+        assertEquals(0x00040000L, widget.availability.deprecations.single().version)
+        assertEquals("Windows.Foundation.UniversalApiContract", widget.availability.deprecations.single().contractName)
+        assertEquals(2L, widget.availability.threadingModel)
+        assertEquals(1L, widget.availability.marshalingBehavior)
+        assertTrue(widget.availability.isMuse)
+        assertTrue(widget.availability.isWebHostHidden)
         val probeAttribute = widget.customAttributes.first { it.typeName == "Sample.Foundation.AttributeProbeAttribute" }
         assertEquals("widget", (probeAttribute.fixedArguments[0] as WinRtCustomAttributeValue.StringValue).value)
         assertEquals("Sample.Foundation.IWidget", (probeAttribute.fixedArguments[1] as WinRtCustomAttributeValue.TypeValue).typeName)
@@ -540,6 +557,54 @@ class WinRtMetadataLoaderTest {
 
                 [AttributeUsage(AttributeTargets.Struct, AllowMultiple = false)]
                 public sealed class ApiContractAttribute : Attribute {}
+
+                public enum DeprecationType { Deprecate, Remove }
+                public enum ThreadingModel { STA, MTA, Both }
+                public enum MarshalingType { None, Agile, Standard }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
+                public sealed class ContractVersionAttribute : Attribute
+                {
+                    public ContractVersionAttribute(Type contract, uint version) {}
+                    public ContractVersionAttribute(string contract, uint version) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class VersionAttribute : Attribute
+                {
+                    public VersionAttribute(uint version) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
+                public sealed class PreviousContractVersionAttribute : Attribute
+                {
+                    public PreviousContractVersionAttribute(Type contract, uint version) {}
+                    public PreviousContractVersionAttribute(string contract, uint version) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
+                public sealed class DeprecatedAttribute : Attribute
+                {
+                    public DeprecatedAttribute(string message, DeprecationType type, uint version, string contract) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class ThreadingAttribute : Attribute
+                {
+                    public ThreadingAttribute(ThreadingModel model) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class MarshalingBehaviorAttribute : Attribute
+                {
+                    public MarshalingBehaviorAttribute(MarshalingType type) {}
+                }
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class MuseAttribute : Attribute {}
+
+                [AttributeUsage(AttributeTargets.All, AllowMultiple = false)]
+                public sealed class WebHostHiddenAttribute : Attribute {}
             }
 
             namespace Sample.Foundation
@@ -618,6 +683,14 @@ class WinRtMetadataLoaderTest {
                 [Windows.Foundation.Metadata.Activatable("Sample.Foundation.IWidgetFactory")]
                 [Windows.Foundation.Metadata.Static("Sample.Foundation.IWidgetStatics")]
                 [Windows.Foundation.Metadata.Composable("Sample.Foundation.IWidgetFactory")]
+                [Windows.Foundation.Metadata.ContractVersion("Windows.Foundation.UniversalApiContract", 0x00030000)]
+                [Windows.Foundation.Metadata.Version(0x00020000)]
+                [Windows.Foundation.Metadata.PreviousContractVersion("Windows.Foundation.UniversalApiContract", 0x00010000)]
+                [Windows.Foundation.Metadata.Deprecated("Use Widget2", Windows.Foundation.Metadata.DeprecationType.Remove, 0x00040000, "Windows.Foundation.UniversalApiContract")]
+                [Windows.Foundation.Metadata.Threading(Windows.Foundation.Metadata.ThreadingModel.Both)]
+                [Windows.Foundation.Metadata.MarshalingBehavior(Windows.Foundation.Metadata.MarshalingType.Agile)]
+                [Windows.Foundation.Metadata.Muse]
+                [Windows.Foundation.Metadata.WebHostHidden]
                 [AttributeProbe("widget", typeof(IWidget), AttributeMode.Important, new int[] { 1, 2, 3 }, Enabled = true, Tags = new string[] { "alpha", "beta" })]
                 public class Widget<T> : IWidget
                 {

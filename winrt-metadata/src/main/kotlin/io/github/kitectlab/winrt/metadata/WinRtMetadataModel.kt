@@ -181,6 +181,62 @@ data class WinRtActivationShape(
     }
 }
 
+data class WinRtContractVersionMetadata(
+    val contractName: String?,
+    val version: Long,
+    val majorVersion: Int = (version ushr 16).toInt(),
+    val platformVersion: String? = null,
+) {
+    fun normalized(): WinRtContractVersionMetadata =
+        copy(contractName = contractName?.trim()?.takeIf(String::isNotEmpty))
+}
+
+data class WinRtDeprecationMetadata(
+    val message: String?,
+    val kind: Long?,
+    val version: Long?,
+    val contractName: String?,
+) {
+    fun normalized(): WinRtDeprecationMetadata =
+        copy(
+            message = message?.trim(),
+            contractName = contractName?.trim()?.takeIf(String::isNotEmpty),
+        )
+}
+
+data class WinRtAvailabilityMetadata(
+    val contractVersion: WinRtContractVersionMetadata? = null,
+    val version: Long? = null,
+    val previousContractVersions: List<WinRtContractVersionMetadata> = emptyList(),
+    val deprecations: List<WinRtDeprecationMetadata> = emptyList(),
+    val threadingModel: Long? = null,
+    val marshalingBehavior: Long? = null,
+    val isMuse: Boolean = false,
+    val isWebHostHidden: Boolean = false,
+) {
+    fun normalized(): WinRtAvailabilityMetadata =
+        copy(
+            contractVersion = contractVersion?.normalized(),
+            previousContractVersions = previousContractVersions.map(WinRtContractVersionMetadata::normalized),
+            deprecations = deprecations.map(WinRtDeprecationMetadata::normalized),
+        )
+
+    internal fun merge(other: WinRtAvailabilityMetadata): WinRtAvailabilityMetadata {
+        val left = normalized()
+        val right = other.normalized()
+        return WinRtAvailabilityMetadata(
+            contractVersion = left.contractVersion ?: right.contractVersion,
+            version = left.version ?: right.version,
+            previousContractVersions = left.previousContractVersions + right.previousContractVersions,
+            deprecations = left.deprecations + right.deprecations,
+            threadingModel = left.threadingModel ?: right.threadingModel,
+            marshalingBehavior = left.marshalingBehavior ?: right.marshalingBehavior,
+            isMuse = left.isMuse || right.isMuse,
+            isWebHostHidden = left.isWebHostHidden || right.isWebHostHidden,
+        )
+    }
+}
+
 enum class WinRtParameterDirection {
     In,
     Ref,
@@ -391,6 +447,7 @@ data class WinRtTypeDefinition(
     val genericParameters: List<WinRtGenericParameterDefinition> = emptyList(),
     val customAttributes: List<WinRtCustomAttributeDefinition> = emptyList(),
     val activation: WinRtActivationShape = WinRtActivationShape(),
+    val availability: WinRtAvailabilityMetadata = WinRtAvailabilityMetadata(),
     val methods: List<WinRtMethodDefinition> = emptyList(),
     val properties: List<WinRtPropertyDefinition> = emptyList(),
     val events: List<WinRtEventDefinition> = emptyList(),
@@ -456,6 +513,7 @@ data class WinRtTypeDefinition(
             ),
             customAttributes = customAttributes.map(WinRtCustomAttributeDefinition::normalized),
             activation = activation.normalized(),
+            availability = availability.normalized(),
             methods = normalizedMethods,
             properties = normalizedProperties,
             events = normalizedEvents,
@@ -507,6 +565,7 @@ data class WinRtTypeDefinition(
                 .sortedBy(WinRtGenericParameterDefinition::index),
             customAttributes = left.customAttributes + right.customAttributes,
             activation = left.activation.merge(right.activation),
+            availability = left.availability.merge(right.availability),
             methods = (left.methods + right.methods)
                 .groupBy(WinRtMethodDefinition::signatureKey)
                 .values
