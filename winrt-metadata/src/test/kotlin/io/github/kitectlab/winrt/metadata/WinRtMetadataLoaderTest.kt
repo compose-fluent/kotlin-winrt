@@ -514,6 +514,17 @@ class WinRtMetadataLoaderTest {
         )
     }
 
+    @Test
+    fun loads_cli_metadata_with_auxiliary_tables_used_by_real_winmd_caches() {
+        val assembly = buildAuxiliaryTableMetadataSample()
+
+        val model = WinRtMetadataLoader.load(assembly).normalized()
+
+        val namespace = model.namespaces.single { it.name == "Sample.Auxiliary" }
+        val container = namespace.types.single { it.name == "Container" }
+        assertTrue(container.methods.any { it.name == "Ping" })
+    }
+
     private fun buildManagedMetadataSample(): Path {
         val dotnet = findDotnet()
         assumeTrue("dotnet CLI is required for Metadata 2.1 tests", dotnet != null)
@@ -872,6 +883,84 @@ class WinRtMetadataLoaderTest {
             command = listOf(dotnet!!.toString(), "build", "-nologo", "-clp:ErrorsOnly"),
         )
         return projectDir.resolve("bin/Debug/net8.0/SampleMetadata.dll")
+    }
+
+    private fun buildAuxiliaryTableMetadataSample(): Path {
+        val dotnet = findDotnet()
+        assumeTrue("dotnet CLI is required for Metadata 3.2 tests", dotnet != null)
+        val tempDir = Files.createTempDirectory("kotlin-winrt-metadata-aux-test")
+        val forwardedDir = tempDir.resolve("ForwardedTypes")
+        val mainDir = tempDir.resolve("AuxiliaryMetadata")
+        forwardedDir.createDirectories()
+        mainDir.createDirectories()
+
+        forwardedDir.resolve("ForwardedTypes.csproj").writeText(
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <ImplicitUsings>disable</ImplicitUsings>
+                <Nullable>disable</Nullable>
+                <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+                <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+              </PropertyGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        forwardedDir.resolve("ForwardedTypes.cs").writeText(
+            """
+            namespace External.Forwarded
+            {
+                public class ForwardedWidget {}
+            }
+            """.trimIndent(),
+        )
+        runProcess(
+            workingDirectory = forwardedDir,
+            command = listOf(dotnet!!.toString(), "build", "-nologo", "-clp:ErrorsOnly"),
+        )
+
+        mainDir.resolve("Resources").createDirectories()
+        mainDir.resolve("Resources").resolve("sample.txt").writeText("resource")
+        mainDir.resolve("AuxiliaryMetadata.csproj").writeText(
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net8.0</TargetFramework>
+                <ImplicitUsings>disable</ImplicitUsings>
+                <Nullable>disable</Nullable>
+                <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+                <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+              </PropertyGroup>
+              <ItemGroup>
+                <Reference Include="ForwardedTypes">
+                  <HintPath>..\ForwardedTypes\bin\Debug\net8.0\ForwardedTypes.dll</HintPath>
+                </Reference>
+                <EmbeddedResource Include="Resources\sample.txt" LogicalName="Sample.Auxiliary.sample.txt" />
+              </ItemGroup>
+            </Project>
+            """.trimIndent(),
+        )
+        mainDir.resolve("AuxiliaryTypes.cs").writeText(
+            """
+            [assembly: System.Runtime.CompilerServices.TypeForwardedTo(typeof(External.Forwarded.ForwardedWidget))]
+
+            namespace Sample.Auxiliary
+            {
+                public class Container
+                {
+                    public class Nested {}
+
+                    public void Ping() {}
+                }
+            }
+            """.trimIndent(),
+        )
+        runProcess(
+            workingDirectory = mainDir,
+            command = listOf(dotnet.toString(), "build", "-nologo", "-clp:ErrorsOnly"),
+        )
+        return mainDir.resolve("bin/Debug/net8.0/AuxiliaryMetadata.dll")
     }
 
     private fun buildWindowsSdkMetadataRoot(

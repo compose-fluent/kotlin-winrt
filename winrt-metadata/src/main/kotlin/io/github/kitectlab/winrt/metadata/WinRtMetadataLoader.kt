@@ -1648,7 +1648,15 @@ private class MetadataTables private constructor(
         private const val TABLE_MODULE_REF = 0x1A
         private const val TABLE_TYPE_SPEC = 0x1B
         private const val TABLE_ASSEMBLY = 0x20
+        private const val TABLE_ASSEMBLY_PROCESSOR = 0x21
+        private const val TABLE_ASSEMBLY_OS = 0x22
         private const val TABLE_ASSEMBLY_REF = 0x23
+        private const val TABLE_ASSEMBLY_REF_PROCESSOR = 0x24
+        private const val TABLE_ASSEMBLY_REF_OS = 0x25
+        private const val TABLE_FILE = 0x26
+        private const val TABLE_EXPORTED_TYPE = 0x27
+        private const val TABLE_MANIFEST_RESOURCE = 0x28
+        private const val TABLE_NESTED_CLASS = 0x29
         private const val TABLE_GENERIC_PARAM = 0x2A
         private const val TABLE_METHOD_SPEC = 0x2B
         private const val TABLE_GENERIC_PARAM_CONSTRAINT = 0x2C
@@ -1953,6 +1961,10 @@ private class MetadataTables private constructor(
             tagBits = CODED_TYPE_OR_METHOD_DEF_TAG_BITS,
             tables = intArrayOf(TABLE_TYPE_DEF, TABLE_METHOD_DEF),
         )
+        private val CODED_IMPLEMENTATION = CodedIndex(
+            tagBits = 2,
+            tables = intArrayOf(TABLE_FILE, TABLE_ASSEMBLY_REF, TABLE_EXPORTED_TYPE),
+        )
 
         fun parse(buffer: ByteBuffer, offset: Int, stringsHeap: MetadataStream, blobHeap: MetadataStream): MetadataTables {
             val heapSizes = buffer.byteAt(offset + 6).toInt() and 0xFF
@@ -2029,7 +2041,15 @@ private class MetadataTables private constructor(
             TABLE_MODULE_REF -> stringIndexSize
             TABLE_TYPE_SPEC -> blobIndexSize
             TABLE_ASSEMBLY -> 16 + blobIndexSize + stringIndexSize * 2
+            TABLE_ASSEMBLY_PROCESSOR -> 4
+            TABLE_ASSEMBLY_OS -> 12
             TABLE_ASSEMBLY_REF -> 12 + 4 + blobIndexSize + stringIndexSize * 2 + blobIndexSize
+            TABLE_ASSEMBLY_REF_PROCESSOR -> 4 + simpleIndexSize(TABLE_ASSEMBLY_REF, rowCounts)
+            TABLE_ASSEMBLY_REF_OS -> 12 + simpleIndexSize(TABLE_ASSEMBLY_REF, rowCounts)
+            TABLE_FILE -> 4 + stringIndexSize + blobIndexSize
+            TABLE_EXPORTED_TYPE -> 8 + stringIndexSize * 2 + codedIndexSize(CODED_IMPLEMENTATION, rowCounts)
+            TABLE_MANIFEST_RESOURCE -> 8 + stringIndexSize + codedIndexSize(CODED_IMPLEMENTATION, rowCounts)
+            TABLE_NESTED_CLASS -> simpleIndexSize(TABLE_TYPE_DEF, rowCounts) * 2
             TABLE_GENERIC_PARAM -> 4 + codedIndexSize(CODED_TYPE_OR_METHOD_DEF, rowCounts) + stringIndexSize
             TABLE_METHOD_SPEC -> codedIndexSize(CODED_METHOD_DEF_OR_REF, rowCounts) + blobIndexSize
             TABLE_GENERIC_PARAM_CONSTRAINT -> simpleIndexSize(TABLE_GENERIC_PARAM, rowCounts) + codedIndexSize(CODED_TYPE_DEF_OR_REF, rowCounts)
