@@ -75,7 +75,7 @@
 - [x] Sample 4: expose opt-in WindowsAppSDK split-package declarations matching `.cswinrt/src/Projections/WinAppSDK`.
 - [x] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
 - [x] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style `SimpleMath().add(5.5, 6.5)` sample, generate `SimpleMathComponent` projection from the real component WinMD, and stage the local component DLL from `winrt-projections` library identity.
-- [x] Sample 7: add a `.cswinrt/src/Samples/WinUIDesktopSample` headless flow smoke for application start, window activation, button/page swap, and tapped handler registration while real `Microsoft.UI.Xaml` projections are still pending.
+- [ ] Sample 7 正在做: add a real `.cswinrt/src/Samples/WinUIDesktopSample` smoke only after `Microsoft.UI.Xaml` projections are generated and callable: `Application.Start`, `Window.Activate`, `Button.Click`, `MainPage`, and `UIElement.TappedEvent` must use generated WinUI projection classes, not sample-local fakes.
 - [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.
 - [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
 - [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.

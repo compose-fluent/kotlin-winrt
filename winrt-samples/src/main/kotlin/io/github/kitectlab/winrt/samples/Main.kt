@@ -16,12 +16,6 @@ fun main() {
         val result = NetProjectionSample.add()
         println("simple-math=${result.expression} = ${result.value}")
     }
-    if (shouldRunWinUiDesktopHeadlessSmoke()) {
-        val result = WinUiDesktopSample.runHeadlessFlow()
-        println("winui-window-activated=${result.windowActivated}")
-        println("winui-content=${result.finalWindowContent}")
-        println("winui-tapped-handler=${result.tappedHandlerRegistered}")
-    }
 }
 
 fun shouldRunNativeSmoke(): Boolean =
@@ -29,6 +23,3 @@ fun shouldRunNativeSmoke(): Boolean =
 
 fun shouldRunComponentSmoke(): Boolean =
     java.lang.Boolean.getBoolean("kotlin.winrt.samples.runComponentSmoke")
-
-fun shouldRunWinUiDesktopHeadlessSmoke(): Boolean =
-    java.lang.Boolean.getBoolean("kotlin.winrt.samples.runWinUiDesktopHeadlessSmoke")

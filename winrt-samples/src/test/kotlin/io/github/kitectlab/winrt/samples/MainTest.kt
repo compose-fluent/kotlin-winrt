@@ -54,19 +54,6 @@ class MainTest {
         assertEquals("5.5 + 6.5", result.expression)
         assertEquals(12.0, result.value, 0.0)
     }
-
-    @Test
-    fun winui_desktop_sample_keeps_cswinrt_launch_click_and_tapped_flow() {
-        val result = WinUiDesktopSample.runHeadlessFlow()
-
-        assertEquals(true, result.started)
-        assertEquals(WinUiDesktopSample.initialButtonContent, result.initialWindowContent)
-        assertEquals(true, result.windowActivated)
-        assertEquals(true, result.buttonClickHandled)
-        assertEquals(WinUiDesktopSample.mainPageText, result.finalWindowContent)
-        assertEquals(true, result.tappedHandlerRegistered)
-        assertEquals(false, shouldRunWinUiDesktopHeadlessSmoke())
-    }
 }
 
 private object Main
