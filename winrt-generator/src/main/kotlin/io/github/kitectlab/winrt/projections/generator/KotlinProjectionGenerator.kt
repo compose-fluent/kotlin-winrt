@@ -92,6 +92,8 @@ import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
 import java.time.OffsetDateTime
 import kotlin.collections.AbstractList
@@ -696,7 +698,13 @@ data class KotlinProjectionFile(
     val relativePath: String,
     val packageName: String,
     val contents: String,
-)
+) {
+    fun writeTo(outputRoot: Path) {
+        val target = outputRoot.resolve(relativePath)
+        Files.createDirectories(target.parent)
+        Files.writeString(target, contents)
+    }
+}
 
 class KotlinProjectionContractValidator {
     fun validate(model: WinRtMetadataModel): WinRtMetadataModel =
@@ -2402,6 +2410,13 @@ class KotlinProjectionRenderer {
             builder.addFunction(
                 FunSpec.constructorBuilder()
                     .callThisConstructor(CodeBlock.of("%T.activateInstance(Metadata.TYPE_NAME)", ACTIVATION_FACTORY_CLASS_NAME))
+                    .build(),
+            )
+        }
+        if (hasDefaultComposableFactoryConstructor(plan)) {
+            builder.addFunction(
+                FunSpec.constructorBuilder()
+                    .callThisConstructor(CodeBlock.of("ComposableFactory.createInstance()"))
                     .build(),
             )
         }
@@ -6014,6 +6029,9 @@ class KotlinProjectionRenderer {
                                 .build(),
                         )
                     }
+                    if (hasDefaultComposableFactoryConstructor(plan)) {
+                        addFunction(renderDefaultComposableFactoryCreateInstance(plan))
+                    }
                 }
                 .addFunction(
                     FunSpec.builder("acquire")
@@ -6028,6 +6046,50 @@ class KotlinProjectionRenderer {
                         .build(),
                 )
                 .build()
+    }
+
+    private fun hasDefaultComposableFactoryConstructor(plan: KotlinTypeProjectionPlan): Boolean {
+        val factoryName = plan.composableFactoryInterfaceName ?: return false
+        val factoryType = plan.typesByQualifiedName[factoryName] ?: return false
+        return factoryType.methods.any { method ->
+            method.name == "CreateInstance" &&
+                method.parameters.size == 2 &&
+                method.parameters[0].type.typeName == "System.Object" &&
+                method.parameters[1].type.typeName == "System.Object" &&
+                method.returnType.typeName == plan.type.qualifiedName
+        }
+    }
+
+    private fun renderDefaultComposableFactoryCreateInstance(plan: KotlinTypeProjectionPlan): FunSpec {
+        val factoryType = resolveTypeName(requireNotNull(plan.composableFactoryInterfaceName))
+        return FunSpec.builder("createInstance")
+            .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
+            .addCode(
+                CodeBlock.builder()
+                    .add("val __factory = acquire()\n")
+                    .add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
+                    .indent()
+                    .add("val __innerOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
+                    .add("val __resultOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
+                    .add(
+                        "val __hr = %T.invokeArgs(instance = __factory.pointer, slot = %T.Metadata.CREATEINSTANCE_SLOT, arg0 = %T.nullPointer, arg1 = __innerOut, arg2 = __resultOut)\n",
+                        COM_VTABLE_INVOKER_CLASS_NAME,
+                        factoryType,
+                        PLATFORM_ABI_CLASS_NAME,
+                    )
+                    .add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+                    .add("val __inner = %T.readPointer(__innerOut)\n", PLATFORM_ABI_CLASS_NAME)
+                    .add("if (__inner != %T.nullPointer) {\n", PLATFORM_ABI_CLASS_NAME)
+                    .indent()
+                    .add("%T(%T.toRawComPtr(__inner)).close()\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+                    .unindent()
+                    .add("}\n")
+                    .add("return %T(%T.toRawComPtr(%T.readPointer(__resultOut))).use { it.asInspectable() }\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+                    .unindent()
+                    .add("}\n")
+                    .build(),
+            )
+            .build()
     }
 
     private fun appendMetadataCompanionMembers(
@@ -6422,6 +6484,23 @@ class KotlinProjectionGenerator(
             return projectionFiles
         }
         return projectionFiles + supportRenderer.render(normalizedModel, plans, projectionContext)
+    }
+
+    fun generateTo(model: WinRtMetadataModel, outputRoot: Path): Int {
+        val normalizedModel = model.normalized()
+        val plans = planner.plan(normalizedModel)
+        var written = 0
+        plans.forEach { plan ->
+            renderer.render(plan).writeTo(outputRoot)
+            written += 1
+        }
+        if (emitSupportFiles) {
+            supportRenderer.render(normalizedModel, plans, projectionContext).forEach { file ->
+                file.writeTo(outputRoot)
+                written += 1
+            }
+        }
+        return written
     }
 }
 

@@ -662,6 +662,17 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidgetFactory",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("44444444-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "System.Object"),
+                                        WinRtParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                    methodRowId = 13,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -746,6 +757,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("companion object Metadata"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
         assertTrue(widgetContents.contains("internal fun wrap(instance: IInspectableReference): Widget = Widget(instance)"))
+        assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance())"))
         assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
         assertTrue(widgetContents.contains("internal const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
@@ -779,7 +791,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("val DEFAULT_INTERFACE_IID: Guid = Guid(\"22222222-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
+        assertTrue(widgetContents.contains("fun createInstance(): IInspectableReference"))
+        assertTrue(widgetContents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
+
+        val widgetFactoryContents = filesByName.getValue("IWidgetFactory.kt").contents
+        assertTrue(widgetFactoryContents.contains("internal const val CREATEINSTANCE_METHOD_ROW_ID: Int = 13"))
+        assertTrue(widgetFactoryContents.contains("internal const val CREATEINSTANCE_SLOT: Int = 6"))
 
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("public class WidgetStatics"))
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("static WinRT class shell"))

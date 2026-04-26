@@ -89,7 +89,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
-        val files = KotlinProjectionGenerator(
+        KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(
                 sources = sources,
@@ -97,13 +97,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                 exclude = excludeNamespaces.get().toSet() + excludeTypes.get().toSet(),
                 additionExclude = additionExcludeNamespaces.get().toSet(),
             ),
-        ).generate(model)
-        val outputRoot = outputDirectory.get().asFile.toPath()
-        files.forEach { file ->
-            val target = outputRoot.resolve(file.relativePath)
-            Files.createDirectories(target.parent)
-            Files.writeString(target, file.contents)
-        }
+        ).generateTo(model, outputDirectory.get().asFile.toPath())
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {

@@ -16,22 +16,16 @@ fun main(args: Array<String>) {
     val options = KotlinProjectionGeneratorOptions.parse(args.toList())
     val metadataSources = options.metadataSources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
     val model = WinRtMetadataLoader.loadSources(metadataSources).filterProjectionSurface(options.namespaces, options.types)
-    val files = KotlinProjectionGenerator(
+    val fileCount = KotlinProjectionGenerator(
         emitSupportFiles = true,
         projectionContext = WinRtMetadataProjectionContext(
             sources = metadataSources,
             include = options.namespaces + options.types,
             additionExclude = options.additionExcludes,
         ),
-    ).generate(model)
+    ).generateTo(model, options.outputDirectory)
 
-    files.forEach { file ->
-        val target = options.outputDirectory.resolve(file.relativePath)
-        Files.createDirectories(target.parent)
-        Files.writeString(target, file.contents)
-    }
-
-    println("Generated ${files.size} Kotlin projection file(s) into ${options.outputDirectory}.")
+    println("Generated $fileCount Kotlin projection file(s) into ${options.outputDirectory}.")
 }
 
 internal data class KotlinProjectionGeneratorOptions(

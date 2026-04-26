@@ -74,6 +74,8 @@
 - [x] Generator ABI 7: struct ABI now uses corrected 16-bit layout, mapped Foundation/Numerics struct aliases, nested blittable struct layout, and rejects non-blittable struct metadata companions instead of generating invalid `.Metadata` calls.
 - [x] Generator ABI 8: WindowsAppSDK generation validation passes for the configured Foundation/InteractiveExperiences/WinUI package set; projection/sample expansion can continue from generated output.
 - [x] Namespace additions from `.cswinrt/src/cswinrt/strings` are now modeled at namespace level, flow through generator support handoffs and Gradle identity metadata, and keep `.cswinrt` `addition_exclude` semantics without treating C# addition files as Kotlin projection inputs.
+- [x] Generator memory: CLI and Gradle generation now stream each rendered Kotlin file to disk instead of retaining the full WindowsAppSDK output set in memory.
+- [x] Generator WinUI constructors: composable `CreateInstance(System.Object, System.Object)` factories now produce public default constructors for generated WinUI classes such as `Button`, `Page`, and `Window`.
 
 ## Sample Plan
 
@@ -84,7 +86,7 @@
 - [x] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
 - [x] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style `SimpleMath().add(5.5, 6.5)` sample, generate `SimpleMathComponent` projection from the real component WinMD, and stage the local component DLL from `winrt-projections` library identity.
 - [ ] Sample 7 正在做: add a real `.cswinrt/src/Samples/WinUIDesktopSample` smoke only after `Microsoft.UI.Xaml` projections are generated and callable: `Application.Start`, `Window.Activate`, `Button.Click`, `MainPage`, and `UIElement.TappedEvent` must use generated WinUI projection classes, not sample-local fakes.
-- [ ] Sample 7.1 正在做: WindowsAppSDK generation is blocked on generator ABI parity, not on sample-local fixes; filter follows `.cswinrt/src/Projections/WinAppSDK` and plugin dependency closure.
+- [x] Sample 7.1: WindowsAppSDK projection generation now completes from the plugin path with `.cswinrt/src/Projections/WinAppSDK` package/filter shape; remaining Sample 7 work is real generated WinUI API usage, not sample-local fakes.
 - [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.
 - [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
 - [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
