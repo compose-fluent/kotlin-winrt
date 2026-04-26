@@ -2,14 +2,23 @@ package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtGuidSignatureDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
+import io.github.kitectlab.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
+import io.github.kitectlab.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
+import io.github.kitectlab.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtSignatureWriterDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
@@ -192,6 +201,15 @@ data class KotlinTypeProjectionPlan(
     val mutableCollectionBindings: List<KotlinProjectionMutableCollectionBinding> = emptyList(),
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val eventInvokeDescriptors: List<WinRtEventInvokeDescriptor> = emptyList(),
+    val typeDeclarationDescriptor: WinRtTypeDeclarationDescriptor,
+    val factorySurfaceDescriptor: WinRtFactorySurfaceDescriptor? = null,
+    val objectReferenceSurfaceDescriptor: WinRtObjectReferenceSurfaceDescriptor? = null,
+    val guidSignatureDescriptor: WinRtGuidSignatureDescriptor? = null,
+    val interfaceMemberSignatureSetDescriptor: WinRtInterfaceMemberSignatureSetDescriptor? = null,
+    val customMappedMemberOutputDescriptor: WinRtCustomMappedMemberOutputDescriptor? = null,
+    val genericAbiClassInitializationDescriptor: WinRtGenericAbiClassInitializationDescriptor? = null,
+    val requiredInterfaceAugmentationDescriptor: WinRtRequiredInterfaceAugmentationDescriptor? = null,
+    val moduleActivationAndAuthoringDescriptor: WinRtModuleActivationAndAuthoringDescriptor? = null,
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
@@ -580,6 +598,10 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): KotlinTypeProjectionPlan? {
+        val typeDeclarationDescriptor = semanticHelpers.typeDeclarationDescriptor(type)
+        if (!typeDeclarationDescriptor.writesProjectedDeclaration) {
+            return null
+        }
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
             WinRtTypeKind.RuntimeClass -> KotlinProjectionDeclarationKind.Class
@@ -636,6 +658,39 @@ class KotlinProjectionPlanner(
                     null
                 },
             eventInvokeDescriptors = type.events.map { event -> semanticHelpers.eventInvokeDescriptor(type, event) },
+            typeDeclarationDescriptor = typeDeclarationDescriptor,
+            factorySurfaceDescriptor = if (type.kind == WinRtTypeKind.RuntimeClass) semanticHelpers.factorySurfaceDescriptor(type) else null,
+            objectReferenceSurfaceDescriptor = if (type.kind in setOf(WinRtTypeKind.RuntimeClass, WinRtTypeKind.Delegate)) {
+                semanticHelpers.objectReferenceSurfaceDescriptor(type)
+            } else {
+                null
+            },
+            guidSignatureDescriptor = type.iid?.let { semanticHelpers.guidSignatureDescriptor(type) },
+            interfaceMemberSignatureSetDescriptor = if (type.kind == WinRtTypeKind.Interface) {
+                semanticHelpers.interfaceMemberSignatureSetDescriptor(type)
+            } else {
+                null
+            },
+            customMappedMemberOutputDescriptor = if (type.kind == WinRtTypeKind.Interface) {
+                semanticHelpers.customMappedMemberOutputDescriptor(type)
+            } else {
+                null
+            },
+            genericAbiClassInitializationDescriptor = if (type.kind in setOf(WinRtTypeKind.Interface, WinRtTypeKind.Delegate)) {
+                semanticHelpers.genericAbiClassInitializationDescriptor(type)
+            } else {
+                null
+            },
+            requiredInterfaceAugmentationDescriptor = if (type.kind in setOf(WinRtTypeKind.Interface, WinRtTypeKind.RuntimeClass)) {
+                semanticHelpers.requiredInterfaceAugmentationDescriptor(type)
+            } else {
+                null
+            },
+            moduleActivationAndAuthoringDescriptor = if (type.kind == WinRtTypeKind.RuntimeClass) {
+                semanticHelpers.moduleActivationAndAuthoringDescriptor(type)
+            } else {
+                null
+            },
             companionKinds = planCompanions(type),
         )
     }
@@ -1787,6 +1842,32 @@ private fun WinRtMethodDefinition.methodRowConstantName(methods: List<WinRtMetho
 
 private fun String.methodSlotConstantName(): String =
     "${uppercase()}_SLOT"
+
+private fun TypeSpec.Builder.addStringListProperty(
+    name: String,
+    values: List<String>,
+) {
+    addProperty(
+        PropertySpec.builder(name, List::class.asClassName().parameterizedBy(String::class.asClassName()))
+            .addModifiers(KModifier.INTERNAL)
+            .initializer("%L", stringListCode(values))
+            .build(),
+    )
+}
+
+private fun stringListCode(values: List<String>): CodeBlock =
+    CodeBlock.builder()
+        .add("listOf(")
+        .apply {
+            values.forEachIndexed { index, value ->
+                if (index > 0) {
+                    add(", ")
+                }
+                add("%S", value)
+            }
+        }
+        .add(")")
+        .build()
 
 private fun WinRtTypeDefinition.localAbiMembers(): List<String> =
     buildList<AbiMemberOrder> {
@@ -4343,6 +4424,7 @@ class KotlinProjectionRenderer {
                 .initializer("%S", plan.type.qualifiedName)
                 .build(),
         )
+        appendDescriptorHandoffCompanionMembers(builder, plan)
         plan.interfaceIid?.let { iid ->
             builder.addProperty(
                 PropertySpec.builder("IID", GUID_CLASS_NAME)
@@ -4530,6 +4612,80 @@ class KotlinProjectionRenderer {
                     .initializer("%T.Metadata.%L", resolveTypeName(binding.slotInterfaceQualifiedName), binding.slotConstantName)
                     .build(),
             )
+        }
+    }
+
+    private fun appendDescriptorHandoffCompanionMembers(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        val declaration = plan.typeDeclarationDescriptor
+        builder.addProperty(
+            PropertySpec.builder("WRITES_ABI_DECLARATION", Boolean::class)
+                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .initializer("%L", declaration.writesAbiDeclaration)
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("WRITES_WRAPPER_DECLARATION", Boolean::class)
+                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .initializer("%L", declaration.writesWrapperDeclaration)
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("WRITES_HELPER_CLASS", Boolean::class)
+                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .initializer("%L", declaration.writesHelperClass)
+                .build(),
+        )
+        plan.factorySurfaceDescriptor?.let { descriptor ->
+            builder.addProperty(
+                PropertySpec.builder("FACTORY_CACHE_NAME", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", descriptor.activationFactoryCacheName)
+                    .build(),
+            )
+            builder.addStringListProperty("FACTORY_STATIC_TARGETS", descriptor.staticMemberTargets)
+            builder.addStringListProperty("FACTORY_CONSTRUCTOR_TARGETS", descriptor.constructorFactories)
+            builder.addStringListProperty("FACTORY_COMPOSABLE_TARGETS", descriptor.composableFactories)
+        }
+        plan.objectReferenceSurfaceDescriptor?.let { descriptor ->
+            builder.addStringListProperty("OBJECT_REFERENCE_NAMES", descriptor.objectReferenceNames)
+            builder.addStringListProperty("OBJECT_REFERENCE_METADATA_NAMES", descriptor.exposedTypeMetadataNames)
+        }
+        plan.guidSignatureDescriptor?.let { descriptor ->
+            builder.addProperty(
+                PropertySpec.builder("GUID_SIGNATURE_FRAGMENT", String::class)
+                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .initializer("%S", descriptor.signatureFragment)
+                    .build(),
+            )
+        }
+        plan.interfaceMemberSignatureSetDescriptor?.let { descriptor ->
+            builder.addStringListProperty(
+                "INTERFACE_METHOD_SIGNATURES",
+                descriptor.methodSignatures.map { signature ->
+                    "${signature.methodName}:${signature.returnTypeName}(${signature.parameterTypeNames.joinToString(",")})"
+                },
+            )
+            builder.addStringListProperty("INTERFACE_PROPERTY_NAMES", descriptor.propertyNames)
+            builder.addStringListProperty("INTERFACE_EVENT_NAMES", descriptor.eventNames)
+        }
+        plan.customMappedMemberOutputDescriptor?.let { descriptor ->
+            builder.addStringListProperty("CUSTOM_MAPPED_MEMBER_PLANS", descriptor.memberPlans)
+        }
+        plan.genericAbiClassInitializationDescriptor?.let { descriptor ->
+            builder.addStringListProperty("GENERIC_ABI_INVOKE_SLOTS", descriptor.invokeSlotNames)
+            builder.addStringListProperty("GENERIC_ABI_TYPE_ARRAYS", descriptor.genericTypeArrayDependencies)
+        }
+        plan.requiredInterfaceAugmentationDescriptor?.let { descriptor ->
+            builder.addStringListProperty("REQUIRED_INTERFACE_NAMES", descriptor.requiredInterfaceNames)
+            builder.addStringListProperty("REQUIRED_EXPLICIT_FORWARD_MEMBERS", descriptor.explicitForwardMemberNames)
+            builder.addStringListProperty("REQUIRED_MAPPED_AUGMENTATION_MEMBERS", descriptor.mappedAugmentationMembers)
+        }
+        plan.moduleActivationAndAuthoringDescriptor?.let { module ->
+            builder.addStringListProperty("MODULE_FACTORY_MEMBERS", module.factoryMemberNames)
+            builder.addStringListProperty("MODULE_ACTIVATION_FACTORY_ENTRIES", module.moduleActivationFactoryEntries)
         }
     }
 

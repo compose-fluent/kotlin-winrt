@@ -309,7 +309,7 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(
                                     name = "Invoke",
                                     returnTypeName = "Unit",
-                                    parameters = listOf(WinRtParameterDefinition("sender", "IWidget")),
+                                    parameters = listOf(WinRtParameterDefinition("message", "String")),
                                 ),
                             ),
                         ),
@@ -376,6 +376,19 @@ class KotlinProjectionGeneratorTest {
         assertTrue(getTitleBinding.marshalerPlanDescriptor?.requiresDispose == true)
         assertEquals("Sample.Foundation.WidgetChangedHandler", eventDescriptor.delegateTypeName)
         assertEquals("Invoke", eventDescriptor.invokeMethodName)
+        assertTrue(classPlan.typeDeclarationDescriptor.writesWrapperDeclaration)
+        assertEquals("WidgetActivationFactory", classPlan.factorySurfaceDescriptor?.activationFactoryCacheName)
+        assertEquals(listOf("Sample_Foundation_IWidgetCache"), classPlan.objectReferenceSurfaceDescriptor?.objectReferenceNames)
+        assertEquals(emptyList<String>(), classPlan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames)
+        assertEquals(emptyList<String>(), classPlan.moduleActivationAndAuthoringDescriptor?.moduleActivationFactoryEntries)
+
+        val generatedWidget = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("/Widget.kt") }
+            .contents
+        assertTrue(generatedWidget, generatedWidget.contains("internal const val WRITES_WRAPPER_DECLARATION: Boolean = true"))
+        assertTrue(generatedWidget, generatedWidget.contains("internal const val FACTORY_CACHE_NAME: String = \"WidgetActivationFactory\""))
+        assertTrue(generatedWidget, generatedWidget.contains("internal val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_Foundation_IWidgetCache\")"))
+        assertTrue(generatedWidget, generatedWidget.contains("internal val REQUIRED_INTERFACE_NAMES: List<String> = listOf()"))
     }
 
     @Test
