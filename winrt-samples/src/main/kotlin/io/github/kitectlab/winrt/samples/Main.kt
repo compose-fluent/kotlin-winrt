@@ -10,6 +10,7 @@ fun main() {
         println("json-id=${result.id}")
         println("json-null-type=${result.nullValueType}")
         println("json-verified=${result.verified}")
+        println("json-first-education-type=${result.firstEducationType}")
     }
 }
 

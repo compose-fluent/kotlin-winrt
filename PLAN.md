@@ -55,6 +55,7 @@
 - [x] Queue 15.2: sample-side plugin graph validation now makes `winrt-samples:check` verify generated application identity includes `winrt-projections` metadata and excludes ordinary runtime implementation dependencies.
 - [x] Queue 15.3: `winrt-samples` now has opt-in WindowsAppSDK split-package declarations via `kotlinWinRt.samples.windowsAppSdkWinuiVersion`; default checks stay offline/lightweight while explicit identity validation proves Foundation/InteractiveExperiences/WinUI metadata is recorded.
 - [x] Queue 15.4: plugin API is consolidated to `io.github.kitectlab.winrt` plus `winRt {}`; library is the default model and `application {}` selects application identity/resource staging.
+- [x] Queue 15.5: move the JSON sample closer to `.cswinrt/src/Tests/UnitTest/ApiCompatTests.cs` by executing `GetNamedValue("phone")` and indexed `GetNamedArray("education")` reads without sample-local substitutes.
 - [x] Queue 16: root `validateWinRtQueue16` now runs validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
 

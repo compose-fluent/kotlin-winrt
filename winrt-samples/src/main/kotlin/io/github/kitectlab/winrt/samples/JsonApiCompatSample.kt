@@ -1,7 +1,7 @@
 package io.github.kitectlab.winrt.samples
 
+import io.github.kitectlab.winrt.projections.windows.`data`.json.JsonArray
 import io.github.kitectlab.winrt.projections.windows.`data`.json.JsonObject
-import io.github.kitectlab.winrt.projections.windows.`data`.json.JsonValue
 import io.github.kitectlab.winrt.projections.windows.`data`.json.JsonValueType
 import io.github.kitectlab.winrt.runtime.RuntimeScope
 
@@ -9,6 +9,7 @@ data class JsonApiCompatResult(
     val id: String,
     val nullValueType: JsonValueType,
     val verified: Boolean,
+    val firstEducationType: String,
 )
 
 object JsonApiCompatSample {
@@ -41,14 +42,13 @@ object JsonApiCompatSample {
     fun run(): JsonApiCompatResult =
         RuntimeScope.initializeSingleThreaded().use {
             val jsonObject = JsonObject.Parse(sampleText)
-            // cswinrt ApiCompat reads the "phone" null through GetNamedValue. The current
-            // generator/runtime path still needs nullable object-return support for that exact call.
-            // The same cswinrt sample iterates "education"; generated collection projection support
-            // must land before this sample can execute that branch without sample-local glue.
+            val phoneJsonValue = jsonObject.GetNamedValue("phone")
+            val education = jsonObject.GetNamedArray("education", JsonArray())
             JsonApiCompatResult(
                 id = jsonObject.GetNamedString("id"),
-                nullValueType = JsonValue.CreateNullValue().valueType,
+                nullValueType = phoneJsonValue.valueType,
                 verified = jsonObject.GetNamedBoolean("verified"),
+                firstEducationType = education.GetObjectAt(0u).GetNamedString("type"),
             )
         }
 }

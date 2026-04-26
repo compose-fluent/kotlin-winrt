@@ -32,6 +32,7 @@ class MainTest {
         assertEquals("1146217767", result.id)
         assertEquals(JsonValueType.Null, result.nullValueType)
         assertEquals(true, result.verified)
+        assertEquals("High School", result.firstEducationType)
     }
 }
 
