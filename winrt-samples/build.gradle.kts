@@ -14,8 +14,13 @@ dependencies {
     testImplementation(libs.junit)
 }
 
+val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
+
 kotlinWinRt {
     type("Windows.Foundation.IStringable")
+    sampleWindowsAppSdkVersion.orNull?.let { version ->
+        nugetPackage("Microsoft.WindowsAppSDK", version)
+    }
 }
 
 application {
@@ -39,6 +44,16 @@ val verifyWinRtSampleIdentity by tasks.registering {
         }
         check("winrt-runtime" !in identityJson) {
             "Runtime implementation dependencies must not be treated as Kotlin WinRT identity metadata."
+        }
+        val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.orNull
+        if (expectedWindowsAppSdkVersion == null) {
+            check("Microsoft.WindowsAppSDK" !in identityJson) {
+                "WindowsAppSDK should only be declared when kotlinWinRt.samples.windowsAppSdkVersion is set."
+            }
+        } else {
+            check("\"nugetPackages\": [\"Microsoft.WindowsAppSDK@$expectedWindowsAppSdkVersion\"]" in identityJson) {
+                "Expected sample application identity JSON to include Microsoft.WindowsAppSDK@$expectedWindowsAppSdkVersion."
+            }
         }
     }
 }
