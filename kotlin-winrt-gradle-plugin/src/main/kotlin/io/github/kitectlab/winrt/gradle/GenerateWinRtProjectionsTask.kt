@@ -40,6 +40,12 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     abstract val includeTypes: ListProperty<String>
 
     @get:Input
+    abstract val excludeNamespaces: ListProperty<String>
+
+    @get:Input
+    abstract val excludeTypes: ListProperty<String>
+
+    @get:Input
     @get:Optional
     abstract val windowsSdkVersion: Property<String>
 
@@ -73,6 +79,8 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         val model = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
             namespaces = includeNamespaces.get().toSet(),
             types = includeTypes.get().toSet(),
+            excludedNamespaces = excludeNamespaces.get().toSet(),
+            excludedTypes = excludeTypes.get().toSet(),
         )
         val files = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
         val outputRoot = outputDirectory.get().asFile.toPath()
@@ -320,14 +328,22 @@ private val LINE_SEPARATOR: String = System.lineSeparator()
 private fun WinRtMetadataModel.filterProjectionSurface(
     namespaces: Set<String>,
     types: Set<String>,
+    excludedNamespaces: Set<String>,
+    excludedTypes: Set<String>,
 ): WinRtMetadataModel =
-    if (namespaces.isEmpty() && types.isEmpty()) {
+    if (namespaces.isEmpty() && types.isEmpty() && excludedNamespaces.isEmpty() && excludedTypes.isEmpty()) {
         this
     } else {
         WinRtMetadataModel(
             this.namespaces.mapNotNull { namespace ->
                 val namespaceTypes = namespace.types.filter { type ->
-                    namespace.name in namespaces || type.qualifiedName in types
+                    val hasIncludeFilter = namespaces.isNotEmpty() || types.isNotEmpty()
+                    val included = !hasIncludeFilter ||
+                        namespaces.any { type.qualifiedName.startsWith("$it.") || type.qualifiedName == it } ||
+                        types.any { type.qualifiedName.startsWith("$it.") || type.qualifiedName == it }
+                    val excluded = excludedNamespaces.any { type.qualifiedName.startsWith("$it.") || type.qualifiedName == it } ||
+                        excludedTypes.any { type.qualifiedName.startsWith("$it.") || type.qualifiedName == it }
+                    included && !excluded
                 }
                 namespaceTypes.takeIf { it.isNotEmpty() }?.let { WinRtNamespace(namespace.name, it) }
             },

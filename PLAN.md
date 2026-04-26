@@ -93,6 +93,7 @@
 - [x] Plugin 4.6: remove unpublished split plugin ids/DSLs; keep only `winRt {}` with `application {}` as the application model switch.
 - [x] Plugin 4.7: align WindowsAppSDK handling with `.cswinrt/src/Projections/WinAppSDK`: add `windowsAppSdk(...)` split-package DSL and keep WindowsAppSDK staging limited to runtime framework assets, not native-target internals such as `WindowsAppSDK-VersionInfo.h`.
 - [x] Runtime 4.8: remove sample-derived `WindowsAppSdkBootstrap` from `winrt-runtime`; WinUI bootstrap/application packaging belongs to plugin/application integration after matching `.cswinrt` project/package behavior.
+- [x] Plugin 4.9: make plugin projection filters match `.cswinrt/src/Projections/WinAppSDK` include/exclude shape for WindowsAppSDK metadata.
 
 ## Validation Plan
 

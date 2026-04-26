@@ -19,6 +19,8 @@ class KotlinWinRtPluginTest {
         val extension = project.extensions.getByType(WinRtExtension::class.java)
         extension.namespace("Windows.Foundation")
         extension.type("Windows.Foundation.IStringable")
+        extension.excludeNamespace("Sample.Hidden")
+        extension.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
         extension.winmd("sdk+")
         extension.windowsSdk("10.0.26100.0", includeExtensions = true)
         extension.nugetExecutable.set("nuget.exe")
@@ -34,8 +36,15 @@ class KotlinWinRtPluginTest {
 
         val task = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
 
-        assertEquals(listOf("Windows.Foundation"), task.includeNamespaces.get())
-        assertEquals(listOf("Windows.Foundation.IStringable"), task.includeTypes.get())
+        assertEquals(listOf("Windows.Foundation", "Microsoft"), task.includeNamespaces.get())
+        assertTrue("Windows.Foundation.IStringable" in task.includeTypes.get())
+        assertTrue("Windows.UI.Xaml.Interop.Type" in task.includeTypes.get())
+        assertEquals(
+            listOf("Sample.Hidden", "Windows.UI.Xaml.Media.Animation"),
+            task.excludeNamespaces.get(),
+        )
+        assertTrue("Microsoft.UI.Xaml.Controls.WebView2" in task.excludeTypes.get())
+        assertTrue("Microsoft.UI.Xaml.Controls.IWebView" in task.excludeTypes.get())
         assertEquals(listOf("sdk+"), task.metadataInputs.get())
         assertEquals("10.0.26100.0", task.windowsSdkVersion.get())
         assertTrue(task.includeWindowsSdkExtensions.get())
@@ -123,8 +132,11 @@ class KotlinWinRtPluginTest {
         val json = Files.readString(task.outputFile.get().asFile.toPath())
         assertTrue(json.contains("\"model\": \"library\""))
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
-        assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\"]"))
-        assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\"]"))
+        assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
+        assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
+        assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
+        assertTrue(json.contains("\"excludeNamespaces\": [\"Windows.UI.Xaml.Media.Animation\"]"))
+        assertTrue(json.contains("\"excludeTypes\": [\"Microsoft.UI.Xaml.Controls.WebView2\""))
         assertTrue(json.contains("\"version\": \"10.0.26100.0\""))
         assertTrue(json.contains("\"includeExtensions\": true"))
         assertTrue(

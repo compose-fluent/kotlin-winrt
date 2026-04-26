@@ -14,6 +14,8 @@ typealias NamedNuGetPackageContainer = NamedDomainObjectContainer<KotlinWinRtNuG
 interface BaseWinRtExtension {
     val includeNamespaces: ListProperty<String>
     val includeTypes: ListProperty<String>
+    val excludeNamespaces: ListProperty<String>
+    val excludeTypes: ListProperty<String>
     val metadataInputs: ListProperty<String>
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
@@ -27,6 +29,10 @@ interface BaseWinRtExtension {
     fun namespace(name: String)
 
     fun type(name: String)
+
+    fun excludeNamespace(name: String)
+
+    fun excludeType(name: String)
 
     fun winmd(input: Any)
 
@@ -48,6 +54,8 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
 ) : BaseWinRtExtension {
     override val includeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val includeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val excludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val excludeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
@@ -69,6 +77,14 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
 
     override fun type(name: String) {
         includeTypes.add(name)
+    }
+
+    override fun excludeNamespace(name: String) {
+        excludeNamespaces.add(name)
+    }
+
+    override fun excludeType(name: String) {
+        excludeTypes.add(name)
     }
 
     override fun winmd(input: Any) {
@@ -99,6 +115,31 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
         setNuGetPackageVersion("Microsoft.WindowsAppSDK.Foundation", foundationVersion)
         setNuGetPackageVersion("Microsoft.WindowsAppSDK.InteractiveExperiences", interactiveExperiencesVersion)
         setNuGetPackageVersion("Microsoft.WindowsAppSDK.WinUI", winuiVersion)
+        includeNamespaces.add("Microsoft")
+        includeTypes.addAll(
+            listOf(
+                "Windows.UI.Xaml.Interop.Type",
+                "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
+                "Windows.UI.Xaml.Markup.ContentPropertyAttribute",
+                "Windows.UI.Xaml.StyleTypedPropertyAttribute",
+                "Windows.UI.Xaml.TemplatePartAttribute",
+                "Windows.UI.Xaml.TemplateVisualStateAttribute",
+                "Windows.UI.Xaml.Data.BindableAttribute",
+                "Windows.UI.Xaml.Markup.FullXamlMetadataProviderAttribute",
+                "Windows.UI.Xaml.Markup.MarkupExtensionReturnTypeAttribute",
+                "Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute",
+                "Windows.UI.Xaml.Media.Animation.IndependentlyAnimatableAttribute",
+            ),
+        )
+        excludeTypes.addAll(
+            listOf(
+                "Microsoft.UI.Xaml.Controls.WebView2",
+                "Microsoft.UI.Xaml.Controls.IWebView",
+                "Microsoft.UI.Xaml.Automation.Peers.IWebView",
+                "Microsoft.UI.Xaml.Automation.Peers.WebView",
+            ),
+        )
+        excludeNamespaces.add("Windows.UI.Xaml.Media.Animation")
     }
 
     private fun setNuGetPackageVersion(packageId: String, version: String) {
