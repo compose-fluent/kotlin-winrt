@@ -4,6 +4,7 @@ import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.attributes.Usage
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
@@ -66,6 +67,42 @@ class KotlinWinRtLibraryPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
         project.extensions.extraProperties["kotlinWinRtModel"] = "library"
+        val extension = project.extensions.getByType(KotlinWinRtExtension::class.java)
+        val identityTask = project.tasks.register(
+            "generateWinRtIdentity",
+            GenerateWinRtIdentityTask::class.java,
+            Action<GenerateWinRtIdentityTask> {
+                group = "kotlin-winrt"
+                description = "Writes Kotlin WinRT projection identity metadata for downstream application packaging."
+                outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt.json"))
+                metadataInputs.set(extension.metadataInputs)
+                includeNamespaces.set(extension.includeNamespaces)
+                includeTypes.set(extension.includeTypes)
+                windowsSdkVersion.set(extension.windowsSdkVersion)
+                includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
+                nugetPackages.set(
+                    project.provider {
+                        extension.nugetPackages.map { pkg ->
+                            "${pkg.packageId}@${pkg.version.get()}"
+                        }
+                    },
+                )
+            },
+        )
+
+        val identityElements = project.configurations.create(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION) {
+            isCanBeConsumed = true
+            isCanBeResolved = false
+            attributes.attribute(
+                Usage.USAGE_ATTRIBUTE,
+                project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+            )
+            outgoing.artifact(identityTask.flatMap { it.outputFile }) {
+                builtBy(identityTask)
+                type = "json"
+            }
+        }
+        project.extensions.extraProperties["kotlinWinRtIdentityElements"] = identityElements.name
     }
 }
 
@@ -75,3 +112,6 @@ class KotlinWinRtApplicationPlugin : Plugin<Project> {
         project.extensions.extraProperties["kotlinWinRtModel"] = "application"
     }
 }
+
+const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIdentityElements"
+const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"

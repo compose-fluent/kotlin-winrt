@@ -16,7 +16,7 @@
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
 - [x] `winrt-generator` baseline is closed for the current `.cswinrt/src/cswinrt` audit: declarations, ABI-bound members, activation, generic/event/type-shape support helpers, and SDK CLI generation.
 - [x] `winrt-projections` compiles generated support handoff helpers for the current Foundation/Collections generator slice.
-- [ ] `kotlin-winrt` Gradle plugin is not implemented yet.
+- [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and library identity metadata.
 - [ ] `winrt-samples` is intentionally minimal until generator/projection/plugin support expands.
 - [ ] `winrt-authoring` remains frozen until generated projection and sample paths are coherent.
 
@@ -36,12 +36,13 @@
 - [x] Generator 11.11: close remaining type-shape writers: full mapped-type table parity, projected/nonprojected/CCW name modes, ABI struct helpers, delegate helpers, attributes, and module activation metadata.
 - [x] Queue 11.12: compile generated support handoff helpers into `winrt-projections`.
 - [x] Queue 11.13: promote support handoffs to callable Kotlin APIs for ABI delegates, generic instantiations, event helpers, ABI plans, base-type/metadata mappings, and module activation entries.
-- [ ] Queue 12 正在做: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
+- [x] Queue 12: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
 - [x] Queue 12.1: add shared NuGet global-packages resolver in `winrt-metadata` so plugin NuGet handling consumes Microsoft NuGet CLI restore/cache output instead of creating a separate cache.
 - [x] Queue 12.2: add `kotlin-winrt-gradle-plugin` with `kotlin-dsl`, plugin ids, DSL, generation task, SDK/NuGet inputs, NuGet CLI global-packages lookup, and JVM generated-source wiring.
 - [x] Queue 12.3: plugin now restores missing packages by invoking Microsoft NuGet CLI `install` directly, then feeds installed package roots to `winrt-metadata` without generating temporary project files.
 - [x] Queue 12.4: plugin retries failed NuGet CLI commands with a Gradle-user-home cached `NuGet.CommandLine` download.
-- [ ] Queue 13: implement plugin roles: `kotlin-winrt-library` carries generated sources plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
+- [ ] Queue 13 正在做: implement plugin roles: `kotlin-winrt-library` carries generated sources in the library artifact plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
+- [x] Queue 13.1: `kotlin-winrt-library` publishes JSON identity metadata for downstream application resolution while generated projection sources remain part of the library compilation/artifact.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
@@ -76,7 +77,7 @@
 - [x] Plugin 4.2 prerequisite: shared metadata resolver now locates Microsoft NuGet global-packages roots, resolves package id/version closure from `.nuspec`, and feeds package roots to `WinRtMetadataSource`.
 - [x] Plugin 4.2 implementation: plugin invokes Microsoft NuGet CLI `install` directly when packages are not already present, consumes `nuget locals global-packages -list`, and passes package roots to the shared resolver.
 - [x] Plugin 4.2 CLI acquisition: plugin tries configured/system NuGet first, then downloads Apache-2.0 `NuGet.CommandLine` into Gradle user home cache and retries the same command on failure.
-- [ ] Plugin 4.3: implement `kotlin-winrt-library` artifact metadata for generated projections plus NuGet/WinMD identity.
+- [x] Plugin 4.3: implement `kotlin-winrt-library` JSON artifact metadata for NuGet/WinMD identity; generated sources stay compiled into the library itself.
 - [ ] Plugin 4.4: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging.
 - [ ] Plugin 4.5: migrate useful runtime/resource staging logic out of legacy `sample-jvm-winui3` into the plugin application model.
 
