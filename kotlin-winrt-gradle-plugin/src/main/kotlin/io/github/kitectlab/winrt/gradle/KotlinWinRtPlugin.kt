@@ -8,7 +8,6 @@ import org.gradle.api.attributes.Usage
 import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
-import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -49,9 +48,7 @@ class KotlinWinRtPlugin : Plugin<Project> {
         )
 
         project.plugins.withId("org.jetbrains.kotlin.jvm") {
-            project.extensions.configure(KotlinJvmProjectExtension::class.java, Action<KotlinJvmProjectExtension> {
-                sourceSets.getByName("main").kotlin.srcDir(generatedSources)
-            })
+            addGeneratedSourcesToKotlinMain(project, generatedSources)
             project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> {
                 dependsOn(generateTask)
             })
@@ -197,3 +194,24 @@ const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRtIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIdentityElements"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
+
+private fun addGeneratedSourcesToKotlinMain(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+) {
+    val kotlinExtension = project.extensions.findByName("kotlin") ?: return
+    val sourceSets = kotlinExtension.callNoArg("getSourceSets") as? org.gradle.api.NamedDomainObjectContainer<*> ?: return
+    val mainSourceSet = sourceSets.getByName("main")
+    val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return
+    kotlinSourceDirectorySet.callOneArg("srcDir", generatedSources)
+}
+
+private fun Any.callNoArg(name: String): Any? =
+    javaClass.methods.firstOrNull { method ->
+        method.name == name && method.parameterCount == 0
+    }?.invoke(this)
+
+private fun Any.callOneArg(name: String, argument: Any): Any? =
+    javaClass.methods.firstOrNull { method ->
+        method.name == name && method.parameterCount == 1
+    }?.invoke(this, argument)

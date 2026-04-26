@@ -1,11 +1,14 @@
 package io.github.kitectlab.winrt.gradle
 
 import org.gradle.testfixtures.ProjectBuilder
+import org.gradle.testkit.runner.GradleRunner
+import org.gradle.testkit.runner.TaskOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.nio.file.Path
 
 class KotlinWinRtPluginTest {
     @Test
@@ -225,4 +228,65 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
+
+    @Test
+    fun plugin_generates_sources_in_real_gradle_library_project() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-plugin-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-plugin-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.jvm") version "2.3.20"
+                id("io.github.kitectlab.winrt.library")
+            }
+
+            kotlin {
+                jvmToolchain(22)
+            }
+
+            kotlinWinRt {
+                type("Windows.Foundation.IStringable")
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRtProjections", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve(
+                    "build/generated/kotlin-winrt/src/main/kotlin/io/github/kitectlab/winrt/projections/windows/foundation/IStringable.kt",
+                ),
+            ),
+        )
+    }
+}
+
+private fun writeGradleFile(path: Path, content: String) {
+    Files.createDirectories(path.parent)
+    Files.writeString(path, content)
 }

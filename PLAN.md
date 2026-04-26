@@ -46,7 +46,10 @@
 - [x] Queue 13.2: `kotlin-winrt-application` resolves transitive `kotlin-winrt` identity JSON artifacts and writes an application identity aggregate for runtime/resource staging.
 - [x] Queue 13.3: `kotlin-winrt-application` stages NuGet runtime DLLs, framework PRI resources, `resources.pri`, and WindowsAppSDK version headers from application and dependency package identities.
 - [x] Queue 13.4: plugin application model wires staged runtime assets into Java resources and Gradle application distributions without sample-specific system properties.
-- [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
+- [ ] Queue 14 正在做: expand `winrt-projections` only with deterministic generator/plugin-produced output.
+- [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt.library` and generate deterministic WinRT sources from Windows SDK metadata.
+- [x] Queue 14.2: remove direct Kotlin Gradle Plugin runtime class dependency from the plugin so generated-source wiring works in published/TestKit plugin classloaders.
+- [ ] Queue 14.3: wire `winrt-projections` to the plugin through a publish/composite-build path; direct sibling `buildscript` project classpath is blocked by Gradle.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.

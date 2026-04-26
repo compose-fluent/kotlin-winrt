@@ -12,7 +12,6 @@ java {
 dependencies {
     implementation(projects.winrtMetadata)
     implementation(projects.winrtGenerator)
-    compileOnly(libs.kotlin.gradle.plugin)
     testImplementation(libs.junit)
     testImplementation(gradleTestKit())
 }
