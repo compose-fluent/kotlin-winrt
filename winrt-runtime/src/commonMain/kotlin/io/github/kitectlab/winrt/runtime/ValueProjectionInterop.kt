@@ -8,7 +8,7 @@ package io.github.kitectlab.winrt.runtime
  * while the remaining value-classification and adapter tables stay behind target seams until the
  * broader `ValueBoxing` owner is fully migrated.
  */
-internal object WinRtReferenceProjection {
+object WinRtReferenceProjection {
     fun createMarshaler(
         value: Any?,
         interfaceId: Guid,
@@ -53,7 +53,7 @@ internal object WinRtReferenceProjection {
         }
 }
 
-internal object WinRtReferenceArrayProjection {
+object WinRtReferenceArrayProjection {
     fun createMarshaler(
         value: Any?,
         interfaceId: Guid,

@@ -23,6 +23,18 @@ winRt {
     application {
     }
     sampleWindowsAppSdkWinuiVersion.orNull?.let { winuiVersion ->
+        windowsSdk(includeExtensions = true)
+        namespace("Windows.ApplicationModel.Activation")
+        namespace("Windows.ApplicationModel.DataTransfer")
+        namespace("Windows.Data.Json")
+        namespace("Windows.Foundation")
+        namespace("Windows.Foundation.Collections")
+        namespace("Windows.Graphics")
+        namespace("Windows.Storage.Streams")
+        namespace("Windows.System")
+        namespace("Windows.UI")
+        namespace("Windows.Web.Http")
+        namespace("Windows.Web.Http.Headers")
         windowsAppSdk(
             winuiVersion = winuiVersion,
             foundationVersion = sampleWindowsAppSdkFoundationVersion.orNull ?: winuiVersion,

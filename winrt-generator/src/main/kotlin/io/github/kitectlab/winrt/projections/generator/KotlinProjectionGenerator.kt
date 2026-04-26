@@ -2,10 +2,12 @@ package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiInventory
 import io.github.kitectlab.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
@@ -16,6 +18,7 @@ import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionInventory
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
+import io.github.kitectlab.winrt.metadata.WinRtMetadataParameterCategory
 import io.github.kitectlab.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
@@ -40,11 +43,18 @@ import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.HString
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
+import io.github.kitectlab.winrt.runtime.Marshaler
 import io.github.kitectlab.winrt.runtime.PlatformAbi
+import io.github.kitectlab.winrt.runtime.ParameterizedInterfaceId
 import io.github.kitectlab.winrt.runtime.RawAddress
+import io.github.kitectlab.winrt.runtime.NativeNestedStructFieldSpec
+import io.github.kitectlab.winrt.runtime.NativeScalarFieldSpec
+import io.github.kitectlab.winrt.runtime.NativeStructLayout
+import io.github.kitectlab.winrt.runtime.NativeStructScalarKind
 import io.github.kitectlab.winrt.runtime.WinRtBindableIterableProjection
 import io.github.kitectlab.winrt.runtime.WinRtBindableVectorProjection
 import io.github.kitectlab.winrt.runtime.WinRtBindableVectorViewProjection
+import io.github.kitectlab.winrt.runtime.WinRtCollectionInterfaceIds
 import io.github.kitectlab.winrt.runtime.WinRtDictionaryProjection
 import io.github.kitectlab.winrt.runtime.WinRtIterableProjection
 import io.github.kitectlab.winrt.runtime.WinRtListProjection
@@ -57,9 +67,12 @@ import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlo
 import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationVftblSlots
 import io.github.kitectlab.winrt.runtime.WinRtReadOnlyDictionaryProjection
 import io.github.kitectlab.winrt.runtime.WinRtReadOnlyListProjection
+import io.github.kitectlab.winrt.runtime.WinRtReferenceArrayProjection
+import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
+import io.github.kitectlab.winrt.runtime.WinRtTypeHandle
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
 import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
 import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
@@ -86,6 +99,8 @@ import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
+private val IREFERENCE_GENERIC_INTERFACE_ID = Guid("61C17706-2D65-11E0-9AE8-D48564015472")
+private val IREFERENCE_ARRAY_GENERIC_INTERFACE_ID = Guid("61C17707-2D65-11E0-9AE8-D48564015472")
 private val GUID_CLASS_NAME = Guid::class.asClassName()
 private val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
 private val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
@@ -95,10 +110,13 @@ private val HSTRING_CLASS_NAME = HString::class.asClassName()
 private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 private val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "IInspectableReference")
 private val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
+private val MARSHALER_CLASS_NAME = Marshaler::class.asClassName()
 private val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
+private val PARAMETERIZED_INTERFACE_ID_CLASS_NAME = ParameterizedInterfaceId::class.asClassName()
 private val WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME = WinRtBindableIterableProjection::class.asClassName()
 private val WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME = WinRtBindableVectorProjection::class.asClassName()
 private val WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME = WinRtBindableVectorViewProjection::class.asClassName()
+private val WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME = WinRtCollectionInterfaceIds::class.asClassName()
 private val WINRT_DICTIONARY_PROJECTION_CLASS_NAME = WinRtDictionaryProjection::class.asClassName()
 private val WINRT_ITERABLE_PROJECTION_CLASS_NAME = WinRtIterableProjection::class.asClassName()
 private val WINRT_LIST_PROJECTION_CLASS_NAME = WinRtListProjection::class.asClassName()
@@ -111,9 +129,12 @@ private val WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAs
 private val WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationVftblSlots::class.asClassName()
 private val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRtReadOnlyDictionaryProjection::class.asClassName()
 private val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProjection::class.asClassName()
+private val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayProjection::class.asClassName()
+private val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
 private val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 private val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
 private val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
+private val WINRT_TYPE_HANDLE_CLASS_NAME = WinRtTypeHandle::class.asClassName()
 private val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClassName()
 private val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::class.asClassName()
 private val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
@@ -134,6 +155,20 @@ private val LAZY_THREAD_SAFETY_MODE_CLASS_NAME = LazyThreadSafetyMode::class.asC
 private val MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "MutableList")
 private val MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "MutableMap")
 private val RAW_ADDRESS_CLASS_NAME = RawAddress::class.asClassName()
+private val NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME = NativeNestedStructFieldSpec::class.asClassName()
+private val NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME = NativeScalarFieldSpec::class.asClassName()
+private val NATIVE_STRUCT_LAYOUT_CLASS_NAME = NativeStructLayout::class.asClassName()
+private val NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME = NativeStructScalarKind::class.asClassName()
+private val RUNTIME_POINT_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Point")
+private val RUNTIME_SIZE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Size")
+private val RUNTIME_RECT_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Rect")
+private val RUNTIME_VECTOR2_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Vector2")
+private val RUNTIME_VECTOR3_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Vector3")
+private val RUNTIME_VECTOR4_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Vector4")
+private val RUNTIME_QUATERNION_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Quaternion")
+private val RUNTIME_MATRIX3X2_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Matrix3x2")
+private val RUNTIME_MATRIX4X4_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Matrix4x4")
+private val RUNTIME_PLANE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Plane")
 
 private typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
 
@@ -184,6 +219,7 @@ enum class KotlinProjectionModifier {
 
 data class KotlinTypeProjectionPlan(
     val type: WinRtTypeDefinition,
+    val typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
     val packageName: String,
     val relativePath: String,
     val declarationKind: KotlinProjectionDeclarationKind,
@@ -281,9 +317,18 @@ enum class KotlinProjectionAbiValueKind {
     Unit,
     String,
     Boolean,
+    Int8,
+    UInt8,
+    Int16,
+    UInt16,
     Int32,
     UInt32,
+    Int64,
+    UInt64,
+    Float,
     Double,
+    Char16,
+    GuidValue,
     Enum,
     MappedIterable,
     MappedVector,
@@ -298,6 +343,9 @@ enum class KotlinProjectionAbiValueKind {
     MappedAsyncActionWithProgress,
     MappedAsyncOperation,
     MappedAsyncOperationWithProgress,
+    Reference,
+    ReferenceArray,
+    Array,
     ProjectedInterface,
     ProjectedRuntimeClass,
     Struct,
@@ -341,7 +389,78 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     KotlinProjectionMappedType("Windows.Foundation.TimeSpan", { DURATION_CLASS_NAME }, descriptionName = "TimeSpan"),
     KotlinProjectionMappedType("Windows.Foundation.Uri", { URI_CLASS_NAME }, descriptionName = "Uri"),
     KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
-    KotlinProjectionMappedType("Windows.Foundation.IReference", { arguments -> arguments.single().copy(nullable = true) }, descriptionName = "IReference"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IReference",
+        { arguments -> arguments.single().copy(nullable = true) },
+        abiValueKind = KotlinProjectionAbiValueKind.Reference,
+        descriptionName = "IReference",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IReferenceArray",
+        { arguments -> Array::class.asClassName().parameterizedBy(arguments.single().copy(nullable = true)) },
+        abiValueKind = KotlinProjectionAbiValueKind.ReferenceArray,
+        descriptionName = "IReferenceArray",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Point",
+        { RUNTIME_POINT_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Point",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Size",
+        { RUNTIME_SIZE_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Size",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Rect",
+        { RUNTIME_RECT_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Rect",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Vector2",
+        { RUNTIME_VECTOR2_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Vector2",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Vector3",
+        { RUNTIME_VECTOR3_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Vector3",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Vector4",
+        { RUNTIME_VECTOR4_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Vector4",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Quaternion",
+        { RUNTIME_QUATERNION_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Quaternion",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Matrix3x2",
+        { RUNTIME_MATRIX3X2_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Matrix3x2",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Matrix4x4",
+        { RUNTIME_MATRIX4X4_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Matrix4x4",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.Numerics.Plane",
+        { RUNTIME_PLANE_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "Plane",
+    ),
     KotlinProjectionMappedType(
         "Windows.Foundation.Collections.IIterable",
         projectedTypeResolver = { arguments -> Iterable::class.asClassName().parameterizedBy(arguments) },
@@ -465,6 +584,18 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
 private val MAPPED_TYPES_BY_ABI_NAME: Map<String, KotlinProjectionMappedType> =
     MAPPED_TYPES.associateBy(KotlinProjectionMappedType::abiQualifiedName)
 
+private val MAPPED_TYPES_BY_SIMPLE_ABI_NAME: Map<String, KotlinProjectionMappedType> =
+    MAPPED_TYPES.filter { mappedType ->
+        mappedType.abiValueKind in setOf(
+            KotlinProjectionAbiValueKind.Struct,
+            KotlinProjectionAbiValueKind.Reference,
+            KotlinProjectionAbiValueKind.ReferenceArray,
+        ) ||
+            mappedType.descriptionName in setOf("Object", "HWND", "DateTime", "TimeSpan", "Uri", "IClosable")
+    }.groupBy { it.abiQualifiedName.substringAfterLast('.') }
+        .filterValues { it.size == 1 }
+        .mapValues { (_, mappedTypes) -> mappedTypes.single() }
+
 private val MAPPED_TYPES_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, KotlinProjectionMappedType> =
     MAPPED_TYPES.mapNotNull { mappedType ->
         mappedType.abiValueKind?.let { abiValueKind -> abiValueKind to mappedType }
@@ -511,6 +642,7 @@ private val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionInt
 
 private fun mappedTypeByAbiName(abiQualifiedName: String): KotlinProjectionMappedType? =
     MAPPED_TYPES_BY_ABI_NAME[abiQualifiedName]
+        ?: abiQualifiedName.takeIf { '.' !in it }?.let(MAPPED_TYPES_BY_SIMPLE_ABI_NAME::get)
 
 private fun mappedTypeByAbiKind(kind: KotlinProjectionAbiValueKind): KotlinProjectionMappedType? =
     MAPPED_TYPES_BY_ABI_KIND[kind]
@@ -523,6 +655,7 @@ data class KotlinProjectionAbiTypeBinding(
     val typeName: String,
     val resolvedTypeName: String = typeName,
     val sourceTypeKind: WinRtTypeKind? = null,
+    val interfaceId: Guid? = null,
     val enumUnderlyingType: WinRtIntegralType? = null,
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
     val typeArguments: List<KotlinProjectionAbiTypeBinding> = emptyList(),
@@ -531,6 +664,7 @@ data class KotlinProjectionAbiTypeBinding(
 data class KotlinProjectionAbiParameterBinding(
     val name: String,
     val typeBinding: KotlinProjectionAbiTypeBinding,
+    val category: WinRtMetadataParameterCategory = WinRtMetadataParameterCategory.In,
 )
 
 data class KotlinProjectionDelegateInvokeShape(
@@ -544,14 +678,18 @@ private data class KotlinProjectionAbiMarshalerPlan(
     val typeBinding: KotlinProjectionAbiTypeBinding,
     val isReturn: Boolean,
     val abiArgumentExpression: CodeBlock,
+    val extraAbiArgumentExpressions: List<CodeBlock> = emptyList(),
     val scopeOpeners: List<CodeBlock> = emptyList(),
+    val postCallStatements: List<CodeBlock> = emptyList(),
     val resultAllocation: CodeBlock? = null,
+    val resultLocalDeclarations: CodeBlock? = null,
     val readbackStatement: CodeBlock? = null,
 )
 
 private data class KotlinProjectionAbiCallPlan(
     val parameterMarshalers: List<KotlinProjectionAbiMarshalerPlan>,
     val returnMarshaler: KotlinProjectionAbiMarshalerPlan? = null,
+    val descriptor: WinRtAbiMarshalerPlanDescriptor? = null,
 )
 
 data class KotlinProjectionFile(
@@ -630,6 +768,7 @@ class KotlinProjectionPlanner(
         val relativePath = packageName.replace('.', '/') + "/${type.name}.kt"
         return KotlinTypeProjectionPlan(
             type = type,
+            typesByQualifiedName = typesByQualifiedName,
             packageName = packageName,
             relativePath = relativePath,
             declarationKind = declarationKind,
@@ -778,6 +917,7 @@ class KotlinProjectionPlanner(
                         KotlinProjectionAbiParameterBinding(
                             name = parameter.escapedName,
                             typeBinding = classifyAbiTypeBinding(parameter.projectionTypeName, type.namespace, typesByQualifiedName),
+                            category = parameter.category,
                         )
                     },
                     signatureDescriptor = signatureDescriptor,
@@ -889,6 +1029,7 @@ class KotlinProjectionPlanner(
                         KotlinProjectionAbiParameterBinding(
                             name = parameter.escapedName,
                             typeBinding = classifyAbiTypeBinding(parameter.projectionTypeName, type.namespace, typesByQualifiedName),
+                            category = parameter.category,
                         )
                     },
                     signatureDescriptor = signatureDescriptor,
@@ -971,10 +1112,6 @@ class KotlinProjectionPlanner(
             buildString {
                 append(binding.kind)
                 append('|')
-                append(binding.ownerInterfaceQualifiedName)
-                append('|')
-                append(binding.slotInterfaceQualifiedName)
-                append('|')
                 append(binding.elementBinding?.resolvedTypeName)
                 append('|')
                 append(binding.keyBinding?.resolvedTypeName)
@@ -1037,10 +1174,6 @@ class KotlinProjectionPlanner(
         }.distinctBy { binding ->
             buildString {
                 append(binding.kind)
-                append('|')
-                append(binding.ownerInterfaceQualifiedName)
-                append('|')
-                append(binding.slotInterfaceQualifiedName)
                 append('|')
                 append(binding.elementBinding?.resolvedTypeName)
                 append('|')
@@ -1356,14 +1489,34 @@ class KotlinProjectionPlanner(
             "Unit" -> KotlinProjectionAbiValueKind.Unit
             "String" -> KotlinProjectionAbiValueKind.String
             "Boolean" -> KotlinProjectionAbiValueKind.Boolean
+            "Byte",
+            "SByte",
+            "Int8" -> KotlinProjectionAbiValueKind.Int8
+            "UByte",
+            "UInt8" -> KotlinProjectionAbiValueKind.UInt8
+            "Short",
+            "Int16" -> KotlinProjectionAbiValueKind.Int16
+            "UShort",
+            "UInt16" -> KotlinProjectionAbiValueKind.UInt16
             "Int" -> KotlinProjectionAbiValueKind.Int32
             "UInt" -> KotlinProjectionAbiValueKind.UInt32
+            "Long",
+            "Int64" -> KotlinProjectionAbiValueKind.Int64
+            "ULong",
+            "UInt64" -> KotlinProjectionAbiValueKind.UInt64
+            "Float",
+            "Single" -> KotlinProjectionAbiValueKind.Float
             "Double" -> KotlinProjectionAbiValueKind.Double
+            "Char",
+            "Char16" -> KotlinProjectionAbiValueKind.Char16
+            "Guid",
+            "System.Guid" -> KotlinProjectionAbiValueKind.GuidValue
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.UnknownReference
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.InspectableReference
             "io.github.kitectlab.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
             "io.github.kitectlab.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
             else -> when {
+                rawTypeName == "Array" -> KotlinProjectionAbiValueKind.Array
                 rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
                 resolvedType != null -> when (resolvedType.kind) {
@@ -1412,11 +1565,19 @@ class KotlinProjectionPlanner(
             typeName = trimmedTypeName,
             resolvedTypeName = resolvedTypeName,
             sourceTypeKind = resolvedType?.kind,
+            interfaceId = resolvedType?.iid ?: mappedReferenceGenericInterfaceId(kind),
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             delegateInvokeShape = delegateInvokeShape,
             typeArguments = typeArguments,
         )
     }
+
+    private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
+        when (kind) {
+            KotlinProjectionAbiValueKind.Reference -> IREFERENCE_GENERIC_INTERFACE_ID
+            KotlinProjectionAbiValueKind.ReferenceArray -> IREFERENCE_ARRAY_GENERIC_INTERFACE_ID
+            else -> null
+        }
 
     private fun qualifyTypeName(
         rawTypeName: String,
@@ -1563,7 +1724,9 @@ private fun KotlinProjectionAbiTypeBinding.describeAbiKind(): String {
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "RuntimeClass(${resolvedTypeName})"
         KotlinProjectionAbiValueKind.Struct -> "Struct(${resolvedTypeName})"
         KotlinProjectionAbiValueKind.Delegate -> "Delegate(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.Array -> "Array(${typeArguments.joinToString(",") { it.describeAbiKind() }})"
         KotlinProjectionAbiValueKind.Object -> "Object(${resolvedTypeName})"
+        KotlinProjectionAbiValueKind.Unsupported -> "Unsupported(${resolvedTypeName})"
         else -> kind.name
     }
 }
@@ -1770,19 +1933,36 @@ private fun createMutableCollectionBindingPlan(
     }
 
 private fun WinRtIntegralType.isSupportedProjectedEnumAbi(): Boolean =
-    this == WinRtIntegralType.Int32 || this == WinRtIntegralType.UInt32
+    true
 
 private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementBinding(): Boolean = when (kind) {
     KotlinProjectionAbiValueKind.String,
     KotlinProjectionAbiValueKind.Boolean,
+    KotlinProjectionAbiValueKind.Int8,
+    KotlinProjectionAbiValueKind.UInt8,
+    KotlinProjectionAbiValueKind.Int16,
+    KotlinProjectionAbiValueKind.UInt16,
     KotlinProjectionAbiValueKind.Int32,
     KotlinProjectionAbiValueKind.UInt32,
+    KotlinProjectionAbiValueKind.Int64,
+    KotlinProjectionAbiValueKind.UInt64,
+    KotlinProjectionAbiValueKind.Float,
     KotlinProjectionAbiValueKind.Double,
+    KotlinProjectionAbiValueKind.Char16,
+    KotlinProjectionAbiValueKind.GuidValue,
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.UnknownReference,
-    KotlinProjectionAbiValueKind.InspectableReference -> true
+    KotlinProjectionAbiValueKind.InspectableReference,
+    KotlinProjectionAbiValueKind.Reference,
+    KotlinProjectionAbiValueKind.ReferenceArray,
+    KotlinProjectionAbiValueKind.Struct,
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedMapView -> true
     KotlinProjectionAbiValueKind.MappedKeyValuePair -> typeArguments.size == 2
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
@@ -1801,8 +1981,8 @@ private fun requireDelegateInvokeMethod(type: WinRtTypeDefinition): WinRtMethodD
 
 private fun KotlinProjectionDelegateInvokeShape.isSupportedOutboundDelegateShape(): Boolean =
     interfaceId != null &&
-        returnBinding.kind == KotlinProjectionAbiValueKind.Unit &&
-        parameterBindings.all { it.typeBinding.isSupportedDelegateCallbackBinding() }
+        parameterBindings.all { it.typeBinding.isSupportedDelegateCallbackBinding() } &&
+        returnBinding.isSupportedProjectedDelegateReturnBinding()
 
 private fun KotlinProjectionDelegateInvokeShape.isSupportedProjectedDelegateShape(): Boolean =
     interfaceId != null &&
@@ -1811,9 +1991,25 @@ private fun KotlinProjectionDelegateInvokeShape.isSupportedProjectedDelegateShap
 
 private fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding(): Boolean = when (kind) {
     KotlinProjectionAbiValueKind.String,
+    KotlinProjectionAbiValueKind.Boolean,
+    KotlinProjectionAbiValueKind.Int8,
+    KotlinProjectionAbiValueKind.UInt8,
+    KotlinProjectionAbiValueKind.Int16,
+    KotlinProjectionAbiValueKind.UInt16,
     KotlinProjectionAbiValueKind.Int32,
     KotlinProjectionAbiValueKind.UInt32,
+    KotlinProjectionAbiValueKind.Int64,
+    KotlinProjectionAbiValueKind.UInt64,
+    KotlinProjectionAbiValueKind.Float,
+    KotlinProjectionAbiValueKind.Double,
+    KotlinProjectionAbiValueKind.Char16,
+    KotlinProjectionAbiValueKind.Object,
+    KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.MappedAsyncAction,
+    KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+    KotlinProjectionAbiValueKind.MappedAsyncOperation,
+    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
@@ -1823,10 +2019,23 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding():
 private fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateBinding(): Boolean = when (kind) {
     KotlinProjectionAbiValueKind.String,
     KotlinProjectionAbiValueKind.Boolean,
+    KotlinProjectionAbiValueKind.Int8,
+    KotlinProjectionAbiValueKind.UInt8,
+    KotlinProjectionAbiValueKind.Int16,
+    KotlinProjectionAbiValueKind.UInt16,
     KotlinProjectionAbiValueKind.Int32,
     KotlinProjectionAbiValueKind.UInt32,
+    KotlinProjectionAbiValueKind.Int64,
+    KotlinProjectionAbiValueKind.UInt64,
+    KotlinProjectionAbiValueKind.Float,
     KotlinProjectionAbiValueKind.Double,
+    KotlinProjectionAbiValueKind.Char16,
+    KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.MappedAsyncAction,
+    KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+    KotlinProjectionAbiValueKind.MappedAsyncOperation,
+    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
@@ -2067,8 +2276,23 @@ class KotlinProjectionRenderer {
             "Unit" -> KotlinProjectionAbiValueKind.Unit
             "String" -> KotlinProjectionAbiValueKind.String
             "Boolean" -> KotlinProjectionAbiValueKind.Boolean
+            "Byte",
+            "SByte",
+            "Int8" -> KotlinProjectionAbiValueKind.Int8
+            "UByte",
+            "UInt8" -> KotlinProjectionAbiValueKind.UInt8
+            "Short",
+            "Int16" -> KotlinProjectionAbiValueKind.Int16
+            "UShort",
+            "UInt16" -> KotlinProjectionAbiValueKind.UInt16
             "Int" -> KotlinProjectionAbiValueKind.Int32
             "UInt" -> KotlinProjectionAbiValueKind.UInt32
+            "Long",
+            "Int64" -> KotlinProjectionAbiValueKind.Int64
+            "ULong",
+            "UInt64" -> KotlinProjectionAbiValueKind.UInt64
+            "Float",
+            "Single" -> KotlinProjectionAbiValueKind.Float
             "Double" -> KotlinProjectionAbiValueKind.Double
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
             "io.github.kitectlab.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
@@ -2159,6 +2383,20 @@ class KotlinProjectionRenderer {
                 isMappedCollectionInterfaceName(implemented.interfaceName)
             }
             .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
+        plan.mutableCollectionBindings.forEach { binding ->
+            builder.addProperty(renderMutableCollectionDelegateProperty(binding))
+            builder.addSuperinterface(
+                mutableCollectionProjectedType(binding),
+                CodeBlock.of("%L", binding.delegatePropertyName),
+            )
+        }
+        plan.readOnlyCollectionBindings.forEach { binding ->
+            builder.addProperty(renderReadOnlyCollectionDelegateProperty(binding))
+            builder.addSuperinterface(
+                readOnlyCollectionProjectedType(binding),
+                CodeBlock.of("%L", binding.delegatePropertyName),
+            )
+        }
         builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
         if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
             builder.addFunction(
@@ -2266,9 +2504,211 @@ class KotlinProjectionRenderer {
     private fun renderStruct(plan: KotlinTypeProjectionPlan): TypeSpec =
         TypeSpec.classBuilder(plan.type.name)
             .addModifiers(KModifier.DATA)
-            .primaryConstructor(FunSpec.constructorBuilder().build())
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameters(
+                        plan.type.fields
+                            .filterNot { it.isStatic || it.isLiteral }
+                            .map { field ->
+                                ParameterSpec.builder(field.name.replaceFirstChar(Char::lowercase), resolveTypeName(field.typeName)).build()
+                            },
+                    )
+                    .build(),
+            )
             .apply { applyCommonTypeShape(this, plan, addModifiers = false) }
+            .apply {
+                plan.type.fields
+                    .filterNot { it.isStatic || it.isLiteral }
+                    .forEach { field ->
+                        addProperty(
+                            PropertySpec.builder(field.name.replaceFirstChar(Char::lowercase), resolveTypeName(field.typeName))
+                                .initializer(field.name.replaceFirstChar(Char::lowercase))
+                                .build(),
+                        )
+                    }
+                renderStructMetadataCompanion(plan)?.let(::addType)
+            }
             .build()
+
+    private fun renderStructMetadataCompanion(plan: KotlinTypeProjectionPlan): TypeSpec? {
+        val fields = plan.type.fields.filterNot { it.isStatic || it.isLiteral }
+        val fieldSpecs = fields.map { field ->
+            nativeStructFieldSpec(field, plan.type.namespace, plan.typesByQualifiedName) ?: return null
+        }
+        return TypeSpec.companionObjectBuilder("Metadata")
+            .addProperty(
+                PropertySpec.builder("layout", NATIVE_STRUCT_LAYOUT_CLASS_NAME)
+                    .addModifiers(KModifier.INTERNAL)
+                    .initializer(
+                        CodeBlock.builder()
+                            .add("%T.sequential(", NATIVE_STRUCT_LAYOUT_CLASS_NAME)
+                            .apply {
+                                fieldSpecs.forEachIndexed { index, spec ->
+                                    if (index > 0) {
+                                        add(", ")
+                                    }
+                                    add("%L", spec)
+                                }
+                            }
+                            .add(")")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("fromAbi")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("source", RAW_ADDRESS_CLASS_NAME)
+                    .returns(resolveTypeName(plan.type.qualifiedName))
+                    .addCode(
+                        CodeBlock.builder()
+                            .add("return %T(\n", resolveTypeName(plan.type.qualifiedName))
+                            .indent()
+                            .apply {
+                                fields.forEach { field ->
+                                    add("%L = %L,\n", field.name.replaceFirstChar(Char::lowercase), nativeStructFieldReadCode(field, "source"))
+                                }
+                            }
+                            .unindent()
+                            .add(")\n")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("copyTo")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("value", resolveTypeName(plan.type.qualifiedName))
+                    .addParameter("destination", RAW_ADDRESS_CLASS_NAME)
+                    .addCode(
+                        CodeBlock.builder()
+                            .apply {
+                                fields.forEach { field ->
+                                    add("%L\n", nativeStructFieldWriteCode(field, "value", "destination"))
+                                }
+                            }
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun nativeStructFieldSpec(
+        field: WinRtFieldDefinition,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val scalarKind = nativeStructScalarKind(field.typeName)
+        if (scalarKind != null) {
+            return CodeBlock.of("%T(%S, %T.%L)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME, scalarKind)
+        }
+        val fieldQualifiedName = nativeNestedStructFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
+        val fieldType = runCatching { resolveTypeName(fieldQualifiedName) as? ClassName }.getOrNull() ?: return null
+        return CodeBlock.of("%T(%S, %T.Metadata.layout)", NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), fieldType)
+    }
+
+    private fun nativeStructScalarKind(typeName: String): String? = when (typeName) {
+        "Byte",
+        "SByte",
+        "Int8",
+        "UInt8" -> "INT8"
+        "Short",
+        "Int16",
+        "UInt16" -> "INT16"
+        "Int",
+        "Int32",
+        "UInt",
+        "UInt32" -> "INT32"
+        "Long",
+        "Int64",
+        "ULong",
+        "UInt64" -> "INT64"
+        "Float",
+        "Single" -> "FLOAT32"
+        "Double" -> "DOUBLE"
+        "Char" -> "CHAR16"
+        "Guid",
+        "System.Guid" -> "GUID"
+        else -> null
+    }
+
+    private fun nativeNestedStructFieldTypeName(
+        typeName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): String? {
+        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        val mappedType = mappedTypeByAbiName(rawTypeName)
+        if (mappedType != null && mappedType.abiValueKind != KotlinProjectionAbiValueKind.Struct) {
+            return null
+        }
+        val qualifiedName = when {
+            typesByQualifiedName.containsKey(rawTypeName) -> rawTypeName
+            currentNamespace.isNotBlank() && typesByQualifiedName.containsKey("$currentNamespace.$rawTypeName") -> "$currentNamespace.$rawTypeName"
+            else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") }
+        } ?: return mappedType?.abiQualifiedName
+        return qualifiedName.takeIf { typesByQualifiedName[it]?.kind == WinRtTypeKind.Struct }
+    }
+
+    private fun nativeStructFieldReadCode(field: WinRtFieldDefinition, sourceName: String): CodeBlock {
+        val fieldName = field.name.replaceFirstChar(Char::lowercase)
+        val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
+        return when (field.typeName) {
+            "Byte",
+            "Int8" -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "SByte" -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "UInt8" -> CodeBlock.of("%T.readInt8(%L).toUByte()", PLATFORM_ABI_CLASS_NAME, slice)
+            "Short",
+            "Int16" -> CodeBlock.of("%T.readInt16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "UInt16" -> CodeBlock.of("%T.readInt16(%L).toUShort()", PLATFORM_ABI_CLASS_NAME, slice)
+            "Int",
+            "Int32" -> CodeBlock.of("%T.readInt32(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "UInt",
+            "UInt32" -> CodeBlock.of("%T.readInt32(%L).toUInt()", PLATFORM_ABI_CLASS_NAME, slice)
+            "Long",
+            "Int64" -> CodeBlock.of("%T.readInt64(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "ULong",
+            "UInt64" -> CodeBlock.of("%T.readInt64(%L).toULong()", PLATFORM_ABI_CLASS_NAME, slice)
+            "Float",
+            "Single" -> CodeBlock.of("%T.readFloat(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "Double" -> CodeBlock.of("%T.readDouble(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "Char" -> CodeBlock.of("%T.readChar16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            "Guid",
+            "System.Guid" -> CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            else -> CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
+        }
+    }
+
+    private fun nativeStructFieldWriteCode(field: WinRtFieldDefinition, valueName: String, destinationName: String): CodeBlock {
+        val fieldName = field.name.replaceFirstChar(Char::lowercase)
+        val value = CodeBlock.of("%L.%L", valueName, fieldName)
+        val slice = CodeBlock.of("layout.slice(%L, %S)", destinationName, fieldName)
+        return when (field.typeName) {
+            "Byte",
+            "Int8",
+            "SByte" -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "UInt8" -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Short",
+            "Int16" -> CodeBlock.of("%T.writeInt16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "UInt16" -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Int",
+            "Int32" -> CodeBlock.of("%T.writeInt32(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "UInt",
+            "UInt32" -> CodeBlock.of("%T.writeInt32(%L, %L.toInt())", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Long",
+            "Int64" -> CodeBlock.of("%T.writeInt64(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "ULong",
+            "UInt64" -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Float",
+            "Single" -> CodeBlock.of("%T.writeFloat(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Double" -> CodeBlock.of("%T.writeDouble(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Char" -> CodeBlock.of("%T.writeChar16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            "Guid",
+            "System.Guid" -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+            else -> CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
+        }
+    }
 
     private fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {
         val invokeMethod = requireDelegateInvokeMethod(plan.type)
@@ -2335,13 +2775,13 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionReadOnlyCollectionBinding,
     ): TypeName = when (binding.kind) {
         KotlinProjectionReadOnlyCollectionKind.Iterable ->
-            Iterable::class.asClassName().parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).resolvedTypeName))
+            Iterable::class.asClassName().parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).typeName))
         KotlinProjectionReadOnlyCollectionKind.VectorView ->
-            List::class.asClassName().parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).resolvedTypeName))
+            List::class.asClassName().parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).typeName))
         KotlinProjectionReadOnlyCollectionKind.MapView ->
             Map::class.asClassName().parameterizedBy(
-                resolveTypeName(requireNotNull(binding.keyBinding).resolvedTypeName),
-                resolveTypeName(requireNotNull(binding.valueBinding).resolvedTypeName),
+                resolveTypeName(requireNotNull(binding.keyBinding).typeName),
+                resolveTypeName(requireNotNull(binding.valueBinding).typeName),
             )
     }
 
@@ -2349,11 +2789,11 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionMutableCollectionBinding,
     ): TypeName = when (binding.kind) {
         KotlinProjectionMutableCollectionKind.Vector ->
-            MUTABLE_LIST_CLASS_NAME.parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).resolvedTypeName))
+            MUTABLE_LIST_CLASS_NAME.parameterizedBy(resolveTypeName(requireNotNull(binding.elementBinding).typeName))
         KotlinProjectionMutableCollectionKind.Map ->
             MUTABLE_MAP_CLASS_NAME.parameterizedBy(
-                resolveTypeName(requireNotNull(binding.keyBinding).resolvedTypeName),
-                resolveTypeName(requireNotNull(binding.valueBinding).resolvedTypeName),
+                resolveTypeName(requireNotNull(binding.keyBinding).typeName),
+                resolveTypeName(requireNotNull(binding.valueBinding).typeName),
             )
     }
 
@@ -2382,7 +2822,7 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionMutableCollectionBinding,
     ): CodeBlock {
         val elementBinding = requireNotNull(binding.elementBinding)
-        val elementType = resolveTypeName(elementBinding.resolvedTypeName)
+        val elementType = resolveTypeName(elementBinding.typeName)
         val projectedType = mutableCollectionProjectedType(binding)
         val abstractMutableListType = ABSTRACT_MUTABLE_LIST_CLASS_NAME.parameterizedBy(elementType)
         return CodeBlock.of(
@@ -2525,8 +2965,8 @@ class KotlinProjectionRenderer {
     ): CodeBlock {
         val keyBinding = requireNotNull(binding.keyBinding)
         val valueBinding = requireNotNull(binding.valueBinding)
-        val keyType = resolveTypeName(keyBinding.resolvedTypeName)
-        val valueType = resolveTypeName(valueBinding.resolvedTypeName)
+        val keyType = resolveTypeName(keyBinding.typeName)
+        val valueType = resolveTypeName(valueBinding.typeName)
         val projectedType = mutableCollectionProjectedType(binding)
         val abstractMutableMapType = ABSTRACT_MUTABLE_MAP_CLASS_NAME.parameterizedBy(keyType, valueType)
         val entryType = MUTABLE_MAP_CLASS_NAME.nestedClass("MutableEntry").parameterizedBy(keyType, valueType)
@@ -2735,7 +3175,7 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionReadOnlyCollectionBinding,
     ): CodeBlock {
         val elementBinding = requireNotNull(binding.elementBinding)
-        val elementType = resolveTypeName(elementBinding.resolvedTypeName)
+        val elementType = resolveTypeName(elementBinding.typeName)
         val projectedType = readOnlyCollectionProjectedType(binding)
         val iteratorType = Iterator::class.asClassName().parameterizedBy(elementType)
         return CodeBlock.of(
@@ -2769,7 +3209,7 @@ class KotlinProjectionRenderer {
         binding: KotlinProjectionReadOnlyCollectionBinding,
     ): CodeBlock {
         val elementBinding = requireNotNull(binding.elementBinding)
-        val elementType = resolveTypeName(elementBinding.resolvedTypeName)
+        val elementType = resolveTypeName(elementBinding.typeName)
         val projectedType = readOnlyCollectionProjectedType(binding)
         val abstractListType = ABSTRACT_LIST_CLASS_NAME.parameterizedBy(elementType)
         return CodeBlock.of(
@@ -2825,8 +3265,8 @@ class KotlinProjectionRenderer {
     ): CodeBlock {
         val keyBinding = requireNotNull(binding.keyBinding)
         val valueBinding = requireNotNull(binding.valueBinding)
-        val keyType = resolveTypeName(keyBinding.resolvedTypeName)
-        val valueType = resolveTypeName(valueBinding.resolvedTypeName)
+        val keyType = resolveTypeName(keyBinding.typeName)
+        val valueType = resolveTypeName(valueBinding.typeName)
         val projectedType = readOnlyCollectionProjectedType(binding)
         val abstractMapType = ABSTRACT_MAP_CLASS_NAME.parameterizedBy(keyType, valueType)
         val entryType = Map.Entry::class.asClassName().parameterizedBy(keyType, valueType)
@@ -2918,10 +3358,10 @@ class KotlinProjectionRenderer {
             }
         val returnType = when {
             effectiveEntryBinding != null -> Map.Entry::class.asClassName().parameterizedBy(
-                resolveTypeName(requireNotNull(effectiveEntryBinding.keyBinding).resolvedTypeName),
-                resolveTypeName(requireNotNull(effectiveEntryBinding.valueBinding).resolvedTypeName),
+                resolveTypeName(requireNotNull(effectiveEntryBinding.keyBinding).typeName),
+                resolveTypeName(requireNotNull(effectiveEntryBinding.valueBinding).typeName),
             )
-            else -> resolveTypeName(requireNotNull(elementBinding).resolvedTypeName)
+            else -> resolveTypeName(requireNotNull(elementBinding).typeName)
         }
         return CodeBlock.of(
             """
@@ -2994,8 +3434,8 @@ class KotlinProjectionRenderer {
         if (entryBinding != null) {
             val keyBinding = requireNotNull(entryBinding.keyBinding)
             val valueBinding = requireNotNull(entryBinding.valueBinding)
-            val keyType = resolveTypeName(keyBinding.resolvedTypeName)
-            val valueType = resolveTypeName(valueBinding.resolvedTypeName)
+            val keyType = resolveTypeName(keyBinding.typeName)
+            val valueType = resolveTypeName(valueBinding.typeName)
             return CodeBlock.of(
                 """
                 fun __readPairReference(): %T {
@@ -3205,6 +3645,7 @@ class KotlinProjectionRenderer {
             bindingName = binding.bindingName,
             returnBinding = binding.returnBinding,
             parameterBindings = binding.parameterBindings,
+            marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
         )
         return renderInlineAbiInvocation(
             invokeTargetExpression = binding.ownerCachePropertyName,
@@ -3220,6 +3661,7 @@ class KotlinProjectionRenderer {
             bindingName = binding.bindingName,
             returnBinding = binding.returnBinding,
             parameterBindings = binding.parameterBindings,
+            marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
         )
         return renderInlineAbiInvocation(
             invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
@@ -3231,35 +3673,51 @@ class KotlinProjectionRenderer {
     private fun buildAbiCallPlan(
         binding: KotlinProjectionInstanceMemberBinding,
     ): KotlinProjectionAbiCallPlan? =
-        buildAbiCallPlan(binding.returnBinding, binding.parameterBindings)
+        buildAbiCallPlan(binding.returnBinding, binding.parameterBindings, binding.marshalerPlanDescriptor)
 
     private fun buildAbiCallPlan(
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
     ): KotlinProjectionAbiCallPlan? {
         val parameterMarshalers = parameterBindings.map { parameterBinding ->
-            buildAbiParameterMarshaler(parameterBinding) ?: return null
+            val slot = marshalerPlanDescriptor?.marshalers?.firstOrNull { !it.isReturn && it.name == parameterBinding.name }
+            buildAbiParameterMarshaler(parameterBinding, slot) ?: return null
         }
         val returnMarshaler = when (returnBinding.kind) {
             KotlinProjectionAbiValueKind.Unit -> null
-            else -> buildAbiReturnMarshaler(returnBinding) ?: return null
+            else -> buildAbiReturnMarshaler(
+                returnBinding,
+                marshalerPlanDescriptor?.marshalers?.firstOrNull { it.isReturn },
+            ) ?: return null
         }
-        return KotlinProjectionAbiCallPlan(parameterMarshalers = parameterMarshalers, returnMarshaler = returnMarshaler)
+        return KotlinProjectionAbiCallPlan(
+            parameterMarshalers = parameterMarshalers,
+            returnMarshaler = returnMarshaler,
+            descriptor = marshalerPlanDescriptor,
+        )
     }
 
     private fun requireAbiCallPlan(
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
     ): KotlinProjectionAbiCallPlan {
-        return requireNotNull(buildAbiCallPlan(returnBinding, parameterBindings)) {
+        return requireNotNull(buildAbiCallPlan(returnBinding, parameterBindings, marshalerPlanDescriptor)) {
             val unsupportedKinds = buildList {
-                if (returnBinding.kind != KotlinProjectionAbiValueKind.Unit && buildAbiReturnMarshaler(returnBinding) == null) {
+                if (
+                    returnBinding.kind != KotlinProjectionAbiValueKind.Unit &&
+                    buildAbiReturnMarshaler(returnBinding, marshalerPlanDescriptor?.marshalers?.firstOrNull { it.isReturn }) == null
+                ) {
                     add(returnBinding.describeAbiKind())
                 }
                 addAll(
                     parameterBindings
-                        .filter { parameterBinding -> buildAbiParameterMarshaler(parameterBinding) == null }
+                        .filter { parameterBinding ->
+                            val slot = marshalerPlanDescriptor?.marshalers?.firstOrNull { !it.isReturn && it.name == parameterBinding.name }
+                            buildAbiParameterMarshaler(parameterBinding, slot) == null
+                        }
                         .map { parameterBinding -> parameterBinding.typeBinding.describeAbiKind() },
                 )
             }
@@ -3271,6 +3729,7 @@ class KotlinProjectionRenderer {
 
     private fun buildAbiParameterMarshaler(
         parameterBinding: KotlinProjectionAbiParameterBinding,
+        descriptor: WinRtAbiMarshalerSlotDescriptor? = null,
     ): KotlinProjectionAbiMarshalerPlan? {
         val parameterName = parameterBinding.name
         val abiLocalName = "__${parameterName}Abi"
@@ -3290,6 +3749,30 @@ class KotlinProjectionRenderer {
                 isReturn = false,
                 abiArgumentExpression = CodeBlock.of("if (%L) 1 else 0", parameterName),
             )
+            KotlinProjectionAbiValueKind.Int8 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            )
+            KotlinProjectionAbiValueKind.UInt8 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L.toByte()", parameterName),
+            )
+            KotlinProjectionAbiValueKind.Int16 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            )
+            KotlinProjectionAbiValueKind.UInt16 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L.toShort()", parameterName),
+            )
             KotlinProjectionAbiValueKind.Double -> KotlinProjectionAbiMarshalerPlan(
                 name = parameterName,
                 typeBinding = parameterBinding.typeBinding,
@@ -3308,7 +3791,58 @@ class KotlinProjectionRenderer {
                 isReturn = false,
                 abiArgumentExpression = CodeBlock.of("%L", parameterName),
             )
+            KotlinProjectionAbiValueKind.Int64 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            )
+            KotlinProjectionAbiValueKind.UInt64 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L.toLong()", parameterName),
+            )
+            KotlinProjectionAbiValueKind.Float -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            )
+            KotlinProjectionAbiValueKind.Char16 -> KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            )
+            KotlinProjectionAbiValueKind.GuidValue -> {
+                val scopeName = "__${parameterName}GuidScope"
+                val abiLocalName = "__${parameterName}Abi"
+                KotlinProjectionAbiMarshalerPlan(
+                    name = parameterName,
+                    typeBinding = parameterBinding.typeBinding,
+                    isReturn = false,
+                    abiArgumentExpression = CodeBlock.of("%L", abiLocalName),
+                    scopeOpeners = listOf(
+                        CodeBlock.of(
+                            "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %T.BYTE_SIZE.toLong())\n%L.writeTo(%L)",
+                            PLATFORM_ABI_CLASS_NAME,
+                            scopeName,
+                            abiLocalName,
+                            PLATFORM_ABI_CLASS_NAME,
+                            scopeName,
+                            GUID_CLASS_NAME,
+                            parameterName,
+                            abiLocalName,
+                        ),
+                    ),
+                )
+            }
             KotlinProjectionAbiValueKind.Enum -> enumParameterMarshaler(parameterBinding)
+            KotlinProjectionAbiValueKind.Struct -> nativeStructParameterMarshaler(parameterBinding)
+            KotlinProjectionAbiValueKind.Reference -> referenceParameterMarshaler(parameterBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME)
+            KotlinProjectionAbiValueKind.ReferenceArray -> referenceParameterMarshaler(parameterBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Array -> arrayParameterMarshaler(parameterBinding, descriptor)
             KotlinProjectionAbiValueKind.Delegate -> delegateParameterMarshaler(parameterBinding)
             KotlinProjectionAbiValueKind.MappedBindableIterable,
             KotlinProjectionAbiValueKind.MappedBindableVector,
@@ -3344,7 +3878,11 @@ class KotlinProjectionRenderer {
 
     private fun buildAbiReturnMarshaler(
         returnBinding: KotlinProjectionAbiTypeBinding,
+        descriptor: WinRtAbiMarshalerSlotDescriptor? = null,
     ): KotlinProjectionAbiMarshalerPlan? {
+        if (returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
+            return arrayReturnMarshaler(returnBinding, descriptor)
+        }
         val resultOutLayout = when {
             returnBinding.isMappedCollectionBinding() -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             returnBinding.isMappedBindableCollectionBinding() -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
@@ -3356,14 +3894,25 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
             KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.UnknownReference,
-            KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.InspectableReference,
+            KotlinProjectionAbiValueKind.Reference,
+            KotlinProjectionAbiValueKind.ReferenceArray -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.ProjectedInterface,
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Enum -> abiResultAllocationForIntegralType(returnBinding.enumUnderlyingType ?: return null)
             KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.allocateInt8Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int8,
+            KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.allocateInt8Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int16,
+            KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.allocateBytes(__scope, 2)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Int32,
             KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.allocateInt32Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int64,
+            KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.allocateInt64Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.allocateBytes(__scope, 4)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.allocateDoubleSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.allocateBytes(__scope, 2)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.allocateBytes(__scope, %T.BYTE_SIZE.toLong())", PLATFORM_ABI_CLASS_NAME, GUID_CLASS_NAME)
             KotlinProjectionAbiValueKind.Unit,
             KotlinProjectionAbiValueKind.MappedIterable,
             KotlinProjectionAbiValueKind.MappedVector,
@@ -3373,11 +3922,14 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.MappedBindableIterable,
             KotlinProjectionAbiValueKind.MappedBindableVector,
             KotlinProjectionAbiValueKind.MappedBindableVectorView,
-            KotlinProjectionAbiValueKind.MappedKeyValuePair,
-            KotlinProjectionAbiValueKind.Struct,
-            KotlinProjectionAbiValueKind.Object,
+            KotlinProjectionAbiValueKind.Array,
             KotlinProjectionAbiValueKind.Unsupported -> return null
+            KotlinProjectionAbiValueKind.MappedKeyValuePair -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Struct ->
+                nativeStructClassName(returnBinding)?.let { returnType ->
+                    CodeBlock.of("%T.allocateBytes(__scope, %T.Metadata.layout.sizeBytes)", PLATFORM_ABI_CLASS_NAME, returnType)
+                } ?: return null
             }
         }
         val readbackStatement = when {
@@ -3404,12 +3956,34 @@ class KotlinProjectionRenderer {
                 asyncOperationWithProgressReturnReadback(returnBinding) ?: return null
             KotlinProjectionAbiValueKind.Boolean ->
                 CodeBlock.of("return %T.readInt8(__resultOut).toInt() != 0\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int8 ->
+                CodeBlock.of("return %T.readInt8(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.UInt8 ->
+                CodeBlock.of("return %T.readInt8(__resultOut).toUByte()\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int16 ->
+                CodeBlock.of("return %T.readInt16(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.UInt16 ->
+                CodeBlock.of("return %T.readInt16(__resultOut).toUShort()\n", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Int32 ->
                 CodeBlock.of("return %T.readInt32(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.UInt32 ->
                 CodeBlock.of("return %T.readInt32(__resultOut).toUInt()\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Int64 ->
+                CodeBlock.of("return %T.readInt64(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.UInt64 ->
+                CodeBlock.of("return %T.readInt64(__resultOut).toULong()\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Float ->
+                CodeBlock.of("return %T.readFloat(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.Double ->
                 CodeBlock.of("return %T.readDouble(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Char16 ->
+                CodeBlock.of("return %T.readChar16(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.GuidValue ->
+                CodeBlock.of("return %T.readGuid(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Reference ->
+                referenceReturnReadback(returnBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME) ?: return null
+            KotlinProjectionAbiValueKind.ReferenceArray ->
+                referenceReturnReadback(returnBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME) ?: return null
             KotlinProjectionAbiValueKind.Enum ->
                 enumReturnReadback(returnBinding, resolvedReturnClassName(returnBinding))
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
@@ -3470,6 +4044,12 @@ class KotlinProjectionRenderer {
                         "Expected non-null delegate instance from ABI return for ${returnBinding.resolvedTypeName}.",
                     )
                 }
+            KotlinProjectionAbiValueKind.Struct ->
+                nativeStructClassName(returnBinding)?.let { returnType ->
+                    CodeBlock.of("return %T.Metadata.fromAbi(__resultOut)\n", returnType)
+                }
+            KotlinProjectionAbiValueKind.MappedKeyValuePair ->
+                mappedKeyValuePairReturnReadback(returnBinding)
             KotlinProjectionAbiValueKind.Unit,
             KotlinProjectionAbiValueKind.MappedIterable,
             KotlinProjectionAbiValueKind.MappedVector,
@@ -3479,8 +4059,7 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.MappedBindableIterable,
             KotlinProjectionAbiValueKind.MappedBindableVector,
             KotlinProjectionAbiValueKind.MappedBindableVectorView,
-            KotlinProjectionAbiValueKind.MappedKeyValuePair,
-            KotlinProjectionAbiValueKind.Struct,
+            KotlinProjectionAbiValueKind.Array,
             KotlinProjectionAbiValueKind.Unsupported -> return null
             }
         }
@@ -3499,6 +4078,476 @@ class KotlinProjectionRenderer {
     ): ClassName? =
         runCatching { resolveTypeName(returnBinding.typeName) as? ClassName }.getOrNull()
             ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName) as? ClassName }.getOrNull()
+
+    private fun mappedKeyValuePairReturnReadback(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val keyBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
+        val valueBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
+        val keyType = resolveTypeName(keyBinding.typeName)
+        val valueType = resolveTypeName(valueBinding.typeName)
+        return CodeBlock.of(
+            """
+            val __pairRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))
+            fun __readKey(__pair: %T): %T {
+                %L
+            }
+            fun __readValue(__pair: %T): %T {
+                %L
+            }
+            val __key = __readKey(__pairRef)
+            val __value = __readValue(__pairRef)
+            return object : %T {
+                override val key: %T = __key
+                override val value: %T = __value
+            }
+            """.trimIndent() + "\n",
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            keyType,
+            renderCollectionInvocation(
+                invokeTargetExpression = "__pair",
+                slotInterfaceQualifiedName = "Windows.Foundation.Collections.IKeyValuePair",
+                slotConstantName = "KEY_GETTER_SLOT",
+                returnBinding = keyBinding,
+            ).toString(),
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            valueType,
+            renderCollectionInvocation(
+                invokeTargetExpression = "__pair",
+                slotInterfaceQualifiedName = "Windows.Foundation.Collections.IKeyValuePair",
+                slotConstantName = "VALUE_GETTER_SLOT",
+                returnBinding = valueBinding,
+            ).toString(),
+            Map.Entry::class.asClassName().parameterizedBy(keyType, valueType),
+            keyType,
+            valueType,
+        )
+    }
+
+    private fun arrayReturnMarshaler(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        descriptor: WinRtAbiMarshalerSlotDescriptor? = null,
+    ): KotlinProjectionAbiMarshalerPlan? {
+        @Suppress("UNUSED_PARAMETER")
+        descriptor
+        val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
+        nonBlittableArrayElementMarshalerExpression(elementBinding)?.let { elementMarshaler ->
+            return nonBlittableArrayReturnMarshaler(returnBinding, elementMarshaler)
+        }
+        val elementSize = nativeArrayElementSizeExpression(elementBinding) ?: return null
+        val elementRead = nativeArrayElementReadCode(
+            elementBinding = elementBinding,
+            dataExpression = CodeBlock.of("__arrayData"),
+            indexExpression = CodeBlock.of("__index"),
+        ) ?: return null
+        return KotlinProjectionAbiMarshalerPlan(
+            name = "retval",
+            typeBinding = returnBinding,
+            isReturn = true,
+            abiArgumentExpression = CodeBlock.of("__resultLengthOut"),
+            extraAbiArgumentExpressions = listOf(CodeBlock.of("__resultDataOut")),
+            resultLocalDeclarations = CodeBlock.of(
+                "val __resultLengthOut = %T.allocateInt32Slot(__scope)\nval __resultDataOut = %T.allocatePointerSlot(__scope)\n",
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            ),
+            readbackStatement = CodeBlock.of(
+                """
+                val __arrayLength = %T.readInt32(__resultLengthOut)
+                val __arrayData = %T.readPointer(__resultDataOut)
+                return Array(__arrayLength) { __index ->
+                    %L
+                }
+                """.trimIndent() + "\n",
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                elementRead,
+            ),
+        )
+    }
+
+    private fun nonBlittableArrayReturnMarshaler(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        elementMarshaler: CodeBlock,
+    ): KotlinProjectionAbiMarshalerPlan =
+        KotlinProjectionAbiMarshalerPlan(
+            name = "retval",
+            typeBinding = returnBinding,
+            isReturn = true,
+            abiArgumentExpression = CodeBlock.of("__resultLengthOut"),
+            extraAbiArgumentExpressions = listOf(CodeBlock.of("__resultDataOut")),
+            resultLocalDeclarations = CodeBlock.of(
+                "val __resultLengthOut = %T.allocateInt32Slot(__scope)\nval __resultDataOut = %T.allocatePointerSlot(__scope)\n",
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            ),
+            readbackStatement = CodeBlock.of(
+                """
+                val __arrayLength = %T.readInt32(__resultLengthOut)
+                val __arrayData = %T.readPointer(__resultDataOut)
+                val __arrayMarshaler = %L
+                val __arrayResult = __arrayMarshaler.fromAbiArray(__arrayLength, __arrayData)?.toTypedArray() ?: emptyArray()
+                __arrayMarshaler.disposeAbiArray(__arrayLength, __arrayData)
+                return __arrayResult as %T
+                """.trimIndent() + "\n",
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                elementMarshaler,
+                resolveTypeName(returnBinding.typeName),
+            ),
+        )
+
+    private fun nativeStructClassName(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): ClassName? {
+        mappedTypeByAbiName(binding.typeName.substringBefore('<').removeSuffix("?"))
+            ?.takeIf { it.abiValueKind == KotlinProjectionAbiValueKind.Struct }
+            ?.let { mappedType -> return mappedType.projectedTypeResolver(emptyList()) as? ClassName }
+        mappedTypeByAbiName(binding.resolvedTypeName.substringBefore('<').removeSuffix("?"))
+            ?.takeIf { it.abiValueKind == KotlinProjectionAbiValueKind.Struct }
+            ?.let { mappedType -> return mappedType.projectedTypeResolver(emptyList()) as? ClassName }
+        return runCatching { resolveTypeName(binding.typeName) as? ClassName }.getOrNull()
+            ?: runCatching { resolveTypeName(binding.resolvedTypeName) as? ClassName }.getOrNull()
+    }
+
+    private fun nativeArrayElementSizeExpression(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? =
+        when (elementBinding.kind) {
+            KotlinProjectionAbiValueKind.Boolean,
+            KotlinProjectionAbiValueKind.Int8,
+            KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("1")
+            KotlinProjectionAbiValueKind.Int16,
+            KotlinProjectionAbiValueKind.UInt16,
+            KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("2")
+            KotlinProjectionAbiValueKind.Int32,
+            KotlinProjectionAbiValueKind.UInt32,
+            KotlinProjectionAbiValueKind.Float -> CodeBlock.of("4")
+            KotlinProjectionAbiValueKind.Int64,
+            KotlinProjectionAbiValueKind.UInt64,
+            KotlinProjectionAbiValueKind.Double -> CodeBlock.of("8")
+            KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.BYTE_SIZE.toLong()", GUID_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Enum ->
+                elementBinding.enumUnderlyingType?.let(::nativeArrayIntegralElementSizeExpression)
+            KotlinProjectionAbiValueKind.Struct ->
+                nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.layout.sizeBytes", it) }
+            else -> null
+        }
+
+    private fun nativeArrayIntegralElementSizeExpression(type: WinRtIntegralType): CodeBlock =
+        when (type) {
+            WinRtIntegralType.Int8,
+            WinRtIntegralType.UInt8 -> CodeBlock.of("1")
+            WinRtIntegralType.Int16,
+            WinRtIntegralType.UInt16 -> CodeBlock.of("2")
+            WinRtIntegralType.Int32,
+            WinRtIntegralType.UInt32 -> CodeBlock.of("4")
+            WinRtIntegralType.Int64,
+            WinRtIntegralType.UInt64 -> CodeBlock.of("8")
+        }
+
+    private fun nativeArrayElementSliceCode(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+        dataExpression: CodeBlock,
+        indexExpression: CodeBlock,
+    ): CodeBlock? {
+        val elementSize = nativeArrayElementSizeExpression(elementBinding) ?: return null
+        return CodeBlock.of("%T.slice(%L, %L.toLong() * %L, %L)", PLATFORM_ABI_CLASS_NAME, dataExpression, indexExpression, elementSize, elementSize)
+    }
+
+    private fun nativeArrayElementReadCode(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+        dataExpression: CodeBlock,
+        indexExpression: CodeBlock,
+    ): CodeBlock? {
+        val slice = nativeArrayElementSliceCode(elementBinding, dataExpression, indexExpression) ?: return null
+        return when (elementBinding.kind) {
+            KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.readInt8(%L).toInt() != 0", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.readInt8(%L).toUByte()", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.readInt16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.readInt16(%L).toUShort()", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.readInt32(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.readInt32(%L).toUInt()", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.readInt64(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.readInt64(%L).toULong()", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.readFloat(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.readDouble(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.readChar16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            KotlinProjectionAbiValueKind.Enum ->
+                nativeArrayEnumElementReadCode(elementBinding, slice)
+            KotlinProjectionAbiValueKind.Struct ->
+                nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.fromAbi(%L)", it, slice) }
+            else -> null
+        }
+    }
+
+    private fun nativeArrayEnumElementReadCode(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+        slice: CodeBlock,
+    ): CodeBlock? {
+        val enumType = resolvedReturnClassName(elementBinding) ?: return null
+        val readback = when (elementBinding.enumUnderlyingType ?: return null) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.readInt8(%L).toUByte()", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.Int16 -> CodeBlock.of("%T.readInt16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.readInt16(%L).toUShort()", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.Int32 -> CodeBlock.of("%T.readInt32(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.readInt32(%L).toUInt()", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.Int64 -> CodeBlock.of("%T.readInt64(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.readInt64(%L).toULong()", PLATFORM_ABI_CLASS_NAME, slice)
+        }
+        return CodeBlock.of("%T.Metadata.fromAbi(%L)", enumType, readback)
+    }
+
+    private fun nativeArrayElementWriteCode(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+        dataExpression: CodeBlock,
+        indexExpression: CodeBlock,
+        valueExpression: CodeBlock,
+    ): CodeBlock? {
+        val slice = nativeArrayElementSliceCode(elementBinding, dataExpression, indexExpression) ?: return null
+        return when (elementBinding.kind) {
+            KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.writeInt8(%L, if (%L) 1.toByte() else 0.toByte())", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.writeInt32(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.writeInt32(%L, %L.toInt())", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.writeFloat(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.writeDouble(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.writeChar16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Enum ->
+                nativeArrayEnumElementWriteCode(elementBinding, slice, valueExpression)
+            KotlinProjectionAbiValueKind.Struct ->
+                nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.copyTo(%L, %L)", it, valueExpression, slice) }
+            else -> null
+        }
+    }
+
+    private fun nativeArrayEnumElementWriteCode(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+        slice: CodeBlock,
+        valueExpression: CodeBlock,
+    ): CodeBlock? {
+        val enumType = resolvedReturnClassName(elementBinding) ?: return null
+        val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L)", enumType, valueExpression)
+        return when (elementBinding.enumUnderlyingType ?: return null) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.Int32 -> CodeBlock.of("%T.writeInt32(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.writeInt32(%L, %L.toInt())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
+        }
+    }
+
+    private fun nativeStructParameterMarshaler(
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+    ): KotlinProjectionAbiMarshalerPlan? {
+        val structType = nativeStructClassName(parameterBinding.typeBinding) ?: return null
+        val parameterName = parameterBinding.name
+        val scopeName = "__${parameterName}StructScope"
+        val abiLocalName = "__${parameterName}Abi"
+        return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of("%L", abiLocalName),
+            scopeOpeners = listOf(
+                CodeBlock.of(
+                    "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %T.Metadata.layout.sizeBytes)\n%T.Metadata.copyTo(%L, %L)",
+                    PLATFORM_ABI_CLASS_NAME,
+                    scopeName,
+                    abiLocalName,
+                    PLATFORM_ABI_CLASS_NAME,
+                    scopeName,
+                    structType,
+                    structType,
+                    parameterName,
+                    abiLocalName,
+                ),
+            ),
+        )
+    }
+
+    private fun arrayParameterMarshaler(
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+        descriptor: WinRtAbiMarshalerSlotDescriptor? = null,
+    ): KotlinProjectionAbiMarshalerPlan? {
+        val category = descriptor?.category ?: parameterBinding.category
+        val elementBinding = parameterBinding.typeBinding.typeArguments.singleOrNull() ?: return null
+        nonBlittableArrayElementMarshalerExpression(elementBinding)?.let { elementMarshaler ->
+            return nonBlittableArrayParameterMarshaler(parameterBinding, category, elementMarshaler)
+        }
+        val elementSize = nativeArrayElementSizeExpression(elementBinding) ?: return null
+        val parameterName = parameterBinding.name
+        if (category == WinRtMetadataParameterCategory.ReceiveArray) {
+            val lengthOutName = "__${parameterName}LengthOut"
+            val dataOutName = "__${parameterName}DataOut"
+            return KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L", lengthOutName),
+                extraAbiArgumentExpressions = listOf(CodeBlock.of("%L", dataOutName)),
+                scopeOpeners = listOf(
+                    CodeBlock.of(
+                        "%T.confinedScope().use { __${parameterName}OutScope ->\nval %L = %T.allocateInt32Slot(__${parameterName}OutScope)\nval %L = %T.allocatePointerSlot(__${parameterName}OutScope)",
+                        PLATFORM_ABI_CLASS_NAME,
+                        lengthOutName,
+                        PLATFORM_ABI_CLASS_NAME,
+                        dataOutName,
+                        PLATFORM_ABI_CLASS_NAME,
+                    ),
+                ),
+            )
+        }
+        val scopeName = "__${parameterName}ArrayScope"
+        val dataName = "__${parameterName}ArrayData"
+        val elementWrite = nativeArrayElementWriteCode(
+            elementBinding = elementBinding,
+            dataExpression = CodeBlock.of("%L", dataName),
+            indexExpression = CodeBlock.of("__index"),
+            valueExpression = CodeBlock.of("__element"),
+        ) ?: return null
+        val elementRead = nativeArrayElementReadCode(
+            elementBinding = elementBinding,
+            dataExpression = CodeBlock.of("%L", dataName),
+            indexExpression = CodeBlock.of("__index"),
+        )
+        return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of("%L.size", parameterName),
+            extraAbiArgumentExpressions = listOf(CodeBlock.of("%L", dataName)),
+            postCallStatements = if (category == WinRtMetadataParameterCategory.FillArray && elementRead != null) {
+                listOf(
+                    CodeBlock.of(
+                        """
+                        %L.indices.forEach { __index ->
+                            %L[__index] = %L
+                        }
+                        """.trimIndent(),
+                        parameterName,
+                        parameterName,
+                        elementRead,
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+            scopeOpeners = listOf(
+                CodeBlock.of(
+                    """
+                    %T.confinedScope().use { %L ->
+                    val %L = %T.allocateBytes(%L, %L.size.toLong() * %L)
+                    %L.forEachIndexed { __index, __element ->
+                        %L
+                    }
+                    """.trimIndent(),
+                    PLATFORM_ABI_CLASS_NAME,
+                    scopeName,
+                    dataName,
+                    PLATFORM_ABI_CLASS_NAME,
+                    scopeName,
+                    parameterName,
+                    elementSize,
+                    parameterName,
+                    elementWrite,
+                ),
+            ),
+        )
+    }
+
+    private fun nonBlittableArrayParameterMarshaler(
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+        category: WinRtMetadataParameterCategory,
+        elementMarshaler: CodeBlock,
+    ): KotlinProjectionAbiMarshalerPlan? {
+        if (category == WinRtMetadataParameterCategory.ReceiveArray) {
+            return null
+        }
+        val parameterName = parameterBinding.name
+        val marshalerName = "__${parameterName}ArrayMarshaler"
+        val arrayName = "__${parameterName}ArrayAbi"
+        return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of("%L?.length ?: 0", arrayName),
+            extraAbiArgumentExpressions = listOf(CodeBlock.of("%L?.data ?: %T.nullPointer", arrayName, PLATFORM_ABI_CLASS_NAME)),
+            postCallStatements = if (category == WinRtMetadataParameterCategory.FillArray) {
+                listOf(
+                    CodeBlock.of(
+                        """
+                        %L.fromAbiArray(%L.size, %L?.data ?: %T.nullPointer)?.forEachIndexed { __index, __element ->
+                            (%L as Array<Any?>)[__index] = __element
+                        }
+                        """.trimIndent(),
+                        marshalerName,
+                        parameterName,
+                        arrayName,
+                        PLATFORM_ABI_CLASS_NAME,
+                        parameterName,
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+            scopeOpeners = listOf(
+                CodeBlock.of(
+                    """
+                    val %L = %L
+                    %L.createMarshalerArray(%L).use { %L ->
+                    """.trimIndent(),
+                    marshalerName,
+                    elementMarshaler,
+                    marshalerName,
+                    parameterName,
+                    arrayName,
+                ),
+            ),
+        )
+    }
+
+    private fun nonBlittableArrayElementMarshalerExpression(
+        elementBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? =
+        when (elementBinding.kind) {
+            KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.string()", MARSHALER_CLASS_NAME)
+            KotlinProjectionAbiValueKind.Object,
+            KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.inspectableAny()", MARSHALER_CLASS_NAME)
+            KotlinProjectionAbiValueKind.ProjectedInterface -> {
+                val interfaceId = elementBinding.interfaceId ?: return null
+                val projectedType = resolveTypeName(elementBinding.resolvedTypeName)
+                CodeBlock.of(
+                    "%T.interfaceType(%T(%S, %T(%S)), %T::class)",
+                    MARSHALER_CLASS_NAME,
+                    WINRT_TYPE_HANDLE_CLASS_NAME,
+                    elementBinding.resolvedTypeName,
+                    GUID_CLASS_NAME,
+                    interfaceId.toString(),
+                    projectedType,
+                )
+            }
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> {
+                val projectedType = resolveTypeName(elementBinding.resolvedTypeName)
+                CodeBlock.of("%T.inspectable(%T::class)", MARSHALER_CLASS_NAME, projectedType)
+            }
+            else -> null
+        }
 
     private fun asyncActionWithProgressReturnReadback(
         returnBinding: KotlinProjectionAbiTypeBinding,
@@ -3596,13 +4645,141 @@ class KotlinProjectionRenderer {
 
     private fun asyncOperationResultTypeSignature(
         resultBinding: KotlinProjectionAbiTypeBinding,
-    ): CodeBlock? = when (resultBinding.kind) {
+    ): CodeBlock? = abiTypeSignature(resultBinding)
+
+    private fun referenceParameterMarshaler(
+        parameterBinding: KotlinProjectionAbiParameterBinding,
+        projectionClass: ClassName,
+    ): KotlinProjectionAbiMarshalerPlan? {
+        val interfaceId = referenceInterfaceIdCode(parameterBinding.typeBinding) ?: return null
+        val parameterName = parameterBinding.name
+        val abiLocalName = "__${parameterName}Abi"
+        return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of("%L?.abi ?: %T.nullPointer", abiLocalName, PLATFORM_ABI_CLASS_NAME),
+            scopeOpeners = listOf(
+                CodeBlock.of("%T.createMarshaler(%L, %L).use { %L ->", projectionClass, parameterName, interfaceId, abiLocalName),
+            ),
+        )
+    }
+
+    private fun referenceReadbackExpression(
+        typeBinding: KotlinProjectionAbiTypeBinding,
+        projectionClass: ClassName,
+        resultOutName: String,
+    ): CodeBlock? {
+        val projectedType = resolveTypeName(typeBinding.typeName)
+        val interfaceId = referenceInterfaceIdCode(typeBinding) ?: return null
+        return CodeBlock.of(
+            "%T.fromAbi(%T.readPointer(%L), %L) as %T",
+            projectionClass,
+            PLATFORM_ABI_CLASS_NAME,
+            resultOutName,
+            interfaceId,
+            projectedType,
+        )
+    }
+
+    private fun referenceReturnReadback(
+        typeBinding: KotlinProjectionAbiTypeBinding,
+        projectionClass: ClassName,
+    ): CodeBlock? =
+        referenceReadbackExpression(typeBinding, projectionClass, "__resultOut")
+            ?.let { CodeBlock.of("return %L\n", it) }
+
+    private fun abiTypeSignature(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? = when (binding.kind) {
+        KotlinProjectionAbiValueKind.MappedIterable ->
+            binding.typeArguments.singleOrNull()?.let(::abiTypeSignature)
+                ?.let { CodeBlock.of("%T.iterableSignature(%L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, it) }
+        KotlinProjectionAbiValueKind.MappedVectorView ->
+            binding.typeArguments.singleOrNull()?.let(::abiTypeSignature)
+                ?.let { CodeBlock.of("%T.vectorViewSignature(%L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, it) }
+        KotlinProjectionAbiValueKind.MappedVector ->
+            binding.typeArguments.singleOrNull()?.let(::abiTypeSignature)
+                ?.let { CodeBlock.of("%T.vectorSignature(%L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, it) }
+        KotlinProjectionAbiValueKind.MappedMapView -> {
+            val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+            val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+            if (key != null && value != null) CodeBlock.of("%T.mapViewSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
+        }
+            KotlinProjectionAbiValueKind.MappedMap -> {
+                val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+                val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+                if (key != null && value != null) CodeBlock.of("%T.mapSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
+            }
+        KotlinProjectionAbiValueKind.Reference,
+        KotlinProjectionAbiValueKind.ReferenceArray -> referenceTypeSignatureCode(binding)
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.string()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
         KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.boolean()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.int8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.uint8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.int16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.uint16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.int32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.uint32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.int64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.uint64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.float32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
         KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.float64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.char16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.guidValue()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Enum ->
+            resolvedReturnClassName(binding)?.let {
+                CodeBlock.of("%T.enum(%S, %L)", WINRT_TYPE_SIGNATURE_CLASS_NAME, binding.resolvedTypeName, binding.enumUnderlyingType?.let(::abiTypeSignatureForIntegralType) ?: CodeBlock.of("%T.int32()", WINRT_TYPE_SIGNATURE_CLASS_NAME))
+            }
+        KotlinProjectionAbiValueKind.Struct ->
+            nativeStructClassName(binding)?.let {
+                CodeBlock.of("%T.struct(%S)", WINRT_TYPE_SIGNATURE_CLASS_NAME, binding.resolvedTypeName)
+            }
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.ProjectedInterface ->
+            resolvedReturnClassName(binding)?.let { resultType ->
+                CodeBlock.of("%T.guid(%T.Metadata.IID)", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
+            }
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            resolvedReturnClassName(binding)?.let { resultType ->
+                CodeBlock.of(
+                    "%T.runtimeClass(%S, %T.guid(%T.Metadata.DEFAULT_INTERFACE_IID))",
+                    WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                    binding.resolvedTypeName,
+                    WINRT_TYPE_SIGNATURE_CLASS_NAME,
+                    resultType,
+                )
+            }
         else -> null
+    }
+
+    private fun referenceTypeSignatureCode(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val genericInterfaceId = binding.interfaceId ?: return null
+        val elementSignature = binding.typeArguments.singleOrNull()?.let(::abiTypeSignature) ?: return null
+        return CodeBlock.of(
+            "%T.parameterizedInterface(%T(%S), %L)",
+            WINRT_TYPE_SIGNATURE_CLASS_NAME,
+            GUID_CLASS_NAME,
+            genericInterfaceId.toString(),
+            elementSignature,
+        )
+    }
+
+    private fun referenceInterfaceIdCode(
+        binding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val genericInterfaceId = binding.interfaceId ?: return null
+        val elementSignature = binding.typeArguments.singleOrNull()?.let(::abiTypeSignature) ?: return null
+        return CodeBlock.of(
+            "%T.createFromParameterizedInterface(%T(%S), %L)",
+            PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+            GUID_CLASS_NAME,
+            genericInterfaceId.toString(),
+            elementSignature,
+        )
     }
 
     private fun abiResultAllocationForAsyncOperationResult(
@@ -3611,10 +4788,61 @@ class KotlinProjectionRenderer {
     ): CodeBlock? = when (resultBinding.kind) {
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
         KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.allocateBytes(%L, 2)", PLATFORM_ABI_CLASS_NAME, scopeName)
         KotlinProjectionAbiValueKind.Int32,
         KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.allocateInt32Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.allocateInt64Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.allocateBytes(%L, 4)", PLATFORM_ABI_CLASS_NAME, scopeName)
         KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.allocateDoubleSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.allocateBytes(%L, 2)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.Enum -> bindingAllocationForAsyncEnum(resultBinding, scopeName)
+        KotlinProjectionAbiValueKind.Struct ->
+            nativeStructClassName(resultBinding)?.let { resultType ->
+                CodeBlock.of("%T.allocateBytes(%L, %T.Metadata.layout.sizeBytes)", PLATFORM_ABI_CLASS_NAME, scopeName, resultType)
+            }
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMapView -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference,
+        KotlinProjectionAbiValueKind.Reference,
+        KotlinProjectionAbiValueKind.ReferenceArray -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
         else -> null
+    }
+
+    private fun bindingAllocationForAsyncEnum(
+        resultBinding: KotlinProjectionAbiTypeBinding,
+        scopeName: String,
+    ): CodeBlock? = when (resultBinding.enumUnderlyingType) {
+        WinRtIntegralType.Int8,
+        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        WinRtIntegralType.Int16,
+        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.allocateBytes(%L, 2)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        WinRtIntegralType.Int32,
+        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.allocateInt32Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        WinRtIntegralType.Int64,
+        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.allocateInt64Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+        null -> null
+    }
+
+    private fun abiTypeSignatureForIntegralType(type: WinRtIntegralType): CodeBlock = when (type) {
+        WinRtIntegralType.Int8 -> CodeBlock.of("%T.int8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.uint8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.Int16 -> CodeBlock.of("%T.int16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.uint16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.Int32 -> CodeBlock.of("%T.int32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.uint32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.Int64 -> CodeBlock.of("%T.int64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
+        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.uint64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
     }
 
     private fun asyncOperationResultReadbackExpression(
@@ -3628,13 +4856,121 @@ class KotlinProjectionRenderer {
             )
         KotlinProjectionAbiValueKind.Boolean ->
             CodeBlock.of("%T.readInt8(__operationResultOut).toInt() != 0", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int8 ->
+            CodeBlock.of("%T.readInt8(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt8 ->
+            CodeBlock.of("%T.readInt8(__operationResultOut).toUByte()", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int16 ->
+            CodeBlock.of("%T.readInt16(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt16 ->
+            CodeBlock.of("%T.readInt16(__operationResultOut).toUShort()", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int32 ->
             CodeBlock.of("%T.readInt32(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt32 ->
             CodeBlock.of("%T.readInt32(__operationResultOut).toUInt()", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int64 ->
+            CodeBlock.of("%T.readInt64(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt64 ->
+            CodeBlock.of("%T.readInt64(__operationResultOut).toULong()", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Float ->
+            CodeBlock.of("%T.readFloat(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Double ->
             CodeBlock.of("%T.readDouble(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Char16 ->
+            CodeBlock.of("%T.readChar16(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Enum ->
+            asyncEnumResultReadbackExpression(resultBinding)
+        KotlinProjectionAbiValueKind.Struct ->
+            nativeStructClassName(resultBinding)?.let { resultType ->
+                CodeBlock.of("%T.Metadata.fromAbi(__operationResultOut)", resultType)
+            }
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMapView,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedMap ->
+            asyncMappedCollectionResultReadbackExpression(resultBinding)
+        KotlinProjectionAbiValueKind.Reference ->
+            referenceReadbackExpression(resultBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME, "__operationResultOut")
+        KotlinProjectionAbiValueKind.ReferenceArray ->
+            referenceReadbackExpression(resultBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME, "__operationResultOut")
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.InspectableReference ->
+            CodeBlock.of(
+                "%T(%T.toRawComPtr(%T.readPointer(__operationResultOut))).use { it.asInspectable() }",
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+        KotlinProjectionAbiValueKind.UnknownReference ->
+            CodeBlock.of(
+                "%T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))",
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+        KotlinProjectionAbiValueKind.ProjectedInterface ->
+            resolvedReturnClassName(resultBinding)?.let { resultType ->
+                CodeBlock.of(
+                    "%T.Metadata.wrap(%T(%T.toRawComPtr(%T.readPointer(__operationResultOut))))",
+                    resultType,
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                )
+            }
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            resolvedReturnClassName(resultBinding)?.let { resultType ->
+                CodeBlock.of(
+                    "%T.Metadata.wrap(%T(%T.toRawComPtr(%T.readPointer(__operationResultOut))).asInspectable())",
+                    resultType,
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                )
+            }
         else -> null
+    }
+
+    private fun asyncMappedCollectionResultReadbackExpression(
+        resultBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        readOnlyCollectionBindingForReturn(resultBinding)?.let { binding ->
+            return CodeBlock.of(
+                "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                renderReadOnlyCollectionDelegateInitializer(binding),
+            )
+        }
+        mutableCollectionBindingForReturn(resultBinding)?.let { binding ->
+            return CodeBlock.of(
+                "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                renderMutableCollectionDelegateInitializer(binding),
+            )
+        }
+        return null
+    }
+
+    private fun asyncEnumResultReadbackExpression(
+        resultBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        val enumType = resolvedReturnClassName(resultBinding) ?: return null
+        val readback = when (resultBinding.enumUnderlyingType ?: return null) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%T.readInt8(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.readInt8(__operationResultOut).toUByte()", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.Int16 -> CodeBlock.of("%T.readInt16(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.readInt16(__operationResultOut).toUShort()", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.Int32 -> CodeBlock.of("%T.readInt32(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.readInt32(__operationResultOut).toUInt()", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.Int64 -> CodeBlock.of("%T.readInt64(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.readInt64(__operationResultOut).toULong()", PLATFORM_ABI_CLASS_NAME)
+        }
+        return CodeBlock.of("%T.Metadata.fromAbi(%L)", enumType, readback)
     }
 
     private fun mappedCollectionReturnReadback(
@@ -3764,6 +5100,13 @@ class KotlinProjectionRenderer {
     private fun collectionReferenceAdapterCode(
         typeBinding: KotlinProjectionAbiTypeBinding,
     ): CodeBlock? {
+        when (typeBinding.kind) {
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+            KotlinProjectionAbiValueKind.ProjectedInterface,
+            KotlinProjectionAbiValueKind.UnknownReference,
+            KotlinProjectionAbiValueKind.InspectableReference -> Unit
+            else -> return null
+        }
         val projectedType = resolveTypeName(typeBinding.resolvedTypeName)
         val projectedTypeName = typeBinding.resolvedTypeName
         val projector = when (typeBinding.kind) {
@@ -3829,11 +5172,11 @@ class KotlinProjectionRenderer {
     private fun delegateParameterMarshaler(
         parameterBinding: KotlinProjectionAbiParameterBinding,
     ): KotlinProjectionAbiMarshalerPlan? {
-        val invokeShape = parameterBinding.typeBinding.delegateInvokeShape ?: return null
+        val invokeShape = outboundDelegateInvokeShape(parameterBinding.typeBinding) ?: return null
         if (!invokeShape.isSupportedOutboundDelegateShape()) {
             return null
         }
-        val delegateIid = invokeShape.interfaceId ?: return null
+        val delegateIid = delegateInterfaceIdCode(parameterBinding.typeBinding, invokeShape) ?: return null
         val handleName = "__${parameterBinding.name}Handle"
         val abiReferenceName = "__${parameterBinding.name}Abi"
         return KotlinProjectionAbiMarshalerPlan(
@@ -3843,11 +5186,11 @@ class KotlinProjectionRenderer {
             abiArgumentExpression = CodeBlock.of("%L.pointer", abiReferenceName),
             scopeOpeners = listOf(
                 CodeBlock.of(
-                    "%T.createUnitDelegate(iid = %T(%S), parameterKinds = %L) { __args ->\n%L(%L)\n}.use { %L ->",
+                    "%T.createDelegate(iid = %L, parameterKinds = %L, returnKind = %L) { __args ->\n%L(%L)\n}.use { %L ->",
                     WINRT_DELEGATE_BRIDGE_CLASS_NAME,
-                    GUID_CLASS_NAME,
-                    delegateIid.toString(),
+                    delegateIid,
                     delegateParameterKindsCode(invokeShape.parameterBindings),
+                    delegateInvokeReturnKindCode(invokeShape.returnBinding),
                     parameterBinding.name,
                     delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
                     handleName,
@@ -3855,6 +5198,54 @@ class KotlinProjectionRenderer {
                 CodeBlock.of("%L.createReference().use { %L ->", handleName, abiReferenceName),
             ),
         )
+    }
+
+    private fun outboundDelegateInvokeShape(
+        typeBinding: KotlinProjectionAbiTypeBinding,
+    ): KotlinProjectionDelegateInvokeShape? {
+        val invokeShape = typeBinding.delegateInvokeShape ?: return null
+        if (typeBinding.resolvedTypeName == "Windows.Foundation.EventHandler" && typeBinding.typeArguments.size == 1) {
+            return invokeShape.copy(
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding(
+                        "sender",
+                        KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
+                    ),
+                    KotlinProjectionAbiParameterBinding("args", typeBinding.typeArguments[0]),
+                ),
+            )
+        }
+        if (typeBinding.resolvedTypeName == "Windows.Foundation.TypedEventHandler" && typeBinding.typeArguments.size == 2) {
+            return invokeShape.copy(
+                parameterBindings = listOf(
+                    KotlinProjectionAbiParameterBinding("sender", typeBinding.typeArguments[0]),
+                    KotlinProjectionAbiParameterBinding("args", typeBinding.typeArguments[1]),
+                ),
+            )
+        }
+        return invokeShape
+    }
+
+    private fun delegateInterfaceIdCode(
+        typeBinding: KotlinProjectionAbiTypeBinding,
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ): CodeBlock? {
+        val delegateIid = invokeShape.interfaceId ?: return null
+        if (typeBinding.typeArguments.isEmpty()) {
+            return CodeBlock.of("%T(%S)", GUID_CLASS_NAME, delegateIid.toString())
+        }
+        val argumentSignatures = typeBinding.typeArguments.map { typeArgument ->
+            abiTypeSignature(typeArgument) ?: return null
+        }
+        return CodeBlock.builder()
+            .add("%T.createFromParameterizedInterface(%T(%S)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, GUID_CLASS_NAME, delegateIid.toString())
+            .apply {
+                argumentSignatures.forEach { signature ->
+                    add(", %L", signature)
+                }
+            }
+            .add(")")
+            .build()
     }
 
     private fun enumReturnReadback(
@@ -3947,28 +5338,67 @@ class KotlinProjectionRenderer {
 
     private fun delegateValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.HSTRING", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        KotlinProjectionAbiValueKind.Int32,
-        KotlinProjectionAbiValueKind.UInt32,
-        KotlinProjectionAbiValueKind.Enum -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.BOOLEAN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.INT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.UINT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.INT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.UINT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.INT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.UINT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.FLOAT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.DOUBLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.CHAR16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
     }
 
+    private fun delegateEnumValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock =
+        when (typeBinding.enumUnderlyingType) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%T.INT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.UINT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.Int16 -> CodeBlock.of("%T.INT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.UINT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.Int64 -> CodeBlock.of("%T.INT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.UINT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+            null -> error("Delegate enum ABI kind requires enum underlying type for ${typeBinding.resolvedTypeName}")
+        }
+
     private fun delegateInvokeValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.Unit -> CodeBlock.of("%T.UNIT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.HSTRING", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.BOOLEAN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.INT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.UINT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.INT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.UINT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.CHAR16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.INT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.UINT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.FLOAT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.DOUBLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        KotlinProjectionAbiValueKind.Enum -> when (typeBinding.enumUnderlyingType) {
-            WinRtIntegralType.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-            else -> error("Unsupported enum delegate ABI kind: ${typeBinding.describeAbiKind()}")
-        }
+        KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
+        KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.ProjectedInterface -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
         else -> error("Unsupported projected delegate ABI kind: ${typeBinding.describeAbiKind()}")
@@ -3998,12 +5428,25 @@ class KotlinProjectionRenderer {
     ): CodeBlock = when (parameterBinding.typeBinding.kind) {
         KotlinProjectionAbiValueKind.String,
         KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8,
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16,
+        KotlinProjectionAbiValueKind.Char16,
         KotlinProjectionAbiValueKind.Int32,
         KotlinProjectionAbiValueKind.UInt32,
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64,
+        KotlinProjectionAbiValueKind.Float,
         KotlinProjectionAbiValueKind.Double,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.UnknownReference,
-        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%L", parameterBinding.name)
+        KotlinProjectionAbiValueKind.InspectableReference,
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> CodeBlock.of("%L", parameterBinding.name)
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%L", parameterBinding.name)
         KotlinProjectionAbiValueKind.Enum -> {
             val enumType = resolveTypeName(parameterBinding.typeBinding.resolvedTypeName)
             CodeBlock.of("%T.Metadata.toAbi(%L)", enumType, parameterBinding.name)
@@ -4018,16 +5461,34 @@ class KotlinProjectionRenderer {
         KotlinProjectionAbiValueKind.Unit -> CodeBlock.of("%L\nreturn\n", nativeInvokeExpression)
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("return %L as String\n", nativeInvokeExpression)
         KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("return %L as Boolean\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("return %L as Byte\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("return %L as UByte\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("return %L as Short\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("return %L as UShort\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("return %L as Char\n", nativeInvokeExpression)
         KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("return %L as Int\n", nativeInvokeExpression)
         KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("return %L as UInt\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("return %L as Long\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("return %L as ULong\n", nativeInvokeExpression)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("return %L as Float\n", nativeInvokeExpression)
         KotlinProjectionAbiValueKind.Double -> CodeBlock.of("return %L as Double\n", nativeInvokeExpression)
         KotlinProjectionAbiValueKind.Enum -> {
             val enumType = resolveTypeName(returnBinding.resolvedTypeName)
             when (returnBinding.enumUnderlyingType) {
+                WinRtIntegralType.Int8 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Byte)\n", enumType, nativeInvokeExpression)
+                WinRtIntegralType.UInt8 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UByte)\n", enumType, nativeInvokeExpression)
+                WinRtIntegralType.Int16 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Short)\n", enumType, nativeInvokeExpression)
+                WinRtIntegralType.UInt16 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UShort)\n", enumType, nativeInvokeExpression)
                 WinRtIntegralType.Int32 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Int)\n", enumType, nativeInvokeExpression)
                 WinRtIntegralType.UInt32 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UInt)\n", enumType, nativeInvokeExpression)
-                else -> error("Unsupported projected delegate enum return ABI kind: ${returnBinding.describeAbiKind()}")
+                WinRtIntegralType.Int64 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Long)\n", enumType, nativeInvokeExpression)
+                WinRtIntegralType.UInt64 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as ULong)\n", enumType, nativeInvokeExpression)
+                null -> error("Delegate enum return binding requires enum underlying type for ${returnBinding.resolvedTypeName}")
             }
+        }
+        KotlinProjectionAbiValueKind.ProjectedInterface -> {
+            val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
+            CodeBlock.of("return %T.Metadata.wrap(%L as %T)\n", projectedType, nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
         }
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> {
             val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
@@ -4037,6 +5498,21 @@ class KotlinProjectionRenderer {
             CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference ->
             CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.MappedAsyncAction ->
+            CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
+            val progressType = returnBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(progressType))
+        }
+        KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
+            val resultType = returnBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(resultType))
+        }
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
+            val resultType = returnBinding.typeArguments.getOrNull(0)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            val progressType = returnBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
+        }
         else -> error("Unsupported projected delegate return ABI kind: ${returnBinding.describeAbiKind()}")
     }
 
@@ -4059,9 +5535,25 @@ class KotlinProjectionRenderer {
         typeBinding: KotlinProjectionAbiTypeBinding,
     ): CodeBlock = when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.String -> CodeBlock.of("__args[%L] as String", index)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("__args[%L] as Boolean", index)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("__args[%L] as Byte", index)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("__args[%L] as UByte", index)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("__args[%L] as Short", index)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("__args[%L] as UShort", index)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("__args[%L] as Char", index)
         KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("__args[%L] as Int", index)
-        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("(__args[%L] as Int).toUInt()", index)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("__args[%L] as UInt", index)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("__args[%L] as Long", index)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("__args[%L] as ULong", index)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("__args[%L] as Float", index)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("__args[%L] as Double", index)
         KotlinProjectionAbiValueKind.Enum -> delegateEnumCallbackArgumentCode(index, typeBinding)
+        KotlinProjectionAbiValueKind.ProjectedInterface -> CodeBlock.of(
+            "%T.Metadata.wrap(__args[%L] as %T)",
+            resolveTypeName(typeBinding.resolvedTypeName),
+            index,
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+        )
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
             "%T.Metadata.wrap((__args[%L] as %T).asInspectable())",
             resolveTypeName(typeBinding.resolvedTypeName),
@@ -4069,6 +5561,21 @@ class KotlinProjectionRenderer {
             IUNKNOWN_REFERENCE_CLASS_NAME,
         )
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("__args[%L] as %T", index, IUNKNOWN_REFERENCE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.MappedAsyncAction -> CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME)
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> {
+            val progressType = typeBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(progressType))
+        }
+        KotlinProjectionAbiValueKind.MappedAsyncOperation -> {
+            val resultType = typeBinding.typeArguments.singleOrNull()?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(resultType))
+        }
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> {
+            val resultType = typeBinding.typeArguments.getOrNull(0)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            val progressType = typeBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
+            CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
+        }
+        KotlinProjectionAbiValueKind.Object,
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of(
             "(__args[%L] as %T).asInspectable()",
             index,
@@ -4085,9 +5592,14 @@ class KotlinProjectionRenderer {
             ?: error("Delegate enum callback binding requires enum underlying type for ${typeBinding.resolvedTypeName}")
         val enumType = resolveTypeName(typeBinding.resolvedTypeName)
         return when (integralType) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Byte)", enumType, index)
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as UByte)", enumType, index)
+            WinRtIntegralType.Int16 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Short)", enumType, index)
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as UShort)", enumType, index)
             WinRtIntegralType.Int32 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Int)", enumType, index)
-            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.Metadata.fromAbi((__args[%L] as Int).toUInt())", enumType, index)
-            else -> error("Delegate callback ABI parity does not yet support $integralType for ${typeBinding.resolvedTypeName}")
+            WinRtIntegralType.UInt32 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as UInt)", enumType, index)
+            WinRtIntegralType.Int64 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Long)", enumType, index)
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as ULong)", enumType, index)
         }
     }
 
@@ -4113,10 +5625,17 @@ class KotlinProjectionRenderer {
         if (resultMarshaler != null) {
             code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
             code.indent()
-            code.addStatement("val __resultOut = %L", requireNotNull(resultMarshaler.resultAllocation))
+            resultMarshaler.resultLocalDeclarations?.let { declarations ->
+                code.add("%L", declarations)
+            } ?: code.addStatement("val __resultOut = %L", requireNotNull(resultMarshaler.resultAllocation))
         }
-        val abiArguments = callPlan.parameterMarshalers.map { it.abiArgumentExpression } +
-            listOfNotNull(resultMarshaler?.abiArgumentExpression)
+        val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
+            listOf(marshaler.abiArgumentExpression) + marshaler.extraAbiArgumentExpressions
+        } + if (resultMarshaler != null) {
+            listOf(resultMarshaler.abiArgumentExpression) + resultMarshaler.extraAbiArgumentExpressions
+        } else {
+            emptyList()
+        }
         code.add("val __hr = ")
         code.add(
             renderComVtableInvocation(
@@ -4127,6 +5646,9 @@ class KotlinProjectionRenderer {
         )
         code.add("\n")
         code.addStatement("%T(__hr).requireSuccess()", HRESULT_CLASS_NAME)
+        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+            code.add("%L\n", postCallStatement)
+        }
         resultMarshaler?.readbackStatement?.let(code::add)
         if (resultMarshaler != null) {
             code.unindent()
@@ -4144,9 +5666,6 @@ class KotlinProjectionRenderer {
         slotExpression: CodeBlock,
         abiArguments: List<CodeBlock>,
     ): CodeBlock {
-        require(abiArguments.size <= 6) {
-            "Generator ABI invoker parity does not yet support ${abiArguments.size} explicit ABI arguments."
-        }
         val builder = CodeBlock.builder()
         if (abiArguments.isEmpty()) {
             builder.add(
@@ -4155,7 +5674,7 @@ class KotlinProjectionRenderer {
                 invokeTargetExpression,
                 slotExpression,
             )
-        } else {
+        } else if (abiArguments.size <= 6) {
             builder.add(
                 "%T.invokeArgs(instance = %L.pointer, slot = %L",
                 COM_VTABLE_INVOKER_CLASS_NAME,
@@ -4164,6 +5683,17 @@ class KotlinProjectionRenderer {
             )
             abiArguments.forEachIndexed { index, argument ->
                 builder.add(", arg%L = %L", index, argument)
+            }
+            builder.add(")")
+        } else {
+            builder.add(
+                "%T.invokeGenericArgs(instance = %L.pointer, slot = %L",
+                COM_VTABLE_INVOKER_CLASS_NAME,
+                invokeTargetExpression,
+                slotExpression,
+            )
+            abiArguments.forEach { argument ->
+                builder.add(", %L", argument)
             }
             builder.add(")")
         }
@@ -4806,12 +6336,22 @@ class KotlinProjectionRenderer {
             "UInt" -> UInt::class.asClassName()
             "Boolean" -> Boolean::class.asClassName()
             "Byte" -> Byte::class.asClassName()
+            "SByte",
+            "Int8" -> Byte::class.asClassName()
+            "UInt8" -> UByte::class.asClassName()
             "Short" -> Short::class.asClassName()
+            "Int16" -> Short::class.asClassName()
             "UShort" -> UShort::class.asClassName()
+            "UInt16" -> UShort::class.asClassName()
             "Long" -> Long::class.asClassName()
+            "Int64" -> Long::class.asClassName()
+            "ULong",
+            "UInt64" -> ULong::class.asClassName()
             "Float" -> Float::class.asClassName()
             "Double" -> Double::class.asClassName()
             "Char" -> Char::class.asClassName()
+            "Guid",
+            "System.Guid" -> GUID_CLASS_NAME
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
             "io.github.kitectlab.winrt.runtime.IUnknownReference" -> IUNKNOWN_REFERENCE_CLASS_NAME
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
@@ -4995,14 +6535,28 @@ class KotlinProjectionSupportRenderer {
             appendLine("        ENTRIES_BY_SOURCE_TYPE[sourceType]")
             appendLine()
             appendLine("    fun initializeAll(initialize: (GenericTypeInstantiationEntry) -> Unit) {")
-            appendLine("        ENTRIES.forEach(initialize)")
+            appendLine("        val visited = linkedSetOf<String>()")
+            appendLine("        ENTRIES.forEach { initializeWithDependencies(it, visited, initialize) }")
             appendLine("    }")
             appendLine()
             appendLine("    fun initializeDependencies(")
             appendLine("        entry: GenericTypeInstantiationEntry,")
             appendLine("        initialize: (GenericTypeInstantiationEntry) -> Unit,")
             appendLine("    ) {")
-            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get).forEach(initialize)")
+            appendLine("        val visited = linkedSetOf(entry.className)")
+            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)")
+            appendLine("            .forEach { initializeWithDependencies(it, visited, initialize) }")
+            appendLine("    }")
+            appendLine()
+            appendLine("    private fun initializeWithDependencies(")
+            appendLine("        entry: GenericTypeInstantiationEntry,")
+            appendLine("        visited: MutableSet<String>,")
+            appendLine("        initialize: (GenericTypeInstantiationEntry) -> Unit,")
+            appendLine("    ) {")
+            appendLine("        if (!visited.add(entry.className)) return")
+            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)")
+            appendLine("            .forEach { initializeWithDependencies(it, visited, initialize) }")
+            appendLine("        initialize(entry)")
             appendLine("    }")
             appendLine("}")
         }

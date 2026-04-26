@@ -961,7 +961,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_rejects_struct_and_non_unit_delegate_member_marshaling_until_cswinrt_parity_exists() {
+    fun generator_binds_struct_and_non_unit_delegate_member_marshaling() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -1022,11 +1022,90 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val widgetContents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
 
-        assertNotNull(error)
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(error!!.message.orEmpty().contains("Struct(Sample.Foundation.Point)") || error.message.orEmpty().contains("Delegate(Sample.Foundation.WidgetHandler)"))
+        assertTrue(widgetContents.contains("fun location(): Point"))
+        assertTrue(widgetContents.contains("Point.Metadata.fromAbi"))
+        assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler)"))
+        assertTrue(widgetContents.contains("WinRtDelegateBridge.createDelegate"))
+        assertTrue(widgetContents.contains("WinRtDelegateValueKind.BOOLEAN"))
+        assertTrue(widgetContents.contains("handler(__args[0] as String)"))
+        assertFalse(widgetContents.contains("fun location(): Point = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
+    }
+
+    @Test
+    fun generator_binds_mapped_windows_foundation_struct_getters_and_setters() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Graphics",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Graphics",
+                            name = "IAdvancedColorInfo",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "RedPrimary",
+                                    typeName = "Windows.Foundation.Point",
+                                    getterMethodName = "get_RedPrimary",
+                                    getterMethodRowId = 10,
+                                    setterMethodName = "put_RedPrimary",
+                                    setterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Graphics",
+                            name = "AdvancedColorInfo",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Graphics.IAdvancedColorInfo",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    "Sample.Graphics.IAdvancedColorInfo",
+                                    isDefault = true,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "RedPrimary",
+                                    typeName = "Windows.Foundation.Point",
+                                    getterMethodName = "get_RedPrimary",
+                                    setterMethodName = "put_RedPrimary",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("AdvancedColorInfo.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("override var redPrimary: Point"))
+        assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, Point.Metadata.layout.sizeBytes)"))
+        assertTrue(contents, contents.contains("return Point.Metadata.fromAbi(__resultOut)"))
+        assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
     }
 
     @Test
@@ -1108,8 +1187,9 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler)"))
         assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int"))
-        assertTrue(widgetContents.contains("WinRtDelegateBridge.createUnitDelegate"))
+        assertTrue(widgetContents.contains("WinRtDelegateBridge.createDelegate"))
         assertTrue(widgetContents.contains("parameterKinds = listOf(WinRtDelegateValueKind.HSTRING)"))
+        assertTrue(widgetContents.contains("WinRtDelegateValueKind.UNIT"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
         assertTrue(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
@@ -1642,7 +1722,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun label(): String"))
         assertTrue(widgetContents.contains("ComVtableInvoker.invoke"))
         assertFalse(widgetContents.contains("invokeAbi("))
-        assertTrue(widgetContents.contains("return PlatformAbi.confinedScope().use { __scope ->"))
+        assertTrue(widgetContents.contains("PlatformAbi.confinedScope().use { __scope ->"))
         assertTrue(widgetContents.contains("HString.fromHandle("))
         assertTrue(widgetContents.contains("Metadata.LABEL_SLOT"))
         assertTrue(widgetContents.contains("Metadata.NAME_GETTER_SLOT"))
@@ -1944,14 +2024,21 @@ class KotlinProjectionGeneratorTest {
                     types = listOf(
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IStream",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("12345678-2222-3333-4444-555555555555"),
                             methods = listOf(
                                 WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction", methodRowId = 6),
                                 WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>", methodRowId = 7),
-                                WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>", methodRowId = 8),
-                                WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>", methodRowId = 9),
+                                WinRtMethodDefinition(name = "fetchStreamAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.IStream>", methodRowId = 8),
+                                WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>", methodRowId = 9),
+                                WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>", methodRowId = 10),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -1965,6 +2052,7 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction"),
                                 WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>"),
+                                WinRtMethodDefinition(name = "fetchStreamAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.IStream>"),
                                 WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>"),
                                 WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>"),
                             ),
@@ -1991,6 +2079,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtAsyncOperationVftblSlots.GetResults, __operationResultOut)"))
         assertTrue(widgetContents.contains("HString.fromHandle(PlatformAbi.readPointer(__operationResultOut), owner = true).use"))
         assertTrue(widgetContents.contains("it.toKString()"))
+        assertTrue(widgetContents.contains("fun fetchStreamAsync(): WinRtAsyncOperationReference<IStream>"))
+        assertTrue(widgetContents.contains("WinRtTypeSignature.guid(IStream.Metadata.IID)"))
+        assertTrue(widgetContents.contains("IStream.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(__operationResultOut))))"))
         assertTrue(widgetContents.contains("fun refreshWithProgressAsync(): WinRtAsyncActionWithProgressReference<Int>"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.interfaceId(WinRtTypeSignature.int32())"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(WinRtTypeSignature.int32())"))

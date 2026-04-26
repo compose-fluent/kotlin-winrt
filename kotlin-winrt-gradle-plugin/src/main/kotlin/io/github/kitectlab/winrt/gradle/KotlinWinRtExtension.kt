@@ -147,7 +147,7 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
                 "Microsoft.UI.Xaml.Automation.Peers.WebView",
             ),
         )
-        excludeNamespaces.add("Windows.UI.Xaml.Media.Animation")
+        excludeNamespaces.addAll(listOf("Windows", "Windows.UI.Xaml.Media.Animation"))
     }
 
     private fun setNuGetPackageVersion(packageId: String, version: String) {

@@ -26,14 +26,20 @@ private fun WinRtDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =
     when (this) {
         WinRtDelegateValueKind.UNIT,
         WinRtDelegateValueKind.BOOLEAN,
+        WinRtDelegateValueKind.INT8,
+        WinRtDelegateValueKind.UINT8,
+        WinRtDelegateValueKind.INT16,
+        WinRtDelegateValueKind.UINT16,
         WinRtDelegateValueKind.INT32,
         WinRtDelegateValueKind.UINT32,
+        WinRtDelegateValueKind.INT64,
+        WinRtDelegateValueKind.UINT64,
+        WinRtDelegateValueKind.FLOAT,
         WinRtDelegateValueKind.DOUBLE,
+        WinRtDelegateValueKind.CHAR16,
         WinRtDelegateValueKind.HSTRING,
         WinRtDelegateValueKind.OBJECT,
         WinRtDelegateValueKind.IUNKNOWN,
         WinRtDelegateValueKind.IINSPECTABLE,
         -> true
-
-        WinRtDelegateValueKind.INT64 -> false
     }

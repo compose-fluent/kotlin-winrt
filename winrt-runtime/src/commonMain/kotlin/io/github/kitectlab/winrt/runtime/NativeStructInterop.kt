@@ -49,6 +49,7 @@ enum class NativeStructScalarKind(
 ) {
     ADDRESS(8),
     INT8(1),
+    INT16(2),
     INT32(4),
     INT64(8),
     DOUBLE(8),

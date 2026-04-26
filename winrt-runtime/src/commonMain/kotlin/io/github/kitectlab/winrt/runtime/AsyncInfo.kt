@@ -633,10 +633,20 @@ private fun abiKindForDelegateValue(kind: WinRtDelegateValueKind): ComAbiValueKi
         WinRtDelegateValueKind.IUNKNOWN,
         WinRtDelegateValueKind.IINSPECTABLE,
         -> ComAbiValueKind.Pointer
+        WinRtDelegateValueKind.INT8,
+        WinRtDelegateValueKind.UINT8,
+        -> ComAbiValueKind.Int8
+        WinRtDelegateValueKind.INT16,
+        WinRtDelegateValueKind.UINT16,
+        WinRtDelegateValueKind.CHAR16,
+        -> ComAbiValueKind.Int16
         WinRtDelegateValueKind.INT32,
         WinRtDelegateValueKind.UINT32,
         -> ComAbiValueKind.Int32
-        WinRtDelegateValueKind.INT64 -> ComAbiValueKind.Int64
+        WinRtDelegateValueKind.INT64,
+        WinRtDelegateValueKind.UINT64,
+        -> ComAbiValueKind.Int64
+        WinRtDelegateValueKind.FLOAT -> ComAbiValueKind.Float
         WinRtDelegateValueKind.DOUBLE -> ComAbiValueKind.Double
     }
 
@@ -646,9 +656,15 @@ private fun delegateAbiWord(value: Any?): Long =
         is RawAddress -> value.value
         is RawComPtr -> value.value
         is Byte -> value.toLong()
+        is UByte -> value.toLong()
+        is Short -> value.toLong()
+        is UShort -> value.toLong()
         is Int -> value.toLong()
         is UInt -> value.toLong()
+        is Char -> value.code.toLong()
         is Long -> value
+        is ULong -> value.toLong()
+        is Float -> value.toRawBits().toLong()
         is Double -> value.toRawBits()
         else -> error("Unsupported encoded delegate ABI word: ${value::class.qualifiedName}")
     }

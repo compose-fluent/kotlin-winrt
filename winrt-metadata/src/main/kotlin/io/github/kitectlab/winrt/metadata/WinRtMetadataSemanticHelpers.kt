@@ -2010,7 +2010,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         ) {
             val abiTypeNames = operation.argumentIndexes.mapNotNull { index ->
                 sourceType.typeArguments.getOrNull(index)?.let { argument ->
-                    typeClassifier.classify(argument, currentNamespace).type.typeName
+                    renderAbiDelegateTypeName(argument, currentNamespace)
                 }
             }
             val escapedAbiTypes = abiTypeNames.map(::escapeTypeNameForIdentifier)
@@ -2082,8 +2082,11 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     ifRequired(arguments, 0, AbiDelegateOperation("invoke", listOf(0), AbiDelegateShape.EventHandler))
                 "IReference" ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get_Value", listOf(0), AbiDelegateShape.OutReturn))
-                "IMapChangedEventArgs", "IAsyncOperation", "IAsyncOperationWithProgress" ->
+                "IMapChangedEventArgs", "IAsyncOperation" ->
                     ifRequired(arguments, 0, AbiDelegateOperation("get", listOf(0), AbiDelegateShape.OutReturn))
+                "IAsyncOperationWithProgress" ->
+                    ifRequired(arguments, 0, AbiDelegateOperation("get", listOf(0), AbiDelegateShape.OutReturn)) +
+                        ifRequired(arguments, 1, AbiDelegateOperation("invoke", listOf(1), AbiDelegateShape.AsyncProgress))
                 "TypedEventHandler" -> {
                     if (arguments.getOrNull(0)?.isAbiDelegateRequired() == true || arguments.getOrNull(1)?.isAbiDelegateRequired() == true) {
                         listOf(AbiDelegateOperation("invoke", listOf(0, 1), AbiDelegateShape.TypedEventHandler))
@@ -2125,6 +2128,39 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 WinRtTypeRefKind.Array,
                 WinRtTypeRefKind.Unknown,
                 -> false
+            }
+        }
+
+        private fun renderAbiDelegateTypeName(type: WinRtTypeRef, currentNamespace: String): String {
+            val resolved = resolveTypeReference(type.normalized(), currentNamespace, typesByQualifiedName).type.normalized()
+            val descriptor = typeClassifier.classify(resolved, currentNamespace)
+            return when (descriptor.projectionCategory) {
+                WinRtProjectionCategory.Fundamental,
+                WinRtProjectionCategory.String,
+                -> when (descriptor.typeName) {
+                    "String" -> "IntPtr"
+                    "Boolean" -> "byte"
+                    "Char16" -> "ushort"
+                    else -> descriptor.typeName
+                }
+                WinRtProjectionCategory.Guid,
+                WinRtProjectionCategory.Enum,
+                WinRtProjectionCategory.Struct,
+                -> descriptor.type.typeName
+                WinRtProjectionCategory.Object,
+                WinRtProjectionCategory.Interface,
+                WinRtProjectionCategory.RuntimeClass,
+                WinRtProjectionCategory.Delegate,
+                WinRtProjectionCategory.Attribute,
+                WinRtProjectionCategory.Array,
+                -> "IntPtr"
+                WinRtProjectionCategory.Type,
+                WinRtProjectionCategory.ApiContract,
+                WinRtProjectionCategory.GenericTypeParameter,
+                WinRtProjectionCategory.MethodTypeParameter,
+                WinRtProjectionCategory.Unit,
+                WinRtProjectionCategory.Unknown,
+                -> descriptor.type.typeName
             }
         }
     }

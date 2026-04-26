@@ -422,6 +422,24 @@ actual object ComVtableInvoker {
         args: LongArray,
     ): Int = invokeCore(instance, slot, signature, args)
 
+    actual fun invokeGenericArgs(
+        instance: RawComPtr,
+        slot: Int,
+        vararg args: Any,
+    ): Int {
+        val kinds = args.map(::genericArgumentKind)
+        val words = args.map(::genericArgumentWord).toLongArray()
+        return invokeCore(
+            instance = instance,
+            slot = slot,
+            signature = ComMethodSignature(
+                resultKind = ComAbiValueKind.Int32,
+                explicitParameterKinds = kinds,
+            ),
+            words = words,
+        )
+    }
+
     internal actual fun createComMethodCallback(
         signature: ComMethodSignature,
         callback: (List<Any?>) -> Int,
@@ -611,8 +629,10 @@ private fun toJavaLayout(kind: ComAbiValueKind) =
     when (kind) {
         ComAbiValueKind.Pointer -> ValueLayout.ADDRESS
         ComAbiValueKind.Int8 -> ValueLayout.JAVA_BYTE
+        ComAbiValueKind.Int16 -> ValueLayout.JAVA_SHORT
         ComAbiValueKind.Int32 -> ValueLayout.JAVA_INT
         ComAbiValueKind.Int64 -> ValueLayout.JAVA_LONG
+        ComAbiValueKind.Float -> ValueLayout.JAVA_FLOAT
         ComAbiValueKind.Double -> ValueLayout.JAVA_DOUBLE
     }
 
@@ -620,8 +640,10 @@ private fun carrierClass(kind: ComAbiValueKind): Class<*> =
     when (kind) {
         ComAbiValueKind.Pointer -> MemorySegment::class.java
         ComAbiValueKind.Int8 -> Byte::class.javaPrimitiveType!!
+        ComAbiValueKind.Int16 -> Short::class.javaPrimitiveType!!
         ComAbiValueKind.Int32 -> Int::class.javaPrimitiveType!!
         ComAbiValueKind.Int64 -> Long::class.javaPrimitiveType!!
+        ComAbiValueKind.Float -> Float::class.javaPrimitiveType!!
         ComAbiValueKind.Double -> Double::class.javaPrimitiveType!!
     }
 
@@ -632,9 +654,47 @@ private fun toCarrier(
     when (kind) {
         ComAbiValueKind.Pointer -> asSegment(RawComPtr(word))
         ComAbiValueKind.Int8 -> word.toByte()
+        ComAbiValueKind.Int16 -> word.toShort()
         ComAbiValueKind.Int32 -> word.toInt()
         ComAbiValueKind.Int64 -> word
+        ComAbiValueKind.Float -> Float.fromBits(word.toInt())
         ComAbiValueKind.Double -> Double.fromBits(word)
+    }
+
+private fun genericArgumentKind(value: Any): ComAbiValueKind =
+    when (value) {
+        is RawAddress,
+        is RawComPtr -> ComAbiValueKind.Pointer
+        is Byte,
+        is UByte -> ComAbiValueKind.Int8
+        is Short,
+        is UShort,
+        is Char -> ComAbiValueKind.Int16
+        is Int,
+        is UInt -> ComAbiValueKind.Int32
+        is Long,
+        is ULong -> ComAbiValueKind.Int64
+        is Float -> ComAbiValueKind.Float
+        is Double -> ComAbiValueKind.Double
+        else -> error("Unsupported generic COM ABI argument type: ${value::class.simpleName}.")
+    }
+
+private fun genericArgumentWord(value: Any): Long =
+    when (value) {
+        is RawAddress -> value.value
+        is RawComPtr -> value.value
+        is Byte -> value.toLong()
+        is UByte -> value.toLong()
+        is Short -> value.toLong()
+        is UShort -> value.toLong()
+        is Int -> value.toLong()
+        is UInt -> value.toLong()
+        is Char -> value.code.toLong()
+        is Long -> value
+        is ULong -> value.toLong()
+        is Float -> value.toBits().toLong()
+        is Double -> value.toBits()
+        else -> error("Unsupported generic COM ABI argument type: ${value::class.simpleName}.")
     }
 
 private fun fromCarrier(
@@ -644,8 +704,10 @@ private fun fromCarrier(
     when (kind) {
         ComAbiValueKind.Pointer -> (value as MemorySegment).reinterpret(Long.MAX_VALUE).asRawAddress()
         ComAbiValueKind.Int8,
+        ComAbiValueKind.Int16,
         ComAbiValueKind.Int32,
         ComAbiValueKind.Int64,
+        ComAbiValueKind.Float,
         ComAbiValueKind.Double,
         -> value
     }

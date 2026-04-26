@@ -156,32 +156,32 @@ object MarshalBlittable {
 
     fun int16(): Marshaler<Short> = scalar(
         category = WinRtAbiCategory.BLITTABLE,
-        abiKind = NativeStructScalarKind.CHAR16,
+        abiKind = NativeStructScalarKind.INT16,
         toAbi = { it },
         fromAbi = { abi ->
             when (abi) {
                 is Short -> abi
                 is UShort -> abi.toShort()
-                is RawAddress -> PlatformAbi.readChar16(abi).code.toShort()
+                is RawAddress -> PlatformAbi.readInt16(abi)
                 else -> error("Expected ABI Int16, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> PlatformAbi.writeChar16(destination, value.toInt().toChar()) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt16(destination, value) },
     )
 
     fun uint16(): Marshaler<UShort> = scalar(
         category = WinRtAbiCategory.BLITTABLE,
-        abiKind = NativeStructScalarKind.CHAR16,
+        abiKind = NativeStructScalarKind.INT16,
         toAbi = { it.toShort() },
         fromAbi = { abi ->
             when (abi) {
                 is Short -> abi.toUShort()
                 is UShort -> abi
-                is RawAddress -> PlatformAbi.readChar16(abi).code.toUShort()
+                is RawAddress -> PlatformAbi.readInt16(abi).toUShort()
                 else -> error("Expected ABI UInt16, got '${abiTypeName(abi)}'.")
             }
         },
-        copyManaged = { value, destination -> PlatformAbi.writeChar16(destination, value.toInt().toChar()) },
+        copyManaged = { value, destination -> PlatformAbi.writeInt16(destination, value.toShort()) },
     )
 
     fun boolean(): Marshaler<Boolean> = scalar(
@@ -851,6 +851,7 @@ private fun writeZeroValue(
     when (abiKind) {
         NativeStructScalarKind.ADDRESS -> PlatformAbi.writePointer(destination, PlatformAbi.nullPointer)
         NativeStructScalarKind.INT8 -> PlatformAbi.writeInt8(destination, 0)
+        NativeStructScalarKind.INT16 -> PlatformAbi.writeInt16(destination, 0)
         NativeStructScalarKind.INT32 -> PlatformAbi.writeInt32(destination, 0)
         NativeStructScalarKind.INT64 -> PlatformAbi.writeInt64(destination, 0L)
         NativeStructScalarKind.DOUBLE -> PlatformAbi.writeDouble(destination, 0.0)

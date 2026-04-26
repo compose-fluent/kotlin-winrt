@@ -3,8 +3,10 @@ package io.github.kitectlab.winrt.runtime
 internal enum class ComAbiValueKind {
     Pointer,
     Int8,
+    Int16,
     Int32,
     Int64,
+    Float,
     Double,
 }
 

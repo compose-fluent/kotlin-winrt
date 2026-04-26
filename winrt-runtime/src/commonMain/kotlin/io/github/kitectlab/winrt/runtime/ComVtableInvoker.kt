@@ -199,6 +199,12 @@ expect object ComVtableInvoker {
         arg5: Int,
     ): Int
 
+    fun invokeGenericArgs(
+        instance: RawComPtr,
+        slot: Int,
+        vararg args: Any,
+    ): Int
+
     internal fun invokeGeneric(
         instance: RawComPtr,
         slot: Int,

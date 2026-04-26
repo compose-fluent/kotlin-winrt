@@ -70,12 +70,27 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.BOOLEAN ->
                 PlatformAbi.allocateInt8Slot(scope)
 
+            WinRtDelegateValueKind.INT8,
+            WinRtDelegateValueKind.UINT8,
+            -> PlatformAbi.allocateInt8Slot(scope)
+
+            WinRtDelegateValueKind.INT16,
+            WinRtDelegateValueKind.UINT16,
+            WinRtDelegateValueKind.CHAR16 ->
+                PlatformAbi.allocateBytes(scope, 2)
+
             WinRtDelegateValueKind.INT32,
             WinRtDelegateValueKind.UINT32,
             -> PlatformAbi.allocateInt32Slot(scope)
 
             WinRtDelegateValueKind.INT64 ->
                 PlatformAbi.allocateInt64Slot(scope)
+
+            WinRtDelegateValueKind.UINT64 ->
+                PlatformAbi.allocateInt64Slot(scope)
+
+            WinRtDelegateValueKind.FLOAT ->
+                PlatformAbi.allocateBytes(scope, 4)
 
             WinRtDelegateValueKind.DOUBLE ->
                 PlatformAbi.allocateDoubleSlot(scope)
@@ -101,10 +116,17 @@ internal object WinRtDelegateAbiMarshaller {
             }
 
             WinRtDelegateValueKind.BOOLEAN -> PlatformAbi.readInt8(resultOut).toInt() != 0
+            WinRtDelegateValueKind.INT8 -> PlatformAbi.readInt8(resultOut)
+            WinRtDelegateValueKind.UINT8 -> PlatformAbi.readInt8(resultOut).toUByte()
+            WinRtDelegateValueKind.INT16 -> PlatformAbi.readInt16(resultOut)
+            WinRtDelegateValueKind.UINT16 -> PlatformAbi.readInt16(resultOut).toUShort()
             WinRtDelegateValueKind.INT32 -> PlatformAbi.readInt32(resultOut)
             WinRtDelegateValueKind.UINT32 -> PlatformAbi.readInt32(resultOut).toUInt()
             WinRtDelegateValueKind.INT64 -> PlatformAbi.readInt64(resultOut)
+            WinRtDelegateValueKind.UINT64 -> PlatformAbi.readInt64(resultOut).toULong()
+            WinRtDelegateValueKind.FLOAT -> PlatformAbi.readFloat(resultOut)
             WinRtDelegateValueKind.DOUBLE -> PlatformAbi.readDouble(resultOut)
+            WinRtDelegateValueKind.CHAR16 -> PlatformAbi.readInt16(resultOut).toInt().toChar()
             WinRtDelegateValueKind.HSTRING -> {
                 val handle = PlatformAbi.readPointer(resultOut)
                 if (PlatformAbi.isNull(handle)) {
@@ -126,10 +148,17 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.IUNKNOWN -> PlatformAbi.writePointer(resultOut, encodeUnknownReference(value))
             WinRtDelegateValueKind.IINSPECTABLE -> PlatformAbi.writePointer(resultOut, encodeInspectableReference(value))
             WinRtDelegateValueKind.BOOLEAN -> PlatformAbi.writeInt8(resultOut, encodeBoolean(value))
+            WinRtDelegateValueKind.INT8 -> PlatformAbi.writeInt8(resultOut, encodeInt8(value))
+            WinRtDelegateValueKind.UINT8 -> PlatformAbi.writeInt8(resultOut, encodeUInt8(value))
+            WinRtDelegateValueKind.INT16 -> PlatformAbi.writeInt16(resultOut, encodeInt16(value))
+            WinRtDelegateValueKind.UINT16 -> PlatformAbi.writeInt16(resultOut, encodeUInt16(value))
             WinRtDelegateValueKind.INT32 -> PlatformAbi.writeInt32(resultOut, encodeInt32(value))
             WinRtDelegateValueKind.UINT32 -> PlatformAbi.writeInt32(resultOut, encodeUInt32(value))
             WinRtDelegateValueKind.INT64 -> PlatformAbi.writeInt64(resultOut, encodeInt64(value))
+            WinRtDelegateValueKind.UINT64 -> PlatformAbi.writeInt64(resultOut, encodeUInt64(value))
+            WinRtDelegateValueKind.FLOAT -> PlatformAbi.writeFloat(resultOut, encodeFloat(value))
             WinRtDelegateValueKind.DOUBLE -> PlatformAbi.writeDouble(resultOut, encodeDouble(value))
+            WinRtDelegateValueKind.CHAR16 -> PlatformAbi.writeInt16(resultOut, encodeChar16(value))
             WinRtDelegateValueKind.HSTRING -> PlatformAbi.writePointer(resultOut, encodeHStringValue(value))
         }
     }
@@ -141,10 +170,17 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.IUNKNOWN -> decodeUnknownReference(abiValue)
             WinRtDelegateValueKind.IINSPECTABLE -> decodeInspectableReference(abiValue)
             WinRtDelegateValueKind.BOOLEAN -> decodeBoolean(abiValue)
+            WinRtDelegateValueKind.INT8 -> decodeInt8(abiValue)
+            WinRtDelegateValueKind.UINT8 -> decodeUInt8(abiValue)
+            WinRtDelegateValueKind.INT16 -> decodeInt16(abiValue)
+            WinRtDelegateValueKind.UINT16 -> decodeUInt16(abiValue)
             WinRtDelegateValueKind.INT32 -> decodeInt32(abiValue)
             WinRtDelegateValueKind.UINT32 -> decodeUInt32(abiValue)
             WinRtDelegateValueKind.INT64 -> decodeInt64(abiValue)
+            WinRtDelegateValueKind.UINT64 -> decodeUInt64(abiValue)
+            WinRtDelegateValueKind.FLOAT -> decodeFloat(abiValue)
             WinRtDelegateValueKind.DOUBLE -> decodeDouble(abiValue)
+            WinRtDelegateValueKind.CHAR16 -> decodeChar16(abiValue)
             WinRtDelegateValueKind.HSTRING -> decodeHString(abiValue)
         }
 
@@ -162,10 +198,17 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.IUNKNOWN -> encodeUnknownReference(abiValue)
             WinRtDelegateValueKind.IINSPECTABLE -> encodeInspectableReference(abiValue)
             WinRtDelegateValueKind.BOOLEAN -> encodeBoolean(abiValue)
+            WinRtDelegateValueKind.INT8 -> encodeInt8(abiValue)
+            WinRtDelegateValueKind.UINT8 -> encodeUInt8(abiValue)
+            WinRtDelegateValueKind.INT16 -> encodeInt16(abiValue)
+            WinRtDelegateValueKind.UINT16 -> encodeUInt16(abiValue)
             WinRtDelegateValueKind.INT32 -> encodeInt32(abiValue)
             WinRtDelegateValueKind.UINT32 -> encodeUInt32(abiValue)
             WinRtDelegateValueKind.INT64 -> encodeInt64(abiValue)
+            WinRtDelegateValueKind.UINT64 -> encodeUInt64(abiValue)
+            WinRtDelegateValueKind.FLOAT -> encodeFloat(abiValue)
             WinRtDelegateValueKind.DOUBLE -> encodeDouble(abiValue)
+            WinRtDelegateValueKind.CHAR16 -> encodeChar16(abiValue)
             WinRtDelegateValueKind.HSTRING -> encodeHStringArgument(abiValue, cleanup)
         }
 
@@ -199,6 +242,32 @@ internal object WinRtDelegateAbiMarshaller {
         else -> error("Unsupported ABI boolean argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
+    private fun decodeInt8(abiValue: Any?): Byte = when (abiValue) {
+        is Byte -> abiValue
+        is Int -> abiValue.toByte()
+        else -> error("Unsupported ABI int8 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun decodeUInt8(abiValue: Any?): UByte = when (abiValue) {
+        is UByte -> abiValue
+        is Byte -> abiValue.toUByte()
+        is Int -> abiValue.toUByte()
+        else -> error("Unsupported ABI uint8 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun decodeInt16(abiValue: Any?): Short = when (abiValue) {
+        is Short -> abiValue
+        is Int -> abiValue.toShort()
+        else -> error("Unsupported ABI int16 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun decodeUInt16(abiValue: Any?): UShort = when (abiValue) {
+        is UShort -> abiValue
+        is Short -> abiValue.toUShort()
+        is Int -> abiValue.toUShort()
+        else -> error("Unsupported ABI uint16 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
     private fun decodeInt32(abiValue: Any?): Int = when (abiValue) {
         is Int -> abiValue
         is Long -> abiValue.toInt()
@@ -218,10 +287,30 @@ internal object WinRtDelegateAbiMarshaller {
         else -> error("Unsupported ABI int64 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
+    private fun decodeUInt64(abiValue: Any?): ULong = when (abiValue) {
+        is ULong -> abiValue
+        is Long -> abiValue.toULong()
+        is Int -> abiValue.toULong()
+        else -> error("Unsupported ABI uint64 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun decodeFloat(abiValue: Any?): Float = when (abiValue) {
+        is Float -> abiValue
+        is Double -> abiValue.toFloat()
+        else -> error("Unsupported ABI float argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
     private fun decodeDouble(abiValue: Any?): Double = when (abiValue) {
         is Double -> abiValue
         is Float -> abiValue.toDouble()
         else -> error("Unsupported ABI double argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun decodeChar16(abiValue: Any?): Char = when (abiValue) {
+        is Char -> abiValue
+        is Short -> abiValue.toInt().toChar()
+        is Int -> abiValue.toChar()
+        else -> error("Unsupported ABI char16 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
     private fun decodeHString(abiValue: Any?): String? = when (abiValue) {
@@ -286,6 +375,32 @@ internal object WinRtDelegateAbiMarshaller {
         else -> error("Unsupported outbound ABI boolean argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
+    private fun encodeInt8(abiValue: Any?): Byte = when (abiValue) {
+        is Byte -> abiValue
+        is Int -> abiValue.toByte()
+        else -> error("Unsupported outbound ABI int8 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun encodeUInt8(abiValue: Any?): Byte = when (abiValue) {
+        is UByte -> abiValue.toByte()
+        is Byte -> abiValue
+        is Int -> abiValue.toByte()
+        else -> error("Unsupported outbound ABI uint8 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun encodeInt16(abiValue: Any?): Short = when (abiValue) {
+        is Short -> abiValue
+        is Int -> abiValue.toShort()
+        else -> error("Unsupported outbound ABI int16 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun encodeUInt16(abiValue: Any?): Short = when (abiValue) {
+        is UShort -> abiValue.toShort()
+        is Short -> abiValue
+        is Int -> abiValue.toShort()
+        else -> error("Unsupported outbound ABI uint16 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
     private fun encodeInt32(abiValue: Any?): Int = when (abiValue) {
         is Int -> abiValue
         is Long -> abiValue.toInt()
@@ -305,10 +420,30 @@ internal object WinRtDelegateAbiMarshaller {
         else -> error("Unsupported outbound ABI int64 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
+    private fun encodeUInt64(abiValue: Any?): Long = when (abiValue) {
+        is ULong -> abiValue.toLong()
+        is Long -> abiValue
+        is Int -> abiValue.toLong()
+        else -> error("Unsupported outbound ABI uint64 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun encodeFloat(abiValue: Any?): Float = when (abiValue) {
+        is Float -> abiValue
+        is Double -> abiValue.toFloat()
+        else -> error("Unsupported outbound ABI float argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
     private fun encodeDouble(abiValue: Any?): Double = when (abiValue) {
         is Double -> abiValue
         is Float -> abiValue.toDouble()
         else -> error("Unsupported outbound ABI double argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
+    }
+
+    private fun encodeChar16(abiValue: Any?): Short = when (abiValue) {
+        is Char -> abiValue.code.toShort()
+        is Short -> abiValue
+        is Int -> abiValue.toShort()
+        else -> error("Unsupported outbound ABI char16 argument: ${abiValue?.let { it::class.qualifiedName } ?: "null"}")
     }
 
     private fun encodeHStringArgument(
@@ -351,12 +486,27 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.BOOLEAN ->
                 ComAbiValueKind.Int8
 
+            WinRtDelegateValueKind.INT8,
+            WinRtDelegateValueKind.UINT8,
+            -> ComAbiValueKind.Int8
+
+            WinRtDelegateValueKind.INT16,
+            WinRtDelegateValueKind.UINT16,
+            WinRtDelegateValueKind.CHAR16 ->
+                ComAbiValueKind.Int16
+
             WinRtDelegateValueKind.INT32,
             WinRtDelegateValueKind.UINT32,
             -> ComAbiValueKind.Int32
 
             WinRtDelegateValueKind.INT64 ->
                 ComAbiValueKind.Int64
+
+            WinRtDelegateValueKind.UINT64 ->
+                ComAbiValueKind.Int64
+
+            WinRtDelegateValueKind.FLOAT ->
+                ComAbiValueKind.Float
 
             WinRtDelegateValueKind.DOUBLE ->
                 ComAbiValueKind.Double

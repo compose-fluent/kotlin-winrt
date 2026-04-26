@@ -15,7 +15,7 @@
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] Runtime follow-up: vtable invocation now includes the `Double, Double, out Double` ABI shape needed by `.cswinrt/src/Samples/NetProjectionSample` `SimpleMath.add/subtract/multiply/divide`.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
-- [x] `winrt-generator` baseline is closed for the current `.cswinrt/src/cswinrt` audit: declarations, ABI-bound members, activation, generic/event/type-shape support helpers, and SDK CLI generation.
+- [ ] `winrt-generator` is reopened: declaration/member shells exist, but ABI marshaling and generic/delegate instantiation are not yet fully aligned with `.cswinrt/src/cswinrt/code_writers.h`.
 - [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
 - [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and `winRt {}` library/application identity handling.
 - [ ] `winrt-samples` is intentionally minimal until generator/projection/plugin support expands.
@@ -47,11 +47,11 @@
 - [x] Queue 13.2: application model resolves transitive `kotlin-winrt` identity JSON artifacts and writes an aggregate for runtime/resource staging.
 - [x] Queue 13.3: application model stages NuGet runtime DLLs from package identities and keeps WindowsAppSDK framework PRI/header staging scoped to WindowsAppSDK packages.
 - [x] Queue 13.4: plugin application model wires staged runtime assets into Java resources and Gradle application distributions without sample-specific system properties.
-- [ ] Queue 14 正在做: expand `winrt-projections` only with deterministic generator/plugin-produced output.
+- [ ] Queue 14 正在做: expand `winrt-projections` only after the reopened generator ABI parity queue below is closed.
 - [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt` and generate deterministic WinRT sources from Windows SDK metadata.
 - [x] Queue 14.2: remove direct Kotlin Gradle Plugin runtime class dependency from the plugin so generated-source wiring works in published/TestKit plugin classloaders.
 - [x] Queue 14.3: `winrt-projections` now consumes `io.github.kitectlab.winrt` from the root `pluginManagement` included build and compiles the plugin-generated `Windows.Foundation.IStringable` slice.
-- [ ] Queue 15 正在做: expand `winrt-samples` from cswinrt-aligned API samples, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
+- [ ] Queue 15 正在做: keep samples as validation only; do not use WindowsAppSDK failures to design generator behavior.
 - [x] Queue 15.1: `winrt-samples` is now a `winRt { application {} }` consumer with a cswinrt `ApiCompatTests`-aligned `Windows.Data.Json.JsonObject.Parse` sample shape; native execution is opt-in until JSON ABI stability, `GetNamedValue("phone")` nullable object-return, and `GetNamedArray("education")` collection parity land upstream.
 - [x] Queue 15.2: sample-side plugin graph validation now makes `winrt-samples:check` verify generated application identity includes `winrt-projections` metadata and excludes ordinary runtime implementation dependencies.
 - [x] Queue 15.3: `winrt-samples` now has opt-in WindowsAppSDK split-package declarations via `kotlinWinRt.samples.windowsAppSdkWinuiVersion`; default checks stay offline/lightweight while explicit identity validation proves Foundation/InteractiveExperiences/WinUI metadata is recorded.
@@ -65,6 +65,14 @@
 - [x] Support helper output now exposes callable Kotlin APIs instead of passive descriptor-only lists.
 - [x] Activatable runtime-class `create()` generation now calls the generated activation factory path.
 - [x] Plugin/projection integration now wires generated sources into `winrt-projections` through the included plugin build before broad checked-in projection growth.
+- [x] Generator ABI 1: generator call planning now carries metadata parameter categories and uses the `In/Ref/Out/PassArray/FillArray/ReceiveArray` model as the ABI-shape input.
+- [x] Generator ABI 2: `WinRtAbiMarshalerPlanDescriptor` is now threaded into parameter/return call planning; array pass/fill/receive ABI arguments use descriptor categories.
+- [x] Generator ABI 3: generic ABI delegate inventory now renders ABI type names and covers `.cswinrt` progress-handler discovery for `IAsyncOperationWithProgress`.
+- [x] Generator ABI 4: generated generic type-instantiation support now initializes dependency closures recursively instead of one flat pass.
+- [x] Generator ABI 5: delegate emission now covers scalar/enum/object/interface async and non-Unit callback returns through runtime delegate descriptors.
+- [x] Generator ABI 6: array and nullable/reference ABI now covers scalar/enum/struct buffers, runtime marshaler-backed string/object/interface arrays, and `IReference/IReferenceArray` PIID generation.
+- [x] Generator ABI 7: struct ABI now uses corrected 16-bit layout, mapped Foundation/Numerics struct aliases, nested blittable struct layout, and rejects non-blittable struct metadata companions instead of generating invalid `.Metadata` calls.
+- [x] Generator ABI 8: WindowsAppSDK generation validation passes for the configured Foundation/InteractiveExperiences/WinUI package set; projection/sample expansion can continue from generated output.
 - [ ] Namespace additions from `.cswinrt/src/cswinrt/strings` remain plugin/projection integration work and should only be generated for surfaces that need them.
 
 ## Sample Plan
@@ -76,6 +84,7 @@
 - [x] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
 - [x] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style `SimpleMath().add(5.5, 6.5)` sample, generate `SimpleMathComponent` projection from the real component WinMD, and stage the local component DLL from `winrt-projections` library identity.
 - [ ] Sample 7 正在做: add a real `.cswinrt/src/Samples/WinUIDesktopSample` smoke only after `Microsoft.UI.Xaml` projections are generated and callable: `Application.Start`, `Window.Activate`, `Button.Click`, `MainPage`, and `UIElement.TappedEvent` must use generated WinUI projection classes, not sample-local fakes.
+- [ ] Sample 7.1 正在做: WindowsAppSDK generation is blocked on generator ABI parity, not on sample-local fixes; filter follows `.cswinrt/src/Projections/WinAppSDK` and plugin dependency closure.
 - [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.
 - [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
 - [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
@@ -93,7 +102,7 @@
 
 ## Frozen Until Prerequisites Close
 
-- [ ] `winrt-projections`: no broad checked-in growth until Queue 11 generator support exists for the same surface.
+- [ ] `winrt-projections`: no broad checked-in growth until Generator ABI 1-8 exists for the same surface.
 - [ ] `winrt-samples`: no broad WinUI/sample expansion until generated projections and plugin resource handling exist.
 - [ ] `winrt-authoring`: no hosting/source-generation work until generator/projection/sample path is stable.
 - [ ] `mingwX64`: keep shared contracts viable, but full native parity planning starts after the JVM generator/projection/plugin path is coherent.
@@ -128,6 +137,9 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11-support --namespace Windows.Foundation --namespace Windows.Foundation.Collections'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-projections:compileKotlin`
 - [x] `./.agent_scripts/run_windows_gradle.sh validateWinRtQueue16 --no-configuration-cache`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test --no-configuration-cache --no-daemon --max-workers=1 -Dkotlin.incremental=false -Dorg.gradle.jvmargs='-Xmx1024m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=2 -XX:-UseCompressedOops -XX:MaxDirectMemorySize=256m -Dfile.encoding=UTF-8'`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-runtime:jvmTest :winrt-generator:test --no-configuration-cache --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx768m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=2 -XX:-UseCompressedOops -XX:MaxDirectMemorySize=256m -Dfile.encoding=UTF-8'`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-samples:generateWinRtProjections -PkotlinWinRt.samples.windowsAppSdkWinuiVersion=1.8.251105000 -PkotlinWinRt.samples.windowsAppSdkFoundationVersion=1.8.251104000 -PkotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion=1.8.251104001 --no-configuration-cache --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx1024m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=2 -XX:-UseCompressedOops -XX:MaxDirectMemorySize=256m -Dfile.encoding=UTF-8'`
 - [x] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
 - [x] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
 - [x] For plugin work, add task-level tests for SDK source resolution, NuGet graph resolution, generated-source wiring, and application resource staging.

@@ -7,11 +7,15 @@ internal object ComAbiWord {
 
     fun int8(value: Byte): Long = value.toLong()
 
+    fun int16(value: Short): Long = value.toLong()
+
     fun int32(value: Int): Long = value.toLong()
 
     fun uint32(value: UInt): Long = value.toLong() and 0xFFFF_FFFFL
 
     fun int64(value: Long): Long = value
+
+    fun float(value: Float): Long = value.toRawBits().toLong()
 
     fun double(value: Double): Long = value.toRawBits()
 
@@ -35,6 +39,15 @@ internal object ComAbiWord {
                     else -> error("Expected int8-compatible ABI value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
                 }
 
+            ComAbiValueKind.Int16 ->
+                when (value) {
+                    is Short -> int16(value)
+                    is UShort -> int16(value.toShort())
+                    is Char -> int16(value.code.toShort())
+                    is Int -> int16(value.toShort())
+                    else -> error("Expected int16-compatible ABI value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+                }
+
             ComAbiValueKind.Int32 ->
                 when (value) {
                     is Int -> int32(value)
@@ -48,6 +61,12 @@ internal object ComAbiWord {
                     is ULong -> int64(value.toLong())
                     is Int -> int64(value.toLong())
                     else -> error("Expected int64-compatible ABI value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+                }
+
+            ComAbiValueKind.Float ->
+                when (value) {
+                    is Float -> float(value)
+                    else -> error("Expected float-compatible ABI value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
                 }
 
             ComAbiValueKind.Double ->

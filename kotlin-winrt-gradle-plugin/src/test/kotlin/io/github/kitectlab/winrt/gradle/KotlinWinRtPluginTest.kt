@@ -41,7 +41,7 @@ class KotlinWinRtPluginTest {
         assertTrue("Windows.Foundation.IStringable" in task.includeTypes.get())
         assertTrue("Windows.UI.Xaml.Interop.Type" in task.includeTypes.get())
         assertEquals(
-            listOf("Sample.Hidden", "Windows.UI.Xaml.Media.Animation"),
+            listOf("Sample.Hidden", "Windows", "Windows.UI.Xaml.Media.Animation"),
             task.excludeNamespaces.get(),
         )
         assertTrue("Microsoft.UI.Xaml.Controls.WebView2" in task.excludeTypes.get())
@@ -142,7 +142,7 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
         assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
-        assertTrue(json.contains("\"excludeNamespaces\": [\"Windows.UI.Xaml.Media.Animation\"]"))
+        assertTrue(json.contains("\"excludeNamespaces\": [\"Windows\", \"Windows.UI.Xaml.Media.Animation\"]"))
         assertTrue(json.contains("\"excludeTypes\": [\"Microsoft.UI.Xaml.Controls.WebView2\""))
         assertTrue(json.contains("\"version\": \"10.0.26100.0\""))
         assertTrue(json.contains("\"includeExtensions\": true"))
