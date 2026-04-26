@@ -2,6 +2,7 @@ package io.github.kitectlab.winrt.metadata
 
 data class WinRtMetadataProjectionInventory(
     val namespaces: List<WinRtNamespaceProjectionInventory>,
+    val namespaceAdditions: List<WinRtNamespaceAddition>,
     val baseTypeMappings: List<WinRtBaseTypeMapping>,
     val eventSourceMappings: List<WinRtEventSourceMapping>,
     val authoredMetadataTypeMappings: List<WinRtAuthoredMetadataTypeMapping>,
@@ -22,6 +23,7 @@ data class WinRtProjectionHelperOutputInventory(
     val authoringMetadataTypeMappingHelperRequired: Boolean,
     val baseStringHelpersRequired: Boolean,
     val comInteropHelpersRequired: Boolean,
+    val namespaceAdditionsRequired: Boolean,
 ) {
     val requiredHelperFileNames: List<String>
         get() = buildList {
@@ -30,7 +32,38 @@ data class WinRtProjectionHelperOutputInventory(
             if (abiDelegateInitializerRequired) add("WinRTAbiDelegateInitializer.cs")
             if (genericTypeInstantiationsHelperRequired) add("WinRTGenericTypeInstantiations.cs")
             if (authoringMetadataTypeMappingHelperRequired) add("AuthoringMetadataTypeMappingHelper.cs")
+            if (namespaceAdditionsRequired) add("WinRTNamespaceAdditions.kt")
         }
+}
+
+data class WinRtNamespaceAddition(
+    val namespace: String,
+)
+
+object WinRtNamespaceAdditions {
+    val all: List<WinRtNamespaceAddition> = listOf(
+        WinRtNamespaceAddition("Microsoft.UI.Xaml"),
+        WinRtNamespaceAddition("Microsoft.UI.Xaml.Controls.Primitives"),
+        WinRtNamespaceAddition("Microsoft.UI.Xaml.Media"),
+        WinRtNamespaceAddition("Microsoft.UI.Xaml.Media.Animation"),
+        WinRtNamespaceAddition("Microsoft.UI.Xaml.Media.Media3D"),
+        WinRtNamespaceAddition("Windows.Foundation"),
+        WinRtNamespaceAddition("Windows.Storage"),
+        WinRtNamespaceAddition("Windows.Storage.Streams"),
+        WinRtNamespaceAddition("Windows.UI"),
+        WinRtNamespaceAddition("Windows.UI.Xaml"),
+        WinRtNamespaceAddition("Windows.UI.Xaml.Controls.Primitives"),
+        WinRtNamespaceAddition("Windows.UI.Xaml.Media"),
+        WinRtNamespaceAddition("Windows.UI.Xaml.Media.Animation"),
+        WinRtNamespaceAddition("Windows.UI.Xaml.Media.Media3D"),
+    ).sortedBy(WinRtNamespaceAddition::namespace)
+
+    fun forNamespaces(namespaces: Iterable<String>, filter: WinRtMetadataFilter): List<WinRtNamespaceAddition> {
+        val namespaceSet = namespaces.toSet()
+        return all.filter { addition ->
+            addition.namespace in namespaceSet && filter.includes(addition.namespace)
+        }
+    }
 }
 
 data class WinRtNamespaceProjectionInventory(
@@ -104,8 +137,13 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
         }
         val genericAbiInventory = helpers.genericAbiInventory(context)
         val projectionFileWritten = namespaces.any(WinRtNamespaceProjectionInventory::projectionFileWritten)
+        val namespaceAdditions = WinRtNamespaceAdditions.forNamespaces(
+            namespaces.map(WinRtNamespaceProjectionInventory::namespace),
+            context.additionFilter,
+        )
         return WinRtMetadataProjectionInventory(
             namespaces = namespaces,
+            namespaceAdditions = namespaceAdditions,
             baseTypeMappings = baseTypeMappings.values.sortedBy(WinRtBaseTypeMapping::typeName),
             eventSourceMappings = eventSourceMappings.values.sortedBy(WinRtEventSourceMapping::eventTypeName),
             authoredMetadataTypeMappings = authoredMetadataTypeMappings.values.sortedBy(WinRtAuthoredMetadataTypeMapping::projectedTypeName),
@@ -123,6 +161,7 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
                 authoringMetadataTypeMappingHelperRequired = context.component && authoredMetadataTypeMappings.isNotEmpty(),
                 baseStringHelpersRequired = projectionFileWritten,
                 comInteropHelpersRequired = projectionFileWritten && context.filter.includes("Windows"),
+                namespaceAdditionsRequired = namespaceAdditions.isNotEmpty(),
             ),
         )
     }

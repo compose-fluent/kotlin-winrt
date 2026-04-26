@@ -16,6 +16,7 @@ interface BaseWinRtExtension {
     val includeTypes: ListProperty<String>
     val excludeNamespaces: ListProperty<String>
     val excludeTypes: ListProperty<String>
+    val additionExcludeNamespaces: ListProperty<String>
     val metadataInputs: ListProperty<String>
     val windowsSdkVersion: Property<String>
     val includeWindowsSdkExtensions: Property<Boolean>
@@ -34,6 +35,8 @@ interface BaseWinRtExtension {
     fun excludeNamespace(name: String)
 
     fun excludeType(name: String)
+
+    fun excludeAdditionNamespace(name: String)
 
     fun winmd(input: Any)
 
@@ -59,6 +62,7 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
     override val includeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val excludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val excludeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val additionExcludeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
     override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
     override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
@@ -89,6 +93,10 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
 
     override fun excludeType(name: String) {
         excludeTypes.add(name)
+    }
+
+    override fun excludeAdditionNamespace(name: String) {
+        additionExcludeNamespaces.add(name)
     }
 
     override fun winmd(input: Any) {

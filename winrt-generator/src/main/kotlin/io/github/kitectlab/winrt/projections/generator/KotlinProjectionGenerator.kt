@@ -6412,6 +6412,7 @@ class KotlinProjectionGenerator(
     private val renderer: KotlinProjectionRenderer = KotlinProjectionRenderer(),
     private val supportRenderer: KotlinProjectionSupportRenderer = KotlinProjectionSupportRenderer(),
     private val emitSupportFiles: Boolean = false,
+    private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
 ) {
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = model.normalized()
@@ -6420,7 +6421,7 @@ class KotlinProjectionGenerator(
         if (!emitSupportFiles) {
             return projectionFiles
         }
-        return projectionFiles + supportRenderer.render(normalizedModel, plans)
+        return projectionFiles + supportRenderer.render(normalizedModel, plans, projectionContext)
     }
 }
 
@@ -6428,8 +6429,8 @@ class KotlinProjectionSupportRenderer {
     fun render(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
+        context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
     ): List<KotlinProjectionFile> {
-        val context = WinRtMetadataProjectionContext(sources = emptyList())
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
@@ -6439,6 +6440,7 @@ class KotlinProjectionSupportRenderer {
             renderEventProjectionHelpers(model, inventory),
             renderAbiImplementationPlan(plans),
             renderTypeShapeWriterPlan(inventory, plans),
+            renderNamespaceAdditions(inventory),
         )
     }
 
@@ -6737,6 +6739,37 @@ class KotlinProjectionSupportRenderer {
             appendLine("}")
         }
         return supportFile("WinRTTypeShapeWriterPlan.kt", contents)
+    }
+
+    private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
+        if (inventory.namespaceAdditions.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTNamespaceAdditions")
+            appendLine("internal data class NamespaceAdditionEntry(")
+            appendLine("    val namespace: String,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTNamespaceAdditions {")
+            appendLine("    val ENTRIES: List<NamespaceAdditionEntry> = listOf(")
+            inventory.namespaceAdditions.forEach { addition ->
+                appendLine("        NamespaceAdditionEntry(")
+                appendLine("            namespace = ${addition.namespace.kotlinString()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("    val ENTRIES_BY_NAMESPACE: Map<String, NamespaceAdditionEntry> = ENTRIES.associateBy { it.namespace }")
+            appendLine()
+            appendLine("    fun entryForNamespace(namespace: String): NamespaceAdditionEntry? =")
+            appendLine("        ENTRIES_BY_NAMESPACE[namespace]")
+            appendLine()
+            appendLine("    fun installNamespaceAdditions(install: (NamespaceAdditionEntry) -> Unit) {")
+            appendLine("        ENTRIES.forEach(install)")
+            appendLine("    }")
+            appendLine("}")
+        }
+        return supportFile("WinRTNamespaceAdditions.kt", contents)
     }
 
     private fun supportFile(fileName: String, contents: String): KotlinProjectionFile =

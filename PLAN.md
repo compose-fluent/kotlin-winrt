@@ -73,7 +73,7 @@
 - [x] Generator ABI 6: array and nullable/reference ABI now covers scalar/enum/struct buffers, runtime marshaler-backed string/object/interface arrays, and `IReference/IReferenceArray` PIID generation.
 - [x] Generator ABI 7: struct ABI now uses corrected 16-bit layout, mapped Foundation/Numerics struct aliases, nested blittable struct layout, and rejects non-blittable struct metadata companions instead of generating invalid `.Metadata` calls.
 - [x] Generator ABI 8: WindowsAppSDK generation validation passes for the configured Foundation/InteractiveExperiences/WinUI package set; projection/sample expansion can continue from generated output.
-- [ ] Namespace additions from `.cswinrt/src/cswinrt/strings` remain plugin/projection integration work and should only be generated for surfaces that need them.
+- [x] Namespace additions from `.cswinrt/src/cswinrt/strings` are now modeled at namespace level, flow through generator support handoffs and Gradle identity metadata, and keep `.cswinrt` `addition_exclude` semantics without treating C# addition files as Kotlin projection inputs.
 
 ## Sample Plan
 

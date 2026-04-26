@@ -1784,6 +1784,48 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun projection_inventory_tracks_cswinrt_namespace_additions_for_generated_namespaces() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "AsyncStatus", kind = WinRtTypeKind.Enum),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media.Animation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media.Animation",
+                            name = "Timeline",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Widget", kind = WinRtTypeKind.RuntimeClass),
+                    ),
+                ),
+            ),
+        )
+
+        val inventory = model.projectionInventory(
+            WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                include = setOf("Windows.Foundation", "Microsoft.UI.Xaml"),
+                additionExclude = setOf("Microsoft.UI.Xaml.Media.Animation"),
+            ),
+        )
+
+        assertEquals(listOf("Windows.Foundation"), inventory.namespaceAdditions.map { it.namespace })
+        assertEquals(true, inventory.helperOutputs.namespaceAdditionsRequired)
+        assertTrue("WinRTNamespaceAdditions.kt" in inventory.helperOutputs.requiredHelperFileNames)
+    }
+
+    @Test
     fun projection_helper_outputs_follow_cswinrt_target_and_filter_conditions() {
         val model = WinRtMetadataModel(
             listOf(

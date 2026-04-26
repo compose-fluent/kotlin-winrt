@@ -21,6 +21,7 @@ class KotlinWinRtPluginTest {
         extension.type("Windows.Foundation.IStringable")
         extension.excludeNamespace("Sample.Hidden")
         extension.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
+        extension.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
         extension.winmd("sdk+")
         extension.windowsSdk("10.0.26100.0", includeExtensions = true)
         extension.nugetExecutable.set("nuget.exe")
@@ -46,6 +47,7 @@ class KotlinWinRtPluginTest {
         )
         assertTrue("Microsoft.UI.Xaml.Controls.WebView2" in task.excludeTypes.get())
         assertTrue("Microsoft.UI.Xaml.Controls.IWebView" in task.excludeTypes.get())
+        assertEquals(listOf("Microsoft.UI.Xaml.Media.Animation"), task.additionExcludeNamespaces.get())
         assertEquals(listOf("sdk+"), task.metadataInputs.get())
         assertEquals("10.0.26100.0", task.windowsSdkVersion.get())
         assertTrue(task.includeWindowsSdkExtensions.get())
@@ -125,6 +127,7 @@ class KotlinWinRtPluginTest {
         extension.runtimeAsset("SimpleMathComponent.dll")
         extension.namespace("Windows.Foundation")
         extension.type("Windows.Foundation.IStringable")
+        extension.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
         extension.windowsSdk("10.0.26100.0", includeExtensions = true)
         extension.windowsAppSdk(
             winuiVersion = "1.8.251105000",
@@ -144,6 +147,7 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
         assertTrue(json.contains("\"excludeNamespaces\": [\"Windows\", \"Windows.UI.Xaml.Media.Animation\"]"))
         assertTrue(json.contains("\"excludeTypes\": [\"Microsoft.UI.Xaml.Controls.WebView2\""))
+        assertTrue(json.contains("\"additionExcludeNamespaces\": [\"Microsoft.UI.Xaml.Media.Animation\"]"))
         assertTrue(json.contains("\"version\": \"10.0.26100.0\""))
         assertTrue(json.contains("\"includeExtensions\": true"))
         assertTrue(
@@ -236,6 +240,9 @@ class KotlinWinRtPluginTest {
             registeredTask.metadataInputs.set(listOf("sdk+"))
             registeredTask.includeNamespaces.set(listOf("Windows.Foundation"))
             registeredTask.includeTypes.set(listOf("Windows.Foundation.IStringable"))
+            registeredTask.excludeNamespaces.set(emptyList())
+            registeredTask.excludeTypes.set(emptyList())
+            registeredTask.additionExcludeNamespaces.set(listOf("Microsoft.UI.Xaml"))
             registeredTask.includeWindowsSdkExtensions.set(false)
             registeredTask.nugetPackages.set(listOf("Microsoft.WindowsAppSDK.WinUI@1.8.251105000"))
             registeredTask.runtimeAssets.set(listOf("SimpleMathComponent.dll"))
@@ -248,6 +255,7 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
         assertTrue(json.contains("\"nugetPackages\": [\"Microsoft.WindowsAppSDK.WinUI@1.8.251105000\"]"))
         assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
+        assertTrue(json.contains("\"additionExcludeNamespaces\": [\"Microsoft.UI.Xaml\"]"))
         assertTrue(json.contains(dependencyIdentity.absolutePath.replace("\\", "\\\\")))
     }
 

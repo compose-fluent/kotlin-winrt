@@ -45,6 +45,7 @@ private fun configureWinRtLibraryModel(
             task.includeTypes.set(extension.includeTypes)
             task.excludeNamespaces.set(extension.excludeNamespaces)
             task.excludeTypes.set(extension.excludeTypes)
+            task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)
             task.windowsSdkVersion.set(extension.windowsSdkVersion)
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
             task.nugetPackages.set(
@@ -129,6 +130,7 @@ private fun configureWinRtApplicationTasks(
             task.includeTypes.set(extension.includeTypes)
             task.excludeNamespaces.set(extension.excludeNamespaces)
             task.excludeTypes.set(extension.excludeTypes)
+            task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)
             task.windowsSdkVersion.set(extension.windowsSdkVersion)
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
             task.nugetPackages.set(
@@ -207,6 +209,7 @@ private fun configureWinRtGeneration(
             task.includeTypes.set(extension.includeTypes)
             task.excludeNamespaces.set(extension.excludeNamespaces)
             task.excludeTypes.set(extension.excludeTypes)
+            task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)
             task.windowsSdkVersion.set(extension.windowsSdkVersion)
             task.includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
             task.nugetExecutable.set(extension.nugetExecutable)

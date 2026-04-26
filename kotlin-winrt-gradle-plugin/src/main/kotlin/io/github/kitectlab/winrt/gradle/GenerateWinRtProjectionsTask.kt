@@ -2,6 +2,7 @@ package io.github.kitectlab.winrt.gradle
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataLoader
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
+import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSource
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageIdentity
@@ -49,6 +50,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     abstract val excludeTypes: ListProperty<String>
 
     @get:Input
+    abstract val additionExcludeNamespaces: ListProperty<String>
+
+    @get:Input
     @get:Optional
     abstract val windowsSdkVersion: Property<String>
 
@@ -85,7 +89,15 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
-        val files = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
+        val files = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(
+                sources = sources,
+                include = includeNamespaces.get().toSet() + includeTypes.get().toSet(),
+                exclude = excludeNamespaces.get().toSet() + excludeTypes.get().toSet(),
+                additionExclude = additionExcludeNamespaces.get().toSet(),
+            ),
+        ).generate(model)
         val outputRoot = outputDirectory.get().asFile.toPath()
         files.forEach { file ->
             val target = outputRoot.resolve(file.relativePath)

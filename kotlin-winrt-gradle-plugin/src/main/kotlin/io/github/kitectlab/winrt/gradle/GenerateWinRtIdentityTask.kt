@@ -30,6 +30,9 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     abstract val excludeTypes: ListProperty<String>
 
     @get:Input
+    abstract val additionExcludeNamespaces: ListProperty<String>
+
+    @get:Input
     @get:Optional
     abstract val windowsSdkVersion: Property<String>
 
@@ -57,6 +60,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
+                appendLine("  \"additionExcludeNamespaces\": ${additionExcludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"windowsSdk\": {")
                 appendLine("    \"version\": ${windowsSdkVersion.orNull.toJsonStringOrNull()},")
                 appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")

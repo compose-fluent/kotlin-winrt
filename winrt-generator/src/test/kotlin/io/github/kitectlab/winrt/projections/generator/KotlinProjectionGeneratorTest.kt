@@ -2439,7 +2439,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))
         assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("HELPER_OUTPUTS"))
+        assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("WinRTNamespaceAdditions.kt"))
         assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("fun registerBaseTypeMappings"))
+        assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("Windows.Foundation"))
+        assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("fun installNamespaceAdditions"))
+        assertFalse(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("sourceFiles"))
     }
 
     @Test
