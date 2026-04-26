@@ -5,6 +5,8 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.attributes.Usage
+import org.gradle.api.distribution.DistributionContainer
+import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
@@ -164,6 +166,27 @@ class KotlinWinRtApplicationPlugin : Plugin<Project> {
                 dependencyIdentityFiles.from(identityDependencies)
             },
         )
+        project.plugins.withId("java") {
+            project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> {
+                dependsOn(stageRuntimeAssetsTask)
+                if (this is Copy) {
+                    from(stageRuntimeAssetsTask.flatMap { it.outputDirectory }) {
+                        into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
+                    }
+                }
+            })
+        }
+        project.plugins.withId("application") {
+            project.extensions.configure(DistributionContainer::class.java, Action<DistributionContainer> {
+                named("main").configure {
+                    contents {
+                        into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY) {
+                            from(stageRuntimeAssetsTask.flatMap { it.outputDirectory })
+                        }
+                    }
+                }
+            })
+        }
         project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
         project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
         project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
@@ -173,3 +196,4 @@ class KotlinWinRtApplicationPlugin : Plugin<Project> {
 const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRtIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIdentityElements"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
+const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"

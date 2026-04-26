@@ -126,6 +126,29 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_plugin_wires_runtime_assets_into_java_resources() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        project.pluginManager.apply("java")
+
+        val processResources = project.tasks.named("processResources").get()
+        val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
+        assertTrue("stageWinRtRuntimeAssets" in dependencies)
+    }
+
+    @Test
+    fun application_plugin_accepts_gradle_application_distribution_model() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        project.pluginManager.apply("application")
+
+        project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+        project.extensions.getByType(org.gradle.api.distribution.DistributionContainer::class.java).getByName("main")
+    }
+
+    @Test
     fun application_identity_task_writes_dependency_identity_paths() {
         val project = ProjectBuilder.builder().build()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile

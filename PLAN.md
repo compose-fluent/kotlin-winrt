@@ -45,6 +45,7 @@
 - [x] Queue 13.1: `kotlin-winrt-library` publishes JSON identity metadata for downstream application resolution while generated projection sources remain part of the library compilation/artifact.
 - [x] Queue 13.2: `kotlin-winrt-application` resolves transitive `kotlin-winrt` identity JSON artifacts and writes an application identity aggregate for runtime/resource staging.
 - [x] Queue 13.3: `kotlin-winrt-application` stages NuGet runtime DLLs, framework PRI resources, `resources.pri`, and WindowsAppSDK version headers from application and dependency package identities.
+- [x] Queue 13.4: plugin application model wires staged runtime assets into Java resources and Gradle application distributions without sample-specific system properties.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
@@ -81,7 +82,7 @@
 - [x] Plugin 4.2 CLI acquisition: plugin tries configured/system NuGet first, then downloads Apache-2.0 `NuGet.CommandLine` into Gradle user home cache and retries the same command on failure.
 - [x] Plugin 4.3: implement `kotlin-winrt-library` JSON artifact metadata for NuGet/WinMD identity; generated sources stay compiled into the library itself.
 - [x] Plugin 4.4: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging from identity JSON and local NuGet declarations.
-- [ ] Plugin 4.5: migrate useful runtime/resource staging logic out of legacy `sample-jvm-winui3` into the plugin application model.
+- [x] Plugin 4.5: migrate useful runtime/resource staging and distribution/resource wiring out of legacy `sample-jvm-winui3` into the plugin application model.
 
 ## Validation
 
