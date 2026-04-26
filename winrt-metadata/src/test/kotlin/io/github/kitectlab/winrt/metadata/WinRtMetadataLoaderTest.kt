@@ -845,22 +845,26 @@ class WinRtMetadataLoaderTest {
 
     @Test
     fun nuget_resolver_matches_cli_global_packages_output_and_environment_fallback() {
+        val cliGlobalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-cli-root")
+        val envGlobalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-env-root")
+        val userHome = Files.createTempDirectory("kotlin-winrt-nuget-user-home")
+
         assertEquals(
-            listOf(Path.of("F:\\Dependencies\\nuget\\")),
-            WinRtNuGetPackageResolver.parseNuGetGlobalPackagesOutput("global-packages: F:\\Dependencies\\nuget\\"),
+            listOf(cliGlobalPackagesRoot),
+            WinRtNuGetPackageResolver.parseNuGetGlobalPackagesOutput("global-packages: $cliGlobalPackagesRoot"),
         )
         assertEquals(
-            Path.of("E:\\nuget-cache"),
+            envGlobalPackagesRoot,
             WinRtNuGetPackageResolver.defaultGlobalPackagesRoot(
-                environment = mapOf("NUGET_PACKAGES" to "E:\\nuget-cache"),
-                userHome = "C:\\Users\\ignored",
+                environment = mapOf("NUGET_PACKAGES" to envGlobalPackagesRoot.toString()),
+                userHome = userHome.resolve("ignored").toString(),
             ),
         )
         assertEquals(
-            Path.of("C:\\Users\\sample", ".nuget", "packages"),
+            userHome.resolve(".nuget").resolve("packages"),
             WinRtNuGetPackageResolver.defaultGlobalPackagesRoot(
                 environment = emptyMap(),
-                userHome = "C:\\Users\\sample",
+                userHome = userHome.toString(),
             ),
         )
         assertEquals(
