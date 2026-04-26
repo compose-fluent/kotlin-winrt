@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.metadata
 
+import io.github.kitectlab.winrt.runtime.Guid
 import java.nio.file.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -1651,6 +1652,21 @@ class WinRtMetadataModelTest {
                 "type-name writer context",
                 "event helper subclass descriptors",
                 "platform guard/member platform descriptors",
+                "projected/ABI signature writer descriptors",
+                "event invoke/event-source descriptors",
+                "ABI marshaler plan descriptors",
+                "static/factory/composable surface descriptors",
+                "custom mapped member output descriptors",
+                "property-interface/member signature descriptors",
+                "GUID/IID signature writer descriptors",
+                "vtable delegate/function-pointer descriptors",
+                "type declaration writer taxonomy",
+                "object-reference/inheritance surface descriptors",
+                "managed ABI invoke descriptors",
+                "generic ABI class initialization descriptors",
+                "required-interface ABI augmentation descriptors",
+                "module activation/authoring helper descriptors",
+                "metadata/generator/runtime/plugin/authoring classification",
             ),
             helpers.cswinrtMetadataParityAudit().map { it.cswinrtEntryPoint },
         )
@@ -1911,7 +1927,12 @@ class WinRtMetadataModelTest {
 
     @Test
     fun semantic_helpers_expose_cswinrt_writer_exactness_descriptors() {
-        val point = WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct)
+        val point = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Point",
+            kind = WinRtTypeKind.Struct,
+            fields = listOf(WinRtFieldDefinition("X", "Single")),
+        )
         val eventHandler = WinRtTypeDefinition(
             namespace = "Windows.Foundation",
             name = "EventHandler",
@@ -1930,6 +1951,7 @@ class WinRtMetadataModelTest {
             namespace = "Windows.Foundation.Collections",
             name = "IVector",
             kind = WinRtTypeKind.Interface,
+            iid = Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
             genericParameterCount = 1,
             genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
             methods = listOf(
@@ -1939,10 +1961,36 @@ class WinRtMetadataModelTest {
             properties = listOf(WinRtPropertyDefinition("Current", "T0", getterMethodName = "GetAt")),
             events = listOf(WinRtEventDefinition("Changed", "Windows.Foundation.EventHandler<T0>")),
         )
+        val iWidget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            iid = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            methods = listOf(
+                WinRtMethodDefinition(
+                    name = "GetValue",
+                    returnTypeName = "String",
+                    parameters = listOf(WinRtParameterDefinition("class", "Array<Int>", isInParameter = true)),
+                    methodRowId = 1,
+                ),
+            ),
+            properties = listOf(WinRtPropertyDefinition("Value", "String", getterMethodName = "GetValue")),
+            events = listOf(WinRtEventDefinition("RawChanged", "Windows.Foundation.EventHandler", addMethodRowId = 3, removeMethodRowId = 4)),
+        )
         val widget = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "Widget",
             kind = WinRtTypeKind.RuntimeClass,
+            defaultInterfaceName = "Sample.Foundation.IWidget",
+            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true)),
+            baseTypeName = "Sample.Foundation.BaseWidget",
+            activation = WinRtActivationShape(
+                factories = listOf(
+                    WinRtAttributedFactoryShape("Sample.Foundation.IWidgetFactory", WinRtAttributedFactoryKind.Activatable),
+                    WinRtAttributedFactoryShape("Sample.Foundation.IWidgetStatics", WinRtAttributedFactoryKind.Static),
+                ),
+            ),
+            gcPressureAmount = 64,
             availability = WinRtAvailabilityMetadata(
                 contractVersion = WinRtContractVersionMetadata(
                     contractName = "Windows.Foundation.UniversalApiContract",
@@ -1965,11 +2013,18 @@ class WinRtMetadataModelTest {
             genericParameterCount = 1,
             genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
         )
+        val bindableVector = WinRtTypeDefinition(
+            namespace = "Microsoft.UI.Xaml.Interop",
+            name = "IBindableVector",
+            kind = WinRtTypeKind.Interface,
+            methods = listOf(WinRtMethodDefinition("GetAt", "Any")),
+        )
         val model = WinRtMetadataModel(
             listOf(
                 WinRtNamespace("Windows.Foundation", listOf(eventHandler)),
                 WinRtNamespace("Windows.Foundation.Collections", listOf(vector)),
-                WinRtNamespace("Sample.Foundation", listOf(point, widget, exclusive)),
+                WinRtNamespace("Microsoft.UI.Xaml.Interop", listOf(bindableVector)),
+                WinRtNamespace("Sample.Foundation", listOf(point, iWidget, widget, exclusive)),
             ),
         )
         val helpers = model.semanticHelpers()
@@ -2033,6 +2088,70 @@ class WinRtMetadataModelTest {
         assertEquals("[SupportedOSPlatform(\"windows10.0.1.0\")]", platform.platformAttribute)
         assertEquals(false, platform.suppressesDuplicatePlatform)
         assertEquals(true, helpers.platformGuardDescriptor(widget.qualifiedName, widget.availability, inheritedPlatform = "10.0.1.0").suppressesDuplicatePlatform)
+
+        val signature = helpers.signatureWriterDescriptor(iWidget.methods.single())
+        assertEquals("`class`", signature.parameters.single().escapedName)
+        assertEquals(true, signature.parameters.single().expandsArrayLength)
+        assertEquals("Array<Int>", signature.parameters.single().projectionTypeName)
+
+        val eventInvoke = helpers.eventInvokeDescriptor(iWidget, iWidget.events.single())
+        assertEquals("Invoke", eventInvoke.invokeMethodName)
+        assertEquals(3, eventInvoke.sourceTableAddIndex)
+        assertEquals(false, eventInvoke.isStatic)
+
+        val marshaler = helpers.abiMarshalerPlanDescriptor(iWidget.methods.single())
+        assertEquals("GetValue", marshaler.methodName)
+        assertEquals(true, marshaler.requiresDispose)
+        assertEquals(listOf("__return_value__", "`class`"), marshaler.marshalers.map { it.name })
+
+        val factory = helpers.factorySurfaceDescriptor(widget)
+        assertEquals("Sample.Foundation.IWidget", factory.defaultInterfaceName)
+        assertEquals(listOf("Sample.Foundation.IWidgetFactory"), factory.constructorFactories)
+        assertEquals(listOf("Sample.Foundation.IWidgetStatics"), factory.staticMemberTargets)
+        assertEquals(64, factory.gcPressureAmount)
+
+        val mapped = helpers.customMappedMemberOutputDescriptor(bindableVector)
+        assertEquals("Microsoft.UI.Xaml.Interop.IBindableVector", mapped?.interfaceTypeName)
+        assertEquals("static-abi", mapped?.callMode)
+        assertEquals(true, mapped?.emitsExplicitMembers)
+
+        val interfaceSignatures = helpers.interfaceMemberSignatureSetDescriptor(iWidget)
+        assertEquals(listOf("GetValue"), interfaceSignatures.methodSignatures.map { it.methodName })
+        assertEquals(listOf("Value"), interfaceSignatures.propertyNames)
+        assertEquals(emptyList<String>(), interfaceSignatures.newPropertyNames)
+
+        val guid = helpers.guidSignatureDescriptor(vector)
+        assertEquals("AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA", guid.guidText)
+        assertEquals("pinterface(Windows.Foundation.Collections.IVector)", guid.signatureFragment)
+        assertEquals(16, guid.guidBytes.size)
+
+        val vtable = helpers.vtableWriterDescriptor(iWidget)
+        assertEquals(listOf("GetValue_0"), vtable.methods.map { it.vmethodName })
+        assertEquals(true, vtable.usesFunctionPointers)
+
+        val declaration = helpers.typeDeclarationDescriptor(widget)
+        assertEquals(true, declaration.writesAbiDeclaration)
+        assertEquals(true, declaration.writesWrapperDeclaration)
+
+        val objectReference = helpers.objectReferenceSurfaceDescriptor(widget)
+        assertEquals(true, objectReference.hasRcwFactory)
+        assertEquals(true, "Sample.Foundation.IWidget" in objectReference.inheritanceTypeNames)
+
+        val invoke = helpers.managedAbiInvokeDescriptor("GetValue", iWidget.methods.single(), "method")
+        assertEquals(true, invoke.requiresHelperMethod)
+        assertEquals(true, invoke.conversionOperations.any { it.endsWith(":toAbi") })
+
+        val genericAbi = helpers.genericAbiClassInitializationDescriptor(vector)
+        assertEquals(true, genericAbi.requiresRcwFallbackInitialization)
+        assertEquals(listOf("GetAt_0", "add_Changed_1"), genericAbi.invokeSlotNames)
+
+        val required = helpers.requiredInterfaceAugmentationDescriptor(widget)
+        assertEquals(listOf("Sample.Foundation.IWidget"), required.requiredInterfaceNames)
+
+        val module = helpers.moduleActivationAndAuthoringDescriptor(widget)
+        assertEquals("WidgetActivationFactory", module.factoryClassName)
+        assertEquals("Sample.Foundation.Widget -> Sample.Foundation.BaseWidget", module.baseTypeEntry)
+        assertEquals("Sample.Foundation.Widget", module.metadataTypeEntry)
     }
 
     @Test

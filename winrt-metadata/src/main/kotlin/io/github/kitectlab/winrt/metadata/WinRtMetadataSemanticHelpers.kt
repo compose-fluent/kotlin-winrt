@@ -359,6 +359,161 @@ data class WinRtMethodVtableDescriptor(
     val slotIndex: Int,
 )
 
+data class WinRtSignatureWriterDescriptor(
+    val methodName: String,
+    val escapedMethodName: String,
+    val projectionReturnTypeName: String,
+    val abiReturnTypeName: String,
+    val parameters: List<WinRtSignatureParameterWriterDescriptor>,
+    val hasProjectedGenericParameters: Boolean,
+    val hasAbiGenericParameters: Boolean,
+)
+
+data class WinRtSignatureParameterWriterDescriptor(
+    val originalName: String,
+    val escapedName: String,
+    val category: WinRtMetadataParameterCategory,
+    val projectionTypeName: String,
+    val abiTypeName: String,
+    val modifier: String?,
+    val expandsArrayLength: Boolean,
+)
+
+data class WinRtEventInvokeDescriptor(
+    val eventName: String,
+    val delegateTypeName: String,
+    val invokeMethodName: String?,
+    val returnTypeName: String,
+    val parameters: List<WinRtSignatureParameterWriterDescriptor>,
+    val outDefaultAssignments: List<String>,
+    val sourceTableAddIndex: Int?,
+    val sourceTableRemoveIndex: Int?,
+    val isStatic: Boolean,
+)
+
+data class WinRtAbiMarshalerPlanDescriptor(
+    val methodName: String,
+    val marshalers: List<WinRtAbiMarshalerSlotDescriptor>,
+    val requiresPinnedScope: Boolean,
+    val requiresDispose: Boolean,
+    val hasNoExceptionAttribute: Boolean,
+    val isGenericInstantiationClass: Boolean,
+)
+
+data class WinRtAbiMarshalerSlotDescriptor(
+    val name: String,
+    val typeName: String,
+    val category: WinRtMetadataParameterCategory,
+    val isReturn: Boolean = false,
+    val isPinnable: Boolean,
+    val isGeneric: Boolean,
+    val requiresFromAbi: Boolean,
+    val requiresToAbi: Boolean,
+    val requiresDispose: Boolean,
+)
+
+data class WinRtFactorySurfaceDescriptor(
+    val classTypeName: String,
+    val defaultInterfaceName: String?,
+    val activationFactoryCacheName: String,
+    val staticFactoryCacheNames: List<String>,
+    val constructorFactories: List<String>,
+    val composableFactories: List<String>,
+    val staticMemberTargets: List<String>,
+    val gcPressureAmount: Int,
+)
+
+data class WinRtCustomMappedMemberOutputDescriptor(
+    val interfaceTypeName: String,
+    val mappedTypeName: String,
+    val memberPlans: List<String>,
+    val callMode: String,
+    val emitsExplicitMembers: Boolean,
+    val emitsPrivateMembers: Boolean,
+)
+
+data class WinRtInterfaceMemberSignatureSetDescriptor(
+    val interfaceTypeName: String,
+    val methodSignatures: List<WinRtProjectedMethodSignatureDescriptor>,
+    val propertyNames: List<String>,
+    val eventNames: List<String>,
+    val newPropertyNames: List<String>,
+)
+
+data class WinRtGuidSignatureDescriptor(
+    val typeName: String,
+    val guidText: String?,
+    val guidBytes: List<Int>,
+    val signatureFragment: String,
+    val parameterizedSignatureFragments: List<String>,
+)
+
+data class WinRtVtableWriterDescriptor(
+    val typeName: String,
+    val methods: List<WinRtMethodVtableDescriptor>,
+    val delegateCacheNames: List<String>,
+    val usesFunctionPointers: Boolean,
+    val genericAbiTypeArrays: List<List<String>>,
+)
+
+data class WinRtTypeDeclarationDescriptor(
+    val typeName: String,
+    val declarationKind: WinRtTypeKind,
+    val writesProjectedDeclaration: Boolean,
+    val writesAbiDeclaration: Boolean,
+    val writesWrapperDeclaration: Boolean,
+    val writesImplementationClass: Boolean,
+    val writesHelperClass: Boolean,
+    val netStandardBranch: Boolean,
+)
+
+data class WinRtObjectReferenceSurfaceDescriptor(
+    val typeName: String,
+    val inheritanceTypeNames: List<String>,
+    val objectReferenceNames: List<String>,
+    val baseConstructorDispatchTargets: List<String>,
+    val exposedTypeMetadataNames: List<String>,
+    val hasRcwFactory: Boolean,
+    val hasUnwrappableNativeObject: Boolean,
+)
+
+data class WinRtManagedAbiInvokeDescriptor(
+    val memberName: String,
+    val invokeKind: String,
+    val managedLocals: List<String>,
+    val conversionOperations: List<String>,
+    val hasNoExceptionAttribute: Boolean,
+    val requiresHelperMethod: Boolean,
+)
+
+data class WinRtGenericAbiClassInitializationDescriptor(
+    val typeName: String,
+    val requiresRcwFallbackInitialization: Boolean,
+    val requiresCcwFallbackInitialization: Boolean,
+    val genericMethodDelegateVariables: List<String>,
+    val invokeSlotNames: List<String>,
+    val genericTypeArrayDependencies: List<String>,
+)
+
+data class WinRtRequiredInterfaceAugmentationDescriptor(
+    val typeName: String,
+    val requiredInterfaceNames: List<String>,
+    val explicitForwardMemberNames: List<String>,
+    val mappedAugmentationMembers: List<String>,
+    val genericAbiParameterArrays: List<List<String>>,
+    val implementsCcwInterface: Boolean,
+)
+
+data class WinRtModuleActivationAndAuthoringDescriptor(
+    val typeName: String,
+    val authoringMetadataTypeName: String?,
+    val factoryClassName: String?,
+    val factoryMemberNames: List<String>,
+    val moduleActivationFactoryEntries: List<String>,
+    val baseTypeEntry: String?,
+    val metadataTypeEntry: String?,
+)
+
 data class WinRtAuxiliaryTableSemanticBoundaryDescriptor(
     val tableName: String,
     val rowCount: Int,
@@ -1273,6 +1428,232 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         )
     }
 
+    fun signatureWriterDescriptor(method: WinRtMethodDefinition): WinRtSignatureWriterDescriptor {
+        val signature = methodSignature(method)
+        val parameters = signature.parameters.map { parameter ->
+            signatureParameterWriterDescriptor(parameter.parameter, parameter.category)
+        }
+        val usage = genericSignatureUsage(method.returnType)
+        val parameterHasGeneric = method.parameters.any { genericSignatureUsage(it.type).containsProjectedGenericParameter }
+        return WinRtSignatureWriterDescriptor(
+            methodName = method.name,
+            escapedMethodName = escapeIdentifier(method.name),
+            projectionReturnTypeName = method.returnType.normalized().typeName,
+            abiReturnTypeName = renderAbiTypeName(method.returnType),
+            parameters = parameters,
+            hasProjectedGenericParameters = usage.containsProjectedGenericParameter || parameterHasGeneric,
+            hasAbiGenericParameters = usage.containsAbiGenericParameter || parameterHasGeneric,
+        )
+    }
+
+    fun eventInvokeDescriptor(type: WinRtTypeDefinition, event: WinRtEventDefinition): WinRtEventInvokeDescriptor {
+        val delegateType = resolveType(event.delegateType, type.namespace)
+        val invoke = delegateType?.let(::getDelegateInvoke)
+        val invokeSignature = invoke?.let(::signatureWriterDescriptor)
+        return WinRtEventInvokeDescriptor(
+            eventName = event.name,
+            delegateTypeName = event.delegateType.normalized().typeName,
+            invokeMethodName = invoke?.name,
+            returnTypeName = invoke?.returnType?.normalized()?.typeName ?: "Void",
+            parameters = invokeSignature?.parameters.orEmpty(),
+            outDefaultAssignments = invoke?.parameters.orEmpty()
+                .filter { parameter -> parameterCategory(parameter) == WinRtMetadataParameterCategory.Out }
+                .map { parameter -> "${escapeIdentifier(parameter.name)} = default" },
+            sourceTableAddIndex = event.addMethodRowId,
+            sourceTableRemoveIndex = event.removeMethodRowId,
+            isStatic = event.isStatic,
+        )
+    }
+
+    fun abiMarshalerPlanDescriptor(
+        method: WinRtMethodDefinition,
+        isGenericInstantiationClass: Boolean = false,
+    ): WinRtAbiMarshalerPlanDescriptor {
+        val slots = mutableListOf<WinRtAbiMarshalerSlotDescriptor>()
+        if (method.returnType.normalized().typeName != "Void") {
+            slots += abiMarshalerSlot("__return_value__", method.returnType, WinRtMetadataParameterCategory.Out, isReturn = true)
+        }
+        method.parameters.forEach { parameter ->
+            slots += abiMarshalerSlot(parameter.name, parameter.type, parameterCategory(parameter), isReturn = false)
+        }
+        return WinRtAbiMarshalerPlanDescriptor(
+            methodName = method.name,
+            marshalers = slots,
+            requiresPinnedScope = slots.any(WinRtAbiMarshalerSlotDescriptor::isPinnable),
+            requiresDispose = slots.any(WinRtAbiMarshalerSlotDescriptor::requiresDispose),
+            hasNoExceptionAttribute = isNoException(method),
+            isGenericInstantiationClass = isGenericInstantiationClass,
+        )
+    }
+
+    fun factorySurfaceDescriptor(type: WinRtTypeDefinition): WinRtFactorySurfaceDescriptor {
+        val attributed = getAttributedTypes(type)
+        return WinRtFactorySurfaceDescriptor(
+            classTypeName = type.qualifiedName,
+            defaultInterfaceName = getDefaultInterface(type)?.normalized()?.typeName,
+            activationFactoryCacheName = "${type.name.substringBefore('`')}ActivationFactory",
+            staticFactoryCacheNames = attributed.filter(WinRtAttributedFactoryDescriptor::statics).map { cacheNameFor(it.interfaceName) },
+            constructorFactories = attributed.filter(WinRtAttributedFactoryDescriptor::activatable).map(WinRtAttributedFactoryDescriptor::interfaceName),
+            composableFactories = attributed.filter(WinRtAttributedFactoryDescriptor::composable).map(WinRtAttributedFactoryDescriptor::interfaceName),
+            staticMemberTargets = attributed.filter(WinRtAttributedFactoryDescriptor::statics).map(WinRtAttributedFactoryDescriptor::interfaceName),
+            gcPressureAmount = getGcPressureAmount(type),
+        )
+    }
+
+    fun customMappedMemberOutputDescriptor(
+        interfaceType: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+        isPrivate: Boolean = false,
+        callStaticAbiMethods: Boolean = context.target != WinRtMetadataTarget.NetStandard20,
+    ): WinRtCustomMappedMemberOutputDescriptor? {
+        val mapping = getMappedType(interfaceType.namespace, interfaceType.name) ?: return null
+        val members = buildList {
+            interfaceType.methods.filterNot(::isSpecial).forEach { add(it.name) }
+            interfaceType.properties.forEach { add(it.name) }
+            interfaceType.events.forEach { add(it.name) }
+            if (mapping.hasCustomMembersOutput) add((mapping.mappedName ?: mapping.abiName).substringAfterLast('.'))
+        }.distinct().sorted()
+        return WinRtCustomMappedMemberOutputDescriptor(
+            interfaceTypeName = interfaceType.qualifiedName,
+            mappedTypeName = mapping.mappedQualifiedName ?: mapping.mappedName.orEmpty(),
+            memberPlans = members,
+            callMode = if (callStaticAbiMethods) "static-abi" else "idic",
+            emitsExplicitMembers = mapping.hasCustomMembersOutput,
+            emitsPrivateMembers = isPrivate,
+        )
+    }
+
+    fun interfaceMemberSignatureSetDescriptor(type: WinRtTypeDefinition): WinRtInterfaceMemberSignatureSetDescriptor =
+        WinRtInterfaceMemberSignatureSetDescriptor(
+            interfaceTypeName = type.qualifiedName,
+            methodSignatures = type.methods.map(::projectedMethodSignature),
+            propertyNames = type.properties.map(WinRtPropertyDefinition::name).sorted(),
+            eventNames = type.events.map(WinRtEventDefinition::name).sorted(),
+            newPropertyNames = type.properties
+                .filter { property -> property.getterMethodName == null && property.setterMethodName != null }
+                .map(WinRtPropertyDefinition::name)
+                .sorted(),
+        )
+
+    fun guidSignatureDescriptor(type: WinRtTypeDefinition): WinRtGuidSignatureDescriptor {
+        val guidText = type.iid?.toString()
+        return WinRtGuidSignatureDescriptor(
+            typeName = type.qualifiedName,
+            guidText = guidText,
+            guidBytes = guidText?.let(::guidTextToBytes).orEmpty(),
+            signatureFragment = guidSignatureFragment(type),
+            parameterizedSignatureFragments = type.genericParameters.map { parameter -> "pinterface(${parameter.name})" },
+        )
+    }
+
+    fun vtableWriterDescriptor(
+        type: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+    ): WinRtVtableWriterDescriptor =
+        WinRtVtableWriterDescriptor(
+            typeName = type.qualifiedName,
+            methods = methodVtableDescriptors(type),
+            delegateCacheNames = type.methods.map { method -> "_${methodVtableDescriptor(type, method).vmethodName}" },
+            usesFunctionPointers = context.target != WinRtMetadataTarget.NetStandard20 && type.genericParameterCount == 0,
+            genericAbiTypeArrays = type.methods.mapNotNull { method ->
+                val genericTypes = getGenericAbiTypes(method)
+                genericTypes.takeIf(List<*>::isNotEmpty)
+            },
+        )
+
+    fun typeDeclarationDescriptor(
+        type: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+    ): WinRtTypeDeclarationDescriptor =
+        WinRtTypeDeclarationDescriptor(
+            typeName = type.qualifiedName,
+            declarationKind = type.kind,
+            writesProjectedDeclaration = type.kind != WinRtTypeKind.Unknown,
+            writesAbiDeclaration = type.kind in setOf(WinRtTypeKind.Interface, WinRtTypeKind.RuntimeClass, WinRtTypeKind.Delegate, WinRtTypeKind.Struct),
+            writesWrapperDeclaration = type.kind == WinRtTypeKind.RuntimeClass,
+            writesImplementationClass = type.kind == WinRtTypeKind.Interface && hasDerivedGenericInterface(type),
+            writesHelperClass = type.kind in setOf(WinRtTypeKind.Interface, WinRtTypeKind.RuntimeClass, WinRtTypeKind.Delegate),
+            netStandardBranch = context.target == WinRtMetadataTarget.NetStandard20,
+        )
+
+    fun objectReferenceSurfaceDescriptor(type: WinRtTypeDefinition): WinRtObjectReferenceSurfaceDescriptor {
+        val closure = if (type.kind == WinRtTypeKind.RuntimeClass) closureResolver.resolveRuntimeClass(type) else null
+        val interfaces = closure?.instanceInterfaces.orEmpty().map(WinRtRuntimeClassInterfaceDescriptor::interfaceName)
+        return WinRtObjectReferenceSurfaceDescriptor(
+            typeName = type.qualifiedName,
+            inheritanceTypeNames = listOfNotNull(type.baseTypeName) + interfaces,
+            objectReferenceNames = interfaces.map(::cacheNameFor),
+            baseConstructorDispatchTargets = listOfNotNull(type.baseTypeName),
+            exposedTypeMetadataNames = listOf(type.qualifiedName) + interfaces,
+            hasRcwFactory = type.kind == WinRtTypeKind.RuntimeClass,
+            hasUnwrappableNativeObject = type.kind in setOf(WinRtTypeKind.RuntimeClass, WinRtTypeKind.Delegate),
+        )
+    }
+
+    fun managedAbiInvokeDescriptor(memberName: String, method: WinRtMethodDefinition, invokeKind: String): WinRtManagedAbiInvokeDescriptor {
+        val plan = abiMarshalerPlanDescriptor(method)
+        return WinRtManagedAbiInvokeDescriptor(
+            memberName = memberName,
+            invokeKind = invokeKind,
+            managedLocals = plan.marshalers.map { it.name },
+            conversionOperations = plan.marshalers.flatMap { slot ->
+                listOfNotNull(
+                    "toAbi".takeIf { slot.requiresToAbi },
+                    "fromAbi".takeIf { slot.requiresFromAbi },
+                    "dispose".takeIf { slot.requiresDispose },
+                ).map { op -> "${slot.name}:$op" }
+            },
+            hasNoExceptionAttribute = plan.hasNoExceptionAttribute,
+            requiresHelperMethod = plan.marshalers.any { it.isGeneric || it.category != WinRtMetadataParameterCategory.In },
+        )
+    }
+
+    fun genericAbiClassInitializationDescriptor(type: WinRtTypeDefinition): WinRtGenericAbiClassInitializationDescriptor =
+        WinRtGenericAbiClassInitializationDescriptor(
+            typeName = type.qualifiedName,
+            requiresRcwFallbackInitialization = type.genericParameterCount > 0 || hasDerivedGenericInterface(type),
+            requiresCcwFallbackInitialization = doesAbiInterfaceImplementCcwInterface(type),
+            genericMethodDelegateVariables = type.methods.filter { method ->
+                signatureWriterDescriptor(method).hasProjectedGenericParameters
+            }.map { method -> "_${method.name}Delegate" }.sorted(),
+            invokeSlotNames = methodVtableDescriptors(type).map(WinRtMethodVtableDescriptor::vmethodName),
+            genericTypeArrayDependencies = type.methods.flatMap(::getGenericAbiTypes).distinct().sorted(),
+        )
+
+    fun requiredInterfaceAugmentationDescriptor(type: WinRtTypeDefinition): WinRtRequiredInterfaceAugmentationDescriptor {
+        val required = type.implementedInterfaces.map { implemented ->
+            resolveTypeReference(implemented.interfaceType, type.namespace, typesByQualifiedName).displayName
+        }.sorted()
+        val mappedMembers = required.mapNotNull { name ->
+            val ref = WinRtTypeRef.fromDisplayName(name)
+            val qualifiedName = ref.normalized().qualifiedName.orEmpty()
+            getMappedType(qualifiedName.substringBeforeLast('.', ""), qualifiedName.substringAfterLast('.'))?.mappedName
+        }.sorted()
+        return WinRtRequiredInterfaceAugmentationDescriptor(
+            typeName = type.qualifiedName,
+            requiredInterfaceNames = required,
+            explicitForwardMemberNames = explicitImplementations(type).mapNotNull(WinRtExplicitImplementationDescriptor::declarationName).sorted(),
+            mappedAugmentationMembers = mappedMembers,
+            genericAbiParameterArrays = type.methods.mapNotNull { method ->
+                getGenericAbiTypes(method).takeIf(List<*>::isNotEmpty)
+            },
+            implementsCcwInterface = doesAbiInterfaceImplementCcwInterface(type),
+        )
+    }
+
+    fun moduleActivationAndAuthoringDescriptor(type: WinRtTypeDefinition): WinRtModuleActivationAndAuthoringDescriptor {
+        val factory = factorySurfaceDescriptor(type)
+        return WinRtModuleActivationAndAuthoringDescriptor(
+            typeName = type.qualifiedName,
+            authoringMetadataTypeName = type.qualifiedName.takeIf { type.kind == WinRtTypeKind.RuntimeClass },
+            factoryClassName = "${type.name.substringBefore('`')}ActivationFactory".takeIf { factory.constructorFactories.isNotEmpty() || factory.staticMemberTargets.isNotEmpty() },
+            factoryMemberNames = factory.constructorFactories + factory.staticMemberTargets + factory.composableFactories,
+            moduleActivationFactoryEntries = listOf(type.qualifiedName).filter { factory.constructorFactories.isNotEmpty() || factory.staticMemberTargets.isNotEmpty() },
+            baseTypeEntry = type.baseTypeName?.let { "${type.qualifiedName} -> $it" },
+            metadataTypeEntry = type.qualifiedName.takeIf { type.kind != WinRtTypeKind.Unknown },
+        )
+    }
+
     fun resolveType(type: WinRtTypeRef, currentNamespace: String): WinRtTypeDefinition? {
         val normalized = type.normalized()
         val qualifiedName = normalized.qualifiedName ?: return null
@@ -1325,6 +1706,21 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             WinRtMetadataParityAuditEntry("type_writers.h/code_writers.h", "type-name writer context", "WinRtMetadataSemanticHelpers.typeNameDescriptor", true),
             WinRtMetadataParityAuditEntry("code_writers.h", "event helper subclass descriptors", "WinRtMetadataSemanticHelpers.eventHelperSubclassDescriptors", true),
             WinRtMetadataParityAuditEntry("type_writers.h/code_writers.h", "platform guard/member platform descriptors", "WinRtMetadataSemanticHelpers.platformGuardDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "projected/ABI signature writer descriptors", "WinRtMetadataSemanticHelpers.signatureWriterDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "event invoke/event-source descriptors", "WinRtMetadataSemanticHelpers.eventInvokeDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "ABI marshaler plan descriptors", "WinRtMetadataSemanticHelpers.abiMarshalerPlanDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "static/factory/composable surface descriptors", "WinRtMetadataSemanticHelpers.factorySurfaceDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "custom mapped member output descriptors", "WinRtMetadataSemanticHelpers.customMappedMemberOutputDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "property-interface/member signature descriptors", "WinRtMetadataSemanticHelpers.interfaceMemberSignatureSetDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "GUID/IID signature writer descriptors", "WinRtMetadataSemanticHelpers.guidSignatureDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "vtable delegate/function-pointer descriptors", "WinRtMetadataSemanticHelpers.vtableWriterDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "type declaration writer taxonomy", "WinRtMetadataSemanticHelpers.typeDeclarationDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "object-reference/inheritance surface descriptors", "WinRtMetadataSemanticHelpers.objectReferenceSurfaceDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "managed ABI invoke descriptors", "WinRtMetadataSemanticHelpers.managedAbiInvokeDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "generic ABI class initialization descriptors", "WinRtMetadataSemanticHelpers.genericAbiClassInitializationDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "required-interface ABI augmentation descriptors", "WinRtMetadataSemanticHelpers.requiredInterfaceAugmentationDescriptor", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "module activation/authoring helper descriptors", "WinRtMetadataSemanticHelpers.moduleActivationAndAuthoringDescriptor", true),
+            WinRtMetadataParityAuditEntry("cswinrt full audit", "metadata/generator/runtime/plugin/authoring classification", "PLAN.md Queue 10.9 + Metadata audit classification", true),
         )
 
     private data class MutableMergedProperty(
@@ -1406,6 +1802,88 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     private fun renderAbiTypeName(type: WinRtTypeRef): String =
         type.normalized().typeName.replace("String", "IntPtr")
+
+    private fun signatureParameterWriterDescriptor(
+        parameter: WinRtParameterDefinition,
+        category: WinRtMetadataParameterCategory,
+    ): WinRtSignatureParameterWriterDescriptor =
+        WinRtSignatureParameterWriterDescriptor(
+            originalName = parameter.name,
+            escapedName = escapeIdentifier(parameter.name),
+            category = category,
+            projectionTypeName = parameter.type.normalized().typeName,
+            abiTypeName = renderAbiTypeName(parameter.type),
+            modifier = when (category) {
+                WinRtMetadataParameterCategory.Ref -> "ref"
+                WinRtMetadataParameterCategory.Out,
+                WinRtMetadataParameterCategory.FillArray,
+                WinRtMetadataParameterCategory.ReceiveArray,
+                -> "out"
+                else -> null
+            },
+            expandsArrayLength = category in setOf(
+                WinRtMetadataParameterCategory.PassArray,
+                WinRtMetadataParameterCategory.FillArray,
+                WinRtMetadataParameterCategory.ReceiveArray,
+            ),
+        )
+
+    private fun abiMarshalerSlot(
+        name: String,
+        type: WinRtTypeRef,
+        category: WinRtMetadataParameterCategory,
+        isReturn: Boolean,
+    ): WinRtAbiMarshalerSlotDescriptor {
+        val normalized = type.normalized()
+        val classification = typeClassifier.classify(normalized, "")
+        val generic = normalized.containsGenericTypeParameter()
+        val array = normalized.kind == WinRtTypeRefKind.Array
+        val value = semanticValueDescriptor(normalized, "", forArray = array)
+        val pinnable = value.isBlittable && (category == WinRtMetadataParameterCategory.In || category == WinRtMetadataParameterCategory.PassArray)
+        val requiresMarshal = generic || array || classification.projectionCategory !in setOf(
+            WinRtProjectionCategory.Fundamental,
+            WinRtProjectionCategory.Enum,
+            WinRtProjectionCategory.Guid,
+        )
+        return WinRtAbiMarshalerSlotDescriptor(
+            name = escapeIdentifier(name),
+            typeName = normalized.typeName,
+            category = category,
+            isReturn = isReturn,
+            isPinnable = pinnable,
+            isGeneric = generic,
+            requiresFromAbi = isReturn || category in setOf(WinRtMetadataParameterCategory.Out, WinRtMetadataParameterCategory.Ref, WinRtMetadataParameterCategory.ReceiveArray),
+            requiresToAbi = !isReturn && category in setOf(WinRtMetadataParameterCategory.In, WinRtMetadataParameterCategory.Ref, WinRtMetadataParameterCategory.PassArray),
+            requiresDispose = requiresMarshal && !pinnable,
+        )
+    }
+
+    private fun cacheNameFor(typeName: String): String =
+        escapeTypeNameForIdentifier(typeName).replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } + "Cache"
+
+    private fun getGenericAbiTypes(method: WinRtMethodDefinition): List<String> =
+        (listOf(method.returnType) + method.parameters.map(WinRtParameterDefinition::type))
+            .filter { it.containsGenericTypeParameter() || it.typeArguments.isNotEmpty() }
+            .map { renderAbiTypeName(it) }
+            .distinct()
+
+    private fun guidTextToBytes(guid: String): List<Int> =
+        guid.filter { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+            .chunked(2)
+            .mapNotNull { it.toIntOrNull(16) }
+
+    private fun guidSignatureFragment(type: WinRtTypeDefinition): String =
+        when (type.kind) {
+            WinRtTypeKind.Interface -> "pinterface(${type.qualifiedName})"
+            WinRtTypeKind.Delegate -> "delegate(${type.qualifiedName})"
+            WinRtTypeKind.RuntimeClass -> "rc(${type.qualifiedName};${getDefaultInterface(type)?.normalized()?.typeName.orEmpty()})"
+            WinRtTypeKind.Struct -> "struct(${type.qualifiedName};${type.fields.joinToString(";") { it.type.normalized().typeName }})"
+            WinRtTypeKind.Enum -> "enum(${type.qualifiedName};${type.enumUnderlyingType ?: WinRtIntegralType.Int32})"
+            WinRtTypeKind.Unknown -> type.qualifiedName
+        }
+
+    private fun escapeIdentifier(value: String): String =
+        if (value in KOTLIN_KEYWORDS || value in CSWINRT_KEYWORDS) "`$value`" else value
 
     private inner class GenericAbiInventoryCollector {
         private val abiDelegates = linkedMapOf<String, WinRtGenericAbiDelegateDescriptor>()
@@ -1707,6 +2185,12 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         private const val WINDOWS_FOUNDATION_METADATA_EXCLUSIVE_TO_ATTRIBUTE = "Windows.Foundation.Metadata.ExclusiveToAttribute"
         private const val INSPECTABLE_METHOD_COUNT = 6
         private val PROJECTION_AFFECTING_AUXILIARY_TABLES = setOf("FieldMarshal", "ImplMap", "FieldRVA", "DeclSecurity", "ModuleRef")
+        private val KOTLIN_KEYWORDS = setOf(
+            "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in", "interface",
+            "is", "null", "object", "package", "return", "super", "this", "throw", "true", "try", "typealias",
+            "typeof", "val", "var", "when", "while",
+        )
+        private val CSWINRT_KEYWORDS = setOf("event", "delegate", "base", "params", "ref", "out", "in")
     }
 }
 
