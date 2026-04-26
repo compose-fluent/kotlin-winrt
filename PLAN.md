@@ -72,7 +72,7 @@
 - [x] Sample 2: mirror the `.cswinrt/src/Tests/UnitTest/ApiCompatTests.cs` JSON flow with `JsonObject.Parse`, `GetNamedValue("phone")`, boolean reads, and indexed `education` reads.
 - [x] Sample 3: validate application identity aggregation from `winrt-projections` and exclude plain runtime implementation dependencies.
 - [x] Sample 4: expose opt-in WindowsAppSDK split-package declarations matching `.cswinrt/src/Projections/WinAppSDK`.
-- [ ] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
+- [x] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
 - [ ] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style component-consumption sample after component WinMD/Dll activation inputs are plugin-owned.
 - [ ] Sample 7: add a WinUI desktop smoke matching `.cswinrt/src/Samples/WinUIDesktopSample`: application start, window activation, button/page swap, and tapped handler.
 - [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.

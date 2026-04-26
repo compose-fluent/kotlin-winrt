@@ -12,5 +12,6 @@ dependencies {
 }
 
 winRt {
+    namespace("Windows.Data.Json")
     type("Windows.Foundation.IStringable")
 }

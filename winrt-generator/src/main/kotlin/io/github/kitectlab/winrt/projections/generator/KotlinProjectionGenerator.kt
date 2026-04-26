@@ -762,6 +762,9 @@ class KotlinProjectionPlanner(
                 .filterNot { it.isDefault }
                 .mapTo(this) { it.interfaceName }
         }.distinct()
+            .filterNot { interfaceName ->
+                isMappedCollectionInterfaceName(interfaceName, type.namespace, typesByQualifiedName)
+            }
 
         return buildList {
             type.methods.filterNot(WinRtMethodDefinition::isStatic).forEach { method ->
@@ -951,6 +954,9 @@ class KotlinProjectionPlanner(
                 .filterNot { it.isDefault }
                 .mapTo(this) { it.interfaceName }
         }.distinct()
+            .filterNot { interfaceName ->
+                isMappedCollectionInterfaceName(interfaceName, type.namespace, typesByQualifiedName)
+            }
 
         val bindings = candidateInterfaces.flatMap { ownerInterface ->
             collectReadOnlyCollectionBindings(
@@ -1015,6 +1021,9 @@ class KotlinProjectionPlanner(
                 .filterNot { it.isDefault }
                 .mapTo(this) { it.interfaceName }
         }.distinct()
+            .filterNot { interfaceName ->
+                isMappedCollectionInterfaceName(interfaceName, type.namespace, typesByQualifiedName)
+            }
 
         return candidateInterfaces.flatMap { ownerInterface ->
             collectMutableCollectionBindings(
@@ -1429,6 +1438,17 @@ class KotlinProjectionPlanner(
         return null
     }
 
+    private fun isMappedCollectionInterfaceName(
+        interfaceName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): Boolean {
+        val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
+        val resolvedInterfaceName = qualifyTypeName(rawInterfaceName, currentNamespace, typesByQualifiedName) ?: rawInterfaceName
+        val mappedType = mappedTypeByAbiName(resolvedInterfaceName) ?: return false
+        return mappedType.readOnlyCollectionKind != null || mappedType.mutableCollectionKind != null
+    }
+
     private fun findDeclaringInterface(
         interfaceName: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
@@ -1456,7 +1476,7 @@ class KotlinProjectionPlanner(
         if (interfaceName == defaultInterfaceName) {
             "_defaultInterface"
         } else {
-            "_${interfaceName.substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
+            "_${interfaceName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
         }
 
     private fun staticOwnerAccessorName(interfaceName: String): String =
@@ -1565,6 +1585,12 @@ private fun KotlinProjectionReadOnlyCollectionBinding.isRedundantReadOnlyCollect
             }
         }
     else -> false
+}
+
+private fun isMappedCollectionInterfaceName(interfaceName: String): Boolean {
+    val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
+    val mappedType = mappedTypeByAbiName(rawInterfaceName) ?: return false
+    return mappedType.readOnlyCollectionKind != null || mappedType.mutableCollectionKind != null
 }
 
 private fun KotlinProjectionMutableCollectionBinding.asReadOnlyEntryBinding(): KotlinProjectionReadOnlyCollectionBinding {
@@ -2072,12 +2098,10 @@ class KotlinProjectionRenderer {
                 "WinRT sealed runtime class shell emitted as a regular Kotlin class because Kotlin sealed constructors would block RCW wrapping and activation.\n",
             )
         }
-        builder.primaryConstructor(
-            FunSpec.constructorBuilder()
-                .addModifiers(KModifier.INTERNAL)
-                .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
-                .build(),
-        )
+        val constructorBuilder = FunSpec.constructorBuilder()
+            .addModifiers(KModifier.INTERNAL)
+            .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+        builder.primaryConstructor(constructorBuilder.build())
         builder.addProperty(
             PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addModifiers(KModifier.PRIVATE)
@@ -2126,28 +2150,15 @@ class KotlinProjectionRenderer {
                         .build(),
                 )
         }
-        plan.readOnlyCollectionBindings.forEach { binding ->
-            builder.addProperty(renderReadOnlyCollectionDelegateProperty(binding))
-        }
-        plan.mutableCollectionBindings.forEach { binding ->
-            builder.addProperty(renderMutableCollectionDelegateProperty(binding))
-        }
         plan.defaultInterfaceName?.let { defaultInterfaceName ->
             builder.addSuperinterface(resolveTypeName(defaultInterfaceName))
         }
         plan.type.implementedInterfaces
             .filterNot { it.isDefault }
+            .filterNot { implemented ->
+                isMappedCollectionInterfaceName(implemented.interfaceName)
+            }
             .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
-        plan.readOnlyCollectionBindings.distinctBy { binding ->
-            readOnlyCollectionProjectedType(binding).toString()
-        }.forEach { binding ->
-            builder.addSuperinterface(readOnlyCollectionProjectedType(binding), CodeBlock.of(binding.delegatePropertyName))
-        }
-        plan.mutableCollectionBindings.distinctBy { binding ->
-            mutableCollectionProjectedType(binding).toString()
-        }.forEach { binding ->
-            builder.addSuperinterface(mutableCollectionProjectedType(binding), CodeBlock.of(binding.delegatePropertyName))
-        }
         builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
         if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
             builder.addFunction(
@@ -2526,46 +2537,49 @@ class KotlinProjectionRenderer {
                     get() = %L
 
                 override val entries: MutableSet<%T>
-                    get() = object : %T<%T>() {
-                        override val size: Int
-                            get() = this@object.size
+                    get() {
+                        val __map = this
+                        return object : %T<%T>() {
+                            override val size: Int
+                                get() = __map.size
 
-                        override fun add(element: %T): Boolean {
-                            val __replaced = containsKey(element.key)
-                            put(element.key, element.value)
-                            return !__replaced
-                        }
+                            override fun add(element: %T): Boolean {
+                                val __replaced = __map.containsKey(element.key)
+                                __map.put(element.key, element.value)
+                                return !__replaced
+                            }
 
-                        override fun iterator(): MutableIterator<%T> {
-                            val __iterator = __createEntryIterator()
-                            return object : MutableIterator<%T> {
-                                private var __lastReturned: %T? = null
+                            override fun iterator(): MutableIterator<%T> {
+                                val __iterator = __createEntryIterator()
+                                return object : MutableIterator<%T> {
+                                    private var __lastReturned: %T? = null
 
-                                override fun hasNext(): Boolean = __iterator.hasNext()
+                                    override fun hasNext(): Boolean = __iterator.hasNext()
 
-                                override fun next(): %T {
-                                    val __entry = __iterator.next()
-                                    val __mutableEntry = object : %T {
-                                        override val key: %T = __entry.key
-                                        private var __currentValue: %T = __entry.value
-                                        override val value: %T
-                                            get() = __currentValue
+                                    override fun next(): %T {
+                                        val __entry = __iterator.next()
+                                        val __mutableEntry = object : %T {
+                                            override val key: %T = __entry.key
+                                            private var __currentValue: %T = __entry.value
+                                            override val value: %T
+                                                get() = __currentValue
 
-                                        override fun setValue(newValue: %T): %T {
-                                            val __previous = __currentValue
-                                            put(key, newValue)
-                                            __currentValue = newValue
-                                            return __previous
+                                            override fun setValue(newValue: %T): %T {
+                                                val __previous = __currentValue
+                                                __map.put(key, newValue)
+                                                __currentValue = newValue
+                                                return __previous
+                                            }
                                         }
+                                        __lastReturned = __mutableEntry
+                                        return __mutableEntry
                                     }
-                                    __lastReturned = __mutableEntry
-                                    return __mutableEntry
-                                }
 
-                                override fun remove() {
-                                    val __entry = __lastReturned ?: throw %T(%S)
-                                    this@object.remove(__entry.key)
-                                    __lastReturned = null
+                                    override fun remove() {
+                                        val __entry = __lastReturned ?: throw %T(%S)
+                                        __map.remove(__entry.key)
+                                        __lastReturned = null
+                                    }
                                 }
                             }
                         }
@@ -4097,7 +4111,7 @@ class KotlinProjectionRenderer {
             code.indent()
         }
         if (resultMarshaler != null) {
-            code.add("return %T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
+            code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
             code.indent()
             code.addStatement("val __resultOut = %L", requireNotNull(resultMarshaler.resultAllocation))
         }
