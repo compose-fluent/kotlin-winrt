@@ -28,8 +28,8 @@
 - [x] Generator 11.3: planner/metadata companions now carry custom mapped, generic ABI, required-interface, and module activation descriptors.
 - [x] Generator 11.4: Windows SDK CLI generation validated for the current `Windows.Data.Json` slice without changing checked-in projections.
 - [x] Generator 11.5: close Foundation-level object/array signature lowering, `System.Object` as WinRT reference projection, duplicate collection superinterface merging, and current `Windows.Foundation` SDK CLI generation.
-- [ ] Generator 11.6 正在做: close mapped collection writers: concrete generic substitution plus `IIterable`/`IIterator`/`IKeyValuePair`/map/vector member lowering.
-- [ ] Generator 11.7: close generic ABI registry: collect required delegates for collections, async, references, events, structs, and arrays.
+- [x] Generator 11.6: close mapped collection writers: concrete generic substitution plus `IIterable`/`IIterator`/`IKeyValuePair`/map/vector member lowering.
+- [ ] Generator 11.7 正在做: close generic ABI registry: collect required delegates for collections, async, references, events, structs, and arrays.
 - [ ] Generator 11.8: close generic instantiation output: concrete generic substitution, RCW helper hooks, vtable hooks, and recursive initialization.
 - [ ] Generator 11.9: close event projection helpers: event-source classes, static/instance event tables, and generic event initialization.
 - [ ] Generator 11.10: close ABI/interface implementation output: static ABI classes, required interface forwarding, vtables, ABI invoke helpers, and CCW/RCW factories.

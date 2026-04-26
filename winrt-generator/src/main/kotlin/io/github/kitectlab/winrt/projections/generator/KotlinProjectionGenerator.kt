@@ -8,6 +8,7 @@ import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGuidSignatureDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.kitectlab.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
@@ -20,6 +21,7 @@ import io.github.kitectlab.winrt.metadata.WinRtRequiredInterfaceAugmentationDesc
 import io.github.kitectlab.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
+import io.github.kitectlab.winrt.metadata.WinRtTypeRef
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
@@ -1059,11 +1061,12 @@ class KotlinProjectionPlanner(
                 )?.let(::add)
                 val interfaceType = typesByQualifiedName[resolvedInterfaceName]
                 interfaceType?.implementedInterfaces?.forEach { implemented ->
+                    val implementedInterfaceName = substitutedImplementedInterfaceName(currentInterfaceName, implemented)
                     addAll(
                         collectMutableCollectionBindings(
                             ownerInterface = ownerInterface,
                             defaultInterfaceName = defaultInterfaceName,
-                            currentInterfaceName = implemented.interfaceName,
+                            currentInterfaceName = implementedInterfaceName,
                             currentNamespace = interfaceType.namespace,
                             typesByQualifiedName = typesByQualifiedName,
                             visiting = visiting,
@@ -1129,11 +1132,12 @@ class KotlinProjectionPlanner(
                 )?.let(::add)
                 val interfaceType = typesByQualifiedName[resolvedInterfaceName]
                 interfaceType?.implementedInterfaces?.forEach { implemented ->
+                    val implementedInterfaceName = substitutedImplementedInterfaceName(currentInterfaceName, implemented)
                     addAll(
                         collectReadOnlyCollectionBindings(
                             ownerInterface = ownerInterface,
                             defaultInterfaceName = defaultInterfaceName,
-                            currentInterfaceName = implemented.interfaceName,
+                            currentInterfaceName = implementedInterfaceName,
                             currentNamespace = interfaceType.namespace,
                             typesByQualifiedName = typesByQualifiedName,
                             visiting = visiting,
@@ -1221,6 +1225,28 @@ class KotlinProjectionPlanner(
             requireSupportedBinding = requireSupportedBinding,
             bindingLocationLabel = bindingLocationLabel,
         )
+
+    private fun substitutedImplementedInterfaceName(
+        currentInterfaceName: String,
+        implemented: WinRtInterfaceImplementationDefinition,
+    ): String {
+        val currentGenericArguments = genericArgumentTypeRefs(currentInterfaceName)
+        if (currentGenericArguments.isEmpty()) {
+            return implemented.interfaceName
+        }
+        return implemented.interfaceType
+            .substituteTypeParameters(currentGenericArguments)
+            .typeName
+    }
+
+    private fun genericArgumentTypeRefs(typeName: String): List<WinRtTypeRef> {
+        val trimmed = typeName.trim()
+        if ('<' !in trimmed || !trimmed.endsWith('>')) {
+            return emptyList()
+        }
+        return splitGenericArguments(trimmed.substringAfter('<').substringBeforeLast('>'))
+            .map(WinRtTypeRef::fromDisplayName)
+    }
 
     private fun resolveInstanceMemberBinding(
         candidateInterfaces: List<String>,
@@ -1723,6 +1749,7 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementB
     KotlinProjectionAbiValueKind.Double,
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
     KotlinProjectionAbiValueKind.MappedKeyValuePair -> typeArguments.size == 2
