@@ -23,6 +23,7 @@ include(
     ":winrt-runtime",
     ":winrt-metadata",
     ":winrt-generator",
+    ":kotlin-winrt-gradle-plugin",
     ":winrt-authoring",
     ":winrt-projections",
     ":winrt-samples",
