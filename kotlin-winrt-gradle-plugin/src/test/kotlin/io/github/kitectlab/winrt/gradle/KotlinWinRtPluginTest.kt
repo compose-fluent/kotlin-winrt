@@ -129,6 +129,28 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_plugin_collects_only_dependencies_with_kotlin_winrt_identity_metadata() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val library = ProjectBuilder.builder().withName("library").withParent(root).build()
+        val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
+        val application = ProjectBuilder.builder().withName("application").withParent(root).build()
+
+        library.pluginManager.apply(KotlinWinRtLibraryPlugin::class.java)
+        runtime.pluginManager.apply("java")
+        application.pluginManager.apply("java")
+        application.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":library")))
+        application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":runtime")))
+
+        val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
+        val dependencyProjectPaths = identityConfiguration.dependencies
+            .filterIsInstance<org.gradle.api.artifacts.ProjectDependency>()
+            .map { it.path }
+
+        assertEquals(listOf(":library"), dependencyProjectPaths)
+    }
+
+    @Test
     fun application_plugin_wires_runtime_assets_into_java_resources() {
         val project = ProjectBuilder.builder().build()
 

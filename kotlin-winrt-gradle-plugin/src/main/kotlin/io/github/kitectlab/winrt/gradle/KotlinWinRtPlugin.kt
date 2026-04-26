@@ -4,7 +4,7 @@ import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
-import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.attributes.Usage
 import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.file.CopySpec
@@ -126,9 +126,16 @@ class KotlinWinRtApplicationPlugin : Plugin<Project> {
                 )
             },
         )
-        project.configurations.matching { it.name == "implementation" }.configureEach(Action<Configuration> { configuration ->
-            identityDependencies.extendsFrom(configuration)
-        })
+        project.configurations.matching { it.name == "implementation" }.configureEach { configuration ->
+            configuration.dependencies.configureEach { dependency ->
+                if (dependency is ProjectDependency) {
+                    val dependencyProject = project.findProject(dependency.path)
+                    if (dependencyProject?.hasKotlinWinRtIdentityMetadata() == true) {
+                        identityDependencies.dependencies.add(dependency.copy())
+                    }
+                }
+            }
+        }
         val applicationIdentityTask = project.tasks.register(
             "generateWinRtApplicationIdentity",
             GenerateWinRtApplicationIdentityTask::class.java,
@@ -223,3 +230,6 @@ private fun Any.callOneArg(name: String, argument: Any): Any? =
     javaClass.methods.firstOrNull { method ->
         method.name == name && method.parameterCount == 1
     }?.invoke(this, argument)
+
+private fun Project.hasKotlinWinRtIdentityMetadata(): Boolean =
+    configurations.findByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION) != null
