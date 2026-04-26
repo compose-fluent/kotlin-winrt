@@ -15,7 +15,7 @@ fun main(args: Array<String>) {
     val options = KotlinProjectionGeneratorOptions.parse(args.toList())
     val metadataSources = options.metadataSources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
     val model = WinRtMetadataLoader.loadSources(metadataSources).filterProjectionSurface(options.namespaces, options.types)
-    val files = KotlinProjectionGenerator().generate(model)
+    val files = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
 
     files.forEach { file ->
         val target = options.outputDirectory.resolve(file.relativePath)

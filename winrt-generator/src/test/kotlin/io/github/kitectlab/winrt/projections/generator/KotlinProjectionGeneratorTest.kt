@@ -2251,6 +2251,98 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_cswinrt_writer_support_handoffs_when_enabled() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "System.Object"),
+                                        WinRtParameterDefinition("args", "T0"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IReference",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            genericParameterCount = 1,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "T0",
+                                    getterMethodName = "get_Value",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "boxed",
+                                    returnTypeName = "Windows.Foundation.IReference<Int>",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("_get_Value_Int"))
+        assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("Windows.Foundation.IReference<Int>"))
+        assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("Windows_Foundation_IReference_Int"))
+        assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("_EventSource_Windows_Foundation_EventHandler_Int"))
+        assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
+        assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("HELPER_OUTPUTS"))
+    }
+
+    @Test
     fun generator_projects_mutable_vector_runtime_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

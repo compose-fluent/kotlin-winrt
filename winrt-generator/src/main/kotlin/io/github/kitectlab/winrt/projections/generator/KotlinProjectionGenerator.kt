@@ -7,10 +7,15 @@ import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtGenericAbiInventory
+import io.github.kitectlab.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGuidSignatureDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.kitectlab.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
+import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
+import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionInventory
+import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
 import io.github.kitectlab.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
@@ -4840,7 +4845,269 @@ class KotlinProjectionRenderer {
 class KotlinProjectionGenerator(
     private val planner: KotlinProjectionPlanner = KotlinProjectionPlanner(),
     private val renderer: KotlinProjectionRenderer = KotlinProjectionRenderer(),
+    private val supportRenderer: KotlinProjectionSupportRenderer = KotlinProjectionSupportRenderer(),
+    private val emitSupportFiles: Boolean = false,
 ) {
-    fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> =
-        planner.plan(model).map(renderer::render)
+    fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
+        val normalizedModel = model.normalized()
+        val plans = planner.plan(normalizedModel)
+        val projectionFiles = plans.map(renderer::render)
+        if (!emitSupportFiles) {
+            return projectionFiles
+        }
+        return projectionFiles + supportRenderer.render(normalizedModel, plans)
+    }
+}
+
+class KotlinProjectionSupportRenderer {
+    fun render(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): List<KotlinProjectionFile> {
+        val context = WinRtMetadataProjectionContext(sources = emptyList())
+        val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
+        val semanticHelpers = model.semanticHelpers()
+        val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
+        return listOfNotNull(
+            renderGenericAbiRegistry(inventory.genericAbiInventory),
+            renderGenericTypeInstantiations(genericInstantiationWriters),
+            renderEventProjectionHelpers(model, inventory),
+            renderAbiImplementationPlan(plans),
+            renderTypeShapeWriterPlan(inventory, plans),
+        )
+    }
+
+    private fun renderGenericAbiRegistry(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
+        if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTGenericAbiRegistry")
+            appendLine("internal data class GenericAbiDelegateEntry(")
+            appendLine("    val name: String,")
+            appendLine("    val sourceGenericType: String,")
+            appendLine("    val operation: String,")
+            appendLine("    val declaration: String,")
+            appendLine("    val abiParameterTypes: List<String>,")
+            appendLine("    val typeArrayShape: List<String>,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTGenericAbiRegistry {")
+            appendStringList("DERIVED_GENERIC_INTERFACES", inventory.derivedGenericInterfaces)
+            appendLine("    val GENERIC_ABI_DELEGATES: List<GenericAbiDelegateEntry> = listOf(")
+            inventory.genericAbiDelegates.forEach { delegate ->
+                appendLine("        GenericAbiDelegateEntry(")
+                appendLine("            name = ${delegate.abiDelegateName.kotlinString()},")
+                appendLine("            sourceGenericType = ${delegate.sourceGenericType.typeName.kotlinString()},")
+                appendLine("            operation = ${delegate.operationName.kotlinString()},")
+                appendLine("            declaration = ${delegate.declaration.kotlinString()},")
+                appendLine("            abiParameterTypes = ${delegate.abiParameterTypeNames.kotlinListLiteral()},")
+                appendLine("            typeArrayShape = ${delegate.typeArrayShape.kotlinListLiteral()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("}")
+        }
+        return supportFile("WinRTGenericAbiRegistry.kt", contents)
+    }
+
+    private fun renderGenericTypeInstantiations(
+        descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
+    ): KotlinProjectionFile? {
+        if (descriptors.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTGenericTypeInstantiations")
+            appendLine("internal data class GenericTypeInstantiationEntry(")
+            appendLine("    val className: String,")
+            appendLine("    val sourceType: String,")
+            appendLine("    val isDelegate: Boolean,")
+            appendLine("    val rcwFunctions: List<String>,")
+            appendLine("    val vtableFunctions: List<String>,")
+            appendLine("    val propertyAccessors: List<String>,")
+            appendLine("    val dependencies: List<String>,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTGenericTypeInstantiations {")
+            appendLine("    val ENTRIES: List<GenericTypeInstantiationEntry> = listOf(")
+            descriptors.forEach { descriptor ->
+                appendLine("        GenericTypeInstantiationEntry(")
+                appendLine("            className = ${descriptor.instantiationClassName.kotlinString()},")
+                appendLine("            sourceType = ${descriptor.sourceTypeName.kotlinString()},")
+                appendLine("            isDelegate = ${descriptor.isDelegateInstantiation},")
+                appendLine("            rcwFunctions = ${descriptor.rcwFunctionNames.kotlinListLiteral()},")
+                appendLine("            vtableFunctions = ${descriptor.vtableFunctionNames.kotlinListLiteral()},")
+                appendLine("            propertyAccessors = ${descriptor.propertyAccessorFunctionNames.kotlinListLiteral()},")
+                appendLine("            dependencies = ${descriptor.initializationDependencies.kotlinListLiteral()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("}")
+        }
+        return supportFile("WinRTGenericTypeInstantiations.kt", contents)
+    }
+
+    private fun renderEventProjectionHelpers(
+        model: WinRtMetadataModel,
+        inventory: WinRtMetadataProjectionInventory,
+    ): KotlinProjectionFile? {
+        val helpers = model.semanticHelpers()
+        val subclassDescriptors = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .flatMap(helpers::eventHelperSubclassDescriptors)
+            .distinctBy { it.eventTypeName to it.ownerTypeName }
+            .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
+        if (inventory.eventSourceMappings.isEmpty() && subclassDescriptors.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTEventProjectionHelpers")
+            appendLine("internal data class EventSourceEntry(")
+            appendLine("    val eventType: String,")
+            appendLine("    val ownerType: String,")
+            appendLine("    val sourceClass: String,")
+            appendLine("    val abiEventType: String,")
+            appendLine("    val genericArguments: List<String>,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTEventProjectionHelpers {")
+            appendLine("    val EVENT_SOURCES: List<EventSourceEntry> = listOf(")
+            subclassDescriptors.forEach { descriptor ->
+                appendLine("        EventSourceEntry(")
+                appendLine("            eventType = ${descriptor.eventTypeName.kotlinString()},")
+                appendLine("            ownerType = ${descriptor.ownerTypeName.kotlinString()},")
+                appendLine("            sourceClass = ${descriptor.sourceClassName.kotlinString()},")
+                appendLine("            abiEventType = ${descriptor.abiEventTypeName.kotlinString()},")
+                appendLine("            genericArguments = ${descriptor.genericArgumentTypeNames.kotlinListLiteral()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendStringList("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" })
+            appendLine("}")
+        }
+        return supportFile("WinRTEventProjectionHelpers.kt", contents)
+    }
+
+    private fun renderAbiImplementationPlan(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
+        val abiPlans = plans.filter { plan ->
+            plan.typeDeclarationDescriptor.writesAbiDeclaration ||
+                plan.typeDeclarationDescriptor.writesImplementationClass ||
+                plan.genericAbiClassInitializationDescriptor != null ||
+                plan.requiredInterfaceAugmentationDescriptor != null
+        }
+        if (abiPlans.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTAbiImplementationPlan")
+            appendLine("internal data class AbiImplementationEntry(")
+            appendLine("    val typeName: String,")
+            appendLine("    val writesAbi: Boolean,")
+            appendLine("    val writesImplementationClass: Boolean,")
+            appendLine("    val vtableSlots: List<String>,")
+            appendLine("    val genericInvokeSlots: List<String>,")
+            appendLine("    val requiredInterfaces: List<String>,")
+            appendLine("    val explicitForwards: List<String>,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTAbiImplementationPlan {")
+            appendLine("    val ENTRIES: List<AbiImplementationEntry> = listOf(")
+            abiPlans.sortedBy { it.type.qualifiedName }.forEach { plan ->
+                appendLine("        AbiImplementationEntry(")
+                appendLine("            typeName = ${plan.type.qualifiedName.kotlinString()},")
+                appendLine("            writesAbi = ${plan.typeDeclarationDescriptor.writesAbiDeclaration},")
+                appendLine("            writesImplementationClass = ${plan.typeDeclarationDescriptor.writesImplementationClass},")
+                appendLine("            vtableSlots = ${plan.abiSlotBindings.map { it.constantName }.kotlinListLiteral()},")
+                appendLine("            genericInvokeSlots = ${plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty().kotlinListLiteral()},")
+                appendLine("            requiredInterfaces = ${plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty().kotlinListLiteral()},")
+                appendLine("            explicitForwards = ${plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty().kotlinListLiteral()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("}")
+        }
+        return supportFile("WinRTAbiImplementationPlan.kt", contents)
+    }
+
+    private fun renderTypeShapeWriterPlan(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): KotlinProjectionFile? {
+        if (plans.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTTypeShapeWriterPlan")
+            appendLine("internal data class TypeShapeEntry(")
+            appendLine("    val typeName: String,")
+            appendLine("    val kind: String,")
+            appendLine("    val mappedMembers: List<String>,")
+            appendLine("    val factoryMembers: List<String>,")
+            appendLine("    val moduleActivationEntries: List<String>,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTTypeShapeWriterPlan {")
+            appendStringList("HELPER_OUTPUTS", inventory.helperOutputs.requiredHelperFileNames)
+            appendStringList("BASE_TYPE_MAPPINGS", inventory.baseTypeMappings.map { "${it.typeName}->${it.baseTypeName}" })
+            appendStringList("AUTHORING_METADATA_MAPPINGS", inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" })
+            appendLine("    val TYPES: List<TypeShapeEntry> = listOf(")
+            plans.sortedBy { it.type.qualifiedName }.forEach { plan ->
+                appendLine("        TypeShapeEntry(")
+                appendLine("            typeName = ${plan.type.qualifiedName.kotlinString()},")
+                appendLine("            kind = ${plan.type.kind.name.kotlinString()},")
+                appendLine("            mappedMembers = ${plan.customMappedMemberOutputDescriptor?.memberPlans.orEmpty().kotlinListLiteral()},")
+                appendLine("            factoryMembers = ${plan.moduleActivationAndAuthoringDescriptor?.factoryMemberNames.orEmpty().kotlinListLiteral()},")
+                appendLine("            moduleActivationEntries = ${plan.moduleActivationAndAuthoringDescriptor?.moduleActivationFactoryEntries.orEmpty().kotlinListLiteral()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("}")
+        }
+        return supportFile("WinRTTypeShapeWriterPlan.kt", contents)
+    }
+
+    private fun supportFile(fileName: String, contents: String): KotlinProjectionFile =
+        KotlinProjectionFile(
+            relativePath = "io/github/kitectlab/winrt/projections/support/$fileName",
+            packageName = SUPPORT_PACKAGE,
+            contents = contents,
+        )
+
+    private fun StringBuilder.appendHeader(fileName: String) {
+        appendLine("package $SUPPORT_PACKAGE")
+        appendLine()
+        appendLine("// Deterministic generator handoff for .cswinrt $fileName writer parity.")
+        appendLine()
+    }
+
+    private fun StringBuilder.appendStringList(name: String, values: List<String>) {
+        appendLine("    val $name: List<String> = ${values.kotlinListLiteral()}")
+    }
+
+    private fun String.kotlinString(): String = buildString {
+        append('"')
+        this@kotlinString.forEach { character ->
+            when (character) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(character)
+            }
+        }
+        append('"')
+    }
+
+    private fun List<String>.kotlinListLiteral(): String =
+        if (isEmpty()) {
+            "emptyList()"
+        } else {
+            joinToString(prefix = "listOf(", postfix = ")") { it.kotlinString() }
+        }
+
+    private companion object {
+        const val SUPPORT_PACKAGE = "io.github.kitectlab.winrt.projections.support"
+    }
 }

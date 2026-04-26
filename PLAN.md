@@ -29,11 +29,12 @@
 - [x] Generator 11.4: Windows SDK CLI generation validated for the current `Windows.Data.Json` slice without changing checked-in projections.
 - [x] Generator 11.5: close Foundation-level object/array signature lowering, `System.Object` as WinRT reference projection, duplicate collection superinterface merging, and current `Windows.Foundation` SDK CLI generation.
 - [x] Generator 11.6: close mapped collection writers: concrete generic substitution plus `IIterable`/`IIterator`/`IKeyValuePair`/map/vector member lowering.
-- [ ] Generator 11.7 正在做: close generic ABI registry: collect required delegates for collections, async, references, events, structs, and arrays.
-- [ ] Generator 11.8: close generic instantiation output: concrete generic substitution, RCW helper hooks, vtable hooks, and recursive initialization.
-- [ ] Generator 11.9: close event projection helpers: event-source classes, static/instance event tables, and generic event initialization.
-- [ ] Generator 11.10: close ABI/interface implementation output: static ABI classes, required interface forwarding, vtables, ABI invoke helpers, and CCW/RCW factories.
-- [ ] Generator 11.11: close remaining type-shape writers: full mapped-type table parity, projected/nonprojected/CCW name modes, ABI struct helpers, delegate helpers, attributes, and module activation metadata.
+- [x] Generator 11.7: close generic ABI registry: collect required delegates for collections, async, references, events, structs, and arrays.
+- [x] Generator 11.8: close generic instantiation output: concrete generic substitution, RCW helper hooks, vtable hooks, and recursive initialization.
+- [x] Generator 11.9: close event projection helpers: event-source classes, static/instance event tables, and generic event initialization.
+- [x] Generator 11.10: close ABI/interface implementation output: static ABI classes, required interface forwarding, vtables, ABI invoke helpers, and CCW/RCW factories.
+- [x] Generator 11.11: close remaining type-shape writers: full mapped-type table parity, projected/nonprojected/CCW name modes, ABI struct helpers, delegate helpers, attributes, and module activation metadata.
+- [ ] Queue 11.12 正在做: compile support helper output into `winrt-projections` once generated ABI runtime hooks are promoted from handoff metadata to callable implementation.
 - [ ] Queue 12: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
 - [ ] Queue 13: implement plugin roles: `kotlin-winrt-library` carries generated sources plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
@@ -71,6 +72,7 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11 --namespace Windows.Data.Json'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11-foundation --namespace Windows.Foundation'`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11-support --namespace Windows.Foundation --namespace Windows.Foundation.Collections'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-projections:compileKotlin`
 - [ ] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
 - [ ] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
