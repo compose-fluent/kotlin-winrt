@@ -13,13 +13,17 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.TaskAction
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.zip.ZipInputStream
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
+import kotlin.io.path.notExists
 import kotlin.streams.asSequence
 
 abstract class GenerateWinRtProjectionsTask : DefaultTask() {
@@ -44,6 +48,15 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 
     @get:Input
     abstract val nugetExecutable: Property<String>
+
+    @get:Input
+    abstract val autoDownloadNuGetCli: Property<Boolean>
+
+    @get:Input
+    abstract val nugetCliVersion: Property<String>
+
+    @get:Internal
+    abstract val nugetCliCacheDirectory: DirectoryProperty
 
     @get:Input
     abstract val restoreNuGetPackages: Property<Boolean>
@@ -144,7 +157,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         installRoot: Path,
     ) {
         val command = listOf(
-            nugetExecutable.get(),
+            nugetCommand(),
             "install",
             identity.normalizedPackageId,
             "-Version",
@@ -192,7 +205,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             return emptyList()
         }
         return runCatching {
-            val process = ProcessBuilder(nugetExecutable.get(), "locals", "global-packages", "-list")
+            val process = ProcessBuilder(nugetCommand(), "locals", "global-packages", "-list")
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
@@ -206,6 +219,64 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }.getOrElse { error ->
             logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
             emptyList()
+        }
+    }
+
+    private fun nugetCommand(): String {
+        val configuredExecutable = nugetExecutable.get()
+        if (canStartNuGet(configuredExecutable)) {
+            return configuredExecutable
+        }
+        if (!autoDownloadNuGetCli.get()) {
+            throw GradleException(
+                "Microsoft NuGet CLI '$configuredExecutable' is not available. Install nuget.exe, " +
+                    "configure kotlinWinRt.nugetExecutable, or enable kotlinWinRt.autoDownloadNuGetCli.",
+            )
+        }
+        val cachedExecutable = cachedNuGetExecutable()
+        if (canStartNuGet(cachedExecutable.toString())) {
+            return cachedExecutable.toString()
+        }
+        downloadNuGetCli(cachedExecutable)
+        if (!canStartNuGet(cachedExecutable.toString())) {
+            throw GradleException("Downloaded Microsoft NuGet CLI did not start: $cachedExecutable")
+        }
+        return cachedExecutable.toString()
+    }
+
+    private fun canStartNuGet(executable: String): Boolean =
+        runCatching {
+            val process = ProcessBuilder(executable, "help")
+                .redirectErrorStream(true)
+                .start()
+            process.inputStream.bufferedReader().use { it.readText() }
+            process.waitFor() == 0
+        }.getOrDefault(false)
+
+    private fun cachedNuGetExecutable(): Path =
+        nugetCliCacheDirectory.get().asFile.toPath()
+            .resolve(nugetCliVersion.get())
+            .resolve("nuget.exe")
+
+    private fun downloadNuGetCli(targetExecutable: Path) {
+        val version = nugetCliVersion.get()
+        val packageUrl = URI(
+            "https://api.nuget.org/v3-flatcontainer/nuget.commandline/$version/nuget.commandline.$version.nupkg",
+        ).toURL()
+        Files.createDirectories(targetExecutable.parent)
+        logger.lifecycle("Downloading Microsoft NuGet CLI $version to $targetExecutable")
+        packageUrl.openStream().use { input ->
+            ZipInputStream(input).use { zip ->
+                generateSequence { zip.nextEntry }
+                    .firstOrNull { entry -> entry.name.equals("tools/nuget.exe", ignoreCase = true) }
+                    ?: throw GradleException("NuGet.CommandLine $version package does not contain tools/nuget.exe.")
+                Files.newOutputStream(targetExecutable).use { output ->
+                    zip.copyTo(output)
+                }
+            }
+        }
+        if (targetExecutable.notExists()) {
+            throw GradleException("Failed to cache Microsoft NuGet CLI at $targetExecutable")
         }
     }
 }

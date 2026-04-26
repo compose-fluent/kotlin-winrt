@@ -20,6 +20,8 @@ abstract class KotlinWinRtExtension @Inject constructor(
     val windowsSdkVersion: Property<String> = objects.property(String::class.java)
     val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     val nugetExecutable: Property<String> = objects.property(String::class.java).convention("nuget")
+    val autoDownloadNuGetCli: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+    val nugetCliVersion: Property<String> = objects.property(String::class.java).convention("7.3.1")
     val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val useNuGetCliGlobalPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val nugetGlobalPackagesRoots: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
