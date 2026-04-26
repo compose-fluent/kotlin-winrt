@@ -50,9 +50,6 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     abstract val nugetExecutable: Property<String>
 
     @get:Input
-    abstract val autoDownloadNuGetCli: Property<Boolean>
-
-    @get:Input
     abstract val nugetCliVersion: Property<String>
 
     @get:Internal
@@ -156,29 +153,19 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         identity: WinRtNuGetPackageIdentity,
         installRoot: Path,
     ) {
-        val command = listOf(
-            nugetCommand(),
-            "install",
-            identity.normalizedPackageId,
-            "-Version",
-            identity.normalizedVersion,
-            "-NonInteractive",
-            "-OutputDirectory",
-            installRoot.toString(),
+        runNuGetCommand(
+            arguments = listOf(
+                "install",
+                identity.normalizedPackageId,
+                "-Version",
+                identity.normalizedVersion,
+                "-NonInteractive",
+                "-OutputDirectory",
+                installRoot.toString(),
+            ),
+            workingDirectory = installRoot,
+            description = "install $identity",
         )
-        val processBuilder = ProcessBuilder(command)
-            .directory(installRoot.toFile())
-            .redirectErrorStream(true)
-        val process = runCatching { processBuilder.start() }.getOrElse { error ->
-            throw GradleException("Failed to start Microsoft NuGet CLI '${nugetExecutable.get()}'.", error)
-        }
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        val exitCode = process.waitFor()
-        if (exitCode != 0) {
-            throw GradleException(
-                "Microsoft NuGet CLI install failed with exit code $exitCode for $identity:$LINE_SEPARATOR$output",
-            )
-        }
     }
 
     private fun discoverInstalledPackages(installRoot: Path): List<Path> =
@@ -205,53 +192,91 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             return emptyList()
         }
         return runCatching {
-            val process = ProcessBuilder(nugetCommand(), "locals", "global-packages", "-list")
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.bufferedReader().use { it.readText() }
-            val exitCode = process.waitFor()
-            if (exitCode != 0) {
-                logger.info("NuGet CLI global-packages lookup exited with $exitCode: $output")
-                emptyList()
-            } else {
-                WinRtNuGetPackageResolver.parseNuGetGlobalPackagesOutput(output)
-            }
+            val invocation = runNuGetCommand(
+                arguments = listOf("locals", "global-packages", "-list"),
+                description = "locate global-packages",
+            )
+            WinRtNuGetPackageResolver.parseNuGetGlobalPackagesOutput(invocation.output)
         }.getOrElse { error ->
             logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
             emptyList()
         }
     }
 
-    private fun nugetCommand(): String {
-        val configuredExecutable = nugetExecutable.get()
-        if (canStartNuGet(configuredExecutable)) {
-            return configuredExecutable
+    private fun runNuGetCommand(
+        arguments: List<String>,
+        workingDirectory: Path? = null,
+        description: String,
+    ): NuGetInvocation {
+        val configuredInvocation = invokeNuGet(nugetExecutable.get(), arguments, workingDirectory)
+        if (configuredInvocation.isSuccess) {
+            return configuredInvocation
         }
-        if (!autoDownloadNuGetCli.get()) {
-            throw GradleException(
-                "Microsoft NuGet CLI '$configuredExecutable' is not available. Install nuget.exe, " +
-                    "configure kotlinWinRt.nugetExecutable, or enable kotlinWinRt.autoDownloadNuGetCli.",
+
+        val cachedCommand = cachedNuGetCommand()
+        if (cachedCommand == nugetExecutable.get()) {
+            throw nugetFailure(description, configuredInvocation, null)
+        }
+
+        logger.info(
+            "Configured Microsoft NuGet CLI '${nugetExecutable.get()}' failed for $description; " +
+                "retrying with cached CLI $cachedCommand.",
+        )
+        val cachedInvocation = invokeNuGet(cachedCommand, arguments, workingDirectory)
+        if (cachedInvocation.isSuccess) {
+            return cachedInvocation
+        }
+
+        throw nugetFailure(description, configuredInvocation, cachedInvocation)
+    }
+
+    private fun invokeNuGet(
+        executable: String,
+        arguments: List<String>,
+        workingDirectory: Path?,
+    ): NuGetInvocation {
+        val command = listOf(executable) + arguments
+        val processBuilder = ProcessBuilder(command)
+            .redirectErrorStream(true)
+        if (workingDirectory != null) {
+            processBuilder.directory(workingDirectory.toFile())
+        }
+        val process = runCatching { processBuilder.start() }.getOrElse { error ->
+            return NuGetInvocation(
+                executable = executable,
+                exitCode = -1,
+                output = error.message.orEmpty(),
             )
         }
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        val exitCode = process.waitFor()
+        return NuGetInvocation(
+            executable = executable,
+            exitCode = exitCode,
+            output = output,
+        )
+    }
+
+    private fun nugetFailure(
+        description: String,
+        configuredInvocation: NuGetInvocation,
+        cachedInvocation: NuGetInvocation?,
+    ): GradleException {
+        val configuredMessage =
+            "configured '${configuredInvocation.executable}' exited ${configuredInvocation.exitCode}:$LINE_SEPARATOR${configuredInvocation.output}"
+        val cachedMessage = cachedInvocation?.let {
+            "${LINE_SEPARATOR}cached '${it.executable}' exited ${it.exitCode}:$LINE_SEPARATOR${it.output}"
+        }.orEmpty()
+        return GradleException("Microsoft NuGet CLI failed to $description.$LINE_SEPARATOR$configuredMessage$cachedMessage")
+    }
+
+    private fun cachedNuGetCommand(): String {
         val cachedExecutable = cachedNuGetExecutable()
-        if (canStartNuGet(cachedExecutable.toString())) {
-            return cachedExecutable.toString()
-        }
-        downloadNuGetCli(cachedExecutable)
-        if (!canStartNuGet(cachedExecutable.toString())) {
-            throw GradleException("Downloaded Microsoft NuGet CLI did not start: $cachedExecutable")
+        if (cachedExecutable.notExists()) {
+            downloadNuGetCli(cachedExecutable)
         }
         return cachedExecutable.toString()
     }
-
-    private fun canStartNuGet(executable: String): Boolean =
-        runCatching {
-            val process = ProcessBuilder(executable, "help")
-                .redirectErrorStream(true)
-                .start()
-            process.inputStream.bufferedReader().use { it.readText() }
-            process.waitFor() == 0
-        }.getOrDefault(false)
 
     private fun cachedNuGetExecutable(): Path =
         nugetCliCacheDirectory.get().asFile.toPath()
@@ -279,6 +304,15 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             throw GradleException("Failed to cache Microsoft NuGet CLI at $targetExecutable")
         }
     }
+}
+
+private data class NuGetInvocation(
+    val executable: String,
+    val exitCode: Int,
+    val output: String,
+) {
+    val isSuccess: Boolean
+        get() = exitCode == 0
 }
 
 private val LINE_SEPARATOR: String = System.lineSeparator()
