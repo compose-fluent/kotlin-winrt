@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.kotlinJvm) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
@@ -18,6 +20,13 @@ dependencies {
     implementation(projects.winrtGenerator)
     testImplementation(libs.junit)
     testImplementation(gradleTestKit())
+}
+
+tasks.withType<Test>().configureEach {
+    maxParallelForks = 1
+    minHeapSize = "64m"
+    maxHeapSize = "128m"
+    jvmArgs("-XX:+UseSerialGC")
 }
 
 gradlePlugin {

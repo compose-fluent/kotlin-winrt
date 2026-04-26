@@ -44,7 +44,7 @@
 - [x] Queue 13: plugin roles now flow through one `winRt {}` DSL: default library publishes identity; `application {}` resolves runtime/resource integration.
 - [x] Queue 13.1: library model publishes JSON identity metadata while generated projection sources remain part of the library compilation/artifact.
 - [x] Queue 13.2: application model resolves transitive `kotlin-winrt` identity JSON artifacts and writes an aggregate for runtime/resource staging.
-- [x] Queue 13.3: application model stages NuGet runtime DLLs, framework PRI resources, `resources.pri`, and WindowsAppSDK version headers from application/dependency package identities.
+- [x] Queue 13.3: application model stages NuGet runtime DLLs from package identities and keeps WindowsAppSDK framework PRI/header staging scoped to WindowsAppSDK packages.
 - [x] Queue 13.4: plugin application model wires staged runtime assets into Java resources and Gradle application distributions without sample-specific system properties.
 - [ ] Queue 14 正在做: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt` and generate deterministic WinRT sources from Windows SDK metadata.
@@ -53,7 +53,7 @@
 - [ ] Queue 15 正在做: expand `winrt-samples` from cswinrt-aligned API samples, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [x] Queue 15.1: `winrt-samples` is now a `winRt { application {} }` consumer with a cswinrt `ApiCompatTests`-aligned `Windows.Data.Json.JsonObject.Parse` sample shape; native execution is opt-in until JSON ABI stability, `GetNamedValue("phone")` nullable object-return, and `GetNamedArray("education")` collection parity land upstream.
 - [x] Queue 15.2: sample-side plugin graph validation now makes `winrt-samples:check` verify generated application identity includes `winrt-projections` metadata and excludes ordinary runtime implementation dependencies.
-- [x] Queue 15.3: `winrt-samples` now has an opt-in WindowsAppSDK NuGet declaration via `kotlinWinRt.samples.windowsAppSdkVersion`; default checks stay offline/lightweight while explicit identity validation proves the application metadata records `Microsoft.WindowsAppSDK`.
+- [x] Queue 15.3: `winrt-samples` now has opt-in WindowsAppSDK split-package declarations via `kotlinWinRt.samples.windowsAppSdkWinuiVersion`; default checks stay offline/lightweight while explicit identity validation proves Foundation/InteractiveExperiences/WinUI metadata is recorded.
 - [x] Queue 15.4: plugin API is consolidated to `io.github.kitectlab.winrt` plus `winRt {}`; library is the default model and `application {}` selects application identity/resource staging.
 - [x] Queue 16: root `validateWinRtQueue16` now runs validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
@@ -91,6 +91,7 @@
 - [x] Plugin 4.4: implement application-model transitive NuGet runtime/resource staging from identity JSON and local NuGet declarations.
 - [x] Plugin 4.5: migrate useful runtime/resource staging and distribution/resource wiring out of legacy `sample-jvm-winui3` into the plugin application model.
 - [x] Plugin 4.6: remove unpublished split plugin ids/DSLs; keep only `winRt {}` with `application {}` as the application model switch.
+- [x] Plugin 4.7: align WindowsAppSDK handling with `.cswinrt/src/Projections/WinAppSDK`: add `windowsAppSdk(...)` split-package DSL and prevent ordinary NuGet packages from receiving WindowsAppSDK framework PRI/header staging.
 
 ## Validation Plan
 

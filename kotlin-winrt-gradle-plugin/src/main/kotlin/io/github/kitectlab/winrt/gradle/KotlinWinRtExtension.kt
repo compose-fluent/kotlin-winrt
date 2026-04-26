@@ -35,6 +35,12 @@ interface BaseWinRtExtension {
     fun nugetPackage(packageId: String, version: String)
 
     fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>)
+
+    fun windowsAppSdk(
+        winuiVersion: String,
+        foundationVersion: String = winuiVersion,
+        interactiveExperiencesVersion: String = winuiVersion,
+    )
 }
 
 abstract class BaseWinRtExtensionSupport @Inject constructor(
@@ -83,6 +89,22 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
 
     override fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>) {
         nugetPackages.create(packageId, action)
+    }
+
+    override fun windowsAppSdk(
+        winuiVersion: String,
+        foundationVersion: String,
+        interactiveExperiencesVersion: String,
+    ) {
+        setNuGetPackageVersion("Microsoft.WindowsAppSDK.Foundation", foundationVersion)
+        setNuGetPackageVersion("Microsoft.WindowsAppSDK.InteractiveExperiences", interactiveExperiencesVersion)
+        setNuGetPackageVersion("Microsoft.WindowsAppSDK.WinUI", winuiVersion)
+    }
+
+    private fun setNuGetPackageVersion(packageId: String, version: String) {
+        val existing = nugetPackages.findByName(packageId)
+        val target = existing ?: nugetPackages.create(packageId)
+        target.version.set(version)
     }
 }
 

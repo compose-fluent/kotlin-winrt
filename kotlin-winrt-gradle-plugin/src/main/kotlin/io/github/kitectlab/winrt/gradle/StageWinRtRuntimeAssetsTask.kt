@@ -54,8 +54,13 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
-            stageFrameworkNativeAssets(resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"), outputRoot)
-            stageVersionInfoHeader(resolved.packageRoot.resolve("include").resolve("WindowsAppSDK-VersionInfo.h"), outputRoot)
+            if (resolved.identity.isWindowsAppSdkPackage()) {
+                stageWindowsAppSdkFrameworkAssets(
+                    resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
+                    outputRoot,
+                )
+                stageWindowsAppSdkVersionInfoHeader(resolved.packageRoot.resolve("include").resolve("WindowsAppSDK-VersionInfo.h"), outputRoot)
+            }
         }
         stageResourcesPriAlias(outputRoot)
     }
@@ -79,7 +84,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
-    private fun stageFrameworkNativeAssets(nativeRoot: Path, outputRoot: Path) {
+    private fun stageWindowsAppSdkFrameworkAssets(nativeRoot: Path, outputRoot: Path) {
         if (!nativeRoot.isDirectory()) {
             return
         }
@@ -91,7 +96,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
-    private fun stageVersionInfoHeader(header: Path, outputRoot: Path) {
+    private fun stageWindowsAppSdkVersionInfoHeader(header: Path, outputRoot: Path) {
         if (header.isRegularFile()) {
             copyFile(header, outputRoot.resolve("include").resolve(header.name))
         }
@@ -109,6 +114,10 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }
 }
+
+private fun WinRtNuGetPackageIdentity.isWindowsAppSdkPackage(): Boolean =
+    normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
+        normalizedPackageId.startsWith("Microsoft.WindowsAppSDK.", ignoreCase = true)
 
 internal fun currentWindowsRuntimeIdentifier(): String {
     val arch = System.getProperty("os.arch").lowercase()
