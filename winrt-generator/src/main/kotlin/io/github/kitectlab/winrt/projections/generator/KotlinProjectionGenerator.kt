@@ -1,15 +1,21 @@
 package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
+import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
+import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
+import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
+import io.github.kitectlab.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
+import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.kitectlab.winrt.metadata.requireValidForProjection
+import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
@@ -185,6 +191,7 @@ data class KotlinTypeProjectionPlan(
     val readOnlyCollectionBindings: List<KotlinProjectionReadOnlyCollectionBinding> = emptyList(),
     val mutableCollectionBindings: List<KotlinProjectionMutableCollectionBinding> = emptyList(),
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,
+    val eventInvokeDescriptors: List<WinRtEventInvokeDescriptor> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
@@ -196,6 +203,7 @@ data class KotlinProjectionInterfaceBinding(
 data class KotlinProjectionAbiSlotBinding(
     val constantName: String,
     val slot: Int,
+    val descriptor: WinRtMethodVtableDescriptor? = null,
 )
 
 data class KotlinProjectionInstanceMemberBinding(
@@ -206,6 +214,8 @@ data class KotlinProjectionInstanceMemberBinding(
     val slotConstantName: String,
     val returnBinding: KotlinProjectionAbiTypeBinding,
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
+    val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
+    val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
 )
 
 data class KotlinProjectionStaticMemberBinding(
@@ -217,6 +227,8 @@ data class KotlinProjectionStaticMemberBinding(
     val slotConstantName: String,
     val returnBinding: KotlinProjectionAbiTypeBinding,
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
+    val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
+    val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
 )
 
 data class KotlinProjectionReadOnlyCollectionBinding(
@@ -539,28 +551,34 @@ class KotlinProjectionPlanner(
 ) {
     fun plan(model: WinRtMetadataModel): List<KotlinTypeProjectionPlan> =
         validator.validate(model).let { normalized ->
+            val semanticHelpers = normalized.semanticHelpers()
             val typesByQualifiedName = normalized.namespaces
                 .flatMap(WinRtNamespace::types)
                 .associateBy(WinRtTypeDefinition::qualifiedName)
             val interfaceIidsByName = normalized.namespaces
                 .flatMap(WinRtNamespace::types)
                 .associate { it.qualifiedName to it.iid }
-            normalized.namespaces.flatMap { planNamespace(it, interfaceIidsByName, typesByQualifiedName) }
+            normalized.namespaces.flatMap { planNamespace(it, interfaceIidsByName, typesByQualifiedName, semanticHelpers) }
         }
 
     fun planNamespace(
         namespace: WinRtNamespace,
         interfaceIidsByName: Map<String, Guid?> = emptyMap(),
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
+        semanticHelpers: WinRtMetadataSemanticHelpers? = null,
     ): List<KotlinTypeProjectionPlan> =
-        namespace.normalized().types.mapNotNull { type ->
-            planType(type, interfaceIidsByName, typesByQualifiedName)
+        namespace.normalized().let { normalizedNamespace ->
+            val helpers = semanticHelpers ?: WinRtMetadataModel(listOf(normalizedNamespace)).semanticHelpers()
+            normalizedNamespace.types.mapNotNull { type ->
+                planType(type, interfaceIidsByName, typesByQualifiedName, helpers)
+            }
         }
 
     private fun planType(
         type: WinRtTypeDefinition,
         interfaceIidsByName: Map<String, Guid?>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): KotlinTypeProjectionPlan? {
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
@@ -606,9 +624,9 @@ class KotlinProjectionPlanner(
             activatableFactoryInterfaceIid = type.activation.activatableFactoryInterfaceName?.let(interfaceIidsByName::get),
             composableFactoryInterfaceName = type.activation.composableFactoryInterfaceName,
             composableFactoryInterfaceIid = type.activation.composableFactoryInterfaceName?.let(interfaceIidsByName::get),
-            abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName),
-            instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName),
-            staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName),
+            abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName, semanticHelpers),
+            instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName, semanticHelpers),
+            staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName, semanticHelpers),
             readOnlyCollectionBindings = planReadOnlyCollectionBindings(type, typesByQualifiedName),
             mutableCollectionBindings = planMutableCollectionBindings(type, typesByQualifiedName),
             delegateInvokeShape =
@@ -617,6 +635,7 @@ class KotlinProjectionPlanner(
                 } else {
                     null
                 },
+            eventInvokeDescriptors = type.events.map { event -> semanticHelpers.eventInvokeDescriptor(type, event) },
             companionKinds = planCompanions(type),
         )
     }
@@ -624,18 +643,22 @@ class KotlinProjectionPlanner(
     private fun planAbiSlotBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): List<KotlinProjectionAbiSlotBinding> {
         if (type.kind != WinRtTypeKind.Interface) {
             return emptyList()
         }
+        val methodDescriptorsByConstant = semanticHelpers.vtableWriterDescriptor(type).methods
+            .associateBy { descriptor -> descriptor.methodName.methodSlotConstantName() }
         val baseSlotCount = type.implementedInterfaces.sumOf { implemented ->
             interfaceAbiMemberCount(implemented.interfaceName, typesByQualifiedName, mutableSetOf())
         }
-        val localBindings = type.localAbiMembers()
-        return localBindings.mapIndexed { index, constantName ->
+        return type.localAbiMembers().mapIndexed { index, constantName ->
+            val descriptor = methodDescriptorsByConstant[constantName]
             KotlinProjectionAbiSlotBinding(
                 constantName = constantName,
-                slot = 6 + baseSlotCount + index,
+                slot = descriptor?.slotIndex ?: 6 + baseSlotCount + index,
+                descriptor = descriptor,
             )
         }
     }
@@ -661,6 +684,7 @@ class KotlinProjectionPlanner(
     private fun planInstanceMemberBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): List<KotlinProjectionInstanceMemberBinding> {
         if (type.kind != WinRtTypeKind.RuntimeClass) {
             return emptyList()
@@ -674,17 +698,20 @@ class KotlinProjectionPlanner(
 
         return buildList {
             type.methods.filterNot(WinRtMethodDefinition::isStatic).forEach { method ->
+                val signatureDescriptor = semanticHelpers.signatureWriterDescriptor(method)
                 resolveInstanceMemberBinding(
                     candidateInterfaces = candidateInterfaces,
                     typesByQualifiedName = typesByQualifiedName,
                     slotConstantName = "${method.name.uppercase()}_SLOT",
-                    returnBinding = classifyAbiTypeBinding(method.returnTypeName, type.namespace, typesByQualifiedName),
-                    parameterBindings = method.parameters.map { parameter ->
+                    returnBinding = classifyAbiTypeBinding(signatureDescriptor.projectionReturnTypeName, type.namespace, typesByQualifiedName),
+                    parameterBindings = signatureDescriptor.parameters.map { parameter ->
                         KotlinProjectionAbiParameterBinding(
-                            name = parameter.name,
-                            typeBinding = classifyAbiTypeBinding(parameter.typeName, type.namespace, typesByQualifiedName),
+                            name = parameter.escapedName,
+                            typeBinding = classifyAbiTypeBinding(parameter.projectionTypeName, type.namespace, typesByQualifiedName),
                         )
                     },
+                    signatureDescriptor = signatureDescriptor,
+                    marshalerPlanDescriptor = semanticHelpers.abiMarshalerPlanDescriptor(method),
                     signatureMatcher = { interfaceType ->
                         interfaceType.methods.any { it.projectionSignatureKey() == method.projectionSignatureKey() }
                     },
@@ -773,6 +800,7 @@ class KotlinProjectionPlanner(
     private fun planStaticMemberBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): List<KotlinProjectionStaticMemberBinding> {
         if (type.kind != WinRtTypeKind.RuntimeClass) {
             return emptyList()
@@ -780,18 +808,21 @@ class KotlinProjectionPlanner(
         val candidateInterfaces = type.activation.staticInterfaceNames.distinct()
         return buildList {
             type.methods.filter(WinRtMethodDefinition::isStatic).forEach { method ->
+                val signatureDescriptor = semanticHelpers.signatureWriterDescriptor(method)
                 resolveStaticMemberBinding(
                     candidateInterfaces = candidateInterfaces,
                     typesByQualifiedName = typesByQualifiedName,
                     bindingName = "STATIC_${method.name.uppercase()}_SLOT",
                     slotConstantName = "${method.name.uppercase()}_SLOT",
-                    returnBinding = classifyAbiTypeBinding(method.returnTypeName, type.namespace, typesByQualifiedName),
-                    parameterBindings = method.parameters.map { parameter ->
+                    returnBinding = classifyAbiTypeBinding(signatureDescriptor.projectionReturnTypeName, type.namespace, typesByQualifiedName),
+                    parameterBindings = signatureDescriptor.parameters.map { parameter ->
                         KotlinProjectionAbiParameterBinding(
-                            name = parameter.name,
-                            typeBinding = classifyAbiTypeBinding(parameter.typeName, type.namespace, typesByQualifiedName),
+                            name = parameter.escapedName,
+                            typeBinding = classifyAbiTypeBinding(parameter.projectionTypeName, type.namespace, typesByQualifiedName),
                         )
                     },
+                    signatureDescriptor = signatureDescriptor,
+                    marshalerPlanDescriptor = semanticHelpers.abiMarshalerPlanDescriptor(method),
                     signatureMatcher = { interfaceType ->
                         interfaceType.methods.any { it.projectionSignatureIgnoringStaticKey() == method.projectionSignatureIgnoringStaticKey() }
                     },
@@ -1137,6 +1168,8 @@ class KotlinProjectionPlanner(
         slotConstantName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
     ): KotlinProjectionInstanceMemberBinding? {
         candidateInterfaces.forEach { candidateInterface ->
@@ -1154,6 +1187,8 @@ class KotlinProjectionPlanner(
                 slotConstantName = slotConstantName,
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
+                signatureDescriptor = signatureDescriptor,
+                marshalerPlanDescriptor = marshalerPlanDescriptor,
             )
         }
         return null
@@ -1166,6 +1201,8 @@ class KotlinProjectionPlanner(
         slotConstantName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
     ): KotlinProjectionStaticMemberBinding? {
         candidateInterfaces.forEach { candidateInterface ->
@@ -1184,6 +1221,8 @@ class KotlinProjectionPlanner(
                 slotConstantName = slotConstantName,
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
+                signatureDescriptor = signatureDescriptor,
+                marshalerPlanDescriptor = marshalerPlanDescriptor,
             )
         }
         return null
@@ -1745,6 +1784,9 @@ private fun WinRtMethodDefinition.methodRowConstantName(methods: List<WinRtMetho
     val rowId = methodRowId ?: return "${name.uppercase()}_${parameters.size}_METHOD_ROW_ID"
     return "${name.uppercase()}_${rowId}_METHOD_ROW_ID"
 }
+
+private fun String.methodSlotConstantName(): String =
+    "${uppercase()}_SLOT"
 
 private fun WinRtTypeDefinition.localAbiMembers(): List<String> =
     buildList<AbiMemberOrder> {
@@ -3983,6 +4025,7 @@ class KotlinProjectionRenderer {
         } ?: return null
         return buildBoundEventFunctions(
             event = event,
+            eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
             addInvocation = renderBoundInvocation(addBinding),
             removeInvocation = renderBoundInvocation(removeBinding),
         )
@@ -4000,6 +4043,7 @@ class KotlinProjectionRenderer {
         } ?: return null
         return buildBoundEventFunctions(
             event = event,
+            eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic },
             addInvocation = renderBoundStaticInvocation(addBinding),
             removeInvocation = renderBoundStaticInvocation(removeBinding),
         )
@@ -4007,10 +4051,11 @@ class KotlinProjectionRenderer {
 
     private fun buildBoundEventFunctions(
         event: WinRtEventDefinition,
+        eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
         addInvocation: CodeBlock,
         removeInvocation: CodeBlock,
     ): List<FunSpec> {
-        val typeName = resolveTypeName(event.delegateTypeName)
+        val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
         return listOf(
             FunSpec.builder("add${event.name}")
                 .addParameter("handler", typeName)

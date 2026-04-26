@@ -23,8 +23,8 @@
 ## Active Queue
 
 - [ ] Queue 11: resume generator breadth from `.cswinrt/src/cswinrt` using the completed metadata descriptors instead of generator-local classification tables.
-- [ ] Generator 11.1 正在做: consume `WinRtSignatureWriterDescriptor`, `WinRtAbiMarshalerPlanDescriptor`, `WinRtVtableWriterDescriptor`, and related metadata handoff descriptors for method/property/event ABI emission.
-- [ ] Generator 11.2: expand interface, runtime-class, delegate, enum, struct, and ABI companion emission from metadata declaration/object-reference/factory descriptors.
+- [x] Generator 11.1: planner now carries metadata signature, marshaler, vtable, and event invoke descriptors into method/event ABI emission.
+- [ ] Generator 11.2 正在做: expand interface, runtime-class, delegate, enum, struct, and ABI companion emission from metadata declaration/object-reference/factory descriptors.
 - [ ] Generator 11.3: generate required-interface, mapped collection/system, generic ABI, event-source, and module-helper surfaces from metadata descriptors.
 - [ ] Generator 11.4: regenerate a broader Windows SDK slice through the CLI and keep checked-in projection output deterministic.
 - [ ] Queue 12: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
@@ -61,6 +61,7 @@
 ## Validation
 
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-metadata:test`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test`
 - [ ] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
 - [ ] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
 - [ ] For plugin work, add task-level tests for SDK source resolution, NuGet graph resolution, generated-source wiring, and application resource staging.

@@ -294,6 +294,91 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun planner_consumes_metadata_handoff_descriptors_for_abi_emission() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("99999999-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("sender", "IWidget")),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getTitle",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("class", "String")),
+                                    methodRowId = 9,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    addMethodRowId = 10,
+                                    removeMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getTitle",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("class", "String")),
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val plansByName = KotlinProjectionPlanner().plan(model).associateBy { it.type.name }
+        val interfacePlan = plansByName.getValue("IWidget")
+        val classPlan = plansByName.getValue("Widget")
+        val getTitleSlot = interfacePlan.abiSlotBindings.single { it.constantName == "GETTITLE_SLOT" }
+        val getTitleBinding = classPlan.instanceMemberBindings.single { it.bindingName == "GETTITLE_SLOT" }
+        val eventDescriptor = classPlan.eventInvokeDescriptors.single { it.eventName == "Changed" }
+
+        assertEquals(6, getTitleSlot.slot)
+        assertEquals("getTitle", getTitleSlot.descriptor?.methodName)
+        assertEquals("String", getTitleBinding.signatureDescriptor?.projectionReturnTypeName)
+        assertEquals("IntPtr", getTitleBinding.signatureDescriptor?.abiReturnTypeName)
+        assertEquals("`class`", getTitleBinding.signatureDescriptor?.parameters?.single()?.escapedName)
+        assertTrue(getTitleBinding.marshalerPlanDescriptor?.requiresDispose == true)
+        assertEquals("Sample.Foundation.WidgetChangedHandler", eventDescriptor.delegateTypeName)
+        assertEquals("Invoke", eventDescriptor.invokeMethodName)
+    }
+
+    @Test
     fun planner_maps_all_metadata_type_kinds_into_declaration_plans() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
