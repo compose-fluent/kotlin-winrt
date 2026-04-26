@@ -17,6 +17,7 @@ class KotlinWinRtPluginTest {
         extension.winmd("sdk+")
         extension.windowsSdk("10.0.26100.0", includeExtensions = true)
         extension.nugetExecutable.set("nuget.exe")
+        extension.restoreNuGetPackages.set(false)
         extension.useNuGetCliGlobalPackages.set(false)
         extension.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
         extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260317003")
@@ -29,6 +30,7 @@ class KotlinWinRtPluginTest {
         assertEquals("10.0.26100.0", task.windowsSdkVersion.get())
         assertTrue(task.includeWindowsSdkExtensions.get())
         assertEquals("nuget.exe", task.nugetExecutable.get())
+        assertEquals(false, task.restoreNuGetPackages.get())
         assertEquals(false, task.useNuGetCliGlobalPackages.get())
         assertEquals(listOf("Microsoft.WindowsAppSDK@1.8.260317003"), task.nugetPackages.get())
     }

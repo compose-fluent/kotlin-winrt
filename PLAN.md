@@ -39,6 +39,7 @@
 - [ ] Queue 12 正在做: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
 - [x] Queue 12.1: add shared NuGet global-packages resolver in `winrt-metadata` so plugin NuGet handling consumes Microsoft NuGet CLI restore/cache output instead of creating a separate cache.
 - [x] Queue 12.2: add `kotlin-winrt-gradle-plugin` with `kotlin-dsl`, plugin ids, DSL, generation task, SDK/NuGet inputs, NuGet CLI global-packages lookup, and JVM generated-source wiring.
+- [x] Queue 12.3: plugin now restores missing packages by invoking Microsoft NuGet CLI `install` directly, then feeds installed package roots to `winrt-metadata` without generating temporary project files.
 - [ ] Queue 13: implement plugin roles: `kotlin-winrt-library` carries generated sources plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
@@ -72,7 +73,7 @@
 
 - [x] Plugin 4.1: create plugin module, task model, DSL, source-set wiring, SDK/NuGet metadata inputs, and filters.
 - [x] Plugin 4.2 prerequisite: shared metadata resolver now locates Microsoft NuGet global-packages roots, resolves package id/version closure from `.nuspec`, and feeds package roots to `WinRtMetadataSource`.
-- [ ] Plugin 4.2 implementation: plugin invokes Microsoft NuGet CLI restore/install when packages are not already present, consumes `nuget locals global-packages -list`, and passes resolved global-packages roots to the shared resolver.
+- [x] Plugin 4.2 implementation: plugin invokes Microsoft NuGet CLI `install` directly when packages are not already present, consumes `nuget locals global-packages -list`, and passes package roots to the shared resolver.
 - [ ] Plugin 4.3: implement `kotlin-winrt-library` artifact metadata for generated projections plus NuGet/WinMD identity.
 - [ ] Plugin 4.4: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging.
 - [ ] Plugin 4.5: migrate useful runtime/resource staging logic out of legacy `sample-jvm-winui3` into the plugin application model.

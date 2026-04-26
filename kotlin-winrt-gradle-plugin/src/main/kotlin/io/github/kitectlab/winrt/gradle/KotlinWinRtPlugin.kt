@@ -24,6 +24,7 @@ class KotlinWinRtPlugin : Plugin<Project> {
                 windowsSdkVersion.set(extension.windowsSdkVersion)
                 includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
                 nugetExecutable.set(extension.nugetExecutable)
+                restoreNuGetPackages.set(extension.restoreNuGetPackages)
                 useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
                 nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
                 nugetPackages.set(
