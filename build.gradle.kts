@@ -36,3 +36,36 @@ allprojects {
         )
     }
 }
+
+val validateWinRtGenerator by tasks.registering {
+    group = "verification"
+    description = "Runs the generator regression validation for the current WinRT slice."
+    dependsOn(":winrt-generator:test")
+}
+
+val validateWinRtPluginGraph by tasks.registering {
+    group = "verification"
+    description = "Runs Gradle plugin graph validation, including TestKit and identity/resource wiring tests."
+    dependsOn(validateWinRtGenerator)
+    dependsOn(gradle.includedBuild("kotlin-winrt-gradle-plugin").task(":test"))
+}
+
+val validateWinRtProjectionCompile by tasks.registering {
+    group = "verification"
+    description = "Compiles plugin-generated projection output after generator and plugin validation."
+    dependsOn(validateWinRtPluginGraph)
+    dependsOn(":winrt-projections:compileKotlin")
+}
+
+val validateWinRtSampleSmoke by tasks.registering {
+    group = "verification"
+    description = "Runs sample smoke checks after projection validation."
+    dependsOn(validateWinRtProjectionCompile)
+    dependsOn(":winrt-samples:check")
+}
+
+tasks.register("validateWinRtQueue16") {
+    group = "verification"
+    description = "Runs Queue 16 validation in cswinrt-aligned order: generator, plugin graph, projections, samples."
+    dependsOn(validateWinRtSampleSmoke)
+}

@@ -41,7 +41,7 @@
 - [x] Queue 12.2: add `kotlin-winrt-gradle-plugin` with plugin ids, DSL, generation task, SDK/NuGet inputs, NuGet CLI global-packages lookup, and JVM generated-source wiring.
 - [x] Queue 12.3: plugin now restores missing packages by invoking Microsoft NuGet CLI `install` directly, then feeds installed package roots to `winrt-metadata` without generating temporary project files.
 - [x] Queue 12.4: plugin retries failed NuGet CLI commands with a Gradle-user-home cached `NuGet.CommandLine` download.
-- [ ] Queue 13 正在做: implement plugin roles through one `winRt {}` DSL: default library publishes identity; `application {}` resolves runtime/resource integration.
+- [x] Queue 13: plugin roles now flow through one `winRt {}` DSL: default library publishes identity; `application {}` resolves runtime/resource integration.
 - [x] Queue 13.1: library model publishes JSON identity metadata while generated projection sources remain part of the library compilation/artifact.
 - [x] Queue 13.2: application model resolves transitive `kotlin-winrt` identity JSON artifacts and writes an aggregate for runtime/resource staging.
 - [x] Queue 13.3: application model stages NuGet runtime DLLs, framework PRI resources, `resources.pri`, and WindowsAppSDK version headers from application/dependency package identities.
@@ -55,7 +55,7 @@
 - [x] Queue 15.2: sample-side plugin graph validation now makes `winrt-samples:check` verify generated application identity includes `winrt-projections` metadata and excludes ordinary runtime implementation dependencies.
 - [x] Queue 15.3: `winrt-samples` now has an opt-in WindowsAppSDK NuGet declaration via `kotlinWinRt.samples.windowsAppSdkVersion`; default checks stay offline/lightweight while explicit identity validation proves the application metadata records `Microsoft.WindowsAppSDK`.
 - [x] Queue 15.4: plugin API is consolidated to `io.github.kitectlab.winrt` plus `winRt {}`; library is the default model and `application {}` selects application identity/resource staging.
-- [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
+- [x] Queue 16: root `validateWinRtQueue16` now runs validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
 
 ## Generator Follow-Through
@@ -92,6 +92,13 @@
 - [x] Plugin 4.5: migrate useful runtime/resource staging and distribution/resource wiring out of legacy `sample-jvm-winui3` into the plugin application model.
 - [x] Plugin 4.6: remove unpublished split plugin ids/DSLs; keep only `winRt {}` with `application {}` as the application model switch.
 
+## Validation Plan
+
+- [x] Queue 16.1: add root `validateWinRtGenerator` for generator regression validation.
+- [x] Queue 16.2: add root `validateWinRtPluginGraph` for included-build plugin TestKit and identity/resource graph validation.
+- [x] Queue 16.3: add root `validateWinRtProjectionCompile` for plugin-produced projection compile validation.
+- [x] Queue 16.4: add root `validateWinRtSampleSmoke` and `validateWinRtQueue16` for sample smoke and full ordered validation.
+
 ## Validation
 
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-metadata:test`
@@ -100,7 +107,8 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11-foundation --namespace Windows.Foundation'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11-support --namespace Windows.Foundation --namespace Windows.Foundation.Collections'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-projections:compileKotlin`
-- [ ] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
-- [ ] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
-- [ ] For plugin work, add task-level tests for SDK source resolution, NuGet graph resolution, generated-source wiring, and application resource staging.
-- [ ] For samples, keep smoke coverage tied to the currently completed upstream slice.
+- [x] `./.agent_scripts/run_windows_gradle.sh validateWinRtQueue16 --no-configuration-cache`
+- [x] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
+- [x] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
+- [x] For plugin work, add task-level tests for SDK source resolution, NuGet graph resolution, generated-source wiring, and application resource staging.
+- [x] For samples, keep smoke coverage tied to the currently completed upstream slice.
