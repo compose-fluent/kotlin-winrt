@@ -13,7 +13,11 @@ dependencies {
 
 winRt {
     namespace("Windows.Data.Json")
-    providers.gradleProperty("kotlinWinRt.samples.simpleMathWinmd").orNull?.let { winmd(it) }
+    namespace("SimpleMathComponent")
+    winmd(
+        providers.gradleProperty("kotlinWinRt.samples.simpleMathWinmd")
+            .getOrElse(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.winmd").asFile.absolutePath),
+    )
     runtimeAsset(layout.projectDirectory.file("src/main/winrt/SimpleMathComponent.dll").asFile.absolutePath)
     type("Windows.Foundation.IStringable")
 }

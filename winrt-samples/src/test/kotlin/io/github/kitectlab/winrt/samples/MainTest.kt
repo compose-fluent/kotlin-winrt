@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.samples
 
+import io.github.kitectlab.winrt.projections.simplemathcomponent.SimpleMath
 import io.github.kitectlab.winrt.runtime.PlatformRuntime
 import io.github.kitectlab.winrt.projections.windows.`data`.json.JsonValueType
 import org.junit.Assert.assertEquals
@@ -26,8 +27,8 @@ class MainTest {
     @Test
     fun net_projection_sample_keeps_cswinrt_simple_math_call_flow() {
         assertEquals(
-            "io.github.kitectlab.winrt.projections.simplemathcomponent.SimpleMath",
-            NetProjectionSample.componentRuntimeClass,
+            "SimpleMathComponent.SimpleMath",
+            SimpleMath.Metadata.TYPE_NAME,
         )
         assertEquals(false, shouldRunComponentSmoke())
     }

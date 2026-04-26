@@ -35,6 +35,14 @@ actual object ComVtableInvoker {
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
     private val hResultDoublePtrDescriptor =
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE, ValueLayout.ADDRESS)
+    private val hResultDoubleDoublePtrDescriptor =
+        FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_DOUBLE,
+            ValueLayout.JAVA_DOUBLE,
+            ValueLayout.ADDRESS,
+        )
     private val hResultPtrPtrPtrDescriptor =
         FunctionDescriptor.of(
             ValueLayout.JAVA_INT,
@@ -248,6 +256,18 @@ actual object ComVtableInvoker {
         val instanceSegment = asSegment(instance)
         return downcallHandle(instanceSegment, slot, hResultDoublePtrDescriptor)
             .invoke(instanceSegment, arg0, asSegment(arg1)) as Int
+    }
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: Double,
+        arg1: Double,
+        arg2: RawAddress,
+    ): Int {
+        val instanceSegment = asSegment(instance)
+        return downcallHandle(instanceSegment, slot, hResultDoubleDoublePtrDescriptor)
+            .invoke(instanceSegment, arg0, arg1, asSegment(arg2)) as Int
     }
 
     actual fun invokeArgs(

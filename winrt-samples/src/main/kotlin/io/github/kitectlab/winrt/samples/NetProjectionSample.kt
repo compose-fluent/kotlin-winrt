@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.samples
 
+import io.github.kitectlab.winrt.projections.simplemathcomponent.SimpleMath
 import io.github.kitectlab.winrt.runtime.RuntimeScope
 
 data class SimpleMathComponentResult(
@@ -8,17 +9,9 @@ data class SimpleMathComponentResult(
 )
 
 object NetProjectionSample {
-    const val componentRuntimeClass: String =
-        "io.github.kitectlab.winrt.projections.simplemathcomponent.SimpleMath"
-
     fun add(firstNumber: Double = 5.5, secondNumber: Double = 6.5): SimpleMathComponentResult =
         RuntimeScope.initializeSingleThreaded().use {
-            val simpleMath = Class.forName(componentRuntimeClass)
-                .getDeclaredConstructor()
-                .newInstance()
-            val result = simpleMath.javaClass
-                .getMethod("add", Double::class.javaPrimitiveType, Double::class.javaPrimitiveType)
-                .invoke(simpleMath, firstNumber, secondNumber) as Double
+            val result = SimpleMath().add(firstNumber, secondNumber)
             SimpleMathComponentResult("$firstNumber + $secondNumber", result)
         }
 }
