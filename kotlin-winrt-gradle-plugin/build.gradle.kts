@@ -1,7 +1,10 @@
 plugins {
-    `kotlin-dsl`
+    alias(libs.plugins.kotlinJvm) apply false
+    alias(libs.plugins.kotlinMultiplatform) apply false
     `java-gradle-plugin`
 }
+
+apply(plugin = "org.jetbrains.kotlin.jvm")
 
 java {
     toolchain {
@@ -10,6 +13,7 @@ java {
 }
 
 dependencies {
+    implementation(gradleApi())
     implementation(projects.winrtMetadata)
     implementation(projects.winrtGenerator)
     testImplementation(libs.junit)

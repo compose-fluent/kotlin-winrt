@@ -15,7 +15,7 @@
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
 - [x] `winrt-generator` baseline is closed for the current `.cswinrt/src/cswinrt` audit: declarations, ABI-bound members, activation, generic/event/type-shape support helpers, and SDK CLI generation.
-- [x] `winrt-projections` compiles generated support handoff helpers for the current Foundation/Collections generator slice.
+- [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
 - [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and library identity metadata.
 - [ ] `winrt-samples` is intentionally minimal until generator/projection/plugin support expands.
 - [ ] `winrt-authoring` remains frozen until generated projection and sample paths are coherent.
@@ -38,7 +38,7 @@
 - [x] Queue 11.13: promote support handoffs to callable Kotlin APIs for ABI delegates, generic instantiations, event helpers, ABI plans, base-type/metadata mappings, and module activation entries.
 - [x] Queue 12: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
 - [x] Queue 12.1: add shared NuGet global-packages resolver in `winrt-metadata` so plugin NuGet handling consumes Microsoft NuGet CLI restore/cache output instead of creating a separate cache.
-- [x] Queue 12.2: add `kotlin-winrt-gradle-plugin` with `kotlin-dsl`, plugin ids, DSL, generation task, SDK/NuGet inputs, NuGet CLI global-packages lookup, and JVM generated-source wiring.
+- [x] Queue 12.2: add `kotlin-winrt-gradle-plugin` with plugin ids, DSL, generation task, SDK/NuGet inputs, NuGet CLI global-packages lookup, and JVM generated-source wiring.
 - [x] Queue 12.3: plugin now restores missing packages by invoking Microsoft NuGet CLI `install` directly, then feeds installed package roots to `winrt-metadata` without generating temporary project files.
 - [x] Queue 12.4: plugin retries failed NuGet CLI commands with a Gradle-user-home cached `NuGet.CommandLine` download.
 - [ ] Queue 13 正在做: implement plugin roles: `kotlin-winrt-library` carries generated sources in the library artifact plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
@@ -49,7 +49,7 @@
 - [ ] Queue 14 正在做: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt.library` and generate deterministic WinRT sources from Windows SDK metadata.
 - [x] Queue 14.2: remove direct Kotlin Gradle Plugin runtime class dependency from the plugin so generated-source wiring works in published/TestKit plugin classloaders.
-- [ ] Queue 14.3: wire `winrt-projections` to the plugin through a publish/composite-build path; direct sibling `buildscript` project classpath is blocked by Gradle.
+- [x] Queue 14.3: `winrt-projections` now consumes `io.github.kitectlab.winrt.library` from the root `pluginManagement` included build and compiles the plugin-generated `Windows.Foundation.IStringable` slice.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
@@ -58,7 +58,7 @@
 
 - [x] Support helper output now exposes callable Kotlin APIs instead of passive descriptor-only lists.
 - [x] Activatable runtime-class `create()` generation now calls the generated activation factory path.
-- [ ] Plugin/projection integration must wire these generated sources into Gradle SDK/NuGet inputs before broad checked-in projection growth.
+- [x] Plugin/projection integration now wires generated sources into `winrt-projections` through the included plugin build before broad checked-in projection growth.
 - [ ] Namespace additions from `.cswinrt/src/cswinrt/strings` remain plugin/projection integration work and should only be generated for surfaces that need them.
 
 ## Completed Milestones

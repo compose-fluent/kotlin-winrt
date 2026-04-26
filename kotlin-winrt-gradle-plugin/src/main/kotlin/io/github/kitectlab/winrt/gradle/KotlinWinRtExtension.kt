@@ -50,8 +50,8 @@ abstract class KotlinWinRtExtension @Inject constructor(
 
     fun nugetPackage(packageId: String, version: String) {
         val versionValue = version
-        nugetPackages.create(packageId, Action<KotlinWinRtNuGetPackage> {
-            this.version.set(versionValue)
+        nugetPackages.create(packageId, Action<KotlinWinRtNuGetPackage> { nugetPackage ->
+            nugetPackage.version.set(versionValue)
         })
     }
 

@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
+    id("io.github.kitectlab.winrt.library")
 }
 
 kotlin {
@@ -8,4 +9,8 @@ kotlin {
 
 dependencies {
     implementation(projects.winrtRuntime)
+}
+
+kotlinWinRt {
+    type("Windows.Foundation.IStringable")
 }

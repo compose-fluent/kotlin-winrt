@@ -161,14 +161,14 @@ class KotlinWinRtPluginTest {
         val task = project.tasks.register(
             "applicationIdentity",
             GenerateWinRtApplicationIdentityTask::class.java,
-        ) {
-            outputFile.set(project.layout.buildDirectory.file("application/kotlin-winrt-application.json"))
-            metadataInputs.set(listOf("sdk+"))
-            includeNamespaces.set(listOf("Windows.Foundation"))
-            includeTypes.set(listOf("Windows.Foundation.IStringable"))
-            includeWindowsSdkExtensions.set(false)
-            nugetPackages.set(listOf("Microsoft.WindowsAppSDK@1.8.260317003"))
-            dependencyIdentityFiles.from(dependencyIdentity)
+        ) { registeredTask ->
+            registeredTask.outputFile.set(project.layout.buildDirectory.file("application/kotlin-winrt-application.json"))
+            registeredTask.metadataInputs.set(listOf("sdk+"))
+            registeredTask.includeNamespaces.set(listOf("Windows.Foundation"))
+            registeredTask.includeTypes.set(listOf("Windows.Foundation.IStringable"))
+            registeredTask.includeWindowsSdkExtensions.set(false)
+            registeredTask.nugetPackages.set(listOf("Microsoft.WindowsAppSDK@1.8.260317003"))
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
         task.generate()
 
@@ -211,12 +211,12 @@ class KotlinWinRtPluginTest {
         val task = project.tasks.register(
             "stageRuntimeAssets",
             StageWinRtRuntimeAssetsTask::class.java,
-        ) {
-            outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
-            nugetPackages.set(emptyList())
-            nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
-            runtimeIdentifier.set("win-x64")
-            dependencyIdentityFiles.from(dependencyIdentity)
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
         task.stage()
 
