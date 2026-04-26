@@ -60,6 +60,10 @@ class KotlinWinRtPluginTest {
             "generateWinRtApplicationIdentity",
             applicationProject.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"],
         )
+        assertEquals(
+            "stageWinRtRuntimeAssets",
+            applicationProject.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"],
+        )
     }
 
     @Test
@@ -118,6 +122,7 @@ class KotlinWinRtPluginTest {
             identityConfiguration.attributes.getAttribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE)?.name,
         )
         project.tasks.named("generateWinRtApplicationIdentity", GenerateWinRtApplicationIdentityTask::class.java).get()
+        project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
     }
 
     @Test
@@ -146,5 +151,55 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
         assertTrue(json.contains("\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260317003\"]"))
         assertTrue(json.contains(dependencyIdentity.absolutePath.replace("\\", "\\\\")))
+    }
+
+    @Test
+    fun runtime_assets_task_stages_nuget_runtime_assets_from_dependency_identity() {
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.package").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.Package.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Package</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("Sample.Package.dll"), "dll")
+        Files.createDirectories(packageRoot.resolve("runtimes/win-x64/native"))
+        Files.writeString(packageRoot.resolve("runtimes/win-x64/native/Runtime.Native.dll"), "runtime")
+        Files.createDirectories(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml"))
+        Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Controls.pri"), "pri")
+        Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml/Controls.pri"), "nested")
+        Files.createDirectories(packageRoot.resolve("include"))
+        Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"nugetPackages":["Sample.Package@1.0.0"]}""")
+
+        val task = project.tasks.register(
+            "stageRuntimeAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) {
+            outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            nugetPackages.set(emptyList())
+            nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
+            runtimeIdentifier.set("win-x64")
+            dependencyIdentityFiles.from(dependencyIdentity)
+        }.get()
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Sample.Package.dll")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Runtime.Native.dll")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
 }

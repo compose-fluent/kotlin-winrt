@@ -144,8 +144,29 @@ class KotlinWinRtApplicationPlugin : Plugin<Project> {
                 dependencyIdentityFiles.from(identityDependencies)
             },
         )
+        val runtimeAssetsDirectory = project.layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
+        val stageRuntimeAssetsTask = project.tasks.register(
+            "stageWinRtRuntimeAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+            Action<StageWinRtRuntimeAssetsTask> {
+                group = "kotlin-winrt"
+                description = "Stages WinRT NuGet runtime and resource assets for application execution."
+                outputDirectory.set(runtimeAssetsDirectory)
+                nugetPackages.set(
+                    project.provider {
+                        extension.nugetPackages.map { pkg ->
+                            "${pkg.packageId}@${pkg.version.get()}"
+                        }
+                    },
+                )
+                nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
+                runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+                dependencyIdentityFiles.from(identityDependencies)
+            },
+        )
         project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
         project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
+        project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
     }
 }
 
