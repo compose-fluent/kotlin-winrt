@@ -66,6 +66,21 @@
 - [x] Plugin/projection integration now wires generated sources into `winrt-projections` through the included plugin build before broad checked-in projection growth.
 - [ ] Namespace additions from `.cswinrt/src/cswinrt/strings` remain plugin/projection integration work and should only be generated for surfaces that need them.
 
+## Sample Plan
+
+- [x] Sample 1: establish `winrt-samples` as a plugin-driven application module and keep legacy `sample-jvm-winui3` out of the active path.
+- [x] Sample 2: mirror the `.cswinrt/src/Tests/UnitTest/ApiCompatTests.cs` JSON flow with `JsonObject.Parse`, `GetNamedValue("phone")`, boolean reads, and indexed `education` reads.
+- [x] Sample 3: validate application identity aggregation from `winrt-projections` and exclude plain runtime implementation dependencies.
+- [x] Sample 4: expose opt-in WindowsAppSDK split-package declarations matching `.cswinrt/src/Projections/WinAppSDK`.
+- [ ] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
+- [ ] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style component-consumption sample after component WinMD/Dll activation inputs are plugin-owned.
+- [ ] Sample 7: add a WinUI desktop smoke matching `.cswinrt/src/Samples/WinUIDesktopSample`: application start, window activation, button/page swap, and tapped handler.
+- [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.
+- [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
+- [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
+- [ ] Sample 11: implement authoring samples only after `winrt-authoring` is complete; then mirror `.cswinrt/src/Samples/AuthoringDemo` and background-task hosting from authoring-owned contracts.
+- [ ] Sample 12: implement embedded/self-contained samples only after embedded projection support exists; then mirror `.cswinrt/src/Samples/TestEmbedded`.
+
 ## Completed Milestones
 
 - [x] Runtime 1.1-1.20: JVM-first `.cswinrt/src/WinRT.Runtime` baseline closed; remaining differences are explicit Kotlin narrowings.
