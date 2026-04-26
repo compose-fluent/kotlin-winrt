@@ -110,8 +110,45 @@ class KotlinWinRtApplicationPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
         project.extensions.extraProperties["kotlinWinRtModel"] = "application"
+        val extension = project.extensions.getByType(KotlinWinRtExtension::class.java)
+        val identityDependencies = project.configurations.create(KOTLIN_WINRT_IDENTITY_CONFIGURATION) {
+            isCanBeConsumed = false
+            isCanBeResolved = true
+            attributes.attribute(
+                Usage.USAGE_ATTRIBUTE,
+                project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+            )
+        }
+        project.configurations.matching { it.name == "implementation" }.configureEach {
+            identityDependencies.extendsFrom(this)
+        }
+        val applicationIdentityTask = project.tasks.register(
+            "generateWinRtApplicationIdentity",
+            GenerateWinRtApplicationIdentityTask::class.java,
+            Action<GenerateWinRtApplicationIdentityTask> {
+                group = "kotlin-winrt"
+                description = "Aggregates Kotlin WinRT identity metadata from application dependencies."
+                outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json"))
+                metadataInputs.set(extension.metadataInputs)
+                includeNamespaces.set(extension.includeNamespaces)
+                includeTypes.set(extension.includeTypes)
+                windowsSdkVersion.set(extension.windowsSdkVersion)
+                includeWindowsSdkExtensions.set(extension.includeWindowsSdkExtensions)
+                nugetPackages.set(
+                    project.provider {
+                        extension.nugetPackages.map { pkg ->
+                            "${pkg.packageId}@${pkg.version.get()}"
+                        }
+                    },
+                )
+                dependencyIdentityFiles.from(identityDependencies)
+            },
+        )
+        project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
+        project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
     }
 }
 
+const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRtIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIdentityElements"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"

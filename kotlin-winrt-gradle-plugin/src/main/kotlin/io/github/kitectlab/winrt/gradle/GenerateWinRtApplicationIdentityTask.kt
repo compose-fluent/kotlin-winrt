@@ -1,16 +1,20 @@
 package io.github.kitectlab.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 
-abstract class GenerateWinRtIdentityTask : DefaultTask() {
+abstract class GenerateWinRtApplicationIdentityTask : DefaultTask() {
     @get:OutputFile
     abstract val outputFile: RegularFileProperty
 
@@ -33,6 +37,10 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val dependencyIdentityFiles: ConfigurableFileCollection
+
     @TaskAction
     fun generate() {
         val target = outputFile.get().asFile.toPath()
@@ -42,7 +50,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
             buildString {
                 appendLine("{")
                 appendLine("  \"schemaVersion\": 1,")
-                appendLine("  \"model\": \"library\",")
+                appendLine("  \"model\": \"application\",")
                 appendLine("  \"metadataInputs\": ${metadataInputs.get().toJsonArray()},")
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
@@ -50,32 +58,10 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("    \"version\": ${windowsSdkVersion.orNull.toJsonStringOrNull()},")
                 appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")
                 appendLine("  },")
-                appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()}")
+                appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
+                appendLine("  \"dependencyIdentityFiles\": ${dependencyIdentityFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
                 appendLine("}")
             },
         )
     }
 }
-
-internal fun List<String>.toJsonArray(): String =
-    joinToString(prefix = "[", postfix = "]") { it.toJsonString() }
-
-internal fun String?.toJsonStringOrNull(): String =
-    this?.toJsonString() ?: "null"
-
-internal fun String.toJsonString(): String =
-    buildString {
-        append('"')
-        this@toJsonString.forEach { char ->
-            when (char) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\b' -> append("\\b")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> append(char)
-            }
-        }
-        append('"')
-    }

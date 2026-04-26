@@ -43,6 +43,7 @@
 - [x] Queue 12.4: plugin retries failed NuGet CLI commands with a Gradle-user-home cached `NuGet.CommandLine` download.
 - [ ] Queue 13 正在做: implement plugin roles: `kotlin-winrt-library` carries generated sources in the library artifact plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
 - [x] Queue 13.1: `kotlin-winrt-library` publishes JSON identity metadata for downstream application resolution while generated projection sources remain part of the library compilation/artifact.
+- [x] Queue 13.2: `kotlin-winrt-application` resolves transitive `kotlin-winrt` identity JSON artifacts and writes an application identity aggregate for runtime/resource staging.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
@@ -78,7 +79,7 @@
 - [x] Plugin 4.2 implementation: plugin invokes Microsoft NuGet CLI `install` directly when packages are not already present, consumes `nuget locals global-packages -list`, and passes package roots to the shared resolver.
 - [x] Plugin 4.2 CLI acquisition: plugin tries configured/system NuGet first, then downloads Apache-2.0 `NuGet.CommandLine` into Gradle user home cache and retries the same command on failure.
 - [x] Plugin 4.3: implement `kotlin-winrt-library` JSON artifact metadata for NuGet/WinMD identity; generated sources stay compiled into the library itself.
-- [ ] Plugin 4.4: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging.
+- [ ] Plugin 4.4 正在做: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging; identity artifact resolution is complete, asset copying is next.
 - [ ] Plugin 4.5: migrate useful runtime/resource staging logic out of legacy `sample-jvm-winui3` into the plugin application model.
 
 ## Validation

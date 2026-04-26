@@ -52,6 +52,14 @@ class KotlinWinRtPluginTest {
         val applicationProject = ProjectBuilder.builder().build()
         applicationProject.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
         assertEquals("application", applicationProject.extensions.extraProperties["kotlinWinRtModel"])
+        assertEquals(
+            KOTLIN_WINRT_IDENTITY_CONFIGURATION,
+            applicationProject.extensions.extraProperties["kotlinWinRtIdentity"],
+        )
+        assertEquals(
+            "generateWinRtApplicationIdentity",
+            applicationProject.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"],
+        )
     }
 
     @Test
@@ -94,5 +102,49 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"version\": \"10.0.26100.0\""))
         assertTrue(json.contains("\"includeExtensions\": true"))
         assertTrue(json.contains("\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260317003\"]"))
+    }
+
+    @Test
+    fun application_plugin_resolves_identity_configuration() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+
+        val identityConfiguration = project.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
+        assertFalse(identityConfiguration.isCanBeConsumed)
+        assertTrue(identityConfiguration.isCanBeResolved)
+        assertEquals(
+            KOTLIN_WINRT_IDENTITY_USAGE,
+            identityConfiguration.attributes.getAttribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE)?.name,
+        )
+        project.tasks.named("generateWinRtApplicationIdentity", GenerateWinRtApplicationIdentityTask::class.java).get()
+    }
+
+    @Test
+    fun application_identity_task_writes_dependency_identity_paths() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), "{}")
+
+        val task = project.tasks.register(
+            "applicationIdentity",
+            GenerateWinRtApplicationIdentityTask::class.java,
+        ) {
+            outputFile.set(project.layout.buildDirectory.file("application/kotlin-winrt-application.json"))
+            metadataInputs.set(listOf("sdk+"))
+            includeNamespaces.set(listOf("Windows.Foundation"))
+            includeTypes.set(listOf("Windows.Foundation.IStringable"))
+            includeWindowsSdkExtensions.set(false)
+            nugetPackages.set(listOf("Microsoft.WindowsAppSDK@1.8.260317003"))
+            dependencyIdentityFiles.from(dependencyIdentity)
+        }.get()
+        task.generate()
+
+        val json = Files.readString(task.outputFile.get().asFile.toPath())
+        assertTrue(json.contains("\"model\": \"application\""))
+        assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
+        assertTrue(json.contains("\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260317003\"]"))
+        assertTrue(json.contains(dependencyIdentity.absolutePath.replace("\\", "\\\\")))
     }
 }
