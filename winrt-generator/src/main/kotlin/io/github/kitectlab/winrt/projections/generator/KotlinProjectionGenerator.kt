@@ -31,7 +31,6 @@ import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.HString
-import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
 import io.github.kitectlab.winrt.runtime.PlatformAbi
@@ -87,7 +86,7 @@ private val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName(
 private val HRESULT_CLASS_NAME = HResult::class.asClassName()
 private val HSTRING_CLASS_NAME = HString::class.asClassName()
 private val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
-private val IINSPECTABLE_REFERENCE_CLASS_NAME = IInspectableReference::class.asClassName()
+private val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "IInspectableReference")
 private val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
 private val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
 private val WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME = WinRtBindableIterableProjection::class.asClassName()
@@ -329,7 +328,7 @@ private data class KotlinProjectionIntegralAbiDescriptor(
  * repeating the same collection/async/custom-type tables across unrelated helpers.
  */
 private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
-    KotlinProjectionMappedType("System.Object", { ANY }, descriptionName = "Object"),
+    KotlinProjectionMappedType("System.Object", { IINSPECTABLE_REFERENCE_CLASS_NAME }, descriptionName = "Object"),
     KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
     KotlinProjectionMappedType("Windows.Foundation.DateTime", { OFFSET_DATE_TIME_CLASS_NAME }, descriptionName = "DateTime"),
     KotlinProjectionMappedType("Windows.Foundation.TimeSpan", { DURATION_CLASS_NAME }, descriptionName = "TimeSpan"),
@@ -378,7 +377,13 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.Collections.IKeyValuePair",
-        projectedTypeResolver = { arguments -> Map.Entry::class.asClassName().parameterizedBy(arguments) },
+        projectedTypeResolver = { arguments ->
+            if (arguments.size == 2) {
+                Map.Entry::class.asClassName().parameterizedBy(arguments)
+            } else {
+                ClassName("io.github.kitectlab.winrt.projections.windows.foundation.collections", "IKeyValuePair")
+            }
+        },
         abiValueKind = KotlinProjectionAbiValueKind.MappedKeyValuePair,
         descriptionName = "KeyValuePair",
     ),
@@ -1167,7 +1172,7 @@ class KotlinProjectionPlanner(
             delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
             typeArguments = genericArguments,
             errorContext = ownerInterface,
-            requireSupportedBinding = true,
+            requireSupportedBinding = false,
         )
     }
 
@@ -1718,9 +1723,9 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElementB
     KotlinProjectionAbiValueKind.Double,
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-    KotlinProjectionAbiValueKind.MappedKeyValuePair,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> true
+    KotlinProjectionAbiValueKind.MappedKeyValuePair -> typeArguments.size == 2
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
 }
@@ -2101,10 +2106,14 @@ class KotlinProjectionRenderer {
         plan.type.implementedInterfaces
             .filterNot { it.isDefault }
             .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
-        plan.readOnlyCollectionBindings.forEach { binding ->
+        plan.readOnlyCollectionBindings.distinctBy { binding ->
+            readOnlyCollectionProjectedType(binding).toString()
+        }.forEach { binding ->
             builder.addSuperinterface(readOnlyCollectionProjectedType(binding), CodeBlock.of(binding.delegatePropertyName))
         }
-        plan.mutableCollectionBindings.forEach { binding ->
+        plan.mutableCollectionBindings.distinctBy { binding ->
+            mutableCollectionProjectedType(binding).toString()
+        }.forEach { binding ->
             builder.addSuperinterface(mutableCollectionProjectedType(binding), CodeBlock.of(binding.delegatePropertyName))
         }
         builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
@@ -2848,10 +2857,23 @@ class KotlinProjectionRenderer {
         elementBinding: KotlinProjectionAbiTypeBinding?,
         entryBinding: KotlinProjectionReadOnlyCollectionBinding?,
     ): CodeBlock {
+        val effectiveEntryBinding = entryBinding ?: elementBinding
+            ?.takeIf { it.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair && it.typeArguments.size == 2 }
+            ?.let {
+                KotlinProjectionReadOnlyCollectionBinding(
+                    kind = KotlinProjectionReadOnlyCollectionKind.MapView,
+                    ownerInterfaceQualifiedName = it.resolvedTypeName,
+                    ownerCachePropertyName = "",
+                    slotInterfaceQualifiedName = it.resolvedTypeName,
+                    delegatePropertyName = "",
+                    keyBinding = it.typeArguments[0],
+                    valueBinding = it.typeArguments[1],
+                )
+            }
         val returnType = when {
-            entryBinding != null -> Map.Entry::class.asClassName().parameterizedBy(
-                resolveTypeName(requireNotNull(entryBinding.keyBinding).resolvedTypeName),
-                resolveTypeName(requireNotNull(entryBinding.valueBinding).resolvedTypeName),
+            effectiveEntryBinding != null -> Map.Entry::class.asClassName().parameterizedBy(
+                resolveTypeName(requireNotNull(effectiveEntryBinding.keyBinding).resolvedTypeName),
+                resolveTypeName(requireNotNull(effectiveEntryBinding.valueBinding).resolvedTypeName),
             )
             else -> resolveTypeName(requireNotNull(elementBinding).resolvedTypeName)
         }
@@ -2900,7 +2922,7 @@ class KotlinProjectionRenderer {
             NO_SUCH_ELEMENT_EXCEPTION_CLASS_NAME,
             IUNKNOWN_REFERENCE_CLASS_NAME,
             returnType,
-            renderMappedIteratorCurrentCode(elementBinding, entryBinding, "__iteratorRef").toString(),
+            renderMappedIteratorCurrentCode(elementBinding, effectiveEntryBinding, "__iteratorRef").toString(),
             IUNKNOWN_REFERENCE_CLASS_NAME,
             renderCollectionInvocation(
                 invokeTargetExpression = "__iteratorRef",
@@ -3262,6 +3284,7 @@ class KotlinProjectionRenderer {
                 isReturn = false,
                 abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
             )
+            KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> KotlinProjectionAbiMarshalerPlan(
                 name = parameterName,
@@ -3285,6 +3308,7 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
             KotlinProjectionAbiValueKind.MappedAsyncOperation,
             KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+            KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.UnknownReference,
             KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
             KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -3373,6 +3397,13 @@ class KotlinProjectionRenderer {
                 } else {
                     return null
                 }
+            KotlinProjectionAbiValueKind.Object ->
+                CodeBlock.of(
+                    "return (%T(%T.toRawComPtr(%T.readPointer(__resultOut))).use { it.asInspectable() })\n",
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                )
             KotlinProjectionAbiValueKind.UnknownReference ->
                 if (resolvedReturnClassName(returnBinding) == IUNKNOWN_REFERENCE_CLASS_NAME) {
                     CodeBlock.of(
@@ -3404,7 +3435,6 @@ class KotlinProjectionRenderer {
             KotlinProjectionAbiValueKind.MappedBindableVectorView,
             KotlinProjectionAbiValueKind.MappedKeyValuePair,
             KotlinProjectionAbiValueKind.Struct,
-            KotlinProjectionAbiValueKind.Object,
             KotlinProjectionAbiValueKind.Unsupported -> return null
             }
         }
@@ -4712,6 +4742,8 @@ class KotlinProjectionRenderer {
 
         return when (trimmed) {
             "Unit" -> UNIT
+            "Any",
+            "System.Object" -> IINSPECTABLE_REFERENCE_CLASS_NAME
             "String" -> String::class.asClassName()
             "Int" -> Int::class.asClassName()
             "UInt" -> UInt::class.asClassName()

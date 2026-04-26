@@ -93,7 +93,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("public class JsonObject internal constructor("))
         assertTrue(jsonObject, jsonObject.contains("IJsonObject"))
         assertTrue(jsonObject, jsonObject.contains("IWinRTObject"))
-        assertTrue(jsonObject, jsonObject.contains("private val _inner: InspectableReference"))
+        assertTrue(jsonObject, jsonObject.contains("private val _inner: IInspectableReference"))
         assertTrue(jsonObject, jsonObject.contains("override val nativeObject: ComObjectReference"))
         assertTrue(jsonObject, jsonObject.contains("fun getNamedString(name: String): String"))
         assertTrue(jsonObject, jsonObject.contains("fun setNamedValue(name: String, `value`: JsonValue)"))
@@ -205,7 +205,7 @@ class KotlinProjectionGeneratorTest {
         assertEquals("io/github/kitectlab/winrt/projections/windows/data/json/JsonObject.kt", file.relativePath)
         assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
         assertTrue(file.contents.contains("public class JsonObject internal constructor("))
-        assertTrue(file.contents.contains("private val _inner: InspectableReference"))
+        assertTrue(file.contents.contains("private val _inner: IInspectableReference"))
         assertTrue(file.contents.contains("fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(file.contents.contains("companion object"))
         assertTrue(file.contents.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
@@ -439,6 +439,37 @@ class KotlinProjectionGeneratorTest {
             plans.map { it.type.name },
         )
         assertTrue(plans.all { it.companionKinds.isEmpty() })
+    }
+
+    @Test
+    fun generator_projects_system_object_as_winrt_reference_not_kotlin_any() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IObjectSource",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetObject",
+                                    returnTypeName = "System.Object",
+                                    parameters = listOf(WinRtParameterDefinition("input", "System.Object")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model).single().contents
+
+        assertTrue(contents, contents.contains("fun GetObject(input: IInspectableReference): IInspectableReference"))
+        assertFalse(contents, contents.contains("fun GetObject(input: Any): Any"))
     }
 
     @Test
@@ -706,13 +737,13 @@ class KotlinProjectionGeneratorTest {
 
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
-        assertTrue(widgetContents.contains("private val _inner: InspectableReference"))
+        assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
         assertTrue(widgetContents.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
-        assertTrue(widgetContents.contains("internal fun acquireInterface(instance: InspectableReference, iid: Guid): IUnknownReference"))
-        assertTrue(widgetContents.contains("internal fun wrap(instance: InspectableReference): Widget = Widget(instance)"))
+        assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
+        assertTrue(widgetContents.contains("internal fun wrap(instance: IInspectableReference): Widget = Widget(instance)"))
         assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
         assertTrue(widgetContents.contains("internal const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
@@ -720,7 +751,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 24"))
         assertTrue(widgetContents.contains("internal const val LOADED_ADD_METHOD_ROW_ID: Int = 25"))
         assertTrue(widgetContents.contains("internal const val LOADED_REMOVE_METHOD_ROW_ID: Int = 26"))
-        assertTrue(widgetContents.contains("fun acquireDefaultInterface(instance: InspectableReference): IUnknownReference"))
+        assertTrue(widgetContents.contains("fun acquireDefaultInterface(instance: IInspectableReference): IUnknownReference"))
         assertTrue(widgetContents.contains("acquireInterface(instance, DEFAULT_INTERFACE_IID)"))
         assertTrue(widgetContents.contains("fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("val count: Int"))
@@ -734,7 +765,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(widgetContents.contains("io.github.kitectlab.winrt.runtime.ActivationFactory.get(RUNTIME_CLASS,"))
-        assertTrue(widgetContents.contains("fun activate(): InspectableReference"))
+        assertTrue(widgetContents.contains("fun activate(): IInspectableReference"))
         assertTrue(widgetContents.contains("public object StaticInterfaces"))
         assertTrue(widgetContents.contains("val IWIDGETSTATICS_IID: Guid = Guid(\"33333333-2222-3333-4444-555555555555\")"))
         assertTrue(widgetContents.contains("fun iWidgetStatics(): IUnknownReference"))
@@ -1462,7 +1493,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("class Widget internal constructor("))
         assertTrue(widgetContents.contains(": IWidget"))
         assertTrue(widgetContents.contains("IWidgetExtra"))
-        assertTrue(widgetContents.contains("private val _inner: InspectableReference"))
+        assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
         assertTrue(widgetContents.contains("private val _iWidgetExtra: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
         assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))

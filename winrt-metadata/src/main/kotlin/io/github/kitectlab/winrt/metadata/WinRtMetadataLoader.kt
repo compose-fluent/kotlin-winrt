@@ -918,7 +918,7 @@ private class MetadataTables private constructor(
                 "Short", "UShort" -> ComputedAbiLayout(size = 2, alignment = 2, isBlittable = true)
                 "Int", "UInt", "Float" -> ComputedAbiLayout(size = 4, alignment = 4, isBlittable = true)
                 "Long", "ULong", "Double" -> ComputedAbiLayout(size = 8, alignment = 8, isBlittable = true)
-                "Boolean", "Char", "String", "Any" -> ComputedAbiLayout(isBlittable = false)
+                "Boolean", "Char", "String", "Any", "System.Object" -> ComputedAbiLayout(isBlittable = false)
                 else -> ComputedAbiLayout(isBlittable = false)
             }
 
@@ -1747,7 +1747,7 @@ private class MetadataTables private constructor(
     private fun isObjectEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature): Boolean =
         rawMethod.name == "Equals" &&
         signature.parameters.size == 1 &&
-            signature.parameters.single().typeName == "Any" &&
+            signature.parameters.single().typeName in setOf("Any", "System.Object") &&
             signature.returnType.typeName == "Boolean"
 
     private fun isClassEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature, qualifiedTypeName: String): Boolean =
@@ -2479,7 +2479,7 @@ private class SignatureReader(
             ELEMENT_TYPE_R4 -> parsed(WinRtTypeRef.named("Float"))
             ELEMENT_TYPE_R8 -> parsed(WinRtTypeRef.named("Double"))
             ELEMENT_TYPE_STRING -> parsed(WinRtTypeRef.named("String"))
-            ELEMENT_TYPE_OBJECT -> parsed(WinRtTypeRef.unknown())
+            ELEMENT_TYPE_OBJECT -> parsed(WinRtTypeRef.named("System.Object"))
             ELEMENT_TYPE_I -> parsed(WinRtTypeRef.named("Long"))
             ELEMENT_TYPE_U -> parsed(WinRtTypeRef.named("ULong"))
             ELEMENT_TYPE_BYREF -> parsed(readType().type.withByRef())
@@ -2799,7 +2799,7 @@ private fun normalizeSignatureTypeName(typeName: String?): String = when (typeNa
     "System.Single" -> "Float"
     "System.Double" -> "Double"
     "System.String" -> "String"
-    "System.Object" -> "Any"
+    "System.Object" -> "System.Object"
     else -> typeName
 }
 

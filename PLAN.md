@@ -27,7 +27,8 @@
 - [x] Generator 11.2: planner/metadata companions now carry declaration, object-reference, factory, GUID, and interface-member descriptors.
 - [x] Generator 11.3: planner/metadata companions now carry custom mapped, generic ABI, required-interface, and module activation descriptors.
 - [x] Generator 11.4: Windows SDK CLI generation validated for the current `Windows.Data.Json` slice without changing checked-in projections.
-- [ ] Generator 11.5 正在做: close `.cswinrt` gaps found by audit: object/array signature lowering, `IPropertyValue`, `EventHandler<T>`, full event-source helpers, ABI/interface implementation classes, and generic type instantiation output.
+- [x] Generator 11.5: close Foundation-level object/array signature lowering, `System.Object` as WinRT reference projection, duplicate collection superinterface merging, and current `Windows.Foundation` SDK CLI generation.
+- [ ] Generator 11.6 正在做: close remaining `.cswinrt` writer gaps: generic interface argument substitution for collection closures, `IKeyValuePair<TKey,TValue>` iterator lowering, full event-source helpers, ABI/interface implementation classes, and generic type instantiation output.
 - [ ] Queue 12: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
 - [ ] Queue 13: implement plugin roles: `kotlin-winrt-library` carries generated sources plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
@@ -64,6 +65,7 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-metadata:test`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11 --namespace Windows.Data.Json'`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:run --args='--output /tmp/kotlin-winrt-generator-11-foundation --namespace Windows.Foundation'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-projections:compileKotlin`
 - [ ] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
 - [ ] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
