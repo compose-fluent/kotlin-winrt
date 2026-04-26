@@ -59,7 +59,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
                     outputRoot,
                 )
-                stageWindowsAppSdkVersionInfoHeader(resolved.packageRoot.resolve("include").resolve("WindowsAppSDK-VersionInfo.h"), outputRoot)
             }
         }
         stageResourcesPriAlias(outputRoot)
@@ -93,12 +92,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 .filter { it.isRegularFile() }
                 .filter { it.name.endsWith(".pri", ignoreCase = true) || "Microsoft.UI.Xaml" in it.relativeTo(nativeRoot).toString() }
                 .forEach { source -> copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
-        }
-    }
-
-    private fun stageWindowsAppSdkVersionInfoHeader(header: Path, outputRoot: Path) {
-        if (header.isRegularFile()) {
-            copyFile(header, outputRoot.resolve("include").resolve(header.name))
         }
     }
 

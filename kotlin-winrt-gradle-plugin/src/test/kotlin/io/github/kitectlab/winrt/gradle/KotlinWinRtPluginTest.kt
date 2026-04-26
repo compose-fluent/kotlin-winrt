@@ -322,7 +322,7 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
+        assertFalse(Files.exists(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
 
     @Test
@@ -349,7 +349,7 @@ class KotlinWinRtPluginTest {
         writeGradleFile(
             projectDir.resolve("gradle.properties"),
             """
-            org.gradle.jvmargs=-Xmx768m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
             org.gradle.daemon=false
             org.gradle.workers.max=1
             kotlin.compiler.execution.strategy=in-process

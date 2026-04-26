@@ -91,7 +91,8 @@
 - [x] Plugin 4.4: implement application-model transitive NuGet runtime/resource staging from identity JSON and local NuGet declarations.
 - [x] Plugin 4.5: migrate useful runtime/resource staging and distribution/resource wiring out of legacy `sample-jvm-winui3` into the plugin application model.
 - [x] Plugin 4.6: remove unpublished split plugin ids/DSLs; keep only `winRt {}` with `application {}` as the application model switch.
-- [x] Plugin 4.7: align WindowsAppSDK handling with `.cswinrt/src/Projections/WinAppSDK`: add `windowsAppSdk(...)` split-package DSL and prevent ordinary NuGet packages from receiving WindowsAppSDK framework PRI/header staging.
+- [x] Plugin 4.7: align WindowsAppSDK handling with `.cswinrt/src/Projections/WinAppSDK`: add `windowsAppSdk(...)` split-package DSL and keep WindowsAppSDK staging limited to runtime framework assets, not native-target internals such as `WindowsAppSDK-VersionInfo.h`.
+- [x] Runtime 4.8: remove sample-derived `WindowsAppSdkBootstrap` from `winrt-runtime`; WinUI bootstrap/application packaging belongs to plugin/application integration after matching `.cswinrt` project/package behavior.
 
 ## Validation Plan
 

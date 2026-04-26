@@ -195,15 +195,6 @@ expect object WinRtPlatformApi {
 
     fun freeLibraryRaw(moduleHandle: RawAddress): Boolean
 
-    fun mddBootstrapInitialize2Raw(
-        initializeProc: RawAddress,
-        majorMinorVersion: Int,
-        versionTag: String,
-        minVersion: Long,
-    ): Int
-
-    fun mddBootstrapShutdownRaw(shutdownProc: RawAddress)
-
     fun tryFormatMessageRaw(hResultValue: Int): String?
 
     fun lastErrorAsHResultRaw(): Int
