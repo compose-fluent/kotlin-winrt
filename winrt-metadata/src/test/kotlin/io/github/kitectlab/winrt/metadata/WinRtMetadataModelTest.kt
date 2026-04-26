@@ -1627,6 +1627,12 @@ class WinRtMetadataModelTest {
                 "write_custom_query_interface_impl",
                 "generic_type_instances fixed point",
                 "auxiliary table semantic boundary",
+                "helper output inventory",
+                "WinRTAbiDelegateInitializer conditions",
+                "WinRTGenericTypeInstantiations/base strings conditions",
+                "is_manually_generated_iface",
+                "projection context flags",
+                "write_class_members property merge",
             ),
             helpers.cswinrtMetadataParityAudit().map { it.cswinrtEntryPoint },
         )
@@ -1729,6 +1735,160 @@ class WinRtMetadataModelTest {
             sample.projectedTypes.single { it.type.name == "Widget" }.projectedAttributes.map { it.projectedTypeName },
         )
         assertEquals(true, inventory.projectionFileWritten)
+        assertEquals(
+            listOf(
+                "WinRTEventHelpers.cs",
+                "WinRTBaseTypeMappingHelper.cs",
+                "AuthoringMetadataTypeMappingHelper.cs",
+            ),
+            inventory.helperOutputs.requiredHelperFileNames,
+        )
+        assertEquals(true, inventory.helperOutputs.baseStringHelpersRequired)
+        assertEquals(false, inventory.helperOutputs.comInteropHelpersRequired)
+        assertEquals(false, inventory.helperOutputs.abiDelegateInitializerRequired)
+        assertEquals(false, inventory.helperOutputs.genericTypeInstantiationsHelperRequired)
+    }
+
+    @Test
+    fun projection_helper_outputs_follow_cswinrt_target_and_filter_conditions() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "AsyncStatus", kind = WinRtTypeKind.Enum),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValues",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Sample.Foundation.Point>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val netstandardInventory = model.projectionInventory(
+            WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                include = setOf("Windows", "Sample.Foundation"),
+                target = WinRtMetadataTarget.NetStandard20,
+            ),
+        )
+        val net8Inventory = model.projectionInventory(
+            WinRtMetadataProjectionContext(
+                sources = emptyList(),
+                include = setOf("Windows", "Sample.Foundation"),
+                target = WinRtMetadataTarget.Net8,
+            ),
+        )
+
+        assertEquals(true, netstandardInventory.helperOutputs.abiDelegateInitializerRequired)
+        assertEquals(true, netstandardInventory.helperOutputs.abiDelegateAsyncStatusRequired)
+        assertEquals(false, netstandardInventory.helperOutputs.genericTypeInstantiationsHelperRequired)
+        assertEquals(true, netstandardInventory.helperOutputs.comInteropHelpersRequired)
+        assertEquals(true, "WinRTAbiDelegateInitializer.cs" in netstandardInventory.helperOutputs.requiredHelperFileNames)
+        assertEquals(false, net8Inventory.helperOutputs.abiDelegateInitializerRequired)
+        assertEquals(true, net8Inventory.helperOutputs.genericTypeInstantiationsHelperRequired)
+        assertEquals(true, "WinRTGenericTypeInstantiations.cs" in net8Inventory.helperOutputs.requiredHelperFileNames)
+    }
+
+    @Test
+    fun semantic_helpers_expose_context_manual_interface_and_class_member_merge_descriptors() {
+        val getName = WinRtMethodDefinition("get_Name", "String", methodRowId = 10)
+        val setName = WinRtMethodDefinition("put_Name", "Void", parameters = listOf(WinRtParameterDefinition("value", "String")), methodRowId = 11)
+        val widgetInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            availability = WinRtAvailabilityMetadata(
+                contractVersion = WinRtContractVersionMetadata(
+                    contractName = "Windows.Foundation.UniversalApiContract",
+                    version = 1,
+                    platformVersion = "10.0.1.0",
+                ),
+            ),
+            methods = listOf(getName),
+            properties = listOf(WinRtPropertyDefinition("Name", "String", getterMethodName = "get_Name")),
+        )
+        val widgetMutableInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidgetMutable",
+            kind = WinRtTypeKind.Interface,
+            methods = listOf(setName),
+            properties = listOf(WinRtPropertyDefinition("Name", "String", setterMethodName = "put_Name")),
+        )
+        val exclusiveInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidgetOverrides",
+            kind = WinRtTypeKind.Interface,
+            isExclusiveTo = true,
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetMutable", isOverridable = true),
+                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetOverrides"),
+            ),
+        )
+        val bindableVector = WinRtTypeDefinition(
+            namespace = "Microsoft.UI.Xaml.Interop",
+            name = "IBindableVector",
+            kind = WinRtTypeKind.Interface,
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace("Sample.Foundation", listOf(widgetInterface, widgetMutableInterface, exclusiveInterface, widget)),
+                WinRtNamespace("Microsoft.UI.Xaml.Interop", listOf(bindableVector)),
+            ),
+        )
+        val helpers = model.semanticHelpers()
+        val context = WinRtMetadataProjectionContext(
+            sources = emptyList(),
+            target = WinRtMetadataTarget.Net8,
+            internal = true,
+            embedded = true,
+            publicEnums = true,
+            publicExclusiveTo = false,
+            idicExclusiveTo = false,
+            partialFactory = true,
+        )
+
+        assertEquals("internal", helpers.projectionContextSemantics(context).internalAccessibility)
+        assertEquals("public", helpers.projectionContextSemantics(context).enumAccessibility)
+        assertEquals("GetActivationFactoryPartial(runtimeClassId)", helpers.projectionContextSemantics(context).partialFactoryFallbackExpression)
+        assertEquals(true, helpers.isManuallyGeneratedInterface(bindableVector).manuallyGenerated)
+        assertEquals(false, helpers.typeProjectionContextDescriptor(exclusiveInterface, context).writesVtablePointer)
+        assertEquals(false, helpers.typeProjectionContextDescriptor(exclusiveInterface, context).supportsDynamicInterfaceCastable)
+
+        val merge = helpers.classMemberMergeDescriptor(widget, context)
+        assertEquals(
+            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetMutable", "Sample.Foundation.IWidgetOverrides"),
+            merge.interfaceDescriptors.map { it.interfaceTypeName },
+        )
+        val name = merge.mergedProperties.single { it.propertyName == "Name" }
+        assertEquals("String", name.propertyTypeName)
+        assertEquals("_default", name.getterTarget)
+        assertEquals("AsInternal(new InterfaceTag<Sample.Foundation.IWidgetMutable>())", name.setterTarget)
+        assertEquals(true, name.isOverridable)
+        assertEquals(true, name.isPublic)
+        assertEquals(false, name.isPrivate)
+        assertEquals("Sample.Foundation.IWidget", name.getterStaticCallTarget)
+        assertEquals("Sample.Foundation.IWidgetMutable", name.setterStaticCallTarget)
     }
 
     @Test

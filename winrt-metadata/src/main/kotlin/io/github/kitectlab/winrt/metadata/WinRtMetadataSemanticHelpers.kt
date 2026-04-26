@@ -219,6 +219,63 @@ data class WinRtCustomQueryInterfaceDescriptor(
     val delegatesToBase: Boolean,
 )
 
+data class WinRtProjectionContextSemanticsDescriptor(
+    val internalAccessibility: String,
+    val enumAccessibility: String,
+    val embedded: Boolean,
+    val publicExclusiveTo: Boolean,
+    val idicExclusiveTo: Boolean,
+    val partialFactory: Boolean,
+    val partialFactoryFallbackExpression: String,
+)
+
+data class WinRtTypeProjectionContextDescriptor(
+    val typeName: String,
+    val accessibility: String,
+    val enumAccessibility: String,
+    val exclusiveToAccessibility: String,
+    val writesVtablePointer: Boolean,
+    val supportsDynamicInterfaceCastable: Boolean,
+    val partialFactoryFallbackExpression: String,
+)
+
+data class WinRtManualInterfaceDescriptor(
+    val typeName: String,
+    val manuallyGenerated: Boolean,
+    val reason: String? = null,
+)
+
+data class WinRtClassMemberMergeDescriptor(
+    val classTypeName: String,
+    val interfaceDescriptors: List<WinRtClassInterfaceMemberDescriptor>,
+    val mergedProperties: List<WinRtMergedPropertyDescriptor>,
+)
+
+data class WinRtClassInterfaceMemberDescriptor(
+    val interfaceTypeName: String,
+    val target: String,
+    val isDefaultInterface: Boolean,
+    val isOverridableInterface: Boolean,
+    val isProtectedInterface: Boolean,
+    val isManuallyGeneratedInterface: Boolean,
+    val callStaticMethod: Boolean,
+    val mappedTypeHasCustomMembers: Boolean,
+)
+
+data class WinRtMergedPropertyDescriptor(
+    val propertyName: String,
+    val propertyTypeName: String,
+    val getterTarget: String?,
+    val getterPlatform: String?,
+    val setterTarget: String?,
+    val setterPlatform: String?,
+    val isOverridable: Boolean,
+    val isPublic: Boolean,
+    val isPrivate: Boolean,
+    val getterStaticCallTarget: String?,
+    val setterStaticCallTarget: String?,
+)
+
 data class WinRtMethodVtableDescriptor(
     val ownerTypeName: String,
     val methodName: String,
@@ -773,6 +830,161 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         )
     }
 
+    fun projectionContextSemantics(context: WinRtMetadataProjectionContext): WinRtProjectionContextSemanticsDescriptor =
+        WinRtProjectionContextSemanticsDescriptor(
+            internalAccessibility = if (context.internal || context.embedded) "internal" else "public",
+            enumAccessibility = if (context.internal || context.embedded) {
+                if (context.publicEnums) "public" else "internal"
+            } else {
+                "public"
+            },
+            embedded = context.embedded,
+            publicExclusiveTo = context.publicExclusiveTo,
+            idicExclusiveTo = context.idicExclusiveTo,
+            partialFactory = context.partialFactory,
+            partialFactoryFallbackExpression = if (context.partialFactory) {
+                "GetActivationFactoryPartial(runtimeClassId)"
+            } else {
+                "IntPtr.Zero"
+            },
+        )
+
+    fun typeProjectionContextDescriptor(
+        type: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext,
+    ): WinRtTypeProjectionContextDescriptor {
+        val contextSemantics = projectionContextSemantics(context)
+        val exclusiveTo = isExclusiveTo(type)
+        val projectionInternal = isProjectionInternal(type)
+        val typeAccessibility = when {
+            type.kind == WinRtTypeKind.Enum -> contextSemantics.enumAccessibility
+            exclusiveTo && !context.publicExclusiveTo -> "internal"
+            projectionInternal || context.internal || context.embedded -> "internal"
+            else -> "public"
+        }
+        return WinRtTypeProjectionContextDescriptor(
+            typeName = type.qualifiedName,
+            accessibility = typeAccessibility,
+            enumAccessibility = contextSemantics.enumAccessibility,
+            exclusiveToAccessibility = if (exclusiveTo && !context.publicExclusiveTo) "internal" else typeAccessibility,
+            writesVtablePointer = !exclusiveTo || context.publicExclusiveTo,
+            supportsDynamicInterfaceCastable = !exclusiveTo || context.idicExclusiveTo,
+            partialFactoryFallbackExpression = contextSemantics.partialFactoryFallbackExpression,
+        )
+    }
+
+    fun isManuallyGeneratedInterface(type: WinRtTypeDefinition): WinRtManualInterfaceDescriptor {
+        val manuallyGenerated = type.namespace == "Microsoft.UI.Xaml.Interop" &&
+            (type.name == "IBindableVector" || type.name == "IBindableIterable")
+        return WinRtManualInterfaceDescriptor(
+            typeName = type.qualifiedName,
+            manuallyGenerated = manuallyGenerated,
+            reason = if (manuallyGenerated) "CsWinRT manually generates Microsoft.UI.Xaml.Interop bindable collection interfaces." else null,
+        )
+    }
+
+    fun classMemberMergeDescriptor(
+        type: WinRtTypeDefinition,
+        context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+        wrapperType: Boolean = false,
+        interfaceImplType: Boolean = false,
+    ): WinRtClassMemberMergeDescriptor {
+        val interfaceDescriptors = mutableListOf<WinRtClassInterfaceMemberDescriptor>()
+        val properties = linkedMapOf<String, MutableMergedProperty>()
+        val writtenInterfaces = linkedSetOf<String>()
+
+        fun writeClassInterface(
+            interfaceType: WinRtTypeDefinition,
+            isDefaultInterface: Boolean,
+            isOverridableInterface: Boolean,
+            isProtectedInterface: Boolean,
+        ) {
+            if (!writtenInterfaces.add(interfaceType.qualifiedName)) return
+            val manual = isManuallyGeneratedInterface(interfaceType).manuallyGenerated
+            val target = if (wrapperType) {
+                "((%s) _comp)".format(interfaceType.qualifiedName)
+            } else if (isDefaultInterface) {
+                "_default"
+            } else {
+                "AsInternal(new InterfaceTag<${interfaceType.qualifiedName}>())"
+            }
+            val callStaticMethod = context.target != WinRtMetadataTarget.NetStandard20 && !wrapperType && !manual
+            val mapped = getMappedType(interfaceType.namespace, interfaceType.name)
+            interfaceDescriptors += WinRtClassInterfaceMemberDescriptor(
+                interfaceTypeName = interfaceType.qualifiedName,
+                target = target,
+                isDefaultInterface = isDefaultInterface,
+                isOverridableInterface = isOverridableInterface,
+                isProtectedInterface = isProtectedInterface,
+                isManuallyGeneratedInterface = manual,
+                callStaticMethod = callStaticMethod,
+                mappedTypeHasCustomMembers = mapped?.hasCustomMembersOutput == true,
+            )
+            interfaceType.properties.forEach { property ->
+                val getter = property.getterMethodName?.let { getterName -> interfaceType.methods.firstOrNull { it.name == getterName } }
+                val setter = property.setterMethodName?.let { setterName -> interfaceType.methods.firstOrNull { it.name == setterName } }
+                val privateProperty = getter?.let { isImplementedAsPrivateMethod(type, interfaceType, it).isImplementedAsPrivateMethod } == true
+                val propertyName = if (privateProperty) "${interfaceType.qualifiedName}.${property.name}" else property.name
+                val platform = interfaceType.availability.contractVersion?.platformVersion
+                val current = properties.getOrPut(propertyName) {
+                    MutableMergedProperty(
+                        propertyName = propertyName,
+                        propertyTypeName = property.type.normalized().typeName,
+                        isOverridable = isOverridableInterface,
+                        isPublic = !isProtectedInterface && !isOverridableInterface,
+                        isPrivate = privateProperty,
+                    )
+                }
+                if (getter != null && current.getterTarget == null) {
+                    current.getterTarget = target
+                    current.getterPlatform = platform
+                    current.getterStaticCallTarget = if (callStaticMethod) interfaceType.qualifiedName else null
+                }
+                if (setter != null && current.setterTarget == null) {
+                    current.setterTarget = target
+                    current.setterPlatform = platform
+                    current.setterStaticCallTarget = if (callStaticMethod) interfaceType.qualifiedName else null
+                }
+                current.isOverridable = current.isOverridable || isOverridableInterface
+                current.isPublic = current.isPublic || (!isProtectedInterface && !isOverridableInterface)
+                current.isPrivate = current.isPrivate || privateProperty
+            }
+            if (interfaceImplType) {
+                interfaceType.implementedInterfaces.forEach { implemented ->
+                    resolveType(implemented.interfaceType, interfaceType.namespace)?.let { baseInterface ->
+                        writeClassInterface(
+                            interfaceType = baseInterface,
+                            isDefaultInterface = false,
+                            isOverridableInterface = implemented.isOverridable,
+                            isProtectedInterface = implemented.isProtected,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (interfaceImplType && type.kind == WinRtTypeKind.Interface) {
+            writeClassInterface(type, isDefaultInterface = false, isOverridableInterface = false, isProtectedInterface = false)
+        }
+        type.implementedInterfaces.forEach { implemented ->
+            resolveType(implemented.interfaceType, type.namespace)?.let { interfaceType ->
+                writeClassInterface(
+                    interfaceType = interfaceType,
+                    isDefaultInterface = implemented.isDefault,
+                    isOverridableInterface = implemented.isOverridable,
+                    isProtectedInterface = implemented.isProtected,
+                )
+            }
+        }
+        return WinRtClassMemberMergeDescriptor(
+            classTypeName = type.qualifiedName,
+            interfaceDescriptors = interfaceDescriptors.sortedBy(WinRtClassInterfaceMemberDescriptor::interfaceTypeName),
+            mergedProperties = properties.values
+                .map(MutableMergedProperty::toDescriptor)
+                .sortedBy(WinRtMergedPropertyDescriptor::propertyName),
+        )
+    }
+
     fun methodVtableDescriptors(type: WinRtTypeDefinition): List<WinRtMethodVtableDescriptor> {
         val normalized = type.normalized()
         return normalized.methods.map { method -> methodVtableDescriptor(normalized, method) }
@@ -834,7 +1046,42 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             WinRtMetadataParityAuditEntry("code_writers.h", "write_custom_query_interface_impl", "WinRtMetadataSemanticHelpers.customQueryInterfaceDescriptor", true),
             WinRtMetadataParityAuditEntry("code_writers.h", "generic_type_instances fixed point", "WinRtMetadataSemanticHelpers.genericInstantiationWorklist", true),
             WinRtMetadataParityAuditEntry("WinMD tables", "auxiliary table semantic boundary", "WinRtMetadataSemanticHelpers.auxiliaryTableSemanticBoundaries", true),
+            WinRtMetadataParityAuditEntry("main.cpp", "helper output inventory", "WinRtMetadataProjectionInventory.helperOutputs", true),
+            WinRtMetadataParityAuditEntry("main.cpp", "WinRTAbiDelegateInitializer conditions", "WinRtProjectionHelperOutputInventory.abiDelegateInitializerRequired", true),
+            WinRtMetadataParityAuditEntry("main.cpp", "WinRTGenericTypeInstantiations/base strings conditions", "WinRtProjectionHelperOutputInventory", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "is_manually_generated_iface", "WinRtMetadataSemanticHelpers.isManuallyGeneratedInterface", true),
+            WinRtMetadataParityAuditEntry("settings.h/code_writers.h", "projection context flags", "WinRtMetadataSemanticHelpers.projectionContextSemantics", true),
+            WinRtMetadataParityAuditEntry("code_writers.h", "write_class_members property merge", "WinRtMetadataSemanticHelpers.classMemberMergeDescriptor", true),
         )
+
+    private data class MutableMergedProperty(
+        val propertyName: String,
+        val propertyTypeName: String,
+        var getterTarget: String? = null,
+        var getterPlatform: String? = null,
+        var setterTarget: String? = null,
+        var setterPlatform: String? = null,
+        var isOverridable: Boolean,
+        var isPublic: Boolean,
+        var isPrivate: Boolean,
+        var getterStaticCallTarget: String? = null,
+        var setterStaticCallTarget: String? = null,
+    ) {
+        fun toDescriptor(): WinRtMergedPropertyDescriptor =
+            WinRtMergedPropertyDescriptor(
+                propertyName = propertyName,
+                propertyTypeName = propertyTypeName,
+                getterTarget = getterTarget,
+                getterPlatform = getterPlatform,
+                setterTarget = setterTarget,
+                setterPlatform = setterPlatform,
+                isOverridable = isOverridable,
+                isPublic = isPublic,
+                isPrivate = isPrivate,
+                getterStaticCallTarget = getterStaticCallTarget,
+                setterStaticCallTarget = setterStaticCallTarget,
+            )
+    }
 
     private fun fastAbiPropertySlots(closure: WinRtRuntimeClassClosureDescriptor): List<WinRtFastAbiPropertySlot> {
         var vtableStartIndex = 6
