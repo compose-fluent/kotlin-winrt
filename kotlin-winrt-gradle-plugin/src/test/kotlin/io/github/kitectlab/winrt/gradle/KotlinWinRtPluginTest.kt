@@ -28,6 +28,7 @@ class KotlinWinRtPluginTest {
         extension.restoreNuGetPackages.set(false)
         extension.useNuGetCliGlobalPackages.set(false)
         extension.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
+        extension.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
         extension.windowsAppSdk(
             winuiVersion = "1.8.251105000",
             foundationVersion = "1.8.251104000",
@@ -52,6 +53,10 @@ class KotlinWinRtPluginTest {
         assertEquals("7.3.1", task.nugetCliVersion.get())
         assertEquals(false, task.restoreNuGetPackages.get())
         assertEquals(false, task.useNuGetCliGlobalPackages.get())
+        assertEquals(
+            listOf(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath),
+            project.extensions.getByType(WinRtExtension::class.java).runtimeAssets.get(),
+        )
         assertEquals(
             listOf(
                 "Microsoft.WindowsAppSDK.Foundation@1.8.251104000",
@@ -117,6 +122,7 @@ class KotlinWinRtPluginTest {
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
         val extension = project.extensions.getByType(WinRtExtension::class.java)
         extension.winmd("sdk+")
+        extension.runtimeAsset("SimpleMathComponent.dll")
         extension.namespace("Windows.Foundation")
         extension.type("Windows.Foundation.IStringable")
         extension.windowsSdk("10.0.26100.0", includeExtensions = true)
@@ -132,6 +138,7 @@ class KotlinWinRtPluginTest {
         val json = Files.readString(task.outputFile.get().asFile.toPath())
         assertTrue(json.contains("\"model\": \"library\""))
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
+        assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
         assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
@@ -231,6 +238,7 @@ class KotlinWinRtPluginTest {
             registeredTask.includeTypes.set(listOf("Windows.Foundation.IStringable"))
             registeredTask.includeWindowsSdkExtensions.set(false)
             registeredTask.nugetPackages.set(listOf("Microsoft.WindowsAppSDK.WinUI@1.8.251105000"))
+            registeredTask.runtimeAssets.set(listOf("SimpleMathComponent.dll"))
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
         task.generate()
@@ -239,7 +247,39 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"model\": \"application\""))
         assertTrue(json.contains("\"metadataInputs\": [\"sdk+\"]"))
         assertTrue(json.contains("\"nugetPackages\": [\"Microsoft.WindowsAppSDK.WinUI@1.8.251105000\"]"))
+        assertTrue(json.contains("\"runtimeAssets\": [\"SimpleMathComponent.dll\"]"))
         assertTrue(json.contains(dependencyIdentity.absolutePath.replace("\\", "\\\\")))
+    }
+
+    @Test
+    fun runtime_assets_task_stages_local_component_assets_from_application_and_dependency_identity() {
+        val project = ProjectBuilder.builder().build()
+        val appDll = project.layout.buildDirectory.file("component/AppComponent.dll").get().asFile.toPath()
+        val dependencyDll = project.layout.buildDirectory.file("dependency/DependencyComponent.dll").get().asFile.toPath()
+        Files.createDirectories(appDll.parent)
+        Files.createDirectories(dependencyDll.parent)
+        Files.writeString(appDll, "app")
+        Files.writeString(dependencyDll, "dependency")
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(dependencyIdentity.toPath(), """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"]}""")
+
+        val task = project.tasks.register(
+            "stageLocalComponentAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(listOf(appDll.toString()))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+        }.get()
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.dll")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.dll")))
     }
 
     @Test
@@ -277,6 +317,7 @@ class KotlinWinRtPluginTest {
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
             registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
@@ -324,6 +365,7 @@ class KotlinWinRtPluginTest {
         ) { registeredTask ->
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("windowsappsdk-assets"))
             registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
             registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)

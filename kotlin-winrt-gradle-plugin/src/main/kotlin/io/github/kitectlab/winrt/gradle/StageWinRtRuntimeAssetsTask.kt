@@ -28,6 +28,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val nugetPackages: ListProperty<String>
 
     @get:Input
+    abstract val runtimeAssets: ListProperty<String>
+
+    @get:Input
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
 
     @get:Input
@@ -41,6 +44,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         Files.createDirectories(outputRoot)
+        (runtimeAssets.get() + dependencyIdentityFiles.files.flatMap(::readRuntimeAssets))
+            .map(Path::of)
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isRegularFile()) {
+                    copyFile(source, outputRoot.resolve(source.name))
+                }
+            }
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
@@ -135,8 +146,17 @@ internal fun parseNuGetPackageIdentity(spec: String): WinRtNuGetPackageIdentity 
 internal fun readNuGetPackages(identityFile: java.io.File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     val match = Regex(""""nugetPackages"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
-    return Regex(""""((?:\\.|[^"\\])*)"""")
-        .findAll(match.groupValues[1])
+    return readJsonStringArray(match.groupValues[1])
+}
+
+internal fun readRuntimeAssets(identityFile: java.io.File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val match = Regex(""""runtimeAssets"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
+    return readJsonStringArray(match.groupValues[1])
+}
+
+private fun readJsonStringArray(content: String): List<String> =
+    Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(content)
         .map { it.groupValues[1].replace("\\\"", "\"").replace("\\\\", "\\") }
         .toList()
-}

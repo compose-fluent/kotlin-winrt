@@ -39,6 +39,9 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:Input
+    abstract val runtimeAssets: ListProperty<String>
+
     @TaskAction
     fun generate() {
         val target = outputFile.get().asFile.toPath()
@@ -58,7 +61,8 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("    \"version\": ${windowsSdkVersion.orNull.toJsonStringOrNull()},")
                 appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")
                 appendLine("  },")
-                appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()}")
+                appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
+                appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()}")
                 appendLine("}")
             },
         )

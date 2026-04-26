@@ -12,7 +12,14 @@ fun main() {
         println("json-verified=${result.verified}")
         println("json-first-education-type=${result.firstEducationType}")
     }
+    if (PlatformRuntime.isWindows && shouldRunComponentSmoke()) {
+        val result = NetProjectionSample.add()
+        println("simple-math=${result.expression} = ${result.value}")
+    }
 }
 
 fun shouldRunNativeSmoke(): Boolean =
     java.lang.Boolean.getBoolean("kotlin.winrt.samples.runNativeSmoke")
+
+fun shouldRunComponentSmoke(): Boolean =
+    java.lang.Boolean.getBoolean("kotlin.winrt.samples.runComponentSmoke")

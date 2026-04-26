@@ -43,6 +43,9 @@ abstract class GenerateWinRtApplicationIdentityTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:Input
+    abstract val runtimeAssets: ListProperty<String>
+
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
@@ -67,6 +70,7 @@ abstract class GenerateWinRtApplicationIdentityTask : DefaultTask() {
                 appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")
                 appendLine("  },")
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
+                appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
                 appendLine("  \"dependencyIdentityFiles\": ${dependencyIdentityFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
                 appendLine("}")
             },

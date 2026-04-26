@@ -25,6 +25,7 @@ interface BaseWinRtExtension {
     val useNuGetCliGlobalPackages: Property<Boolean>
     val nugetGlobalPackagesRoots: ListProperty<String>
     val nugetPackages: NamedNuGetPackageContainer
+    val runtimeAssets: ListProperty<String>
 
     fun namespace(name: String)
 
@@ -35,6 +36,8 @@ interface BaseWinRtExtension {
     fun excludeType(name: String)
 
     fun winmd(input: Any)
+
+    fun runtimeAsset(input: Any)
 
     fun windowsSdk(version: String? = null, includeExtensions: Boolean = false)
 
@@ -64,6 +67,7 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
     override val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     override val useNuGetCliGlobalPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     override val nugetGlobalPackagesRoots: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val runtimeAssets: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
 
     @get:Nested
     override val nugetPackages: NamedNuGetPackageContainer =
@@ -89,6 +93,10 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
 
     override fun winmd(input: Any) {
         metadataInputs.add(input.toString())
+    }
+
+    override fun runtimeAsset(input: Any) {
+        runtimeAssets.add(input.toString())
     }
 
     override fun windowsSdk(version: String?, includeExtensions: Boolean) {

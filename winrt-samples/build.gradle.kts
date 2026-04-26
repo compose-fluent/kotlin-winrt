@@ -18,7 +18,6 @@ val sampleWindowsAppSdkWinuiVersion = providers.gradleProperty("kotlinWinRt.samp
 val sampleWindowsAppSdkFoundationVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkFoundationVersion")
 val sampleWindowsAppSdkInteractiveExperiencesVersion =
     providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion")
-
 winRt {
     type("Windows.Foundation.IStringable")
     application {
@@ -76,6 +75,21 @@ val verifyWinRtSampleIdentity by tasks.registering {
     }
 }
 
+val verifyWinRtSampleRuntimeAssets by tasks.registering {
+    group = "verification"
+    description = "Verifies the sample application stages local WinRT component runtime assets."
+    val runtimeAssetsDir = layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
+    dependsOn(tasks.named("stageWinRtRuntimeAssets"))
+    inputs.dir(runtimeAssetsDir)
+
+    doLast {
+        check(runtimeAssetsDir.get().asFile.resolve("SimpleMathComponent.dll").isFile) {
+            "Expected SimpleMathComponent.dll to be staged as a local WinRT component runtime asset."
+        }
+    }
+}
+
 tasks.named("check") {
     dependsOn(verifyWinRtSampleIdentity)
+    dependsOn(verifyWinRtSampleRuntimeAssets)
 }

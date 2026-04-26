@@ -24,6 +24,15 @@ class MainTest {
     }
 
     @Test
+    fun net_projection_sample_keeps_cswinrt_simple_math_call_flow() {
+        assertEquals(
+            "io.github.kitectlab.winrt.projections.simplemathcomponent.SimpleMath",
+            NetProjectionSample.componentRuntimeClass,
+        )
+        assertEquals(false, shouldRunComponentSmoke())
+    }
+
+    @Test
     fun windows_data_json_sample_matches_cswinrt_api_compat_call_flow() {
         assumeTrue(PlatformRuntime.isWindows && shouldRunNativeSmoke())
 
@@ -33,6 +42,16 @@ class MainTest {
         assertEquals(JsonValueType.Null, result.nullValueType)
         assertEquals(true, result.verified)
         assertEquals("High School", result.firstEducationType)
+    }
+
+    @Test
+    fun net_projection_sample_consumes_simple_math_component_when_enabled() {
+        assumeTrue(PlatformRuntime.isWindows && shouldRunComponentSmoke())
+
+        val result = NetProjectionSample.add()
+
+        assertEquals("5.5 + 6.5", result.expression)
+        assertEquals(12.0, result.value, 0.0)
     }
 }
 

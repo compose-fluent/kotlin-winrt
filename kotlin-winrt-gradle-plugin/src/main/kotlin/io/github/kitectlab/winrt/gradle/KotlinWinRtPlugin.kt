@@ -54,6 +54,7 @@ private fun configureWinRtLibraryModel(
                     }
                 },
             )
+            task.runtimeAssets.set(extension.runtimeAssets)
         },
     )
 
@@ -137,6 +138,7 @@ private fun configureWinRtApplicationTasks(
                     }
                 },
             )
+            task.runtimeAssets.set(extension.runtimeAssets)
             task.dependencyIdentityFiles.from(identityDependencies)
         },
     )
@@ -156,6 +158,7 @@ private fun configureWinRtApplicationTasks(
                     }
                 },
             )
+            task.runtimeAssets.set(extension.runtimeAssets)
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.dependencyIdentityFiles.from(identityDependencies)

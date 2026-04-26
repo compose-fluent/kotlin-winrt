@@ -73,7 +73,7 @@
 - [x] Sample 3: validate application identity aggregation from `winrt-projections` and exclude plain runtime implementation dependencies.
 - [x] Sample 4: expose opt-in WindowsAppSDK split-package declarations matching `.cswinrt/src/Projections/WinAppSDK`.
 - [x] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
-- [ ] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style component-consumption sample after component WinMD/Dll activation inputs are plugin-owned.
+- [x] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style component-consumption sample after component WinMD/Dll activation inputs are plugin-owned.
 - [ ] Sample 7: add a WinUI desktop smoke matching `.cswinrt/src/Samples/WinUIDesktopSample`: application start, window activation, button/page swap, and tapped handler.
 - [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.
 - [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
