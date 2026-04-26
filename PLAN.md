@@ -14,8 +14,8 @@
 - [x] Module layout exists: `winrt-runtime`, `winrt-metadata`, `winrt-generator`, `winrt-projections`, `winrt-authoring`, and `winrt-samples`.
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
-- [x] `winrt-generator` consumes metadata handoff descriptors for ABI, declaration, factory, object-reference, generic, required-interface, and module helper planning.
-- [x] `winrt-projections` contains the generated representative slice (`Windows.Data.Json` plus `Windows.Foundation.IStringable`) produced by the generator path.
+- [x] `winrt-generator` consumes metadata handoff descriptors for ABI, declaration, factory, object-reference, generic, required-interface, event, and module helper planning.
+- [x] `winrt-projections` compiles generated support handoff helpers for the current Foundation/Collections generator slice.
 - [ ] `kotlin-winrt` Gradle plugin is not implemented yet.
 - [ ] `winrt-samples` is intentionally minimal until generator/projection/plugin support expands.
 - [ ] `winrt-authoring` remains frozen until generated projection and sample paths are coherent.
@@ -34,13 +34,21 @@
 - [x] Generator 11.9: close event projection helpers: event-source classes, static/instance event tables, and generic event initialization.
 - [x] Generator 11.10: close ABI/interface implementation output: static ABI classes, required interface forwarding, vtables, ABI invoke helpers, and CCW/RCW factories.
 - [x] Generator 11.11: close remaining type-shape writers: full mapped-type table parity, projected/nonprojected/CCW name modes, ABI struct helpers, delegate helpers, attributes, and module activation metadata.
-- [ ] Queue 11.12 正在做: compile support helper output into `winrt-projections` once generated ABI runtime hooks are promoted from handoff metadata to callable implementation.
+- [x] Queue 11.12: compile generated support handoff helpers into `winrt-projections`.
+- [ ] Queue 11.13 正在做: promote support handoffs to callable Kotlin implementation for `.cswinrt` writer parity: ABI delegates, generic instantiations, static ABI classes, event helpers, RCW/CCW factories, base-type/metadata/module initializers, and namespace additions.
 - [ ] Queue 12: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
 - [ ] Queue 13: implement plugin roles: `kotlin-winrt-library` carries generated sources plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
+
+## Generator Remaining Gaps
+
+- [ ] Callable ABI output: turn `WinRTAbiImplementationPlan`, `WinRTGenericAbiRegistry`, and `WinRTGenericTypeInstantiations` from descriptors into generated runtime calls matching `.cswinrt/src/cswinrt/code_writers.h`.
+- [ ] Projection helper output: generate real event helper/base-type mapping/metadata mapping/module initializer helpers matching `.cswinrt/src/cswinrt/main.cpp`.
+- [ ] CLI/plugin parity: expose `.cswinrt`-style input, include/exclude, addition-exclude, component, internal/embedded visibility, SDK, and NuGet generation through the Gradle plugin path.
+- [ ] Namespace additions: replace the current support inventory with Kotlin equivalents for `.cswinrt/src/cswinrt/strings` additions only where the active projection surface needs them.
 
 ## Completed Milestones
 
