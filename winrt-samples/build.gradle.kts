@@ -9,10 +9,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(projects.winrtRuntime)
     implementation(projects.winrtProjections)
-    compileOnly(projects.winrtRuntime)
-    runtimeOnly(projects.winrtRuntime)
-    testImplementation(projects.winrtRuntime)
     testImplementation(libs.junit)
 }
 
