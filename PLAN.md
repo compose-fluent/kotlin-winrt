@@ -37,6 +37,7 @@
 - [x] Queue 11.12: compile generated support handoff helpers into `winrt-projections`.
 - [x] Queue 11.13: promote support handoffs to callable Kotlin APIs for ABI delegates, generic instantiations, event helpers, ABI plans, base-type/metadata mappings, and module activation entries.
 - [ ] Queue 12 正在做: create the first-class `kotlin-winrt` Gradle plugin module and DSL for SDK/NuGet metadata inputs and generated-source wiring.
+- [x] Queue 12.1: add shared NuGet global-packages resolver in `winrt-metadata` so plugin NuGet handling consumes Microsoft NuGet CLI restore/cache output instead of creating a separate cache.
 - [ ] Queue 13: implement plugin roles: `kotlin-winrt-library` carries generated sources plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
 - [ ] Queue 14: expand `winrt-projections` only with deterministic generator/plugin-produced output.
 - [ ] Queue 15: expand `winrt-samples` from the smallest generated-projection smoke path, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
@@ -69,7 +70,8 @@
 ## Plugin Plan
 
 - [ ] Plugin 4.1: create plugin module, task model, DSL, source-set wiring, SDK/NuGet metadata inputs, and filters.
-- [ ] Plugin 4.2: resolve NuGet packages, parse `.nuspec` dependency closure, discover WinMD files, and feed `WinRtMetadataSource`.
+- [x] Plugin 4.2 prerequisite: shared metadata resolver now locates Microsoft NuGet global-packages roots, resolves package id/version closure from `.nuspec`, and feeds package roots to `WinRtMetadataSource`.
+- [ ] Plugin 4.2 implementation: plugin invokes/consumes Microsoft NuGet CLI restore/locals output and passes resolved global-packages roots to the shared resolver.
 - [ ] Plugin 4.3: implement `kotlin-winrt-library` artifact metadata for generated projections plus NuGet/WinMD identity.
 - [ ] Plugin 4.4: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging.
 - [ ] Plugin 4.5: migrate useful runtime/resource staging logic out of legacy `sample-jvm-winui3` into the plugin application model.

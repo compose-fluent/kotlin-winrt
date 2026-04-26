@@ -80,11 +80,21 @@ sealed interface WinRtMetadataSource {
     data class NuGetPackage(
         val packagePath: Path,
     ) : WinRtMetadataSource
+    data class NuGetPackageReference(
+        val packageId: String,
+        val version: String,
+        val globalPackagesRoots: List<Path> = emptyList(),
+    ) : WinRtMetadataSource
 
     companion object {
         fun path(path: Path): WinRtMetadataSource = PathSource(path)
         fun local(): WinRtMetadataSource = LocalMachine
         fun nugetPackage(packagePath: Path): WinRtMetadataSource = NuGetPackage(packagePath)
+        fun nugetPackage(
+            packageId: String,
+            version: String,
+            globalPackagesRoots: List<Path> = emptyList(),
+        ): WinRtMetadataSource = NuGetPackageReference(packageId, version, globalPackagesRoots)
         fun windowsSdk(
             version: String? = null,
             includeExtensions: Boolean = false,
@@ -100,7 +110,15 @@ sealed interface WinRtMetadataSource {
 
         fun parse(value: String): WinRtMetadataSource {
             if (value.startsWith("nuget:", ignoreCase = true)) {
-                return nugetPackage(Path.of(value.substringAfter(':')))
+                val spec = value.substringAfter(':')
+                val identitySeparator = spec.lastIndexOf('@')
+                if (identitySeparator > 0 && identitySeparator < spec.lastIndex) {
+                    return nugetPackage(
+                        packageId = spec.substring(0, identitySeparator),
+                        version = spec.substring(identitySeparator + 1),
+                    )
+                }
+                return nugetPackage(Path.of(spec))
             }
             if (value == "local") {
                 return local()
@@ -199,6 +217,179 @@ sealed interface WinRtMetadataSource {
     }
 }
 
+data class WinRtNuGetPackageIdentity(
+    val packageId: String,
+    val version: String,
+) {
+    val normalizedPackageId: String = packageId.trim()
+    val normalizedVersion: String = WinRtNuGetPackageResolver.normalizeVersion(version)
+
+    init {
+        require(normalizedPackageId.isNotEmpty()) { "NuGet package id must not be blank." }
+        require(normalizedVersion.isNotEmpty()) { "NuGet package version must not be blank." }
+    }
+
+    override fun toString(): String = "$normalizedPackageId@$normalizedVersion"
+}
+
+data class WinRtNuGetResolvedPackage(
+    val identity: WinRtNuGetPackageIdentity,
+    val packageRoot: Path,
+    val nuspecPath: Path?,
+    val dependencies: List<WinRtNuGetPackageIdentity>,
+)
+
+/**
+ * Resolver for packages already restored by Microsoft NuGet tooling.
+ *
+ * This intentionally follows NuGet global-packages layout semantics instead of inventing a
+ * kotlin-winrt cache. Restore/download remains a plugin concern; metadata only consumes the
+ * package roots that NuGet CLI/MSBuild/dotnet restore place in the global packages folder.
+ */
+object WinRtNuGetPackageResolver {
+    fun normalizeVersion(value: String): String {
+        val trimmed = value.trim()
+        return if (
+            trimmed.length > 2 &&
+            ',' !in trimmed &&
+            ((trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+                (trimmed.startsWith("(") && trimmed.endsWith(")")))
+        ) {
+            trimmed.substring(1, trimmed.length - 1).trim()
+        } else {
+            trimmed
+        }
+    }
+
+    fun parseNuGetGlobalPackagesOutput(output: String): List<Path> =
+        output.lineSequence()
+            .map(String::trim)
+            .filter { it.startsWith("global-packages:", ignoreCase = true) }
+            .map { it.substringAfter(':').trim().trim('"') }
+            .filter(String::isNotEmpty)
+            .map(Path::of)
+            .toList()
+
+    fun defaultGlobalPackagesRoot(
+        environment: Map<String, String> = System.getenv(),
+        userHome: String? = System.getProperty("user.home"),
+    ): Path {
+        environment["NUGET_PACKAGES"]
+            ?.takeIf(String::isNotBlank)
+            ?.let(Path::of)
+            ?.let { return it }
+
+        require(!userHome.isNullOrBlank()) {
+            "Cannot resolve NuGet global-packages root because user.home is not set and NUGET_PACKAGES is empty."
+        }
+        return Path.of(userHome, ".nuget", "packages")
+    }
+
+    fun globalPackagesRoots(
+        explicitRoots: List<Path> = emptyList(),
+        nugetLocalsOutput: String? = null,
+        environment: Map<String, String> = System.getenv(),
+        userHome: String? = System.getProperty("user.home"),
+    ): List<Path> {
+        val roots = explicitRoots +
+            nugetLocalsOutput.orEmpty().let(::parseNuGetGlobalPackagesOutput) +
+            defaultGlobalPackagesRoot(environment, userHome)
+        return roots
+            .map { it.toAbsolutePath().normalize() }
+            .distinctBy { nuGetCanonicalPathKey(it) }
+    }
+
+    fun packageRoot(
+        identity: WinRtNuGetPackageIdentity,
+        globalPackagesRoots: List<Path> = globalPackagesRoots(),
+    ): Path {
+        val packageDirectoryName = identity.normalizedPackageId.lowercase()
+        val versionCandidates = listOf(identity.normalizedVersion, identity.normalizedVersion.lowercase()).distinct()
+        for (root in globalPackagesRoots) {
+            val packageRoot = root.resolve(packageDirectoryName)
+            for (version in versionCandidates) {
+                val candidate = packageRoot.resolve(version)
+                if (candidate.isDirectory()) {
+                    return nuGetCanonicalizePath(candidate)
+                }
+            }
+        }
+        throw IllegalArgumentException(
+            "NuGet package ${identity.normalizedPackageId}@${identity.normalizedVersion} was not found in global packages roots: " +
+                globalPackagesRoots.joinToString(),
+        )
+    }
+
+    fun resolve(
+        identity: WinRtNuGetPackageIdentity,
+        globalPackagesRoots: List<Path> = globalPackagesRoots(),
+    ): WinRtNuGetResolvedPackage {
+        val root = packageRoot(identity, globalPackagesRoots)
+        return WinRtNuGetResolvedPackage(
+            identity = identity,
+            packageRoot = root,
+            nuspecPath = findNuspec(root),
+            dependencies = dependencies(root),
+        )
+    }
+
+    fun resolveClosure(
+        rootIdentity: WinRtNuGetPackageIdentity,
+        globalPackagesRoots: List<Path> = globalPackagesRoots(),
+    ): List<WinRtNuGetResolvedPackage> {
+        val queue = ArrayDeque(listOf(rootIdentity))
+        val visited = linkedSetOf<String>()
+        val resolved = mutableListOf<WinRtNuGetResolvedPackage>()
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            val currentResolved = resolve(current, globalPackagesRoots)
+            val key = nuGetCanonicalPathKey(currentResolved.packageRoot)
+            if (!visited.add(key)) {
+                continue
+            }
+            resolved += currentResolved
+            currentResolved.dependencies.forEach(queue::add)
+        }
+        return resolved
+    }
+
+    fun dependencies(packageRoot: Path): List<WinRtNuGetPackageIdentity> {
+        val nuspec = findNuspec(packageRoot) ?: return emptyList()
+        val builder = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        }.newDocumentBuilder()
+        val document = builder.parse(nuspec.toFile())
+        val dependencyNodes = document.getElementsByTagNameNS("*", "dependency")
+            .takeIf { it.length > 0 }
+            ?: document.getElementsByTagName("dependency")
+        return buildList {
+            for (index in 0 until dependencyNodes.length) {
+                val element = dependencyNodes.item(index) as? org.w3c.dom.Element ?: continue
+                val id = element.getAttribute("id").takeIf(String::isNotBlank) ?: continue
+                val version = element.getAttribute("version").takeIf(String::isNotBlank) ?: continue
+                add(WinRtNuGetPackageIdentity(id, version))
+            }
+        }.distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
+    }
+
+    private fun findNuspec(packageRoot: Path): Path? =
+        Files.list(packageRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() }
+                .firstOrNull { it.name.endsWith(".nuspec", ignoreCase = true) }
+        }
+
+    private fun nuGetCanonicalizePath(path: Path): Path =
+        runCatching { path.toAbsolutePath().normalize().toRealPath() }
+            .getOrElse { runCatching { path.toAbsolutePath().normalize() }.getOrElse { path.normalize() } }
+
+    private fun nuGetCanonicalPathKey(path: Path): String =
+        nuGetCanonicalizePath(path).toString().let { value ->
+            if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) value.lowercase() else value
+        }
+}
+
 enum class WinRtPackageAssetKind {
     Winmd,
     Resource,
@@ -288,6 +479,7 @@ object WinRtMetadataSourceResolver {
             },
         )
         is WinRtMetadataSource.NuGetPackage -> resolveNuGetPackage(source.packagePath)
+        is WinRtMetadataSource.NuGetPackageReference -> resolveNuGetPackageReference(source)
     }
 
     private fun discoverPathSource(path: Path): List<Path> = when {
@@ -344,6 +536,21 @@ object WinRtMetadataSourceResolver {
                 resolveNuGetPackageArchive(canonicalPackagePath)
             else -> throw IllegalArgumentException("NuGet package '$packagePath' is not a package directory or .nupkg file.")
         }
+    }
+
+    private fun resolveNuGetPackageReference(source: WinRtMetadataSource.NuGetPackageReference): ResolvedMetadataSource {
+        val packages = WinRtNuGetPackageResolver.resolveClosure(
+            rootIdentity = WinRtNuGetPackageIdentity(source.packageId, source.version),
+            globalPackagesRoots = WinRtNuGetPackageResolver.globalPackagesRoots(explicitRoots = source.globalPackagesRoots),
+        )
+        return packages
+            .map { resolved -> resolveNuGetPackageDirectory(resolved.packageRoot) }
+            .fold(ResolvedMetadataSource(emptyList())) { left, right ->
+                ResolvedMetadataSource(
+                    files = left.files + right.files,
+                    packageAssets = left.packageAssets + right.packageAssets,
+                )
+            }
     }
 
     private fun resolveNuGetPackageDirectory(packagePath: Path): ResolvedMetadataSource {

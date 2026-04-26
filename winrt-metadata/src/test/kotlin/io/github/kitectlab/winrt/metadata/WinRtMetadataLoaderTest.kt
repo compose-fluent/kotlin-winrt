@@ -804,6 +804,72 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun resolves_nuget_global_package_reference_and_dependency_closure() {
+        val assembly = buildManagedMetadataSample()
+        val globalPackagesRoot = Files.createTempDirectory("kotlin-winrt-nuget-global")
+        val rootPackage = createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.WinRT",
+            version = "1.2.3",
+            winmdSource = assembly,
+            dependencies = listOf("Sample.Dependency" to "[2.0.0]"),
+        )
+        val dependencyPackage = createRestoredNuGetPackage(
+            globalPackagesRoot = globalPackagesRoot,
+            packageId = "Sample.Dependency",
+            version = "2.0.0",
+            winmdSource = assembly,
+        )
+        dependencyPackage.resolve("runtimes/win-x64/native/Sample.Dependency.dll").also {
+            it.parent.createDirectories()
+            it.writeText("native")
+        }
+
+        val source = WinRtMetadataSource.nugetPackage(
+            packageId = "Sample.WinRT",
+            version = "1.2.3",
+            globalPackagesRoots = listOf(globalPackagesRoot),
+        )
+        val cache = WinRtMetadataSourceResolver.resolve(source)
+
+        assertEquals(
+            listOf(
+                dependencyPackage.resolve("lib/net8.0/Sample.Dependency.winmd").toRealPath().toString(),
+                rootPackage.resolve("lib/net8.0/Sample.WinRT.winmd").toRealPath().toString(),
+            ).sorted(),
+            cache.files.map { it.toRealPath().toString() }.sorted(),
+        )
+        assertTrue(cache.packageAssets.any { it.packagePath == dependencyPackage.toRealPath() && it.kind == WinRtPackageAssetKind.Native })
+        assertTrue(cache.packageAssets.any { it.packagePath == rootPackage.toRealPath() && it.kind == WinRtPackageAssetKind.Winmd })
+    }
+
+    @Test
+    fun nuget_resolver_matches_cli_global_packages_output_and_environment_fallback() {
+        assertEquals(
+            listOf(Path.of("F:\\Dependencies\\nuget\\")),
+            WinRtNuGetPackageResolver.parseNuGetGlobalPackagesOutput("global-packages: F:\\Dependencies\\nuget\\"),
+        )
+        assertEquals(
+            Path.of("E:\\nuget-cache"),
+            WinRtNuGetPackageResolver.defaultGlobalPackagesRoot(
+                environment = mapOf("NUGET_PACKAGES" to "E:\\nuget-cache"),
+                userHome = "C:\\Users\\ignored",
+            ),
+        )
+        assertEquals(
+            Path.of("C:\\Users\\sample", ".nuget", "packages"),
+            WinRtNuGetPackageResolver.defaultGlobalPackagesRoot(
+                environment = emptyMap(),
+                userHome = "C:\\Users\\sample",
+            ),
+        )
+        assertEquals(
+            WinRtMetadataSource.nugetPackage("Sample.Package", "1.0.0"),
+            WinRtMetadataSource.parse("nuget:Sample.Package@1.0.0"),
+        )
+    }
+
+    @Test
     fun loads_cli_metadata_with_auxiliary_tables_used_by_real_winmd_caches() {
         val assembly = buildAuxiliaryTableMetadataSample()
 
@@ -845,6 +911,34 @@ class WinRtMetadataLoaderTest {
             }
             .sortedWith(compareBy<Path> { it.name }.reversed())
             .firstOrNull()
+    }
+
+    private fun createRestoredNuGetPackage(
+        globalPackagesRoot: Path,
+        packageId: String,
+        version: String,
+        winmdSource: Path,
+        dependencies: List<Pair<String, String>> = emptyList(),
+    ): Path {
+        val packageRoot = globalPackagesRoot.resolve(packageId.lowercase()).resolve(version)
+        val winmdPath = packageRoot.resolve("lib/net8.0/$packageId.winmd")
+        winmdPath.parent.createDirectories()
+        Files.copy(winmdSource, winmdPath)
+        packageRoot.resolve("$packageId.nuspec").writeText(
+            buildString {
+                appendLine("""<?xml version="1.0" encoding="utf-8"?>""")
+                appendLine("""<package><metadata><id>$packageId</id><version>$version</version>""")
+                if (dependencies.isNotEmpty()) {
+                    appendLine("<dependencies>")
+                    dependencies.forEach { (dependencyId, dependencyVersion) ->
+                        appendLine("""<dependency id="$dependencyId" version="$dependencyVersion" />""")
+                    }
+                    appendLine("</dependencies>")
+                }
+                appendLine("</metadata></package>")
+            },
+        )
+        return packageRoot
     }
 
     private fun buildManagedMetadataSample(): Path {
