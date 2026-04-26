@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
-    id("io.github.kitectlab.winrt.application")
+    id("io.github.kitectlab.winrt")
     application
 }
 
@@ -16,8 +16,10 @@ dependencies {
 
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
 
-kotlinWinRt {
+winRt {
     type("Windows.Foundation.IStringable")
+    application {
+    }
     sampleWindowsAppSdkVersion.orNull?.let { version ->
         nugetPackage("Microsoft.WindowsAppSDK", version)
     }

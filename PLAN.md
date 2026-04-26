@@ -16,7 +16,7 @@
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
 - [x] `winrt-generator` baseline is closed for the current `.cswinrt/src/cswinrt` audit: declarations, ABI-bound members, activation, generic/event/type-shape support helpers, and SDK CLI generation.
 - [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
-- [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and library identity metadata.
+- [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and `winRt {}` library/application identity handling.
 - [ ] `winrt-samples` is intentionally minimal until generator/projection/plugin support expands.
 - [ ] `winrt-authoring` remains frozen until generated projection and sample paths are coherent.
 
@@ -41,19 +41,20 @@
 - [x] Queue 12.2: add `kotlin-winrt-gradle-plugin` with plugin ids, DSL, generation task, SDK/NuGet inputs, NuGet CLI global-packages lookup, and JVM generated-source wiring.
 - [x] Queue 12.3: plugin now restores missing packages by invoking Microsoft NuGet CLI `install` directly, then feeds installed package roots to `winrt-metadata` without generating temporary project files.
 - [x] Queue 12.4: plugin retries failed NuGet CLI commands with a Gradle-user-home cached `NuGet.CommandLine` download.
-- [ ] Queue 13 正在做: implement plugin roles: `kotlin-winrt-library` carries generated sources in the library artifact plus NuGet/WinMD identity metadata; `kotlin-winrt-application` resolves transitive runtime/resource integration.
-- [x] Queue 13.1: `kotlin-winrt-library` publishes JSON identity metadata for downstream application resolution while generated projection sources remain part of the library compilation/artifact.
-- [x] Queue 13.2: `kotlin-winrt-application` resolves transitive `kotlin-winrt` identity JSON artifacts and writes an application identity aggregate for runtime/resource staging.
-- [x] Queue 13.3: `kotlin-winrt-application` stages NuGet runtime DLLs, framework PRI resources, `resources.pri`, and WindowsAppSDK version headers from application and dependency package identities.
+- [ ] Queue 13 正在做: implement plugin roles through one `winRt {}` DSL: default library publishes identity; `application {}` resolves runtime/resource integration.
+- [x] Queue 13.1: library model publishes JSON identity metadata while generated projection sources remain part of the library compilation/artifact.
+- [x] Queue 13.2: application model resolves transitive `kotlin-winrt` identity JSON artifacts and writes an aggregate for runtime/resource staging.
+- [x] Queue 13.3: application model stages NuGet runtime DLLs, framework PRI resources, `resources.pri`, and WindowsAppSDK version headers from application/dependency package identities.
 - [x] Queue 13.4: plugin application model wires staged runtime assets into Java resources and Gradle application distributions without sample-specific system properties.
 - [ ] Queue 14 正在做: expand `winrt-projections` only with deterministic generator/plugin-produced output.
-- [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt.library` and generate deterministic WinRT sources from Windows SDK metadata.
+- [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt` and generate deterministic WinRT sources from Windows SDK metadata.
 - [x] Queue 14.2: remove direct Kotlin Gradle Plugin runtime class dependency from the plugin so generated-source wiring works in published/TestKit plugin classloaders.
-- [x] Queue 14.3: `winrt-projections` now consumes `io.github.kitectlab.winrt.library` from the root `pluginManagement` included build and compiles the plugin-generated `Windows.Foundation.IStringable` slice.
+- [x] Queue 14.3: `winrt-projections` now consumes `io.github.kitectlab.winrt` from the root `pluginManagement` included build and compiles the plugin-generated `Windows.Foundation.IStringable` slice.
 - [ ] Queue 15 正在做: expand `winrt-samples` from cswinrt-aligned API samples, then plugin-driven SDK/NuGet generation, then WinUI bootstrap/resource/message-loop validation.
-- [x] Queue 15.1: `winrt-samples` is now a `kotlin-winrt.application` consumer with a cswinrt `ApiCompatTests`-aligned `Windows.Data.Json.JsonObject.Parse` sample shape; native execution is opt-in until JSON ABI stability, `GetNamedValue("phone")` nullable object-return, and `GetNamedArray("education")` collection parity land upstream.
+- [x] Queue 15.1: `winrt-samples` is now a `winRt { application {} }` consumer with a cswinrt `ApiCompatTests`-aligned `Windows.Data.Json.JsonObject.Parse` sample shape; native execution is opt-in until JSON ABI stability, `GetNamedValue("phone")` nullable object-return, and `GetNamedArray("education")` collection parity land upstream.
 - [x] Queue 15.2: sample-side plugin graph validation now makes `winrt-samples:check` verify generated application identity includes `winrt-projections` metadata and excludes ordinary runtime implementation dependencies.
 - [x] Queue 15.3: `winrt-samples` now has an opt-in WindowsAppSDK NuGet declaration via `kotlinWinRt.samples.windowsAppSdkVersion`; default checks stay offline/lightweight while explicit identity validation proves the application metadata records `Microsoft.WindowsAppSDK`.
+- [x] Queue 15.4: plugin API is consolidated to `io.github.kitectlab.winrt` plus `winRt {}`; library is the default model and `application {}` selects application identity/resource staging.
 - [ ] Queue 16: add validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
 
@@ -86,9 +87,10 @@
 - [x] Plugin 4.2 prerequisite: shared metadata resolver now locates Microsoft NuGet global-packages roots, resolves package id/version closure from `.nuspec`, and feeds package roots to `WinRtMetadataSource`.
 - [x] Plugin 4.2 implementation: plugin invokes Microsoft NuGet CLI `install` directly when packages are not already present, consumes `nuget locals global-packages -list`, and passes package roots to the shared resolver.
 - [x] Plugin 4.2 CLI acquisition: plugin tries configured/system NuGet first, then downloads Apache-2.0 `NuGet.CommandLine` into Gradle user home cache and retries the same command on failure.
-- [x] Plugin 4.3: implement `kotlin-winrt-library` JSON artifact metadata for NuGet/WinMD identity; generated sources stay compiled into the library itself.
-- [x] Plugin 4.4: implement `kotlin-winrt-application` transitive NuGet runtime/resource staging from identity JSON and local NuGet declarations.
+- [x] Plugin 4.3: implement library-model JSON artifact metadata for NuGet/WinMD identity; generated sources stay compiled into the library itself.
+- [x] Plugin 4.4: implement application-model transitive NuGet runtime/resource staging from identity JSON and local NuGet declarations.
 - [x] Plugin 4.5: migrate useful runtime/resource staging and distribution/resource wiring out of legacy `sample-jvm-winui3` into the plugin application model.
+- [x] Plugin 4.6: remove unpublished split plugin ids/DSLs; keep only `winRt {}` with `application {}` as the application model switch.
 
 ## Validation
 

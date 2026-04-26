@@ -26,13 +26,5 @@ gradlePlugin {
             id = "io.github.kitectlab.winrt"
             implementationClass = "io.github.kitectlab.winrt.gradle.KotlinWinRtPlugin"
         }
-        create("kotlinWinRtLibrary") {
-            id = "io.github.kitectlab.winrt.library"
-            implementationClass = "io.github.kitectlab.winrt.gradle.KotlinWinRtLibraryPlugin"
-        }
-        create("kotlinWinRtApplication") {
-            id = "io.github.kitectlab.winrt.application"
-            implementationClass = "io.github.kitectlab.winrt.gradle.KotlinWinRtApplicationPlugin"
-        }
     }
 }

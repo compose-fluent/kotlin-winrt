@@ -16,7 +16,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
-        val extension = project.extensions.getByType(KotlinWinRtExtension::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
         extension.namespace("Windows.Foundation")
         extension.type("Windows.Foundation.IStringable")
         extension.winmd("sdk+")
@@ -43,18 +43,22 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun role_plugins_mark_library_and_application_models() {
+    fun winrt_extension_defaults_to_library_and_application_block_selects_application_model() {
         val libraryProject = ProjectBuilder.builder().build()
-        libraryProject.pluginManager.apply(KotlinWinRtLibraryPlugin::class.java)
-        assertEquals("library", libraryProject.extensions.extraProperties["kotlinWinRtModel"])
+        libraryProject.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        assertFalse(libraryProject.extensions.getByType(WinRtExtension::class.java).applicationEnabled.get())
         assertEquals(
             KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION,
             libraryProject.extensions.extraProperties["kotlinWinRtIdentityElements"],
         )
 
         val applicationProject = ProjectBuilder.builder().build()
-        applicationProject.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
-        assertEquals("application", applicationProject.extensions.extraProperties["kotlinWinRtModel"])
+        applicationProject.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        applicationProject.extensions.getByType(WinRtExtension::class.java).application {}
+        assertTrue(applicationProject.extensions.getByType(WinRtExtension::class.java).applicationEnabled.get())
+        assertFalse(
+            applicationProject.configurations.getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION).isCanBeConsumed,
+        )
         assertEquals(
             KOTLIN_WINRT_IDENTITY_CONFIGURATION,
             applicationProject.extensions.extraProperties["kotlinWinRtIdentity"],
@@ -73,7 +77,7 @@ class KotlinWinRtPluginTest {
     fun library_plugin_publishes_identity_variant() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRtLibraryPlugin::class.java)
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
 
         val identityElements = project.configurations.getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
         assertTrue(identityElements.isCanBeConsumed)
@@ -90,8 +94,8 @@ class KotlinWinRtPluginTest {
     fun identity_task_writes_projection_identity_json() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRtLibraryPlugin::class.java)
-        val extension = project.extensions.getByType(KotlinWinRtExtension::class.java)
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
         extension.winmd("sdk+")
         extension.namespace("Windows.Foundation")
         extension.type("Windows.Foundation.IStringable")
@@ -115,7 +119,8 @@ class KotlinWinRtPluginTest {
     fun application_plugin_resolves_identity_configuration() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).application {}
 
         val identityConfiguration = project.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
         assertFalse(identityConfiguration.isCanBeConsumed)
@@ -135,10 +140,11 @@ class KotlinWinRtPluginTest {
         val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
         val application = ProjectBuilder.builder().withName("application").withParent(root).build()
 
-        library.pluginManager.apply(KotlinWinRtLibraryPlugin::class.java)
+        library.pluginManager.apply(KotlinWinRtPlugin::class.java)
         runtime.pluginManager.apply("java")
         application.pluginManager.apply("java")
-        application.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        application.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        application.extensions.getByType(WinRtExtension::class.java).application {}
         application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":library")))
         application.dependencies.add("implementation", application.dependencies.project(mapOf("path" to ":runtime")))
 
@@ -154,7 +160,8 @@ class KotlinWinRtPluginTest {
     fun application_plugin_wires_runtime_assets_into_java_resources() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).application {}
         project.pluginManager.apply("java")
 
         val processResources = project.tasks.named("processResources").get()
@@ -166,7 +173,8 @@ class KotlinWinRtPluginTest {
     fun application_plugin_accepts_gradle_application_distribution_model() {
         val project = ProjectBuilder.builder().build()
 
-        project.pluginManager.apply(KotlinWinRtApplicationPlugin::class.java)
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).application {}
         project.pluginManager.apply("application")
 
         project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
@@ -273,18 +281,27 @@ class KotlinWinRtPluginTest {
             """.trimIndent(),
         )
         writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx768m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
             projectDir.resolve("build.gradle.kts"),
             """
             plugins {
                 id("org.jetbrains.kotlin.jvm") version "2.3.20"
-                id("io.github.kitectlab.winrt.library")
+                id("io.github.kitectlab.winrt")
             }
 
             kotlin {
                 jvmToolchain(22)
             }
 
-            kotlinWinRt {
+            winRt {
                 type("Windows.Foundation.IStringable")
             }
             """.trimIndent(),

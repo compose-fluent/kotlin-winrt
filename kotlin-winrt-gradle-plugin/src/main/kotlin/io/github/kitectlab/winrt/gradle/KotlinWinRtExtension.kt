@@ -11,54 +11,107 @@ import javax.inject.Inject
 
 typealias NamedNuGetPackageContainer = NamedDomainObjectContainer<KotlinWinRtNuGetPackage>
 
-abstract class KotlinWinRtExtension @Inject constructor(
+interface BaseWinRtExtension {
+    val includeNamespaces: ListProperty<String>
+    val includeTypes: ListProperty<String>
+    val metadataInputs: ListProperty<String>
+    val windowsSdkVersion: Property<String>
+    val includeWindowsSdkExtensions: Property<Boolean>
+    val nugetExecutable: Property<String>
+    val nugetCliVersion: Property<String>
+    val restoreNuGetPackages: Property<Boolean>
+    val useNuGetCliGlobalPackages: Property<Boolean>
+    val nugetGlobalPackagesRoots: ListProperty<String>
+    val nugetPackages: NamedNuGetPackageContainer
+
+    fun namespace(name: String)
+
+    fun type(name: String)
+
+    fun winmd(input: Any)
+
+    fun windowsSdk(version: String? = null, includeExtensions: Boolean = false)
+
+    fun nugetPackage(packageId: String, version: String)
+
+    fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>)
+}
+
+abstract class BaseWinRtExtensionSupport @Inject constructor(
     objects: ObjectFactory,
-) {
-    val includeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
-    val includeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
-    val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
-    val windowsSdkVersion: Property<String> = objects.property(String::class.java)
-    val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
-    val nugetExecutable: Property<String> = objects.property(String::class.java).convention("nuget")
-    val nugetCliVersion: Property<String> = objects.property(String::class.java).convention("7.3.1")
-    val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
-    val useNuGetCliGlobalPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
-    val nugetGlobalPackagesRoots: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+) : BaseWinRtExtension {
+    override val includeNamespaces: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val includeTypes: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val metadataInputs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
+    override val windowsSdkVersion: Property<String> = objects.property(String::class.java)
+    override val includeWindowsSdkExtensions: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+    override val nugetExecutable: Property<String> = objects.property(String::class.java).convention("nuget")
+    override val nugetCliVersion: Property<String> = objects.property(String::class.java).convention("7.3.1")
+    override val restoreNuGetPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+    override val useNuGetCliGlobalPackages: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+    override val nugetGlobalPackagesRoots: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
 
     @get:Nested
-    val nugetPackages: NamedNuGetPackageContainer =
+    override val nugetPackages: NamedNuGetPackageContainer =
         objects.domainObjectContainer(KotlinWinRtNuGetPackage::class.java) { name ->
             objects.newInstance(KotlinWinRtNuGetPackage::class.java, name)
         }
 
-    fun namespace(name: String) {
+    override fun namespace(name: String) {
         includeNamespaces.add(name)
     }
 
-    fun type(name: String) {
+    override fun type(name: String) {
         includeTypes.add(name)
     }
 
-    fun winmd(input: Any) {
+    override fun winmd(input: Any) {
         metadataInputs.add(input.toString())
     }
 
-    fun windowsSdk(version: String? = null, includeExtensions: Boolean = false) {
+    override fun windowsSdk(version: String?, includeExtensions: Boolean) {
         version?.let(windowsSdkVersion::set)
         includeWindowsSdkExtensions.set(includeExtensions)
     }
 
-    fun nugetPackage(packageId: String, version: String) {
+    override fun nugetPackage(packageId: String, version: String) {
         val versionValue = version
         nugetPackages.create(packageId, Action<KotlinWinRtNuGetPackage> { nugetPackage ->
             nugetPackage.version.set(versionValue)
         })
     }
 
-    fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>) {
+    override fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>) {
         nugetPackages.create(packageId, action)
     }
 }
+
+abstract class WinRtExtension @Inject constructor(
+    objects: ObjectFactory,
+) : BaseWinRtExtensionSupport(objects) {
+    val applicationEnabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+    private val applicationConfiguredActions = mutableListOf<() -> Unit>()
+
+    @get:Nested
+    val application: WinRtApplicationOptions = objects.newInstance(WinRtApplicationOptions::class.java)
+
+    fun application(action: Action<in WinRtApplicationOptions>) {
+        applicationEnabled.set(true)
+        action.execute(application)
+        applicationConfiguredActions.forEach { it() }
+        applicationConfiguredActions.clear()
+    }
+
+    internal fun whenApplicationConfigured(action: () -> Unit) {
+        if (applicationEnabled.get()) {
+            action()
+        } else {
+            applicationConfiguredActions += action
+        }
+    }
+}
+
+abstract class WinRtApplicationOptions @Inject constructor()
 
 abstract class KotlinWinRtNuGetPackage @Inject constructor(
     val packageId: String,
