@@ -1535,10 +1535,22 @@ class WinRtMetadataModelTest {
 
         assertEquals(
             listOf(
-                "Int",
-                "Sample.Foundation.Point",
+                "append",
+                "append",
+                "get_Current",
+                "get_Current",
+                "get_Value",
+                "get_at",
+                "get_at",
+                "index_of",
+                "index_of",
+                "insert",
+                "invoke",
+                "lookup",
+                "set_at",
+                "set_at",
             ),
-            inventory.genericAbiDelegates.map { it.abiDelegateTypesKey },
+            inventory.genericAbiDelegates.map { it.operationName }.sorted(),
         )
         assertEquals(
             listOf(
@@ -1633,6 +1645,12 @@ class WinRtMetadataModelTest {
                 "is_manually_generated_iface",
                 "projection context flags",
                 "write_class_members property merge",
+                "object/class equals/hashcode helpers",
+                "generic ABI delegate operation entries",
+                "write_generic_type_instantiation descriptor",
+                "type-name writer context",
+                "event helper subclass descriptors",
+                "platform guard/member platform descriptors",
             ),
             helpers.cswinrtMetadataParityAudit().map { it.cswinrtEntryPoint },
         )
@@ -1889,6 +1907,132 @@ class WinRtMetadataModelTest {
         assertEquals(false, name.isPrivate)
         assertEquals("Sample.Foundation.IWidget", name.getterStaticCallTarget)
         assertEquals("Sample.Foundation.IWidgetMutable", name.setterStaticCallTarget)
+    }
+
+    @Test
+    fun semantic_helpers_expose_cswinrt_writer_exactness_descriptors() {
+        val point = WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Point", kind = WinRtTypeKind.Struct)
+        val eventHandler = WinRtTypeDefinition(
+            namespace = "Windows.Foundation",
+            name = "EventHandler",
+            kind = WinRtTypeKind.Delegate,
+            genericParameterCount = 1,
+            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+            methods = listOf(
+                WinRtMethodDefinition(
+                    name = "Invoke",
+                    returnTypeName = "Void",
+                    parameters = listOf(WinRtParameterDefinition("sender", "Any"), WinRtParameterDefinition("args", "T0")),
+                ),
+            ),
+        )
+        val vector = WinRtTypeDefinition(
+            namespace = "Windows.Foundation.Collections",
+            name = "IVector",
+            kind = WinRtTypeKind.Interface,
+            genericParameterCount = 1,
+            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+            methods = listOf(
+                WinRtMethodDefinition("GetAt", "T0", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                WinRtMethodDefinition("add_Changed", "Void", isSpecialName = true),
+            ),
+            properties = listOf(WinRtPropertyDefinition("Current", "T0", getterMethodName = "GetAt")),
+            events = listOf(WinRtEventDefinition("Changed", "Windows.Foundation.EventHandler<T0>")),
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+            availability = WinRtAvailabilityMetadata(
+                contractVersion = WinRtContractVersionMetadata(
+                    contractName = "Windows.Foundation.UniversalApiContract",
+                    version = 1,
+                    platformVersion = "10.0.1.0",
+                ),
+            ),
+            methods = listOf(
+                WinRtMethodDefinition("Equals", "Boolean", parameters = listOf(WinRtParameterDefinition("obj", "System.Object"))),
+                WinRtMethodDefinition("Equals", "Boolean", parameters = listOf(WinRtParameterDefinition("obj", "Sample.Foundation.Widget"))),
+                WinRtMethodDefinition("GetHashCode", "Int"),
+            ),
+            events = listOf(WinRtEventDefinition("Changed", "Windows.Foundation.EventHandler<Sample.Foundation.Point>")),
+        )
+        val exclusive = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidgetOverrides`1",
+            kind = WinRtTypeKind.Interface,
+            isExclusiveTo = true,
+            genericParameterCount = 1,
+            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace("Windows.Foundation", listOf(eventHandler)),
+                WinRtNamespace("Windows.Foundation.Collections", listOf(vector)),
+                WinRtNamespace("Sample.Foundation", listOf(point, widget, exclusive)),
+            ),
+        )
+        val helpers = model.semanticHelpers()
+
+        val objectMethods = helpers.classObjectMethodDescriptor(widget)
+        assertEquals(true, objectMethods.hasObjectEqualsMethod)
+        assertEquals(true, objectMethods.hasClassEqualsMethod)
+        assertEquals(true, objectMethods.hasObjectHashCodeMethod)
+        assertEquals(true, objectMethods.objectEquals?.returnTypeMatches)
+
+        val inventory = helpers.collectGenericAbiInventory(
+            WinRtTypeDefinition(
+                namespace = "Sample.Foundation",
+                name = "IUsesVector",
+                kind = WinRtTypeKind.Interface,
+                methods = listOf(
+                    WinRtMethodDefinition(
+                        "Values",
+                        "Windows.Foundation.Collections.IVector<Sample.Foundation.Point>",
+                    ),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("append", "get_Current", "get_at", "index_of", "set_at"),
+            inventory.genericAbiDelegates.map { it.operationName }.sorted(),
+        )
+        assertEquals(
+            listOf("void*", "uint", "out Sample.Foundation.Point", "int"),
+            inventory.genericAbiDelegates.single { it.operationName == "get_at" }.abiParameterTypeNames,
+        )
+        assertEquals(
+            "Windows_Foundation_Collections_IVector_Sample_Foundation_Point_",
+            inventory.genericTypeInstantiations.single().instantiationClassName,
+        )
+
+        val writerDescriptor = helpers.genericInstantiationWriterDescriptor(inventory.genericTypeInstantiations.single())
+        assertEquals(false, writerDescriptor.isDelegateInstantiation)
+        assertEquals(listOf("GetAt"), writerDescriptor.rcwFunctionNames)
+        assertEquals(listOf("GetAt"), writerDescriptor.vtableFunctionNames)
+        assertEquals(listOf("GetAt"), writerDescriptor.propertyAccessorFunctionNames)
+        assertEquals(listOf("Windows.Foundation.EventHandler<T0>"), writerDescriptor.initializationDependencies)
+
+        val typeName = helpers.typeNameDescriptor(
+            exclusive,
+            WinRtProjectedNameKind.Projected,
+            WinRtTypeNameWriterContext(currentNamespace = "Other.Namespace", inAbiNamespace = true, component = true),
+            forceNamespace = false,
+        )
+        assertEquals(true, typeName.rewritesExclusiveProjectedToCcw)
+        assertEquals("IWidgetOverrides", typeName.genericArityStrippedName)
+        assertEquals("ABI.Impl.Sample.Foundation.IWidgetOverridesCcw<T>", typeName.renderedName)
+
+        val eventHelper = helpers.eventHelperSubclassDescriptors(widget).single()
+        assertEquals("Windows.Foundation.EventHandler<Sample.Foundation.Point>", eventHelper.eventTypeName)
+        assertEquals("_EventSource_Windows_Foundation_EventHandler_Sample_Foundation_Point_", eventHelper.sourceClassName)
+        assertEquals(listOf("Sample.Foundation.Point"), eventHelper.genericArgumentTypeNames)
+
+        val platform = helpers.platformGuardDescriptor(widget.qualifiedName, widget.availability)
+        assertEquals(true, platform.checkPlatform)
+        assertEquals("[SupportedOSPlatform(\"windows10.0.1.0\")]", platform.platformAttribute)
+        assertEquals(false, platform.suppressesDuplicatePlatform)
+        assertEquals(true, helpers.platformGuardDescriptor(widget.qualifiedName, widget.availability, inheritedPlatform = "10.0.1.0").suppressesDuplicatePlatform)
     }
 
     @Test
