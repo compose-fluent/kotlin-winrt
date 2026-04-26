@@ -506,4 +506,35 @@ internal object WinRTTypeShapeWriterPlan {
             moduleActivationEntries = emptyList(),
         ),
     )
+    val TYPES_BY_NAME: Map<String, TypeShapeEntry> = TYPES.associateBy { it.typeName }
+    val BASE_TYPE_MAPPING_TABLE: Map<String, String> = BASE_TYPE_MAPPINGS.toArrowMap()
+    val AUTHORING_METADATA_MAPPING_TABLE: Map<String, String> = AUTHORING_METADATA_MAPPINGS.toArrowMap()
+
+    fun typeShape(typeName: String): TypeShapeEntry? = TYPES_BY_NAME[typeName]
+
+    fun registerBaseTypeMappings(register: (Map<String, String>) -> Unit) {
+        if (BASE_TYPE_MAPPING_TABLE.isNotEmpty()) {
+            register(BASE_TYPE_MAPPING_TABLE)
+        }
+    }
+
+    fun registerAuthoringMetadataMappings(register: (Map<String, String>) -> Unit) {
+        if (AUTHORING_METADATA_MAPPING_TABLE.isNotEmpty()) {
+            register(AUTHORING_METADATA_MAPPING_TABLE)
+        }
+    }
+
+    fun installModuleActivationFactories(install: (typeName: String, factoryMember: String) -> Unit) {
+        TYPES.forEach { type ->
+            type.moduleActivationEntries.forEach { factoryMember ->
+                install(type.typeName, factoryMember)
+            }
+        }
+    }
+
+    private fun List<String>.toArrowMap(): Map<String, String> =
+        mapNotNull { entry ->
+            val separator = entry.indexOf("->")
+            if (separator < 0) null else entry.substring(0, separator) to entry.substring(separator + 2)
+        }.toMap()
 }

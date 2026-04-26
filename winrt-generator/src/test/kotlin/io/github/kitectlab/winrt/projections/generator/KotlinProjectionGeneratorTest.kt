@@ -109,7 +109,9 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
         assertTrue(jsonArray, jsonArray.contains("fun getStringAt(index: UInt): String"))
-        assertTrue(jsonArray, jsonArray.contains("fun create(): JsonArray = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(jsonArray, jsonArray.contains("fun create(): JsonArray"))
+        assertTrue(jsonArray, jsonArray.contains("Metadata.wrap("))
+        assertTrue(jsonArray, jsonArray.contains("ActivationFactory.activate()"))
 
         assertTrue(jsonValue, jsonValue.contains("public class JsonValue internal constructor("))
         assertTrue(jsonValue, jsonValue.contains("fun stringify(): String"))
@@ -753,7 +755,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal const val LOADED_REMOVE_METHOD_ROW_ID: Int = 26"))
         assertTrue(widgetContents.contains("fun acquireDefaultInterface(instance: IInspectableReference): IUnknownReference"))
         assertTrue(widgetContents.contains("acquireInterface(instance, DEFAULT_INTERFACE_IID)"))
-        assertTrue(widgetContents.contains("fun create(): Widget = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("fun create(): Widget"))
+        assertTrue(widgetContents.contains("Metadata.wrap("))
+        assertTrue(widgetContents.contains("ActivationFactory.activate()"))
         assertTrue(widgetContents.contains("val count: Int"))
         assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int"))
         assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
@@ -2336,10 +2340,15 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("_get_Value_Int"))
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("Windows.Foundation.IReference<Int>"))
+        assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("fun registerAbiDelegates"))
         assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("Windows_Foundation_IReference_Int"))
+        assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("fun initializeAll"))
         assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("_EventSource_Windows_Foundation_EventHandler_Int"))
+        assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("fun installEventSources"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
+        assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))
         assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("HELPER_OUTPUTS"))
+        assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("fun registerBaseTypeMappings"))
     }
 
     @Test

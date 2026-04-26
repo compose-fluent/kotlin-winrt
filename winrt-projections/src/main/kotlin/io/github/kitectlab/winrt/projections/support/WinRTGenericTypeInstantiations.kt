@@ -267,4 +267,23 @@ internal object WinRTGenericTypeInstantiations {
             dependencies = emptyList(),
         ),
     )
+    val ENTRIES_BY_CLASS_NAME: Map<String, GenericTypeInstantiationEntry> = ENTRIES.associateBy { it.className }
+    val ENTRIES_BY_SOURCE_TYPE: Map<String, GenericTypeInstantiationEntry> = ENTRIES.associateBy { it.sourceType }
+
+    fun entryForClassName(className: String): GenericTypeInstantiationEntry? =
+        ENTRIES_BY_CLASS_NAME[className]
+
+    fun entryForSourceType(sourceType: String): GenericTypeInstantiationEntry? =
+        ENTRIES_BY_SOURCE_TYPE[sourceType]
+
+    fun initializeAll(initialize: (GenericTypeInstantiationEntry) -> Unit) {
+        ENTRIES.forEach(initialize)
+    }
+
+    fun initializeDependencies(
+        entry: GenericTypeInstantiationEntry,
+        initialize: (GenericTypeInstantiationEntry) -> Unit,
+    ) {
+        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get).forEach(initialize)
+    }
 }

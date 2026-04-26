@@ -618,4 +618,18 @@ internal object WinRTAbiImplementationPlan {
             explicitForwards = listOf("get_Name", "get_Value"),
         ),
     )
+    val ENTRIES_BY_TYPE_NAME: Map<String, AbiImplementationEntry> = ENTRIES.associateBy { it.typeName }
+
+    fun entryForType(typeName: String): AbiImplementationEntry? =
+        ENTRIES_BY_TYPE_NAME[typeName]
+
+    fun requiresAbi(typeName: String): Boolean =
+        entryForType(typeName)?.writesAbi == true
+
+    fun installAbiImplementations(install: (AbiImplementationEntry) -> Unit) {
+        ENTRIES.forEach(install)
+    }
+
+    fun requiredInterfaceNames(): Set<String> =
+        ENTRIES.flatMap { it.requiredInterfaces }.toSet()
 }

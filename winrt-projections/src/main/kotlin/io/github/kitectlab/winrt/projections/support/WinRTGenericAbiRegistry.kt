@@ -695,4 +695,21 @@ internal object WinRTGenericAbiRegistry {
             typeArrayShape = listOf("void*", "uint", "Windows.Foundation.TimeSpan", "int"),
         ),
     )
+    val DELEGATES_BY_NAME: Map<String, GenericAbiDelegateEntry> = GENERIC_ABI_DELEGATES.associateBy { it.name }
+    val DELEGATES_BY_SOURCE_TYPE: Map<String, List<GenericAbiDelegateEntry>> = GENERIC_ABI_DELEGATES.groupBy { it.sourceGenericType }
+    val DERIVED_GENERIC_INTERFACE_SET: Set<String> = DERIVED_GENERIC_INTERFACES.toSet()
+
+    fun delegateNamed(name: String): GenericAbiDelegateEntry? = DELEGATES_BY_NAME[name]
+
+    fun delegatesForSourceType(sourceGenericType: String): List<GenericAbiDelegateEntry> =
+        DELEGATES_BY_SOURCE_TYPE[sourceGenericType].orEmpty()
+
+    fun isDerivedGenericInterface(typeName: String): Boolean =
+        typeName in DERIVED_GENERIC_INTERFACE_SET
+
+    fun registerAbiDelegates(register: (typeArrayShape: List<String>, delegateName: String) -> Unit) {
+        GENERIC_ABI_DELEGATES.forEach { entry ->
+            register(entry.typeArrayShape, entry.name)
+        }
+    }
 }

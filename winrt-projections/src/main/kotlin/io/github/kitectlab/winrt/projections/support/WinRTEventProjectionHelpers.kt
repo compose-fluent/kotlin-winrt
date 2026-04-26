@@ -56,4 +56,16 @@ internal object WinRTEventProjectionHelpers {
         ),
     )
     val EVENT_SOURCE_MAPPING_KEYS: List<String> = listOf("Windows.Foundation.Collections.MapChangedEventHandler<T0, T1>->_EventSource_Windows_Foundation_Collections_MapChangedEventHandler_T0__T1_", "Windows.Foundation.Collections.VectorChangedEventHandler<T0>->_EventSource_Windows_Foundation_Collections_VectorChangedEventHandler_T0_", "Windows.Foundation.TypedEventHandler<Windows.Foundation.IMemoryBufferReference, System.Object>->_EventSource_Windows_Foundation_TypedEventHandler_Windows_Foundation_IMemoryBufferReference__System_Object_")
+    val EVENT_SOURCES_BY_EVENT_TYPE: Map<String, List<EventSourceEntry>> = EVENT_SOURCES.groupBy { it.eventType }
+    val EVENT_SOURCES_BY_OWNER_TYPE: Map<String, List<EventSourceEntry>> = EVENT_SOURCES.groupBy { it.ownerType }
+
+    fun sourcesForEventType(eventType: String): List<EventSourceEntry> =
+        EVENT_SOURCES_BY_EVENT_TYPE[eventType].orEmpty()
+
+    fun sourcesForOwnerType(ownerType: String): List<EventSourceEntry> =
+        EVENT_SOURCES_BY_OWNER_TYPE[ownerType].orEmpty()
+
+    fun installEventSources(install: (EventSourceEntry) -> Unit) {
+        EVENT_SOURCES.forEach(install)
+    }
 }
