@@ -450,6 +450,15 @@ class KotlinWinRtPluginTest {
                 ),
             ),
         )
+
+        val secondResult = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRtProjections", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.UP_TO_DATE, secondResult.task(":generateWinRtProjections")?.outcome)
     }
 
     @Test

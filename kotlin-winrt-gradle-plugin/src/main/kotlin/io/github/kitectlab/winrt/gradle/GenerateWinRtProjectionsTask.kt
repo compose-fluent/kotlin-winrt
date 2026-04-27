@@ -13,13 +13,17 @@ import io.github.kitectlab.winrt.metadata.WinRtTypeRefKind
 import io.github.kitectlab.winrt.projections.generator.KotlinProjectionGenerator
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.net.URI
 import java.nio.file.Files
@@ -36,6 +40,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 
     @get:Input
     abstract val metadataInputs: ListProperty<String>
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val metadataInputFiles: ConfigurableFileCollection
 
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
@@ -89,7 +98,6 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
-        outputDirectory.get().asFile.deleteRecursively()
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(

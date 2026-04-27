@@ -115,9 +115,10 @@
 
 ## Plugin Generated-Source Lifecycle
 
-- [ ] Plugin lifecycle 18.1 正在做: document and validate when `generateWinRtProjections` is wired into Kotlin/JVM compilation and when identity/runtime asset tasks run.
-- [ ] Plugin lifecycle 18.2: decide whether generated source publication needs a separate lifecycle from compile-time source-set wiring before authoring is reopened.
-- [ ] Plugin lifecycle 18.3: only after 18.1-18.2, revisit `winrt-authoring` planning.
+- [x] Plugin lifecycle 18.1: `generateWinRtProjections` is wired as a pre-`compileKotlin` task, generated sources are added to `main`, and Gradle up-to-date checks now skip unchanged generation.
+- [x] Plugin lifecycle 18.2: generator execution is incremental when it does run: it avoids whole-output deletion, rewrites only changed files, and removes only stale generated `.kt` files.
+- [ ] Plugin lifecycle 18.3 正在做: decide whether generated source publication needs a separate lifecycle from compile-time source-set wiring before authoring is reopened.
+- [ ] Plugin lifecycle 18.4: only after 18.1-18.3, revisit `winrt-authoring` planning.
 
 ## Plugin Plan
 

@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.gradle
 
+import io.github.kitectlab.winrt.metadata.WinRtMetadataSource
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -10,6 +11,7 @@ import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.file.CopySpec
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
+import java.io.File
 
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -205,6 +207,11 @@ private fun configureWinRtGeneration(
             task.description = "Generates Kotlin WinRT projections from Windows SDK and NuGet WinMD metadata."
             task.outputDirectory.set(generatedSources)
             task.metadataInputs.set(extension.metadataInputs)
+            task.metadataInputFiles.from(
+                project.provider {
+                    explicitMetadataInputFiles(extension.metadataInputs.get())
+                },
+            )
             task.includeNamespaces.set(extension.includeNamespaces)
             task.includeTypes.set(extension.includeTypes)
             task.excludeNamespaces.set(extension.excludeNamespaces)
@@ -247,6 +254,15 @@ private fun configureWinRtGeneration(
         })
     }
 }
+
+private fun explicitMetadataInputFiles(inputs: List<String>): List<File> =
+    inputs.mapNotNull { input ->
+        when (val source = runCatching { WinRtMetadataSource.parse(input) }.getOrNull()) {
+            is WinRtMetadataSource.PathSource -> source.path.toFile()
+            is WinRtMetadataSource.NuGetPackage -> source.packagePath.toFile()
+            else -> null
+        }
+    }.filter { it.exists() }
 
 private fun addGeneratedSourcesToKotlinMain(
     project: Project,

@@ -19,9 +19,71 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.nio.file.Files
 import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    @Test
+    fun generate_to_skips_unchanged_files_and_removes_stale_outputs() {
+        val outputRoot = Files.createTempDirectory("kotlin-winrt-generator-incremental-")
+        val fullModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IFirst",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ISecond",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val narrowedModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IFirst",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val generator = KotlinProjectionGenerator()
+
+        val first = generator.generateTo(fullModel, outputRoot)
+        val second = generator.generateTo(fullModel, outputRoot)
+        val narrowed = generator.generateTo(narrowedModel, outputRoot)
+
+        assertEquals(2, first.renderedFiles)
+        assertEquals(2, first.writtenFiles)
+        assertEquals(0, first.unchangedFiles)
+        assertEquals(0, first.deletedStaleFiles)
+        assertEquals(2, second.renderedFiles)
+        assertEquals(0, second.writtenFiles)
+        assertEquals(2, second.unchangedFiles)
+        assertEquals(0, second.deletedStaleFiles)
+        assertEquals(1, narrowed.renderedFiles)
+        assertEquals(0, narrowed.writtenFiles)
+        assertEquals(1, narrowed.unchangedFiles)
+        assertEquals(1, narrowed.deletedStaleFiles)
+        assertTrue(outputRoot.resolve("io/github/kitectlab/winrt/projections/sample/foundation/IFirst.kt").isRegularFile())
+        assertFalse(outputRoot.resolve("io/github/kitectlab/winrt/projections/sample/foundation/ISecond.kt").isRegularFile())
+    }
+
     @Test
     fun generator_reproduces_cswinrt_json_value_function_calls_surface_from_real_winmd() {
         // Mirrors .cswinrt/src/Tests/FunctionalTests/JsonValueFunctionCalls/Program.cs.

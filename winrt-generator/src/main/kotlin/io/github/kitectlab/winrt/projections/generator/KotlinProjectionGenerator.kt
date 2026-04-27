@@ -101,6 +101,7 @@ import java.time.OffsetDateTime
 import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
+import kotlin.io.path.extension
 
 private val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 private val IREFERENCE_GENERIC_INTERFACE_ID = Guid("61C17706-2D65-11E0-9AE8-D48564015472")
@@ -702,12 +703,23 @@ data class KotlinProjectionFile(
     val packageName: String,
     val contents: String,
 ) {
-    fun writeTo(outputRoot: Path) {
+    fun writeToIfChanged(outputRoot: Path): Boolean {
         val target = outputRoot.resolve(relativePath)
         Files.createDirectories(target.parent)
+        if (Files.isRegularFile(target) && Files.readString(target) == contents) {
+            return false
+        }
         Files.writeString(target, contents)
+        return true
     }
 }
+
+data class KotlinProjectionWriteSummary(
+    val renderedFiles: Int,
+    val writtenFiles: Int,
+    val unchangedFiles: Int,
+    val deletedStaleFiles: Int,
+)
 
 class KotlinProjectionContractValidator {
     fun validate(model: WinRtMetadataModel): WinRtMetadataModel =
@@ -6553,21 +6565,51 @@ class KotlinProjectionGenerator(
         return projectionFiles + supportRenderer.render(normalizedModel, plans, projectionContext)
     }
 
-    fun generateTo(model: WinRtMetadataModel, outputRoot: Path): Int {
+    fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
+        var rendered = 0
         var written = 0
-        plans.forEach { plan ->
-            renderer.render(plan).writeTo(outputRoot)
-            written += 1
-        }
-        if (emitSupportFiles) {
-            supportRenderer.render(normalizedModel, plans, projectionContext).forEach { file ->
-                file.writeTo(outputRoot)
+        val expectedPaths = mutableSetOf<String>()
+        fun write(file: KotlinProjectionFile) {
+            rendered += 1
+            expectedPaths += outputRoot.resolve(file.relativePath).toAbsolutePath().normalize().toString()
+            if (file.writeToIfChanged(outputRoot)) {
                 written += 1
             }
         }
-        return written
+        plans.forEach { plan ->
+            write(renderer.render(plan))
+        }
+        if (emitSupportFiles) {
+            supportRenderer.render(normalizedModel, plans, projectionContext).forEach { file ->
+                write(file)
+            }
+        }
+        val deleted = deleteStaleKotlinFiles(outputRoot, expectedPaths)
+        return KotlinProjectionWriteSummary(
+            renderedFiles = rendered,
+            writtenFiles = written,
+            unchangedFiles = rendered - written,
+            deletedStaleFiles = deleted,
+        )
+    }
+
+    private fun deleteStaleKotlinFiles(outputRoot: Path, expectedPaths: Set<String>): Int {
+        if (!Files.isDirectory(outputRoot)) {
+            return 0
+        }
+        var deleted = 0
+        Files.walk(outputRoot).use { stream ->
+            stream
+                .filter { Files.isRegularFile(it) && it.extension == "kt" }
+                .filter { it.toAbsolutePath().normalize().toString() !in expectedPaths }
+                .forEach { staleFile ->
+                    Files.deleteIfExists(staleFile)
+                    deleted += 1
+                }
+        }
+        return deleted
     }
 }
 
