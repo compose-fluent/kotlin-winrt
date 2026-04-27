@@ -89,6 +89,35 @@ object WinRtSystemProjectionMarshalers {
     ) {
         PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value))
     }
+
+    fun uriFromAbi(pointer: RawAddress): WinRtUri? =
+        UriProjection.fromAbi(pointer)
+
+    fun <T : Any> objectFromAbi(
+        pointer: RawAddress,
+        typeHandle: WinRtTypeHandle,
+        expectedType: KClass<T>,
+    ): T? {
+        if (PlatformAbi.isNull(pointer)) {
+            return null
+        }
+        ComWrappersSupport.findObject(pointer, expectedType)?.let { return it }
+        val projected = ComWrappersSupport.createRcwForComObject(pointer, typeHandle)
+        if (expectedType.isInstance(projected)) {
+            @Suppress("UNCHECKED_CAST")
+            return projected as T
+        }
+        throw WinRtInvalidCastException(
+            "Expected projected value assignable to ${expectedType.typeDisplayName()}.",
+            KnownHResults.E_NOINTERFACE,
+        )
+    }
+
+    fun createObjectReference(
+        value: Any,
+        interfaceId: Guid,
+    ): ComObjectReference =
+        ComWrappersSupport.createCCWForObject(value, interfaceId)
 }
 
 @WinRtGuid("9E365E57-48B2-4160-956F-C7385120BBFC")

@@ -195,6 +195,41 @@ internal fun customStructAbi(
     mappedTypeByAbiName(binding.typeName.substringBefore('<').removeSuffix("?"))?.customStructAbi
         ?: mappedTypeByAbiName(binding.resolvedTypeName.substringBefore('<').removeSuffix("?"))?.customStructAbi
 
+internal fun customObjectAbi(
+    binding: KotlinProjectionAbiTypeBinding,
+): KotlinProjectionCustomObjectAbi? =
+    mappedTypeByAbiName(binding.typeName.substringBefore('<').removeSuffix("?"))?.customObjectAbi
+        ?: mappedTypeByAbiName(binding.resolvedTypeName.substringBefore('<').removeSuffix("?"))?.customObjectAbi
+
+internal fun KotlinProjectionRenderer.customObjectReturnReadback(
+    binding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? {
+    val customAbi = customObjectAbi(binding) ?: return null
+    val projectedType = resolveTypeName(binding.resolvedTypeName)
+    return if (customAbi.fromAbiFunctionName == "objectFromAbi") {
+        CodeBlock.of(
+            "return %T.%L(%T.readPointer(__resultOut), %T(%S, %T(%S)), %T::class) ?: error(%S)\n",
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            customAbi.fromAbiFunctionName,
+            PLATFORM_ABI_CLASS_NAME,
+            WINRT_TYPE_HANDLE_CLASS_NAME,
+            customAbi.typeHandleName,
+            GUID_CLASS_NAME,
+            customAbi.interfaceId.toString(),
+            projectedType,
+            "Expected non-null projected instance from ABI return for ${binding.resolvedTypeName}.",
+        )
+    } else {
+        CodeBlock.of(
+            "return %T.%L(%T.readPointer(__resultOut)) ?: error(%S)\n",
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            customAbi.fromAbiFunctionName,
+            PLATFORM_ABI_CLASS_NAME,
+            "Expected non-null projected instance from ABI return for ${binding.resolvedTypeName}.",
+        )
+    }
+}
+
 internal fun KotlinProjectionRenderer.nativeArrayElementSizeExpression(
     elementBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? =

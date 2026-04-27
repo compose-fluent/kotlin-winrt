@@ -2304,6 +2304,102 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_custom_object_mapped_abi_through_runtime_marshaler_facade() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IUriCommandHost",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555554"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "sourceUri",
+                                    returnTypeName = "Windows.Foundation.Uri",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setSourceUri",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("sourceUri", "Windows.Foundation.Uri")),
+                                    methodRowId = 7,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "command",
+                                    returnTypeName = "Microsoft.UI.Xaml.Input.ICommand",
+                                    methodRowId = 8,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setCommand",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("command", "Microsoft.UI.Xaml.Input.ICommand")),
+                                    methodRowId = 9,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "UriCommandHost",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IUriCommandHost",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "sourceUri",
+                                    returnTypeName = "Windows.Foundation.Uri",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setSourceUri",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("sourceUri", "Windows.Foundation.Uri")),
+                                    methodRowId = 7,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "command",
+                                    returnTypeName = "Microsoft.UI.Xaml.Input.ICommand",
+                                    methodRowId = 8,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setCommand",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("command", "Microsoft.UI.Xaml.Input.ICommand")),
+                                    methodRowId = 9,
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IUriCommandHost",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IUriCommandHost.kt").contents
+        val classContents = filesByName.getValue("UriCommandHost.kt").contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("fun sourceUri(): WinRtUri"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun command(): WinRtCommand"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.uriFromAbi(PlatformAbi.readPointer(__resultOut))"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(PlatformAbi.readPointer(__resultOut),"))
+        assertTrue(classContents, classContents.contains("WinRtTypeHandle(\"io.github.kitectlab.winrt.runtime.WinRtCommand\""))
+        assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), WinRtCommand::class)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(sourceUri,"))
+        assertTrue(classContents, classContents.contains("Guid(\"9E365E57-48B2-4160-956F-C7385120BBFC\")).use { __sourceUriAbi ->"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(command,"))
+        assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")).use { __commandAbi ->"))
+        assertFalse(classContents, classContents.contains("sourceUri as IWinRTObject"))
+        assertFalse(classContents, classContents.contains("command as IWinRTObject"))
+    }
+
+    @Test
     fun generator_emits_runtime_backed_async_abi_returns() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

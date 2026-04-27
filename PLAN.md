@@ -92,7 +92,8 @@
 - [x] Generator structure 22.1: audited the remaining `.cswinrt` mapped-type table and selected the runtime-backed Foundation/XAML system projection name slice.
 - [x] Generator structure 22.2: projected `HResult`, `EventHandler<T>`, and runtime-backed XAML system projection names through the shared `MAPPED_TYPES` table; ABI-specific marshaling remains centralized for the next mapped-ABI slice.
 - [x] Generator structure 22.3: added centralized mapped-ABI support for custom struct helper mappings and moved `DateTime`/`TimeSpan` to KMP `kotlin.time.Instant`/`Duration`; generated ABI code now calls runtime marshal facades for `DateTime`, `TimeSpan`, and `HResult` instead of generated struct `Metadata`.
-- [ ] Generator structure 22.4 正在做: extend the same mapped-ABI ownership to runtime-class/interface custom mappings such as `Uri` and XAML system projections without duplicating type-category branch tables.
+- [x] Generator structure 22.4: extended mapped-ABI ownership to `Uri` and runtime-backed XAML interface/runtime-class mappings; generated ABI code now uses the shared object marshal facade instead of requiring mapped public types to implement `IWinRTObject`.
+- [ ] Generator structure 22.5 正在做: audit the remaining `.cswinrt` mapped entries that still lack Kotlin runtime ownership (`IPropertyValue`, XAML structs/helpers, `TypeName`, and metadata attribute mappings) and split them into runtime-first slices.
 
 ## Sample Plan
 

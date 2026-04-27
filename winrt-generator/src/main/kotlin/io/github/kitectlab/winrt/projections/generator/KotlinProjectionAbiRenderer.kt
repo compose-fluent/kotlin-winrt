@@ -166,6 +166,25 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
 ): KotlinProjectionAbiMarshalerPlan? {
     val parameterName = parameterBinding.name
     val abiLocalName = "__${parameterName}Abi"
+    customObjectAbi(parameterBinding.typeBinding)?.let { customAbi ->
+        return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, abiLocalName),
+            scopeOpeners = listOf(
+                CodeBlock.of(
+                    "%T.%L(%L, %T(%S)).use { %L ->",
+                    WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+                    customAbi.createReferenceFunctionName,
+                    parameterName,
+                    GUID_CLASS_NAME,
+                    customAbi.interfaceId.toString(),
+                    abiLocalName,
+                ),
+            ),
+        )
+    }
     return when (parameterBinding.typeBinding.kind) {
         KotlinProjectionAbiValueKind.String -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
@@ -317,6 +336,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         return arrayReturnMarshaler(returnBinding, descriptor)
     }
     val resultOutLayout = when {
+        customObjectAbi(returnBinding) != null -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         returnBinding.isMappedCollectionBinding() -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         returnBinding.isMappedBindableCollectionBinding() -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         else -> when (returnBinding.kind) {
@@ -368,6 +388,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         }
     }
     val readbackStatement = when {
+        customObjectAbi(returnBinding) != null -> customObjectReturnReadback(returnBinding)
         returnBinding.isMappedCollectionBinding() -> mappedCollectionReturnReadback(returnBinding)
         returnBinding.isMappedBindableCollectionBinding() -> bindableCollectionReturnReadback(returnBinding)
         else -> when (returnBinding.kind) {
