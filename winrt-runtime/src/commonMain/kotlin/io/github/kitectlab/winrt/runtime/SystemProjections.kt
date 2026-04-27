@@ -55,6 +55,42 @@ internal object ExceptionProjection {
     fun toAbi(value: Exception): Int = ExceptionHelpers.getHRForException(value).value
 }
 
+/**
+ * Public generator-facing facade for the built-in custom ABI mappings mirrored from
+ * `.cswinrt/src/WinRT.Runtime/Projections.cs`.
+ */
+object WinRtSystemProjectionMarshalers {
+    fun dateTimeFromAbi(source: RawAddress): Instant =
+        DateTimeProjection.fromAbi(PlatformAbi.readInt64(source))
+
+    fun copyDateTimeTo(
+        value: Instant,
+        destination: RawAddress,
+    ) {
+        DateTimeProjection.copyTo(value, destination)
+    }
+
+    fun timeSpanFromAbi(source: RawAddress): Duration =
+        TimeSpanProjection.fromAbi(PlatformAbi.readInt64(source))
+
+    fun copyTimeSpanTo(
+        value: Duration,
+        destination: RawAddress,
+    ) {
+        TimeSpanProjection.copyTo(value, destination)
+    }
+
+    fun hResultFromAbi(source: RawAddress): Exception =
+        ExceptionProjection.fromAbi(PlatformAbi.readInt32(source))
+
+    fun copyHResultTo(
+        value: Exception,
+        destination: RawAddress,
+    ) {
+        PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value))
+    }
+}
+
 @WinRtGuid("9E365E57-48B2-4160-956F-C7385120BBFC")
 internal interface IUriRuntimeClassProjection
 

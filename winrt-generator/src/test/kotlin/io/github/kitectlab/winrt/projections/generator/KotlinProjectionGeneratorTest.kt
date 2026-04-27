@@ -2186,12 +2186,121 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtCollectionChangedNotifier"))
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtNotifyCollectionChangedEventArgs"))
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtPropertyChangedNotifier"))
+        assertFalse(file.contents, file.contents.contains("import java.time"))
         assertTrue(file.contents, file.contents.contains("fun lastFailure(): Exception"))
         assertTrue(file.contents, file.contents.contains("fun command(): WinRtCommand"))
         assertTrue(file.contents, file.contents.contains("val propertyChanged: WinRtPropertyChangedNotifier"))
         assertTrue(file.contents, file.contents.contains("val collectionChanged: WinRtCollectionChangedNotifier"))
         assertTrue(file.contents, file.contents.contains("val collectionChangedArgs: WinRtNotifyCollectionChangedEventArgs"))
         assertTrue(file.contents, file.contents.contains("fun addChanged(handler: EventHandlerCallback<Int>): EventRegistrationToken"))
+    }
+
+    @Test
+    fun generator_binds_custom_system_struct_abi_through_runtime_marshaler_facade() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "DateTime",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("universalTime", "Long")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "TimeSpan",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("duration", "Long")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "HResult",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("value", "Int")),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IClock",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "now",
+                                    returnTypeName = "Windows.Foundation.DateTime",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setDelay",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("delay", "Windows.Foundation.TimeSpan")),
+                                    methodRowId = 7,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setFailure",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("error", "Windows.Foundation.HResult")),
+                                    methodRowId = 8,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Clock",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IClock",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "now",
+                                    returnTypeName = "Windows.Foundation.DateTime",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setDelay",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("delay", "Windows.Foundation.TimeSpan")),
+                                    methodRowId = 7,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setFailure",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("error", "Windows.Foundation.HResult")),
+                                    methodRowId = 8,
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IClock",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IClock.kt").contents
+        val classContents = filesByName.getValue("Clock.kt").contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("import kotlin.time.Duration"))
+        assertTrue(interfaceContents, interfaceContents.contains("import kotlin.time.Instant"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun now(): Instant"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun setDelay(delay: Duration)"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun setFailure(error: Exception)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.dateTimeFromAbi(__resultOut)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyTimeSpanTo(delay, __delayAbi)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyHResultTo(error, __errorAbi)"))
+        assertFalse(classContents, classContents.contains(".Metadata.fromAbi(__resultOut)"))
+        assertFalse(classContents, classContents.contains(".Metadata.copyTo(delay"))
+        assertFalse(classContents, classContents.contains(".Metadata.copyTo(error"))
     }
 
     @Test

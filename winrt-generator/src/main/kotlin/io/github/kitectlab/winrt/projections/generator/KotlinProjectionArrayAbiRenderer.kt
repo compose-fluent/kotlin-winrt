@@ -189,6 +189,12 @@ internal fun KotlinProjectionRenderer.nativeStructClassName(
         ?: runCatching { resolveTypeName(binding.resolvedTypeName) as? ClassName }.getOrNull()
 }
 
+internal fun customStructAbi(
+    binding: KotlinProjectionAbiTypeBinding,
+): KotlinProjectionCustomStructAbi? =
+    mappedTypeByAbiName(binding.typeName.substringBefore('<').removeSuffix("?"))?.customStructAbi
+        ?: mappedTypeByAbiName(binding.resolvedTypeName.substringBefore('<').removeSuffix("?"))?.customStructAbi
+
 internal fun KotlinProjectionRenderer.nativeArrayElementSizeExpression(
     elementBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? =
@@ -209,7 +215,8 @@ internal fun KotlinProjectionRenderer.nativeArrayElementSizeExpression(
         KotlinProjectionAbiValueKind.Enum ->
             elementBinding.enumUnderlyingType?.let(::nativeArrayIntegralElementSizeExpression)
         KotlinProjectionAbiValueKind.Struct ->
-            nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.layout.sizeBytes", it) }
+            customStructAbi(elementBinding)?.let { CodeBlock.of("%LL", it.sizeBytes) }
+                ?: nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.layout.sizeBytes", it) }
         else -> null
     }
 
@@ -257,7 +264,8 @@ internal fun KotlinProjectionRenderer.nativeArrayElementReadCode(
         KotlinProjectionAbiValueKind.Enum ->
             nativeArrayEnumElementReadCode(elementBinding, slice)
         KotlinProjectionAbiValueKind.Struct ->
-            nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.fromAbi(%L)", it, slice) }
+            customStructAbi(elementBinding)?.let { CodeBlock.of("%T.%L(%L)", it.helperTypeName, it.fromAbiFunctionName, slice) }
+                ?: nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.fromAbi(%L)", it, slice) }
         else -> null
     }
 }
@@ -304,7 +312,8 @@ internal fun KotlinProjectionRenderer.nativeArrayElementWriteCode(
         KotlinProjectionAbiValueKind.Enum ->
             nativeArrayEnumElementWriteCode(elementBinding, slice, valueExpression)
         KotlinProjectionAbiValueKind.Struct ->
-            nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.copyTo(%L, %L)", it, valueExpression, slice) }
+            customStructAbi(elementBinding)?.let { CodeBlock.of("%T.%L(%L, %L)", it.helperTypeName, it.copyToFunctionName, valueExpression, slice) }
+                ?: nativeStructClassName(elementBinding)?.let { CodeBlock.of("%T.Metadata.copyTo(%L, %L)", it, valueExpression, slice) }
         else -> null
     }
 }
@@ -331,6 +340,32 @@ internal fun KotlinProjectionRenderer.nativeArrayEnumElementWriteCode(
 internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
     parameterBinding: KotlinProjectionAbiParameterBinding,
 ): KotlinProjectionAbiMarshalerPlan? {
+    customStructAbi(parameterBinding.typeBinding)?.let { customAbi ->
+        val parameterName = parameterBinding.name
+        val scopeName = "__${parameterName}StructScope"
+        val abiLocalName = "__${parameterName}Abi"
+        return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of("%L", abiLocalName),
+            scopeOpeners = listOf(
+                CodeBlock.of(
+                    "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %LL)\n%T.%L(%L, %L)",
+                    PLATFORM_ABI_CLASS_NAME,
+                    scopeName,
+                    abiLocalName,
+                    PLATFORM_ABI_CLASS_NAME,
+                    scopeName,
+                    customAbi.sizeBytes,
+                    customAbi.helperTypeName,
+                    customAbi.copyToFunctionName,
+                    parameterName,
+                    abiLocalName,
+                ),
+            ),
+        )
+    }
     val structType = nativeStructClassName(parameterBinding.typeBinding) ?: return null
     val parameterName = parameterBinding.name
     val scopeName = "__${parameterName}StructScope"

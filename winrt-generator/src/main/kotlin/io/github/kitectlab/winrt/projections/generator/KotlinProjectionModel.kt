@@ -72,6 +72,7 @@ import io.github.kitectlab.winrt.runtime.WinRtReferenceArrayProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
+import io.github.kitectlab.winrt.runtime.WinRtSystemProjectionMarshalers
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
 import io.github.kitectlab.winrt.runtime.WinRtTypeHandle
 import io.github.kitectlab.winrt.runtime.WinRtUri
@@ -97,8 +98,6 @@ import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
 import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Duration
-import java.time.OffsetDateTime
 import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
@@ -139,6 +138,7 @@ internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayPr
 internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
+internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
 internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRtTypeHandle::class.asClassName()
 internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClassName()
@@ -153,8 +153,8 @@ internal val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", 
 internal val ABSTRACT_MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableMap")
 internal val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableSet")
 internal val WINRT_URI_CLASS_NAME = WinRtUri::class.asClassName()
-internal val OFFSET_DATE_TIME_CLASS_NAME = OffsetDateTime::class.asClassName()
-internal val DURATION_CLASS_NAME = Duration::class.asClassName()
+internal val KOTLIN_INSTANT_CLASS_NAME = ClassName("kotlin.time", "Instant")
+internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
 internal val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
 internal val ILLEGAL_STATE_EXCEPTION_CLASS_NAME = IllegalStateException::class.asClassName()
 internal val NO_SUCH_ELEMENT_EXCEPTION_CLASS_NAME = NoSuchElementException::class.asClassName()
@@ -381,6 +381,7 @@ internal data class KotlinProjectionMappedType(
     val abiQualifiedName: String,
     val projectedTypeResolver: SpecialTypeResolver,
     val abiValueKind: KotlinProjectionAbiValueKind? = null,
+    val customStructAbi: KotlinProjectionCustomStructAbi? = null,
     val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
     val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
     val descriptionName: String = abiQualifiedName.substringAfterLast('.'),
@@ -391,6 +392,13 @@ internal data class KotlinProjectionMappedType(
         }
     }
 }
+
+internal data class KotlinProjectionCustomStructAbi(
+    val helperTypeName: ClassName,
+    val sizeBytes: Long,
+    val fromAbiFunctionName: String,
+    val copyToFunctionName: String,
+)
 
 internal data class KotlinProjectionIntegralAbiDescriptor(
     val kotlinTypeName: TypeName,
@@ -406,8 +414,20 @@ internal data class KotlinProjectionIntegralAbiDescriptor(
 internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     KotlinProjectionMappedType("System.Object", { IINSPECTABLE_REFERENCE_CLASS_NAME }, descriptionName = "Object"),
     KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
-    KotlinProjectionMappedType("Windows.Foundation.DateTime", { OFFSET_DATE_TIME_CLASS_NAME }, descriptionName = "DateTime"),
-    KotlinProjectionMappedType("Windows.Foundation.TimeSpan", { DURATION_CLASS_NAME }, descriptionName = "TimeSpan"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.DateTime",
+        { KOTLIN_INSTANT_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 8, "dateTimeFromAbi", "copyDateTimeTo"),
+        descriptionName = "DateTime",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.TimeSpan",
+        { KOTLIN_DURATION_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 8, "timeSpanFromAbi", "copyTimeSpanTo"),
+        descriptionName = "TimeSpan",
+    ),
     KotlinProjectionMappedType("Windows.Foundation.Uri", { WINRT_URI_CLASS_NAME }, descriptionName = "Uri"),
     KotlinProjectionMappedType(
         "Windows.Foundation.EventHandler",
@@ -420,7 +440,13 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
         descriptionName = "EventRegistrationToken",
     ),
-    KotlinProjectionMappedType("Windows.Foundation.HResult", { EXCEPTION_CLASS_NAME }, descriptionName = "HResult"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.HResult",
+        { EXCEPTION_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 4, "hResultFromAbi", "copyHResultTo"),
+        descriptionName = "HResult",
+    ),
     KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
     KotlinProjectionMappedType(
         "Windows.Foundation.IReference",

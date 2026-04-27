@@ -360,7 +360,9 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.MappedKeyValuePair -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Struct ->
-            nativeStructClassName(returnBinding)?.let { returnType ->
+            customStructAbi(returnBinding)?.let { customAbi ->
+                CodeBlock.of("%T.allocateBytes(__scope, %LL)", PLATFORM_ABI_CLASS_NAME, customAbi.sizeBytes)
+            } ?: nativeStructClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of("%T.allocateBytes(__scope, %T.Metadata.layout.sizeBytes)", PLATFORM_ABI_CLASS_NAME, returnType)
             } ?: return null
         }
@@ -478,7 +480,9 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
                 )
             }
         KotlinProjectionAbiValueKind.Struct ->
-            nativeStructClassName(returnBinding)?.let { returnType ->
+            customStructAbi(returnBinding)?.let { customAbi ->
+                CodeBlock.of("return %T.%L(__resultOut)\n", customAbi.helperTypeName, customAbi.fromAbiFunctionName)
+            } ?: nativeStructClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of("return %T.Metadata.fromAbi(__resultOut)\n", returnType)
             }
         KotlinProjectionAbiValueKind.MappedKeyValuePair ->

@@ -91,7 +91,8 @@
 - [x] Generator structure 21.1: audited the split generator writers against `.cswinrt/src/cswinrt/helpers.h`/`code_writers.h` and closed the first mapped-event gap by projecting `EventRegistrationToken` through the shared mapped-type table, planner ABI bindings, runtime `WinRtEvent`, and generator tests.
 - [x] Generator structure 22.1: audited the remaining `.cswinrt` mapped-type table and selected the runtime-backed Foundation/XAML system projection name slice.
 - [x] Generator structure 22.2: projected `HResult`, `EventHandler<T>`, and runtime-backed XAML system projection names through the shared `MAPPED_TYPES` table; ABI-specific marshaling remains centralized for the next mapped-ABI slice.
-- [ ] Generator structure 22.3 正在做: add centralized mapped-ABI support for custom ABI helper mappings such as `DateTime`, `TimeSpan`, `HResult`, `Uri`, and XAML system projections instead of letting struct/interface fallbacks call invalid generated `Metadata` helpers.
+- [x] Generator structure 22.3: added centralized mapped-ABI support for custom struct helper mappings and moved `DateTime`/`TimeSpan` to KMP `kotlin.time.Instant`/`Duration`; generated ABI code now calls runtime marshal facades for `DateTime`, `TimeSpan`, and `HResult` instead of generated struct `Metadata`.
+- [ ] Generator structure 22.4 正在做: extend the same mapped-ABI ownership to runtime-class/interface custom mappings such as `Uri` and XAML system projections without duplicating type-category branch tables.
 
 ## Sample Plan
 
