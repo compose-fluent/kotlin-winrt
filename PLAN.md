@@ -59,6 +59,8 @@
 - [x] Queue 15.5: move the JSON sample closer to `.cswinrt/src/Tests/UnitTest/ApiCompatTests.cs` by executing `GetNamedValue("phone")` and indexed `GetNamedArray("education")` reads without sample-local substitutes.
 - [x] Queue 16: root `validateWinRtQueue16` now runs validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [x] Queue 17: plugin generated-source lifecycle and projection publication model are finalized; generated sources compile into library artifacts, while identity JSON remains the only separate WinRT metadata artifact.
+- [x] Queue 18: generator single-file risk is reduced by splitting the former monolithic `KotlinProjectionGenerator.kt` into model/mapping, planner, renderer, orchestration, and support-renderer files without changing projection behavior.
+- [ ] Queue 19 正在做: continue generator structure cleanup by splitting the remaining large renderer along `.cswinrt/src/cswinrt/code_writers.h` writer responsibilities before adding new generator features.
 
 ## Generator Follow-Through
 
@@ -80,6 +82,8 @@
 - [x] Generator event surface: generated events now expose `WinRtEvent<T>` properties with `add/remove` and `+=/-=` while keeping add/remove methods as the low-level ABI-backed entry.
 - [x] Generator namespace policy: generated code stays under `io.github.kitectlab.winrt.projections`; any shorter WinRT facade is a separate future layer.
 - [x] Generator generic declarations: collection/async generic declarations now emit Kotlin type parameters instead of unresolved `T0/T1` imports.
+- [x] Generator structure 19.1: the former 7000-line generator file is split into `KotlinProjectionModel`, `KotlinProjectionPlanner`, `KotlinProjectionRenderer`, `KotlinProjectionGenerator`, and `KotlinProjectionSupportRenderer` ownership files.
+- [ ] Generator structure 19.2 正在做: split `KotlinProjectionRenderer` into focused declaration/member/ABI/support writer units while preserving current behavior and `.cswinrt` writer responsibility mapping.
 
 ## Sample Plan
 
