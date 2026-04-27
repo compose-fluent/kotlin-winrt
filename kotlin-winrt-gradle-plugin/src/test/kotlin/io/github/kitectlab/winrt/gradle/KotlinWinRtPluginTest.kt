@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.jar.JarFile
 
 class KotlinWinRtPluginTest {
     @Test
@@ -388,8 +389,13 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun plugin_generates_sources_in_real_gradle_library_project() {
+    fun plugin_generates_sources_into_real_gradle_library_artifact() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-plugin-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
@@ -429,6 +435,10 @@ class KotlinWinRtPluginTest {
                 jvmToolchain(22)
             }
 
+            dependencies {
+                implementation(files("$runtimeJar"))
+            }
+
             winRt {
                 type("Windows.Foundation.IStringable")
             }
@@ -438,11 +448,13 @@ class KotlinWinRtPluginTest {
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("generateWinRtProjections", "--stacktrace")
+            .withArguments("jar", "--stacktrace")
             .forwardOutput()
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlin")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":jar")?.outcome)
         assertTrue(
             Files.isRegularFile(
                 projectDir.resolve(
@@ -450,6 +462,13 @@ class KotlinWinRtPluginTest {
                 ),
             ),
         )
+        JarFile(projectDir.resolve("build/libs/kotlin-winrt-plugin-test.jar").toFile()).use { jar ->
+            assertTrue(
+                jar.getEntry(
+                    "io/github/kitectlab/winrt/projections/windows/foundation/IStringable.class",
+                ) != null,
+            )
+        }
 
         val secondResult = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
