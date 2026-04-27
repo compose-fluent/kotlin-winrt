@@ -129,6 +129,11 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
             code.add("%L", declarations)
         } ?: code.addStatement("val __resultOut = %L", requireNotNull(resultMarshaler.resultAllocation))
     }
+    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
+    if (finallyStatements.isNotEmpty()) {
+        code.add("try {\n")
+        code.indent()
+    }
     val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
         listOf(marshaler.abiArgumentExpression) + marshaler.extraAbiArgumentExpressions
     } + if (resultMarshaler != null) {
@@ -150,6 +155,16 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
         code.add("%L\n", postCallStatement)
     }
     resultMarshaler?.readbackStatement?.let(code::add)
+    if (finallyStatements.isNotEmpty()) {
+        code.unindent()
+        code.add("} finally {\n")
+        code.indent()
+        finallyStatements.forEach { finallyStatement ->
+            code.add("%L\n", finallyStatement)
+        }
+        code.unindent()
+        code.add("}\n")
+    }
     if (resultMarshaler != null) {
         code.unindent()
         code.add("}\n")

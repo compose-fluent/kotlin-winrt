@@ -90,6 +90,20 @@ object WinRtSystemProjectionMarshalers {
         PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value))
     }
 
+    fun typeNameFromAbi(source: RawAddress): KClass<*>? =
+        TypeProjection.fromAbi(source)
+
+    fun copyTypeNameTo(
+        value: KClass<*>?,
+        destination: RawAddress,
+    ) {
+        TypeProjection.copyTo(value, destination)
+    }
+
+    fun disposeTypeNameAbi(source: RawAddress) {
+        TypeProjection.disposeAbi(source)
+    }
+
     fun uriFromAbi(pointer: RawAddress): WinRtUri? =
         UriProjection.fromAbi(pointer)
 

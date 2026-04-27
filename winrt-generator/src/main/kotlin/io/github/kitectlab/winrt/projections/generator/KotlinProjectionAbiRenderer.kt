@@ -502,7 +502,17 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
             }
         KotlinProjectionAbiValueKind.Struct ->
             customStructAbi(returnBinding)?.let { customAbi ->
-                CodeBlock.of("return %T.%L(__resultOut)\n", customAbi.helperTypeName, customAbi.fromAbiFunctionName)
+                if (customAbi.disposeAbiFunctionName != null) {
+                    CodeBlock.of(
+                        "try {\n    return %T.%L(__resultOut)\n} finally {\n    %T.%L(__resultOut)\n}\n",
+                        customAbi.helperTypeName,
+                        customAbi.fromAbiFunctionName,
+                        customAbi.helperTypeName,
+                        customAbi.disposeAbiFunctionName,
+                    )
+                } else {
+                    CodeBlock.of("return %T.%L(__resultOut)\n", customAbi.helperTypeName, customAbi.fromAbiFunctionName)
+                }
             } ?: nativeStructClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of("return %T.Metadata.fromAbi(__resultOut)\n", returnType)
             }

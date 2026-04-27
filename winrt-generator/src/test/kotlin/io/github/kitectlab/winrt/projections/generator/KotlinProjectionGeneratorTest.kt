@@ -2313,6 +2313,76 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_xaml_type_name_to_kclass_through_runtime_marshaler_facade() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "ITypeHost",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "currentType",
+                                    returnTypeName = "Windows.UI.Xaml.Interop.TypeName",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setCurrentType",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("type", "Windows.UI.Xaml.Interop.TypeName")),
+                                    methodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "TypeHost",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Xaml.ITypeHost",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "currentType",
+                                    returnTypeName = "Windows.UI.Xaml.Interop.TypeName",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setCurrentType",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("type", "Windows.UI.Xaml.Interop.TypeName")),
+                                    methodRowId = 7,
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Xaml.ITypeHost",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("ITypeHost.kt").contents
+        val classContents = filesByName.getValue("TypeHost.kt").contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("import kotlin.reflect.KClass"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun currentType(): KClass<*>?"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun setCurrentType(type: KClass<*>?)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.typeNameFromAbi(__resultOut)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__resultOut)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(type, __typeAbi)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__typeAbi)"))
+        assertFalse(classContents, classContents.contains("TypeName.Metadata"))
+    }
+
+    @Test
     fun generator_binds_custom_object_mapped_abi_through_runtime_marshaler_facade() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

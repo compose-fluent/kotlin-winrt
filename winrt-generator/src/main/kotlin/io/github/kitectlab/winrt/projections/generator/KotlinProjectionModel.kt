@@ -92,6 +92,7 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.STAR
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
@@ -103,6 +104,7 @@ import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
+import kotlin.reflect.KClass
 
 internal val ROOT_PACKAGE_SEGMENTS = listOf("io", "github", "kitectlab", "winrt", "projections")
 internal val IREFERENCE_GENERIC_INTERFACE_ID = Guid("61C17706-2D65-11E0-9AE8-D48564015472")
@@ -157,6 +159,7 @@ internal val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "
 internal val WINRT_URI_CLASS_NAME = WinRtUri::class.asClassName()
 internal val KOTLIN_INSTANT_CLASS_NAME = ClassName("kotlin.time", "Instant")
 internal val KOTLIN_DURATION_CLASS_NAME = ClassName("kotlin.time", "Duration")
+internal val KCLASS_STAR_TYPE_NAME = KClass::class.asClassName().parameterizedBy(STAR)
 internal val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
 internal val ILLEGAL_STATE_EXCEPTION_CLASS_NAME = IllegalStateException::class.asClassName()
 internal val NO_SUCH_ELEMENT_EXCEPTION_CLASS_NAME = NoSuchElementException::class.asClassName()
@@ -391,6 +394,7 @@ internal data class KotlinProjectionCustomStructAbi(
     val sizeBytes: Long,
     val fromAbiFunctionName: String,
     val copyToFunctionName: String,
+    val disposeAbiFunctionName: String? = null,
 )
 
 internal data class KotlinProjectionCustomObjectAbi(
@@ -456,6 +460,19 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
         customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 4, "hResultFromAbi", "copyHResultTo"),
         descriptionName = "HResult",
+    ),
+    KotlinProjectionMappedType(
+        "Windows.UI.Xaml.Interop.TypeName",
+        { KCLASS_STAR_TYPE_NAME.copy(nullable = true) },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        customStructAbi = KotlinProjectionCustomStructAbi(
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            12,
+            "typeNameFromAbi",
+            "copyTypeNameTo",
+            "disposeTypeNameAbi",
+        ),
+        descriptionName = "TypeName",
     ),
     KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
     KotlinProjectionMappedType(
@@ -714,6 +731,7 @@ internal data class KotlinProjectionAbiMarshalerPlan(
     val extraAbiArgumentExpressions: List<CodeBlock> = emptyList(),
     val scopeOpeners: List<CodeBlock> = emptyList(),
     val postCallStatements: List<CodeBlock> = emptyList(),
+    val finallyStatements: List<CodeBlock> = emptyList(),
     val resultAllocation: CodeBlock? = null,
     val resultLocalDeclarations: CodeBlock? = null,
     val readbackStatement: CodeBlock? = null,

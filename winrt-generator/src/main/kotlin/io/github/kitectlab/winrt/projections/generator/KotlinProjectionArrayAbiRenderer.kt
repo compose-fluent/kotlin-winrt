@@ -399,6 +399,9 @@ internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
                     abiLocalName,
                 ),
             ),
+            finallyStatements = customAbi.disposeAbiFunctionName?.let { disposeFunctionName ->
+                listOf(CodeBlock.of("%T.%L(%L)", customAbi.helperTypeName, disposeFunctionName, abiLocalName))
+            }.orEmpty(),
         )
     }
     val structType = nativeStructClassName(parameterBinding.typeBinding) ?: return null

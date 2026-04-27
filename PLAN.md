@@ -95,7 +95,7 @@
 - [x] Generator structure 22.4: extended mapped-ABI ownership to `Uri` and runtime-backed XAML interface/runtime-class mappings; generated ABI code now uses the shared object marshal facade instead of requiring mapped public types to implement `IWinRTObject`.
 - [x] Generator structure 22.5: removed geometry/numerics WinRT structs from the generator public mapped-type table so `Point`, `Size`, `Rect`, `Vector*`, `Matrix*`, `Plane`, and `Quaternion` are emitted from metadata as projection structs instead of runtime public model aliases.
 - [x] Generator/runtime 22.6: moved geometry/numerics `IPropertyValue`/`IReference` support behind generated struct registration; runtime no longer pre-registers `Point`, `Size`, `Rect`, `Vector*`, `Matrix*`, `Plane`, or `Quaternion` as built-in public value-boxing types.
-- [ ] Generator/runtime 22.7 正在做: finish remaining mapped-type cleanup for `TypeName`, metadata attributes, and XAML helper-only mappings without reintroducing generator-local type/category tables.
+- [x] Generator/runtime 22.7: mapped `Windows.UI.Xaml.Interop.TypeName` to nullable `KClass<*>` through the runtime system marshaler facade, including ABI HSTRING cleanup; verified metadata attributes and XAML helper-only entries remain metadata-owned, not generator-local type tables.
 
 ## Sample Plan
 
