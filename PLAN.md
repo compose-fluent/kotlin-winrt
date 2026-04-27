@@ -15,11 +15,11 @@
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] Runtime follow-up: vtable invocation now includes the `Double, Double, out Double` ABI shape needed by `.cswinrt/src/Samples/NetProjectionSample` `SimpleMath.add/subtract/multiply/divide`.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
-- [ ] `winrt-generator` is reopened: declaration/member shells exist, but ABI marshaling and generic/delegate instantiation are not yet fully aligned with `.cswinrt/src/cswinrt/code_writers.h`.
+- [x] `winrt-generator` ABI/sample follow-through is coherent for the current JVM path and is validated by `validateWinRtQueue16`.
 - [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
 - [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and `winRt {}` library/application identity handling.
-- [ ] `winrt-samples` is intentionally minimal until generator/projection/plugin support expands.
-- [ ] `winrt-authoring` remains frozen until generated projection and sample paths are coherent.
+- [x] `winrt-samples` is intentionally minimal and now closed through Sample 10; do not expand samples again until authoring-owned contracts exist.
+- [ ] `winrt-authoring` is reopened for planning and foundation work only; AuthoringDemo/BgTask samples remain blocked until authoring contracts exist.
 
 ## Active Queue
 
@@ -47,18 +47,18 @@
 - [x] Queue 13.2: application model resolves transitive `kotlin-winrt` identity JSON artifacts and writes an aggregate for runtime/resource staging.
 - [x] Queue 13.3: application model stages NuGet runtime DLLs from package identities and keeps WindowsAppSDK framework PRI/header staging scoped to WindowsAppSDK packages.
 - [x] Queue 13.4: plugin application model wires staged runtime assets into Java resources and Gradle application distributions without sample-specific system properties.
-- [ ] Queue 14 正在做: expand `winrt-projections` only after the reopened generator ABI parity queue below is closed.
+- [x] Queue 14: `winrt-projections` expansion stayed plugin-generated and is closed for the current Foundation/sample validation path.
 - [x] Queue 14.1: plugin TestKit validation now proves a real Gradle library project can apply `io.github.kitectlab.winrt` and generate deterministic WinRT sources from Windows SDK metadata.
 - [x] Queue 14.2: remove direct Kotlin Gradle Plugin runtime class dependency from the plugin so generated-source wiring works in published/TestKit plugin classloaders.
 - [x] Queue 14.3: `winrt-projections` now consumes `io.github.kitectlab.winrt` from the root `pluginManagement` included build and compiles the plugin-generated `Windows.Foundation.IStringable` slice.
-- [ ] Queue 15 正在做: keep samples as validation only; do not use WindowsAppSDK failures to design generator behavior.
+- [x] Queue 15: samples are validation-only and closed through Sample 10; WindowsAppSDK coverage validates generated/plugin behavior without driving generator design from sample failures.
 - [x] Queue 15.1: `winrt-samples` is now a `winRt { application {} }` consumer with a cswinrt `ApiCompatTests`-aligned `Windows.Data.Json.JsonObject.Parse` sample shape; native execution is opt-in until JSON ABI stability, `GetNamedValue("phone")` nullable object-return, and `GetNamedArray("education")` collection parity land upstream.
 - [x] Queue 15.2: sample-side plugin graph validation now makes `winrt-samples:check` verify generated application identity includes `winrt-projections` metadata and excludes ordinary runtime implementation dependencies.
 - [x] Queue 15.3: `winrt-samples` now has opt-in WindowsAppSDK split-package declarations via `kotlinWinRt.samples.windowsAppSdkWinuiVersion`; default checks stay offline/lightweight while explicit identity validation proves Foundation/InteractiveExperiences/WinUI metadata is recorded.
 - [x] Queue 15.4: plugin API is consolidated to `io.github.kitectlab.winrt` plus `winRt {}`; library is the default model and `application {}` selects application identity/resource staging.
 - [x] Queue 15.5: move the JSON sample closer to `.cswinrt/src/Tests/UnitTest/ApiCompatTests.cs` by executing `GetNamedValue("phone")` and indexed `GetNamedArray("education")` reads without sample-local substitutes.
 - [x] Queue 16: root `validateWinRtQueue16` now runs validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
-- [ ] Queue 17: reopen `winrt-authoring` only after Queue 11 through Queue 16 are coherent.
+- [ ] Queue 17 正在做: reopen `winrt-authoring` now that Queue 11 through Queue 16 passed `validateWinRtQueue16`; start with `.cswinrt/src/Authoring` host/source-generator boundaries, not AuthoringDemo samples.
 
 ## Generator Follow-Through
 
@@ -93,7 +93,7 @@
 - [x] Sample 7.1: WindowsAppSDK projection generation now completes from the plugin path with `.cswinrt/src/Projections/WinAppSDK` package/filter shape; remaining Sample 7 work is real generated WinUI API usage, not sample-local fakes.
 - [x] Sample 8: WinUI runtime/resource packaging now follows WindowsAppSDK package staging at the application model and distribution layer, including `resources.pri` aliasing without staging native build headers.
 - [x] Sample 9: sample validation now checks `installDist` application layout, staged `kotlin-winrt-runtime-assets`, and default `run` bootstrap without opt-in native smoke.
-- [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
+- [x] Sample 10: Sample 5-9 are closed; sample expansion is stopped and `winrt-authoring` is reopened for contract work only. Do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
 - [ ] Sample 11: implement authoring samples only after `winrt-authoring` is complete; then mirror `.cswinrt/src/Samples/AuthoringDemo` and background-task hosting from authoring-owned contracts.
 - [ ] Sample 12: implement embedded/self-contained samples only after embedded projection support exists; then mirror `.cswinrt/src/Samples/TestEmbedded`.
 
@@ -108,10 +108,18 @@
 
 ## Frozen Until Prerequisites Close
 
-- [ ] `winrt-projections`: no broad checked-in growth until Generator ABI 1-8 exists for the same surface.
-- [ ] `winrt-samples`: no broad WinUI/sample expansion until generated projections and plugin resource handling exist.
-- [ ] `winrt-authoring`: no hosting/source-generation work until generator/projection/sample path is stable.
+- [x] `winrt-projections`: broad checked-in growth remains avoided; current projection validation uses plugin-generated output after Generator ABI 1-8.
+- [x] `winrt-samples`: broad WinUI/sample expansion is stopped after Sample 10; future authoring samples remain blocked on authoring contracts.
+- [x] `winrt-authoring`: generator/projection/sample prerequisites are stable enough to start authoring planning and foundation work.
 - [ ] `mingwX64`: keep shared contracts viable, but full native parity planning starts after the JVM generator/projection/plugin path is coherent.
+
+## Authoring Plan
+
+- [ ] Authoring 17.1 正在做: map `.cswinrt/src/Authoring/WinRT.Host.Shim`, `WinRT.Host`, `WinRT.SourceGenerator`, and `cswinmd` responsibilities to Kotlin-owned modules before adding authoring runtime APIs.
+- [ ] Authoring 17.2: define the minimum JVM hosting boundary for `DllGetActivationFactory`/`GetActivationFactory` equivalent lookup and authored runtime-class activation, owned by `winrt-authoring` with runtime hooks only where ABI lifetime requires it.
+- [ ] Authoring 17.3: define generated metadata/source responsibilities equivalent to `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs` and `WinRTTypeWriter.cs`; do not place this behavior in samples.
+- [ ] Authoring 17.4: define authored-object lifetime and exposed-interface registration contracts equivalent to `.cswinrt/src/Authoring/WinRT.SourceGenerator/AotOptimizer.cs` and runtime `ComWrappersSupport` registration handoffs.
+- [ ] Authoring 17.5: only after 17.1-17.4, add the first narrow authoring validation surface; AuthoringDemo and BgTask samples stay deferred.
 
 ## Plugin Plan
 
