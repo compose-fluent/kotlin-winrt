@@ -4,8 +4,21 @@ plugins {
     application
 }
 
+val sampleWindowsAppSdkWinuiVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkWinuiVersion")
+val sampleWindowsAppSdkFoundationVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkFoundationVersion")
+val sampleWindowsAppSdkInteractiveExperiencesVersion =
+    providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion")
+
 kotlin {
     jvmToolchain(22)
+    if (sampleWindowsAppSdkWinuiVersion.orNull != null) {
+        sourceSets.named("main") {
+            kotlin.srcDir("src/winuiSample/kotlin")
+        }
+        sourceSets.named("test") {
+            kotlin.srcDir("src/winuiSampleTest/kotlin")
+        }
+    }
 }
 
 dependencies {
@@ -14,21 +27,15 @@ dependencies {
     testImplementation(libs.junit)
 }
 
-val sampleWindowsAppSdkWinuiVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkWinuiVersion")
-val sampleWindowsAppSdkFoundationVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkFoundationVersion")
-val sampleWindowsAppSdkInteractiveExperiencesVersion =
-    providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion")
 winRt {
     type("Windows.Foundation.IStringable")
+    namespace("Windows.Data.Json")
     application {
     }
     sampleWindowsAppSdkWinuiVersion.orNull?.let { winuiVersion ->
         windowsSdk(includeExtensions = true)
         namespace("Windows.ApplicationModel.Activation")
         namespace("Windows.ApplicationModel.DataTransfer")
-        namespace("Windows.Data.Json")
-        namespace("Windows.Foundation")
-        namespace("Windows.Foundation.Collections")
         namespace("Windows.Graphics")
         namespace("Windows.Storage.Streams")
         namespace("Windows.System")

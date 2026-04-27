@@ -73,10 +73,12 @@ import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
 import io.github.kitectlab.winrt.runtime.WinRtTypeHandle
+import io.github.kitectlab.winrt.runtime.WinRtUri
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
 import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
 import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
 import io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
+import io.github.kitectlab.winrt.runtime.WinRtEvent
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -89,9 +91,9 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
-import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -141,13 +143,14 @@ private val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClas
 private val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::class.asClassName()
 private val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
 private val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
+private val WINRT_EVENT_CLASS_NAME = WinRtEvent::class.asClassName()
 private val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 private val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 private val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
 private val ABSTRACT_MUTABLE_LIST_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableList")
 private val ABSTRACT_MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableMap")
 private val ABSTRACT_MUTABLE_SET_CLASS_NAME = ClassName("kotlin.collections", "AbstractMutableSet")
-private val URI_CLASS_NAME = URI::class.asClassName()
+private val WINRT_URI_CLASS_NAME = WinRtUri::class.asClassName()
 private val OFFSET_DATE_TIME_CLASS_NAME = OffsetDateTime::class.asClassName()
 private val DURATION_CLASS_NAME = Duration::class.asClassName()
 private val AUTO_CLOSEABLE_CLASS_NAME = AutoCloseable::class.asClassName()
@@ -389,7 +392,7 @@ private val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
     KotlinProjectionMappedType("Windows.Foundation.DateTime", { OFFSET_DATE_TIME_CLASS_NAME }, descriptionName = "DateTime"),
     KotlinProjectionMappedType("Windows.Foundation.TimeSpan", { DURATION_CLASS_NAME }, descriptionName = "TimeSpan"),
-    KotlinProjectionMappedType("Windows.Foundation.Uri", { URI_CLASS_NAME }, descriptionName = "Uri"),
+    KotlinProjectionMappedType("Windows.Foundation.Uri", { WINRT_URI_CLASS_NAME }, descriptionName = "Uri"),
     KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
     KotlinProjectionMappedType(
         "Windows.Foundation.IReference",
@@ -2225,6 +2228,7 @@ class KotlinProjectionRenderer {
         plan.type.methods.forEach { builder.addFunction(renderInterfaceMethod(it)) }
         plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderInterfaceProperty(it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
+            builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
         }
         appendCompanionShells(builder, plan)
@@ -2423,7 +2427,15 @@ class KotlinProjectionRenderer {
         plan.type.methods.filterNot { it.isStatic }.forEach { builder.addFunction(renderRuntimeMethod(plan, it)) }
         plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderRuntimeProperty(plan, it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
-            (renderBoundEventFunctions(plan, event) ?: renderEventFunctions(event, abstract = false))
+            builder.addProperty(
+                renderEventProperty(
+                    event = event,
+                    eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
+                    abstract = false,
+                    override = true,
+                ),
+            )
+            (renderBoundEventFunctions(plan, event, override = true) ?: renderEventFunctions(event, abstract = false, override = true))
                 .forEach(builder::addFunction)
         }
         val staticMethods = plan.type.methods.filter { it.isStatic }
@@ -3532,6 +3544,9 @@ class KotlinProjectionRenderer {
         emitKotlinSealed: Boolean = true,
     ) {
         builder.addModifiers(renderVisibility(plan.visibility))
+        repeat(plan.type.genericParameterCount) { index ->
+            builder.addTypeVariable(TypeVariableName("T$index"))
+        }
         if (addModifiers) {
             plan.modifiers.forEach { modifier ->
                 when (modifier) {
@@ -5718,6 +5733,7 @@ class KotlinProjectionRenderer {
     private fun renderBoundEventFunctions(
         plan: KotlinTypeProjectionPlan,
         event: WinRtEventDefinition,
+        override: Boolean = false,
     ): List<FunSpec>? {
         val addBinding = plan.instanceMemberBindings.firstOrNull {
             it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
@@ -5730,6 +5746,7 @@ class KotlinProjectionRenderer {
             eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
             addInvocation = renderBoundInvocation(addBinding),
             removeInvocation = renderBoundInvocation(removeBinding),
+            override = override,
         )
     }
 
@@ -5748,6 +5765,7 @@ class KotlinProjectionRenderer {
             eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic },
             addInvocation = renderBoundStaticInvocation(addBinding),
             removeInvocation = renderBoundStaticInvocation(removeBinding),
+            override = false,
         )
     }
 
@@ -5756,22 +5774,55 @@ class KotlinProjectionRenderer {
         eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
         addInvocation: CodeBlock,
         removeInvocation: CodeBlock,
+        override: Boolean,
     ): List<FunSpec> {
         val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
         return listOf(
             FunSpec.builder("add${event.name}")
+                .apply { if (override) addModifiers(KModifier.OVERRIDE) }
                 .addParameter("handler", typeName)
                 .returns(Int::class.asClassName())
                 .addCode("%L\n", addInvocation)
                 .build(),
             FunSpec.builder("remove${event.name}")
+                .apply { if (override) addModifiers(KModifier.OVERRIDE) }
                 .addParameter("token", Int::class.asClassName())
                 .addCode("%L\n", removeInvocation)
                 .build(),
         )
     }
 
-    private fun renderEventFunctions(event: WinRtEventDefinition, abstract: Boolean): List<FunSpec> {
+    private fun renderEventProperty(
+        event: WinRtEventDefinition,
+        eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+        abstract: Boolean,
+        override: Boolean = false,
+    ): PropertySpec {
+        val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
+        val builder = PropertySpec.builder(
+            event.name.replaceFirstChar(Char::lowercase),
+            WINRT_EVENT_CLASS_NAME.parameterizedBy(typeName),
+        )
+        if (abstract) {
+            return builder.addModifiers(KModifier.ABSTRACT).build()
+        }
+        if (override) {
+            builder.addModifiers(KModifier.OVERRIDE)
+        }
+        return builder
+            .delegate(
+                CodeBlock.of(
+                    "lazy(%T.PUBLICATION) { %T(::add%L, ::remove%L) }",
+                    LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                    WINRT_EVENT_CLASS_NAME,
+                    event.name,
+                    event.name,
+                ),
+            )
+            .build()
+    }
+
+    private fun renderEventFunctions(event: WinRtEventDefinition, abstract: Boolean, override: Boolean = false): List<FunSpec> {
         val typeName = resolveTypeName(event.delegateTypeName)
         return listOf(
             FunSpec.builder("add${event.name}")
@@ -5780,6 +5831,9 @@ class KotlinProjectionRenderer {
                     if (abstract) {
                         addModifiers(KModifier.ABSTRACT)
                     } else {
+                        if (override) {
+                            addModifiers(KModifier.OVERRIDE)
+                        }
                         addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
                     }
                 }
@@ -5791,6 +5845,9 @@ class KotlinProjectionRenderer {
                     if (abstract) {
                         addModifiers(KModifier.ABSTRACT)
                     } else {
+                        if (override) {
+                            addModifiers(KModifier.OVERRIDE)
+                        }
                         addCode("error(%S)\n", "Not yet bound to winrt-runtime")
                     }
                 }
@@ -5810,6 +5867,13 @@ class KotlinProjectionRenderer {
                 staticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
                 staticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(it)) }
                 staticEvents.forEach { event ->
+                    addProperty(
+                        renderEventProperty(
+                            event = event,
+                            eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic },
+                            abstract = false,
+                        ),
+                    )
                     (renderBoundStaticEventFunctions(plan, event) ?: renderEventFunctions(event, abstract = false))
                         .forEach(::addFunction)
                 }
@@ -6387,6 +6451,9 @@ class KotlinProjectionRenderer {
 
         mappedTypeByAbiName(trimmed)?.let { mappedType ->
             return mappedType.projectedTypeResolver(emptyList())
+        }
+        if ((trimmed.startsWith("T") || trimmed.startsWith("M")) && trimmed.drop(1).toIntOrNull() != null) {
+            return TypeVariableName(trimmed)
         }
 
         return when (trimmed) {

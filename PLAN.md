@@ -76,6 +76,10 @@
 - [x] Namespace additions from `.cswinrt/src/cswinrt/strings` are now modeled at namespace level, flow through generator support handoffs and Gradle identity metadata, and keep `.cswinrt` `addition_exclude` semantics without treating C# addition files as Kotlin projection inputs.
 - [x] Generator memory: CLI and Gradle generation now stream each rendered Kotlin file to disk instead of retaining the full WindowsAppSDK output set in memory.
 - [x] Generator WinUI constructors: composable `CreateInstance(System.Object, System.Object)` factories now produce public default constructors for generated WinUI classes such as `Button`, `Page`, and `Window`.
+- [x] Generator KMP mappings: `Windows.Foundation.Uri` now maps to common `WinRtUri`, not JVM-only `java.net.URI`.
+- [x] Generator event surface: generated events now expose `WinRtEvent<T>` properties with `add/remove` and `+=/-=` while keeping add/remove methods as the low-level ABI-backed entry.
+- [x] Generator namespace policy: generated code stays under `io.github.kitectlab.winrt.projections`; any shorter WinRT facade is a separate future layer.
+- [x] Generator generic declarations: collection/async generic declarations now emit Kotlin type parameters instead of unresolved `T0/T1` imports.
 
 ## Sample Plan
 

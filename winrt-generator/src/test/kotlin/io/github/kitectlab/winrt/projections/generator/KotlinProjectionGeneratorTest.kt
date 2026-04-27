@@ -745,6 +745,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_ADD_SLOT: Int = 7"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_REMOVE_SLOT: Int = 8"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val name: String"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val changed: WinRtEvent<WidgetHandler>"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): Int"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun removeChanged(token: Int)"))
 
@@ -771,10 +772,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("Metadata.wrap("))
         assertTrue(widgetContents.contains("ActivationFactory.activate()"))
         assertTrue(widgetContents.contains("val count: Int"))
+        assertTrue(widgetContents.contains("val changed: WinRtEvent<WidgetHandler> by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("WinRtEvent(::addChanged, ::removeChanged)"))
         assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int"))
         assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("fun removeChanged(token: Int)"))
         assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("val loaded: WinRtEvent<WidgetHandler> by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("WinRtEvent(::addLoaded, ::removeLoaded)"))
         assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
@@ -2021,7 +2026,8 @@ class KotlinProjectionGeneratorTest {
 
         val file = KotlinProjectionGenerator().generate(model).single()
 
-        assertTrue(file.contents, file.contents.contains("import java.net.URI"))
+        assertFalse(file.contents, file.contents.contains("import java.net.URI"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtUri"))
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtAsyncActionReference"))
         assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtAsyncOperationReference"))
         assertTrue(file.contents, file.contents.contains("public interface IWidgetCollection : Iterable<String>"))
@@ -2029,7 +2035,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents, file.contents.contains("fun asMap(): MutableMap<String, Int>"))
         assertTrue(file.contents, file.contents.contains("fun refreshAsync(): WinRtAsyncActionReference"))
         assertTrue(file.contents, file.contents.contains("fun fetchAsync(): WinRtAsyncOperationReference<String>"))
-        assertTrue(file.contents, file.contents.contains("val sourceUri: URI"))
+        assertTrue(file.contents, file.contents.contains("val sourceUri: WinRtUri"))
         assertTrue(file.contents, file.contents.contains("val selection: Int?"))
     }
 
@@ -2348,9 +2354,20 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val mapContents = KotlinProjectionGenerator()
+        val filesByName = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
+
+        val mapViewInterfaceContents = filesByName.getValue("IMapView.kt").contents
+        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("public interface IMapView<T0, T1>"))
+        assertFalse(mapViewInterfaceContents, mapViewInterfaceContents.contains("import T0"))
+        assertFalse(mapViewInterfaceContents, mapViewInterfaceContents.contains("import T1"))
+
+        val iterableInterfaceContents = filesByName.getValue("IIterable.kt").contents
+        assertTrue(iterableInterfaceContents, iterableInterfaceContents.contains("public interface IIterable<T0>"))
+        assertFalse(iterableInterfaceContents, iterableInterfaceContents.contains("import T0"))
+
+        val mapContents = filesByName
             .getValue("ObjectMap.kt")
             .contents
 

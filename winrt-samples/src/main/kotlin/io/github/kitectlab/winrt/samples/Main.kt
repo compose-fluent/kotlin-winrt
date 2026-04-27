@@ -23,3 +23,6 @@ fun shouldRunNativeSmoke(): Boolean =
 
 fun shouldRunComponentSmoke(): Boolean =
     java.lang.Boolean.getBoolean("kotlin.winrt.samples.runComponentSmoke")
+
+fun shouldRunWinUiSmoke(): Boolean =
+    java.lang.Boolean.getBoolean("kotlin.winrt.samples.runWinUiSmoke")

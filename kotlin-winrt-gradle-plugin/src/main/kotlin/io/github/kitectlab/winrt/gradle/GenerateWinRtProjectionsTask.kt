@@ -89,6 +89,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
+        outputDirectory.get().asFile.deleteRecursively()
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(
