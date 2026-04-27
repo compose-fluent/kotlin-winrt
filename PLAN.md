@@ -60,7 +60,8 @@
 - [x] Queue 16: root `validateWinRtQueue16` now runs validation in order: generator regression -> plugin graph tests -> projection compile/integration -> sample smoke.
 - [x] Queue 17: plugin generated-source lifecycle and projection publication model are finalized; generated sources compile into library artifacts, while identity JSON remains the only separate WinRT metadata artifact.
 - [x] Queue 18: generator single-file risk is reduced by splitting the former monolithic `KotlinProjectionGenerator.kt` into model/mapping, planner, renderer, orchestration, and support-renderer files without changing projection behavior.
-- [ ] Queue 19 正在做: continue generator structure cleanup by splitting the remaining large renderer along `.cswinrt/src/cswinrt/code_writers.h` writer responsibilities before adding new generator features.
+- [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
+- [ ] Queue 20 正在做: continue generator structure cleanup by splitting the remaining large ABI writer into marshaling, array/reference, async, delegate, and vtable invocation units before adding new ABI-heavy generator features.
 
 ## Generator Follow-Through
 
@@ -83,7 +84,8 @@
 - [x] Generator namespace policy: generated code stays under `io.github.kitectlab.winrt.projections`; any shorter WinRT facade is a separate future layer.
 - [x] Generator generic declarations: collection/async generic declarations now emit Kotlin type parameters instead of unresolved `T0/T1` imports.
 - [x] Generator structure 19.1: the former 7000-line generator file is split into `KotlinProjectionModel`, `KotlinProjectionPlanner`, `KotlinProjectionRenderer`, `KotlinProjectionGenerator`, and `KotlinProjectionSupportRenderer` ownership files.
-- [ ] Generator structure 19.2 正在做: split `KotlinProjectionRenderer` into focused declaration/member/ABI/support writer units while preserving current behavior and `.cswinrt` writer responsibility mapping.
+- [x] Generator structure 19.2: split `KotlinProjectionRenderer` into focused collection, member, ABI, event/companion, and type-resolver writer files while preserving current behavior and `.cswinrt` writer responsibility mapping.
+- [ ] Generator structure 20.1 正在做: split `KotlinProjectionAbiRenderer` into focused marshaler, array/reference, async, delegate, and invocation writers; keep ABI classification centralized and avoid duplicated branch tables.
 
 ## Sample Plan
 
