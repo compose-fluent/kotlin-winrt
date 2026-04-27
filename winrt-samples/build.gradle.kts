@@ -108,7 +108,29 @@ val verifyWinRtSampleRuntimeAssets by tasks.registering {
     }
 }
 
+val verifyWinRtSampleDistribution by tasks.registering {
+    group = "verification"
+    description = "Verifies the sample application distribution contains staged WinRT runtime assets."
+    val distributionRuntimeAssetsDir = layout.buildDirectory.dir("install/${project.name}/kotlin-winrt-runtime-assets")
+    dependsOn(tasks.named("installDist"))
+    inputs.dir(distributionRuntimeAssetsDir)
+
+    doLast {
+        check(distributionRuntimeAssetsDir.get().asFile.resolve("SimpleMathComponent.dll").isFile) {
+            "Expected SimpleMathComponent.dll to be included under kotlin-winrt-runtime-assets in the application distribution."
+        }
+    }
+}
+
+val verifyWinRtSampleRun by tasks.registering {
+    group = "verification"
+    description = "Runs the sample application bootstrap without opt-in native WinRT smoke tests."
+    dependsOn(tasks.named("run"))
+}
+
 tasks.named("check") {
     dependsOn(verifyWinRtSampleIdentity)
     dependsOn(verifyWinRtSampleRuntimeAssets)
+    dependsOn(verifyWinRtSampleDistribution)
+    dependsOn(verifyWinRtSampleRun)
 }

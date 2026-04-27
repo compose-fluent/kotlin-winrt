@@ -92,7 +92,7 @@
 - [x] Sample 7: added real `.cswinrt/src/Samples/WinUIDesktopSample` smoke surface using generated `Microsoft.UI.Xaml` projections: `Application.Start`, `Window.Activate`, `Button.Click`, `MainPage`, and `UIElement.TappedEvent` no longer use sample-local WinUI fakes.
 - [x] Sample 7.1: WindowsAppSDK projection generation now completes from the plugin path with `.cswinrt/src/Projections/WinAppSDK` package/filter shape; remaining Sample 7 work is real generated WinUI API usage, not sample-local fakes.
 - [x] Sample 8: WinUI runtime/resource packaging now follows WindowsAppSDK package staging at the application model and distribution layer, including `resources.pri` aliasing without staging native build headers.
-- [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
+- [x] Sample 9: sample validation now checks `installDist` application layout, staged `kotlin-winrt-runtime-assets`, and default `run` bootstrap without opt-in native smoke.
 - [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
 - [ ] Sample 11: implement authoring samples only after `winrt-authoring` is complete; then mirror `.cswinrt/src/Samples/AuthoringDemo` and background-task hosting from authoring-owned contracts.
 - [ ] Sample 12: implement embedded/self-contained samples only after embedded projection support exists; then mirror `.cswinrt/src/Samples/TestEmbedded`.
