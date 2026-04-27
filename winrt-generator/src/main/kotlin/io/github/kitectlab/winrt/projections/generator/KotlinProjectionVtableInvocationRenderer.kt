@@ -209,7 +209,16 @@ internal fun KotlinProjectionRenderer.renderComVtableInvocation(
         }
         builder.add(")")
     } else {
-        error("Missing direct COM vtable fast path for ABI carrier signature ${abiArguments.map { it.kind }}.")
+        builder.add(
+            "%T.invokeGenericArgs(instance = %L.pointer, slot = %L",
+            COM_VTABLE_INVOKER_CLASS_NAME,
+            invokeTargetExpression,
+            slotExpression,
+        )
+        abiArguments.forEach { argument ->
+            builder.add(", %L", argument.expression)
+        }
+        builder.add(")")
     }
     return builder.build()
 }
