@@ -27,6 +27,12 @@ actual object ComVtableInvoker {
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
+        arg0: Short,
+    ): Int = TODO()
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
         arg0: Int,
     ): Int = TODO()
 
@@ -46,6 +52,12 @@ actual object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         arg0: Double,
+    ): Int = TODO()
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: Float,
     ): Int = TODO()
 
     actual fun invokeArgs(
@@ -101,6 +113,14 @@ actual object ComVtableInvoker {
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
+        arg0: Byte,
+        arg1: Short,
+        arg2: Float,
+    ): Int = TODO()
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
         arg0: RawAddress,
         arg1: RawAddress,
         arg2: RawAddress,
@@ -111,6 +131,14 @@ actual object ComVtableInvoker {
         slot: Int,
         arg0: Int,
         arg1: RawAddress,
+        arg2: RawAddress,
+    ): Int = TODO()
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: RawAddress,
+        arg1: Int,
         arg2: RawAddress,
     ): Int = TODO()
 

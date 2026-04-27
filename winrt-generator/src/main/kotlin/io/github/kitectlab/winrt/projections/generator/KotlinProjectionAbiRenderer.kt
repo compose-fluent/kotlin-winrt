@@ -172,6 +172,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, abiLocalName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
             scopeOpeners = listOf(
                 CodeBlock.of(
                     "%T.%L(%L, %T(%S)).use { %L ->",
@@ -191,6 +192,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L.handle", abiLocalName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
             scopeOpeners = listOf(
                 CodeBlock.of("%T.create(%L).use { %L ->", HSTRING_CLASS_NAME, parameterName, abiLocalName),
             ),
@@ -199,73 +201,85 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
-            abiArgumentExpression = CodeBlock.of("if (%L) 1 else 0", parameterName),
+            abiArgumentExpression = CodeBlock.of("if (%L) 1.toByte() else 0.toByte()", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int8,
         )
         KotlinProjectionAbiValueKind.Int8 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int8,
         )
         KotlinProjectionAbiValueKind.UInt8 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L.toByte()", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int8,
         )
         KotlinProjectionAbiValueKind.Int16 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int16,
         )
         KotlinProjectionAbiValueKind.UInt16 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L.toShort()", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int16,
         )
         KotlinProjectionAbiValueKind.Double -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Double,
         )
         KotlinProjectionAbiValueKind.UInt32 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L.toInt()", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         )
         KotlinProjectionAbiValueKind.Int32 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         )
         KotlinProjectionAbiValueKind.Int64 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
         )
         KotlinProjectionAbiValueKind.UInt64 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L.toLong()", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
         )
         KotlinProjectionAbiValueKind.Float -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Float,
         )
         KotlinProjectionAbiValueKind.Char16 -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int16,
         )
         KotlinProjectionAbiValueKind.GuidValue -> {
             val scopeName = "__${parameterName}GuidScope"
@@ -275,6 +289,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
                 typeBinding = parameterBinding.typeBinding,
                 isReturn = false,
                 abiArgumentExpression = CodeBlock.of("%L", abiLocalName),
+                abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
                 scopeOpeners = listOf(
                     CodeBlock.of(
                         "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %T.BYTE_SIZE.toLong())\n%L.writeTo(%L)",
@@ -309,12 +324,14 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         )
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         )
         KotlinProjectionAbiValueKind.Object,
         KotlinProjectionAbiValueKind.UnknownReference,
@@ -323,6 +340,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         )
         else -> null
     }
@@ -536,6 +554,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         typeBinding = returnBinding,
         isReturn = true,
         abiArgumentExpression = CodeBlock.of("__resultOut"),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         resultAllocation = resultOutLayout,
         readbackStatement = readbackStatement,
     )

@@ -112,6 +112,7 @@ internal fun KotlinProjectionRenderer.enumParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L.abiValue%L", parameterBinding.name, abiIntegralArgumentConversionSuffix(integralType)),
+        abiArgumentKind = abiArgumentKindForIntegralType(integralType),
     )
 }
 
@@ -130,6 +131,7 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L.pointer", abiReferenceName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(
                 "%T.createDelegate(iid = %L, parameterKinds = %L, returnKind = %L) { __args ->\n%L(%L)\n}.use { %L ->",
@@ -145,6 +147,18 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
         ),
     )
 }
+
+internal fun abiArgumentKindForIntegralType(type: WinRtIntegralType): KotlinProjectionComArgumentKind =
+    when (type) {
+        WinRtIntegralType.Int8,
+        WinRtIntegralType.UInt8 -> KotlinProjectionComArgumentKind.Int8
+        WinRtIntegralType.Int16,
+        WinRtIntegralType.UInt16 -> KotlinProjectionComArgumentKind.Int16
+        WinRtIntegralType.Int32,
+        WinRtIntegralType.UInt32 -> KotlinProjectionComArgumentKind.Int32
+        WinRtIntegralType.Int64,
+        WinRtIntegralType.UInt64 -> KotlinProjectionComArgumentKind.Int64
+    }
 
 internal fun KotlinProjectionRenderer.outboundDelegateInvokeShape(
     typeBinding: KotlinProjectionAbiTypeBinding,

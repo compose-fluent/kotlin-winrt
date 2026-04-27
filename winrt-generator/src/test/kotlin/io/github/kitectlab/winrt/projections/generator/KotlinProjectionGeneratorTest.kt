@@ -2030,7 +2030,7 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("fun setReady(ready: Boolean)"))
-        assertTrue(widgetContents.contains("if (ready) 1 else 0"))
+        assertTrue(widgetContents.contains("if (ready) 1.toByte() else 0.toByte()"))
         assertTrue(widgetContents.contains("Metadata.SETREADY_SLOT"))
         assertTrue(widgetContents.contains("fun createNumberValue("))
         assertTrue(widgetContents.contains("Double): WidgetValue"))
@@ -2380,6 +2380,111 @@ class KotlinProjectionGeneratorTest {
         assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(type, __typeAbi)"))
         assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__typeAbi)"))
         assertFalse(classContents, classContents.contains("TypeName.Metadata"))
+    }
+
+    @Test
+    fun generator_covers_short_abi_argument_lists_without_sample_specific_overloads() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.FastAbi",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IShape",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setEnabled",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("enabled", "Boolean")),
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setOffset",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("offset", "Short")),
+                                    methodRowId = 7,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setOpacity",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("opacity", "Float")),
+                                    methodRowId = 8,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "configure",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("enabled", "Boolean"),
+                                        WinRtParameterDefinition("offset", "Short"),
+                                        WinRtParameterDefinition("opacity", "Float"),
+                                    ),
+                                    methodRowId = 9,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "Shape",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.FastAbi.IShape",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setEnabled",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("enabled", "Boolean")),
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setOffset",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("offset", "Short")),
+                                    methodRowId = 7,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setOpacity",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("opacity", "Float")),
+                                    methodRowId = 8,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "configure",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("enabled", "Boolean"),
+                                        WinRtParameterDefinition("offset", "Short"),
+                                        WinRtParameterDefinition("opacity", "Float"),
+                                    ),
+                                    methodRowId = 9,
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.FastAbi.IShape",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val shapeContents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("/Shape.kt") }
+            .contents
+
+        assertTrue(shapeContents, shapeContents.contains("arg0 = if (enabled) 1.toByte() else 0.toByte()"))
+        assertTrue(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
+        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT"))
+        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT"))
+        assertTrue(shapeContents, shapeContents.contains("Metadata.CONFIGURE_SLOT"))
+        assertTrue(shapeContents, shapeContents.contains("arg0 = offset"))
+        assertTrue(shapeContents, shapeContents.contains("arg0 = opacity"))
+        assertTrue(shapeContents, shapeContents.contains("arg1 = offset"))
+        assertFalse(shapeContents, shapeContents.contains("invokeGenericArgs"))
     }
 
     @Test

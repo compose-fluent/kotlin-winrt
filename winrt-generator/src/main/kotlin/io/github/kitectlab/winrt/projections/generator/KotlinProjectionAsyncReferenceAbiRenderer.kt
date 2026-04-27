@@ -213,6 +213,7 @@ internal fun KotlinProjectionRenderer.referenceParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L?.abi ?: %T.nullPointer", abiLocalName, PLATFORM_ABI_CLASS_NAME),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of("%T.createMarshaler(%L, %L).use { %L ->", projectionClass, parameterName, interfaceId, abiLocalName),
         ),
@@ -603,6 +604,7 @@ internal fun KotlinProjectionRenderer.bindableCollectionParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L.abi", abiLocalName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of("%T.createMarshaler(%L)!!.use { %L ->", projectionClass, parameterName, abiLocalName),
         ),
@@ -641,6 +643,7 @@ internal fun KotlinProjectionRenderer.mappedCollectionParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L.abi", abiLocalName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.builder()
                 .add("%T.createMarshaler(%L", projectionClass, parameterName)

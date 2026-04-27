@@ -96,6 +96,7 @@
 - [x] Generator structure 22.5: removed geometry/numerics WinRT structs from the generator public mapped-type table so `Point`, `Size`, `Rect`, `Vector*`, `Matrix*`, `Plane`, and `Quaternion` are emitted from metadata as projection structs instead of runtime public model aliases.
 - [x] Generator/runtime 22.6: moved geometry/numerics `IPropertyValue`/`IReference` support behind generated struct registration; runtime no longer pre-registers `Point`, `Size`, `Rect`, `Vector*`, `Matrix*`, `Plane`, or `Quaternion` as built-in public value-boxing types.
 - [x] Generator/runtime 22.7: mapped `Windows.UI.Xaml.Interop.TypeName` to nullable `KClass<*>` through the runtime system marshaler facade, including ABI HSTRING cleanup; verified metadata attributes and XAML helper-only entries remain metadata-owned, not generator-local type tables.
+- [x] Generator/runtime fast ABI 22.8: generator now tracks ABI carrier kinds for vtable arguments, converts Kotlin aliases such as `Boolean` to their ABI carrier before calling `invokeArgs`, rejects missing fast-path signatures instead of silently using generic fallback, and adds JVM carrier fast paths for `Int16`, `Float`, `Pointer,Int32,Pointer`, and `Int8,Int16,Float`.
 
 ## Sample Plan
 

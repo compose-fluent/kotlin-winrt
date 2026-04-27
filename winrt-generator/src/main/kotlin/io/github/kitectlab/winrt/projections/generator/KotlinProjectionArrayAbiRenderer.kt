@@ -124,7 +124,9 @@ internal fun KotlinProjectionRenderer.arrayReturnMarshaler(
         typeBinding = returnBinding,
         isReturn = true,
         abiArgumentExpression = CodeBlock.of("__resultLengthOut"),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         extraAbiArgumentExpressions = listOf(CodeBlock.of("__resultDataOut")),
+        extraAbiArgumentKinds = listOf(KotlinProjectionComArgumentKind.Pointer),
         resultLocalDeclarations = CodeBlock.of(
             "val __resultLengthOut = %T.allocateInt32Slot(__scope)\nval __resultDataOut = %T.allocatePointerSlot(__scope)\n",
             PLATFORM_ABI_CLASS_NAME,
@@ -154,7 +156,9 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayReturnMarshaler(
         typeBinding = returnBinding,
         isReturn = true,
         abiArgumentExpression = CodeBlock.of("__resultLengthOut"),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         extraAbiArgumentExpressions = listOf(CodeBlock.of("__resultDataOut")),
+        extraAbiArgumentKinds = listOf(KotlinProjectionComArgumentKind.Pointer),
         resultLocalDeclarations = CodeBlock.of(
             "val __resultLengthOut = %T.allocateInt32Slot(__scope)\nval __resultDataOut = %T.allocatePointerSlot(__scope)\n",
             PLATFORM_ABI_CLASS_NAME,
@@ -384,6 +388,7 @@ internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", abiLocalName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
             scopeOpeners = listOf(
                 CodeBlock.of(
                     "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %LL)\n%T.%L(%L, %L)",
@@ -413,6 +418,7 @@ internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L", abiLocalName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(
                 "%T.confinedScope().use { %L ->\nval %L = %T.allocateBytes(%L, %T.Metadata.layout.sizeBytes)\n%T.Metadata.copyTo(%L, %L)",
@@ -449,7 +455,9 @@ internal fun KotlinProjectionRenderer.arrayParameterMarshaler(
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
             abiArgumentExpression = CodeBlock.of("%L", lengthOutName),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
             extraAbiArgumentExpressions = listOf(CodeBlock.of("%L", dataOutName)),
+            extraAbiArgumentKinds = listOf(KotlinProjectionComArgumentKind.Pointer),
             scopeOpeners = listOf(
                 CodeBlock.of(
                     "%T.confinedScope().use { __${parameterName}OutScope ->\nval %L = %T.allocateInt32Slot(__${parameterName}OutScope)\nval %L = %T.allocatePointerSlot(__${parameterName}OutScope)",
@@ -480,7 +488,9 @@ internal fun KotlinProjectionRenderer.arrayParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L.size", parameterName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         extraAbiArgumentExpressions = listOf(CodeBlock.of("%L", dataName)),
+        extraAbiArgumentKinds = listOf(KotlinProjectionComArgumentKind.Pointer),
         postCallStatements = if (category == WinRtMetadataParameterCategory.FillArray && elementRead != null) {
             listOf(
                 CodeBlock.of(
@@ -536,7 +546,9 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayParameterMarshaler(
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = CodeBlock.of("%L?.length ?: 0", arrayName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         extraAbiArgumentExpressions = listOf(CodeBlock.of("%L?.data ?: %T.nullPointer", arrayName, PLATFORM_ABI_CLASS_NAME)),
+        extraAbiArgumentKinds = listOf(KotlinProjectionComArgumentKind.Pointer),
         postCallStatements = if (category == WinRtMetadataParameterCategory.FillArray) {
             listOf(
                 CodeBlock.of(

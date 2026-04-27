@@ -728,7 +728,9 @@ internal data class KotlinProjectionAbiMarshalerPlan(
     val typeBinding: KotlinProjectionAbiTypeBinding,
     val isReturn: Boolean,
     val abiArgumentExpression: CodeBlock,
+    val abiArgumentKind: KotlinProjectionComArgumentKind? = null,
     val extraAbiArgumentExpressions: List<CodeBlock> = emptyList(),
+    val extraAbiArgumentKinds: List<KotlinProjectionComArgumentKind> = emptyList(),
     val scopeOpeners: List<CodeBlock> = emptyList(),
     val postCallStatements: List<CodeBlock> = emptyList(),
     val finallyStatements: List<CodeBlock> = emptyList(),
@@ -742,6 +744,16 @@ internal data class KotlinProjectionAbiCallPlan(
     val returnMarshaler: KotlinProjectionAbiMarshalerPlan? = null,
     val descriptor: WinRtAbiMarshalerPlanDescriptor? = null,
 )
+
+internal enum class KotlinProjectionComArgumentKind {
+    Pointer,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Float,
+    Double,
+}
 
 data class KotlinProjectionFile(
     val relativePath: String,

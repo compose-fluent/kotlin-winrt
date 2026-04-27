@@ -135,9 +135,17 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
         code.indent()
     }
     val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
-        listOf(marshaler.abiArgumentExpression) + marshaler.extraAbiArgumentExpressions
+        listOf(
+            KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind),
+        ) + marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
+            KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
+        }
     } + if (resultMarshaler != null) {
-        listOf(resultMarshaler.abiArgumentExpression) + resultMarshaler.extraAbiArgumentExpressions
+        listOf(
+            KotlinProjectionComArgument(resultMarshaler.abiArgumentExpression, resultMarshaler.abiArgumentKind),
+        ) + resultMarshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
+            KotlinProjectionComArgument(expression, resultMarshaler.extraAbiArgumentKinds.getOrNull(index))
+        }
     } else {
         emptyList()
     }
@@ -179,7 +187,7 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
 internal fun KotlinProjectionRenderer.renderComVtableInvocation(
     invokeTargetExpression: String,
     slotExpression: CodeBlock,
-    abiArguments: List<CodeBlock>,
+    abiArguments: List<KotlinProjectionComArgument>,
 ): CodeBlock {
     val builder = CodeBlock.builder()
     if (abiArguments.isEmpty()) {
@@ -189,7 +197,7 @@ internal fun KotlinProjectionRenderer.renderComVtableInvocation(
             invokeTargetExpression,
             slotExpression,
         )
-    } else if (abiArguments.size <= 6) {
+    } else if (hasDirectVtableInvokeOverload(abiArguments.map { it.kind })) {
         builder.add(
             "%T.invokeArgs(instance = %L.pointer, slot = %L",
             COM_VTABLE_INVOKER_CLASS_NAME,
@@ -197,20 +205,53 @@ internal fun KotlinProjectionRenderer.renderComVtableInvocation(
             slotExpression,
         )
         abiArguments.forEachIndexed { index, argument ->
-            builder.add(", arg%L = %L", index, argument)
+            builder.add(", arg%L = %L", index, argument.expression)
         }
         builder.add(")")
     } else {
-        builder.add(
-            "%T.invokeGenericArgs(instance = %L.pointer, slot = %L",
-            COM_VTABLE_INVOKER_CLASS_NAME,
-            invokeTargetExpression,
-            slotExpression,
-        )
-        abiArguments.forEach { argument ->
-            builder.add(", %L", argument)
-        }
-        builder.add(")")
+        error("Missing direct COM vtable fast path for ABI carrier signature ${abiArguments.map { it.kind }}.")
     }
     return builder.build()
 }
+
+internal data class KotlinProjectionComArgument(
+    val expression: CodeBlock,
+    val kind: KotlinProjectionComArgumentKind?,
+)
+
+internal fun hasDirectVtableInvokeOverload(kinds: List<KotlinProjectionComArgumentKind?>): Boolean =
+    kinds.all { it != null } && DIRECT_VTABLE_INVOKE_OVERLOADS.contains(kinds)
+
+private val P = KotlinProjectionComArgumentKind.Pointer
+private val I8 = KotlinProjectionComArgumentKind.Int8
+private val I16 = KotlinProjectionComArgumentKind.Int16
+private val I32 = KotlinProjectionComArgumentKind.Int32
+private val I64 = KotlinProjectionComArgumentKind.Int64
+private val F = KotlinProjectionComArgumentKind.Float
+private val D = KotlinProjectionComArgumentKind.Double
+
+private val DIRECT_VTABLE_INVOKE_OVERLOADS: Set<List<KotlinProjectionComArgumentKind>> = setOf(
+    listOf(P),
+    listOf(I8),
+    listOf(I16),
+    listOf(I32),
+    listOf(I64),
+    listOf(F),
+    listOf(D),
+    listOf(P, P),
+    listOf(I8, P),
+    listOf(I32, P),
+    listOf(I32, I32),
+    listOf(D, P),
+    listOf(D, D, P),
+    listOf(I8, I16, F),
+    listOf(P, P, P),
+    listOf(I32, P, P),
+    listOf(P, I32, P),
+    listOf(I32, I32, P, P),
+    listOf(P, P, I32, P),
+    listOf(P, P, P, P),
+    listOf(P, P, P, I32, P),
+    listOf(P, P, I32, P, I32, P),
+    listOf(P, P, P, I32, P, I32),
+)
