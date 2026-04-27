@@ -224,7 +224,13 @@ internal object ValueBoxingInterop {
             writeTransferredValue = { value, destination -> PlatformAbi.writeInt32(destination, ExceptionProjection.toAbi(value)) },
         )
 
-    private val adapters: List<WinRtValueAdapter<*>> =
+    private val dynamicAdaptersByClass = ConcurrentCacheMap<KClass<*>, WinRtValueAdapter<*>>()
+    private val dynamicAdaptersByNullableIid = ConcurrentCacheMap<Guid, WinRtValueAdapter<*>>()
+    private val dynamicAdaptersByReferenceArrayIid = ConcurrentCacheMap<Guid, WinRtValueAdapter<*>>()
+    private val dynamicAdaptersByPropertyType = ConcurrentCacheMap<PropertyType, WinRtValueAdapter<*>>()
+    private val dynamicAdaptersByPropertyTypeArray = ConcurrentCacheMap<PropertyType, WinRtValueAdapter<*>>()
+
+    private val builtInAdapters: List<WinRtValueAdapter<*>> =
         listOf<WinRtValueAdapter<*>>(
             directValueAdapter(
                 projectedClass = Byte::class,
@@ -413,141 +419,47 @@ internal object ValueBoxingInterop {
                 readOwnedValue = { source -> TimeSpanProjection.fromAbi(PlatformAbi.readInt64(source)) },
                 writeTransferredValue = { value, destination -> PlatformAbi.writeInt64(destination, TimeSpanProjection.toAbi(value)) },
             ),
-            directValueAdapter(
-                projectedClass = Point::class,
-                nullableInterfaceId = IID.IReferenceOfPoint,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfPoint,
-                propertyType = PropertyType.Point,
-                propertyTypeArray = PropertyType.PointArray,
-                abiLayout = Point.Metadata.layout.abiLayout,
-                exactUnbox = { it as Point },
-                readOwnedValue = Point.Metadata::fromAbi,
-                writeTransferredValue = Point.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Size::class,
-                nullableInterfaceId = IID.IReferenceOfSize,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfSize,
-                propertyType = PropertyType.Size,
-                propertyTypeArray = PropertyType.SizeArray,
-                abiLayout = Size.Metadata.layout.abiLayout,
-                exactUnbox = { it as Size },
-                readOwnedValue = Size.Metadata::fromAbi,
-                writeTransferredValue = Size.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Rect::class,
-                nullableInterfaceId = IID.IReferenceOfRect,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfRect,
-                propertyType = PropertyType.Rect,
-                propertyTypeArray = PropertyType.RectArray,
-                abiLayout = Rect.Metadata.layout.abiLayout,
-                exactUnbox = { it as Rect },
-                readOwnedValue = Rect.Metadata::fromAbi,
-                writeTransferredValue = Rect.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Matrix3x2::class,
-                nullableInterfaceId = IID.IReferenceMatrix3x2,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfMatrix3x2,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Matrix3x2.Metadata.layout.abiLayout,
-                exactUnbox = { it as Matrix3x2 },
-                readOwnedValue = Matrix3x2.Metadata::fromAbi,
-                writeTransferredValue = Matrix3x2.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Matrix4x4::class,
-                nullableInterfaceId = IID.IReferenceMatrix4x4,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfMatrix4x4,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Matrix4x4.Metadata.layout.abiLayout,
-                exactUnbox = { it as Matrix4x4 },
-                readOwnedValue = Matrix4x4.Metadata::fromAbi,
-                writeTransferredValue = Matrix4x4.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Plane::class,
-                nullableInterfaceId = IID.IReferencePlane,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfPlane,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Plane.Metadata.layout.abiLayout,
-                exactUnbox = { it as Plane },
-                readOwnedValue = Plane.Metadata::fromAbi,
-                writeTransferredValue = Plane.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Quaternion::class,
-                nullableInterfaceId = IID.IReferenceQuaternion,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfQuaternion,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Quaternion.Metadata.layout.abiLayout,
-                exactUnbox = { it as Quaternion },
-                readOwnedValue = Quaternion.Metadata::fromAbi,
-                writeTransferredValue = Quaternion.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Vector2::class,
-                nullableInterfaceId = IID.IReferenceVector2,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfVector2,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Vector2.Metadata.layout.abiLayout,
-                exactUnbox = { it as Vector2 },
-                readOwnedValue = Vector2.Metadata::fromAbi,
-                writeTransferredValue = Vector2.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Vector3::class,
-                nullableInterfaceId = IID.IReferenceVector3,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfVector3,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Vector3.Metadata.layout.abiLayout,
-                exactUnbox = { it as Vector3 },
-                readOwnedValue = Vector3.Metadata::fromAbi,
-                writeTransferredValue = Vector3.Metadata::copyTo,
-            ),
-            directValueAdapter(
-                projectedClass = Vector4::class,
-                nullableInterfaceId = IID.IReferenceVector4,
-                referenceArrayInterfaceId = IID.IReferenceArrayOfVector4,
-                propertyType = null,
-                propertyTypeArray = null,
-                abiLayout = Vector4.Metadata.layout.abiLayout,
-                exactUnbox = { it as Vector4 },
-                readOwnedValue = Vector4.Metadata::fromAbi,
-                writeTransferredValue = Vector4.Metadata::copyTo,
-            ),
             classAdapter,
             exceptionAdapter,
             objectAdapter,
         )
 
-    private val adaptersByNullableIid =
-        adapters.mapNotNull { adapter -> adapter.nullableInterfaceId?.let { it to adapter } }.toMap()
-    private val adaptersByReferenceArrayIid =
-        adapters.mapNotNull { adapter -> adapter.referenceArrayInterfaceId?.let { it to adapter } }.toMap()
-    private val adaptersByPropertyType =
-        adapters.mapNotNull { adapter -> adapter.propertyType?.let { it to adapter } }.toMap()
-    private val adaptersByPropertyTypeArray =
-        adapters.mapNotNull { adapter -> adapter.propertyTypeArray?.let { it to adapter } }.toMap()
+    private val builtInAdaptersByNullableIid =
+        builtInAdapters.mapNotNull { adapter -> adapter.nullableInterfaceId?.let { it to adapter } }.toMap()
+    private val builtInAdaptersByReferenceArrayIid =
+        builtInAdapters.mapNotNull { adapter -> adapter.referenceArrayInterfaceId?.let { it to adapter } }.toMap()
+    private val builtInAdaptersByPropertyType =
+        builtInAdapters.mapNotNull { adapter -> adapter.propertyType?.let { it to adapter } }.toMap()
+    private val builtInAdaptersByPropertyTypeArray =
+        builtInAdapters.mapNotNull { adapter -> adapter.propertyTypeArray?.let { it to adapter } }.toMap()
+
+    internal fun registerAdapter(adapter: WinRtValueAdapter<*>) {
+        dynamicAdaptersByClass[adapter.projectedClass] = adapter
+        adapter.nullableInterfaceId?.let { dynamicAdaptersByNullableIid[it] = adapter }
+        adapter.referenceArrayInterfaceId?.let { dynamicAdaptersByReferenceArrayIid[it] = adapter }
+        adapter.propertyType?.let { dynamicAdaptersByPropertyType[it] = adapter }
+        adapter.propertyTypeArray?.let { dynamicAdaptersByPropertyTypeArray[it] = adapter }
+    }
+
+    internal fun clearDynamicAdaptersForTests() {
+        dynamicAdaptersByClass.clear()
+        dynamicAdaptersByNullableIid.clear()
+        dynamicAdaptersByReferenceArrayIid.clear()
+        dynamicAdaptersByPropertyType.clear()
+        dynamicAdaptersByPropertyTypeArray.clear()
+    }
 
     internal fun adapterForReferenceInterface(interfaceId: Guid): WinRtValueAdapter<*>? =
-        adaptersByNullableIid[interfaceId]
+        dynamicAdaptersByNullableIid[interfaceId] ?: builtInAdaptersByNullableIid[interfaceId]
 
     internal fun adapterForReferenceArrayInterface(interfaceId: Guid): WinRtValueAdapter<*>? =
-        adaptersByReferenceArrayIid[interfaceId]
+        dynamicAdaptersByReferenceArrayIid[interfaceId] ?: builtInAdaptersByReferenceArrayIid[interfaceId]
 
     internal fun adapterForPropertyType(propertyType: PropertyType): WinRtValueAdapter<*>? =
-        adaptersByPropertyType[propertyType]
+        dynamicAdaptersByPropertyType[propertyType] ?: builtInAdaptersByPropertyType[propertyType]
 
     internal fun adapterForPropertyTypeArray(propertyType: PropertyType): WinRtValueAdapter<*>? =
-        adaptersByPropertyTypeArray[propertyType]
+        dynamicAdaptersByPropertyTypeArray[propertyType] ?: builtInAdaptersByPropertyTypeArray[propertyType]
 
     internal fun inspectableArrayAdapter(): WinRtValueAdapter<Any> = objectAdapter
 
@@ -557,7 +469,7 @@ internal object ValueBoxingInterop {
             PlatformAbi.writeInt32(destination, enumDescriptor.toAbiBits(value))
             return
         }
-        val adapter = adaptersByPropertyType[expectedType]
+        val adapter = adapterForPropertyType(expectedType)
             ?: throw WinRtInvalidCastException("Unsupported property value getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         adapter.writeCoercedPropertyValue(value, destination)
     }
@@ -573,7 +485,7 @@ internal object ValueBoxingInterop {
         val adapter =
             when (expectedType) {
                 PropertyType.InspectableArray -> objectAdapter
-                else -> adaptersByPropertyTypeArray[expectedType]
+                else -> adapterForPropertyTypeArray(expectedType)
             } ?: throw WinRtInvalidCastException("Unsupported property value array getter: $expectedType", HResult(TYPE_E_TYPEMISMATCH))
         val coerced = boxedElements.map { element ->
             if (element == null) {

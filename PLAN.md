@@ -63,7 +63,7 @@
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
 - [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
-- [ ] Queue 22 正在做: close remaining `.cswinrt/src/cswinrt/helpers.h` mapped-type gaps through the single generator mapping table; geometry/numerics WinRT structs now stay generated projection structs because KMP has no .NET-style public value-type mapping.
+- [ ] Queue 22 正在做: close remaining `.cswinrt/src/cswinrt/helpers.h` mapped-type gaps through the single generator mapping table; geometry/numerics WinRT structs are generated projection structs and register their own boxing metadata.
 
 ## Generator Follow-Through
 
@@ -94,7 +94,8 @@
 - [x] Generator structure 22.3: added centralized mapped-ABI support for custom struct helper mappings and moved `DateTime`/`TimeSpan` to KMP `kotlin.time.Instant`/`Duration`; generated ABI code now calls runtime marshal facades for `DateTime`, `TimeSpan`, and `HResult` instead of generated struct `Metadata`.
 - [x] Generator structure 22.4: extended mapped-ABI ownership to `Uri` and runtime-backed XAML interface/runtime-class mappings; generated ABI code now uses the shared object marshal facade instead of requiring mapped public types to implement `IWinRTObject`.
 - [x] Generator structure 22.5: removed geometry/numerics WinRT structs from the generator public mapped-type table so `Point`, `Size`, `Rect`, `Vector*`, `Matrix*`, `Plane`, and `Quaternion` are emitted from metadata as projection structs instead of runtime public model aliases.
-- [ ] Generator/runtime 22.6 正在做: migrate `IPropertyValue`/`IReference` geometry and numerics boxing away from runtime public model types toward generated struct ownership, then retire the transitional runtime geometry/numerics registrations.
+- [x] Generator/runtime 22.6: moved geometry/numerics `IPropertyValue`/`IReference` support behind generated struct registration; runtime no longer pre-registers `Point`, `Size`, `Rect`, `Vector*`, `Matrix*`, `Plane`, or `Quaternion` as built-in public value-boxing types.
+- [ ] Generator/runtime 22.7 正在做: finish remaining mapped-type cleanup for `TypeName`, metadata attributes, and XAML helper-only mappings without reintroducing generator-local type/category tables.
 
 ## Sample Plan
 

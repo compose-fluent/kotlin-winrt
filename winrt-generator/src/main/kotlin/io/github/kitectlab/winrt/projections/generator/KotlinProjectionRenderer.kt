@@ -445,6 +445,7 @@ class KotlinProjectionRenderer {
                     )
                     .build(),
             )
+            .addInitializerBlock(CodeBlock.of("Metadata.register()\n"))
             .apply { applyCommonTypeShape(this, plan, addModifiers = false) }
             .apply {
                 plan.type.fields
@@ -481,6 +482,23 @@ class KotlinProjectionRenderer {
                                 }
                             }
                             .add(")")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("register")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addCode(
+                        CodeBlock.builder()
+                            .addStatement(
+                                "%T.registerStruct(%T::class, %S, %S, this, emptyArray<%T>()::class)",
+                                WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME,
+                                resolveTypeName(plan.type.qualifiedName),
+                                plan.type.qualifiedName,
+                                nativeStructGuidSignature(plan) ?: error("Struct ${plan.type.qualifiedName} is missing a WinRT GUID signature."),
+                                resolveTypeName(plan.type.qualifiedName),
+                            )
                             .build(),
                     )
                     .build(),
@@ -523,6 +541,75 @@ class KotlinProjectionRenderer {
             )
             .build()
     }
+
+    internal fun nativeStructGuidSignature(plan: KotlinTypeProjectionPlan): String? =
+        nativeStructGuidSignature(
+            typeName = plan.type.qualifiedName,
+            currentNamespace = plan.type.namespace,
+            typesByQualifiedName = plan.typesByQualifiedName,
+            visiting = emptySet(),
+        )
+
+    private fun nativeStructGuidSignature(
+        typeName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        visiting: Set<String>,
+    ): String? {
+        val qualifiedName = when {
+            typesByQualifiedName.containsKey(typeName) -> typeName
+            currentNamespace.isNotBlank() && typesByQualifiedName.containsKey("$currentNamespace.$typeName") -> "$currentNamespace.$typeName"
+            else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$typeName") }
+        } ?: return mappedTypeByAbiName(typeName)?.abiQualifiedName?.let { mapped ->
+            when (mapped) {
+                "Windows.Foundation.EventRegistrationToken" -> "struct(Windows.Foundation.EventRegistrationToken;i8)"
+                else -> null
+            }
+        }
+        if (qualifiedName in visiting) {
+            return null
+        }
+        val type = typesByQualifiedName[qualifiedName]?.takeIf { it.kind == WinRtTypeKind.Struct } ?: return null
+        val fieldSignatures = type.fields
+            .filterNot { it.isStatic || it.isLiteral }
+            .map { field ->
+                nativeStructFieldGuidSignature(field.typeName, type.namespace, typesByQualifiedName, visiting + qualifiedName) ?: return null
+            }
+        return "struct($qualifiedName;${fieldSignatures.joinToString(";")})"
+    }
+
+    private fun nativeStructFieldGuidSignature(
+        typeName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        visiting: Set<String>,
+    ): String? =
+        when (typeName) {
+            "Byte",
+            "Int8",
+            "SByte" -> "i1"
+            "UByte",
+            "UInt8" -> "u1"
+            "Short",
+            "Int16" -> "i2"
+            "UShort",
+            "UInt16" -> "u2"
+            "Int",
+            "Int32" -> "i4"
+            "UInt",
+            "UInt32" -> "u4"
+            "Long",
+            "Int64" -> "i8"
+            "ULong",
+            "UInt64" -> "u8"
+            "Float",
+            "Single" -> "f4"
+            "Double" -> "f8"
+            "Char" -> "c2"
+            "Guid",
+            "System.Guid" -> "g16"
+            else -> nativeStructGuidSignature(typeName, currentNamespace, typesByQualifiedName, visiting)
+        }
 
     internal fun nativeStructFieldSpec(
         field: WinRtFieldDefinition,

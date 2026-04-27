@@ -135,7 +135,6 @@ class ProjectionRegistryTest {
         assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRtUri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
         assertTrue(Projections.isTypeWindowsRuntimeType(KClass::class))
-        assertEquals("Windows.Foundation.Point", TypeNameSupport.getNameForType(Point::class))
         assertEquals(
             WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),
             WinRtValueBoxing.boxedRuntimeClassNameForType(KClass::class),

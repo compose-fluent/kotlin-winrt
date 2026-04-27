@@ -19,6 +19,7 @@ class ValueBoxingTest {
 
         val marshaler = Marshaler.inspectableAny()
         val dateTime = Instant.parse("2024-05-06T07:08:09Z")
+        registerProjectedPointBoxing()
 
         roundTripInspectable(marshaler, 42) { expected, actual ->
             assertEquals(expected, actual)
@@ -32,13 +33,13 @@ class ValueBoxingTest {
         roundTripInspectable(marshaler, dateTime) { expected, actual ->
             assertEquals(expected, actual)
         }
-        roundTripInspectable(marshaler, Point(1.5f, 2.5f)) { expected, actual ->
+        roundTripInspectable(marshaler, ProjectedPoint(1.5f, 2.5f)) { expected, actual ->
             assertEquals(expected, actual)
         }
         roundTripInspectable(marshaler, arrayOf("alpha", "beta")) { expected, actual ->
             assertEquals(expected.toList(), actual.toList())
         }
-        roundTripInspectable(marshaler, arrayOf(Point(3f, 4f), Point(5f, 6f))) { expected, actual ->
+        roundTripInspectable(marshaler, arrayOf(ProjectedPoint(3f, 4f), ProjectedPoint(5f, 6f))) { expected, actual ->
             assertEquals(expected.toList(), actual.toList())
         }
     }
@@ -46,6 +47,7 @@ class ValueBoxingTest {
     @Test
     fun reference_and_reference_array_projections_round_trip_supported_values() {
         ComWrappersSupport.clearRegistriesForTests()
+        registerProjectedPointBoxing()
 
         assertEquals(42, WinRtReferenceProjection.fromAbi(WinRtReferenceProjection.fromManaged(42, IID.NullableInt), IID.NullableInt))
         assertEquals(
@@ -56,14 +58,14 @@ class ValueBoxingTest {
             ),
         )
         assertEquals(
-            Point(7f, 8f),
+            ProjectedPoint(7f, 8f),
             WinRtReferenceProjection.fromAbi(
-                WinRtReferenceProjection.fromManaged(Point(7f, 8f), IID.IReferenceOfPoint),
+                WinRtReferenceProjection.fromManaged(ProjectedPoint(7f, 8f), IID.IReferenceOfPoint),
                 IID.IReferenceOfPoint,
             ),
         )
 
-        val points = arrayOf(Point(1f, 2f), Point(3f, 4f))
+        val points = arrayOf(ProjectedPoint(1f, 2f), ProjectedPoint(3f, 4f))
         val projectedPoints =
             WinRtReferenceArrayProjection.fromAbi(
                 WinRtReferenceArrayProjection.fromManaged(points, IID.IReferenceArrayOfPoint),
@@ -200,6 +202,40 @@ class ValueBoxingTest {
             assertRoundTrip(value, marshaler.fromAbi(abi) as T)
         } finally {
             marshaler.disposeAbi(abi)
+        }
+    }
+
+    private fun registerProjectedPointBoxing() {
+        WinRtValueBoxingRegistration.registerStruct(
+            type = ProjectedPoint::class,
+            projectedTypeName = "Windows.Foundation.Point",
+            signature = "struct(Windows.Foundation.Point;f4;f4)",
+            adapter = ProjectedPoint.Metadata,
+            arrayType = emptyArray<ProjectedPoint>()::class,
+        )
+    }
+
+    private data class ProjectedPoint(
+        val x: Float,
+        val y: Float,
+    ) {
+        companion object Metadata : NativeStructAdapter<ProjectedPoint> {
+            override val layout: NativeStructLayout =
+                NativeStructLayout.sequential(
+                    NativeScalarFieldSpec("x", NativeStructScalarKind.FLOAT32),
+                    NativeScalarFieldSpec("y", NativeStructScalarKind.FLOAT32),
+                )
+
+            override fun read(source: RawAddress): ProjectedPoint =
+                ProjectedPoint(
+                    x = PlatformAbi.readFloat(layout.slice(source, "x")),
+                    y = PlatformAbi.readFloat(layout.slice(source, "y")),
+                )
+
+            override fun write(value: ProjectedPoint, destination: RawAddress) {
+                PlatformAbi.writeFloat(layout.slice(destination, "x"), value.x)
+                PlatformAbi.writeFloat(layout.slice(destination, "y"), value.y)
+            }
         }
     }
 

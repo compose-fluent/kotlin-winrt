@@ -205,33 +205,13 @@ internal object CommonWinRtBuiltInProjectionMappings {
             isWindowsRuntimeType = true,
         )
 
-        registerStruct(Point::class)
-        registerStruct(Size::class)
-        registerStruct(Rect::class)
         registerStruct(EventRegistrationToken::class)
-        registerStruct(Matrix3x2::class)
-        registerStruct(Matrix4x4::class)
-        registerStruct(Plane::class)
-        registerStruct(Quaternion::class)
-        registerStruct(Vector2::class)
-        registerStruct(Vector3::class)
-        registerStruct(Vector4::class)
 
         registerReferenceArrayType(String::class, emptyArray<String>()::class)
         registerReferenceArrayType(Guid::class, emptyArray<Guid>()::class)
         registerReferenceArrayType(Instant::class, emptyArray<Instant>()::class)
         registerReferenceArrayType(Duration::class, emptyArray<Duration>()::class)
         registerReferenceArrayType(Exception::class, emptyArray<Exception>()::class)
-        registerReferenceArrayType(Point::class, emptyArray<Point>()::class)
-        registerReferenceArrayType(Size::class, emptyArray<Size>()::class)
-        registerReferenceArrayType(Rect::class, emptyArray<Rect>()::class)
-        registerReferenceArrayType(Matrix3x2::class, emptyArray<Matrix3x2>()::class)
-        registerReferenceArrayType(Matrix4x4::class, emptyArray<Matrix4x4>()::class)
-        registerReferenceArrayType(Plane::class, emptyArray<Plane>()::class)
-        registerReferenceArrayType(Quaternion::class, emptyArray<Quaternion>()::class)
-        registerReferenceArrayType(Vector2::class, emptyArray<Vector2>()::class)
-        registerReferenceArrayType(Vector3::class, emptyArray<Vector3>()::class)
-        registerReferenceArrayType(Vector4::class, emptyArray<Vector4>()::class)
     }
 
     internal fun <T : Any> registerMetadata(
@@ -309,17 +289,7 @@ internal object CommonWinRtBuiltInProjectionMappings {
     }
 
     private val builtInStructSignatures: Map<KClass<*>, String> = mapOf(
-        Point::class to "struct(Windows.Foundation.Point;f4;f4)",
-        Size::class to "struct(Windows.Foundation.Size;f4;f4)",
-        Rect::class to "struct(Windows.Foundation.Rect;f4;f4;f4;f4)",
         EventRegistrationToken::class to "struct(Windows.Foundation.EventRegistrationToken;i8)",
-        Matrix3x2::class to "struct(Windows.Foundation.Numerics.Matrix3x2;f4;f4;f4;f4;f4;f4)",
-        Matrix4x4::class to "struct(Windows.Foundation.Numerics.Matrix4x4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4;f4)",
-        Plane::class to "struct(Windows.Foundation.Numerics.Plane;struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4);f4)",
-        Quaternion::class to "struct(Windows.Foundation.Numerics.Quaternion;f4;f4;f4;f4)",
-        Vector2::class to "struct(Windows.Foundation.Numerics.Vector2;f4;f4)",
-        Vector3::class to "struct(Windows.Foundation.Numerics.Vector3;f4;f4;f4)",
-        Vector4::class to "struct(Windows.Foundation.Numerics.Vector4;f4;f4;f4;f4)",
     )
 }
 

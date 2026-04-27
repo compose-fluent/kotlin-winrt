@@ -152,6 +152,8 @@ object Projections {
         runtimeClassToDefaultInterfaceMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()
         WinRtTypeRegistry.clearForTests()
+        ValueBoxingMetadata.clearDynamicDescriptorsForTests()
+        ValueBoxingInterop.clearDynamicAdaptersForTests()
         clearProjectionMappingsForTests()
         ensureProjectionMappingsRegistered()
     }

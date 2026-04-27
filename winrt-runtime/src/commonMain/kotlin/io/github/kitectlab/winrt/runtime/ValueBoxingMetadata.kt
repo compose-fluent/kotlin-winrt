@@ -50,7 +50,9 @@ internal object ValueBoxingMetadata {
             propertyTypeArray = null,
         )
 
-    private val descriptors =
+    private val dynamicDescriptorsByClass = ConcurrentCacheMap<KClass<*>, WinRtValueTypeMetadata>()
+
+    private val builtInDescriptors =
         listOf(
             WinRtValueTypeMetadata(Byte::class, IID.NullableSByte, IID.IReferenceArrayOfSByte, null, null),
             WinRtValueTypeMetadata(UByte::class, IID.NullableByte, IID.IReferenceArrayOfByte, PropertyType.UInt8, PropertyType.UInt8Array, isNumericScalar = true),
@@ -68,22 +70,16 @@ internal object ValueBoxingMetadata {
             WinRtValueTypeMetadata(Guid::class, IID.NullableGuid, IID.IReferenceArrayOfGuid, PropertyType.Guid, PropertyType.GuidArray),
             WinRtValueTypeMetadata(Instant::class, IID.NullableDateTimeOffset, IID.IReferenceArrayOfDateTimeOffset, PropertyType.DateTime, PropertyType.DateTimeArray),
             WinRtValueTypeMetadata(Duration::class, IID.NullableTimeSpan, IID.IReferenceArrayOfTimeSpan, PropertyType.TimeSpan, PropertyType.TimeSpanArray),
-            WinRtValueTypeMetadata(Point::class, IID.IReferenceOfPoint, IID.IReferenceArrayOfPoint, PropertyType.Point, PropertyType.PointArray),
-            WinRtValueTypeMetadata(Size::class, IID.IReferenceOfSize, IID.IReferenceArrayOfSize, PropertyType.Size, PropertyType.SizeArray),
-            WinRtValueTypeMetadata(Rect::class, IID.IReferenceOfRect, IID.IReferenceArrayOfRect, PropertyType.Rect, PropertyType.RectArray),
-            WinRtValueTypeMetadata(Matrix3x2::class, IID.IReferenceMatrix3x2, IID.IReferenceArrayOfMatrix3x2, null, null),
-            WinRtValueTypeMetadata(Matrix4x4::class, IID.IReferenceMatrix4x4, IID.IReferenceArrayOfMatrix4x4, null, null),
-            WinRtValueTypeMetadata(Plane::class, IID.IReferencePlane, IID.IReferenceArrayOfPlane, null, null),
-            WinRtValueTypeMetadata(Quaternion::class, IID.IReferenceQuaternion, IID.IReferenceArrayOfQuaternion, null, null),
-            WinRtValueTypeMetadata(Vector2::class, IID.IReferenceVector2, IID.IReferenceArrayOfVector2, null, null),
-            WinRtValueTypeMetadata(Vector3::class, IID.IReferenceVector3, IID.IReferenceArrayOfVector3, null, null),
-            WinRtValueTypeMetadata(Vector4::class, IID.IReferenceVector4, IID.IReferenceArrayOfVector4, null, null),
             WinRtValueTypeMetadata(KClass::class, IID.NullableType, IID.IReferenceArrayOfType, null, null),
             exceptionMetadata,
             objectMetadata,
         )
 
-    private val descriptorsByClass = descriptors.associateBy(WinRtValueTypeMetadata::projectedClass)
+    private val builtInDescriptorsByClass = builtInDescriptors.associateBy(WinRtValueTypeMetadata::projectedClass)
+
+    fun registerDescriptor(descriptor: WinRtValueTypeMetadata) {
+        dynamicDescriptorsByClass[descriptor.projectedClass] = descriptor
+    }
 
     fun boxedRuntimeClassNameForType(type: KClass<*>): String? {
         enumMetadataForClass(type)?.let { descriptor ->
@@ -135,18 +131,26 @@ internal object ValueBoxingMetadata {
         normalizeManagedArray(value)?.elements
 
     fun descriptorForPropertyType(propertyType: PropertyType): WinRtValueTypeMetadata? =
-        descriptors.firstOrNull { it.propertyType == propertyType }
+        dynamicDescriptorsByClass.values.firstOrNull { it.propertyType == propertyType }
+            ?: builtInDescriptors.firstOrNull { it.propertyType == propertyType }
 
     fun descriptorForPropertyTypeArray(propertyType: PropertyType): WinRtValueTypeMetadata? =
-        descriptors.firstOrNull { it.propertyTypeArray == propertyType }
+        dynamicDescriptorsByClass.values.firstOrNull { it.propertyTypeArray == propertyType }
+            ?: builtInDescriptors.firstOrNull { it.propertyTypeArray == propertyType }
 
     fun inspectableArrayMetadata(): WinRtValueTypeMetadata = objectMetadata
 
     fun descriptorForClass(type: KClass<*>): WinRtValueTypeMetadata? =
-        descriptorsByClass[type]
+        dynamicDescriptorsByClass[type]
+            ?: builtInDescriptorsByClass[type]
             ?: if (isAssignableFrom(Exception::class, type)) exceptionMetadata else null
 
-    fun referenceTypeDescriptors(): List<WinRtValueTypeMetadata> = descriptors
+    fun referenceTypeDescriptors(): List<WinRtValueTypeMetadata> =
+        builtInDescriptors + dynamicDescriptorsByClass.values
+
+    fun clearDynamicDescriptorsForTests() {
+        dynamicDescriptorsByClass.clear()
+    }
 
     fun enumMetadataForClass(type: KClass<*>): WinRtEnumBoxingMetadata? {
         if (!isEnumType(type)) {
@@ -236,7 +240,7 @@ internal object ValueBoxingMetadata {
 
     private fun normalizePrimitiveManagedArray(value: Any): ManagedArrayMetadata? {
         val elementType = WinRtTypeClassifier.primitiveArrayElementType(value::class) ?: return null
-        val descriptor = descriptorsByClass[elementType] ?: return null
+        val descriptor = descriptorForClass(elementType) ?: return null
         val boxedElements = WinRtTypeClassifier.boxPrimitiveArray(value) ?: return null
         return ManagedArrayMetadata(boxedElements, descriptor)
     }

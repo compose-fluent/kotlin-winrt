@@ -76,6 +76,7 @@ import io.github.kitectlab.winrt.runtime.WinRtSystemProjectionMarshalers
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
 import io.github.kitectlab.winrt.runtime.WinRtTypeHandle
 import io.github.kitectlab.winrt.runtime.WinRtUri
+import io.github.kitectlab.winrt.runtime.WinRtValueBoxingRegistration
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
 import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
 import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
@@ -141,6 +142,7 @@ internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
 internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRtTypeHandle::class.asClassName()
+internal val WINRT_VALUE_BOXING_REGISTRATION_CLASS_NAME = WinRtValueBoxingRegistration::class.asClassName()
 internal val WINRT_DELEGATE_BRIDGE_CLASS_NAME = WinRtDelegateBridge::class.asClassName()
 internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::class.asClassName()
 internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()

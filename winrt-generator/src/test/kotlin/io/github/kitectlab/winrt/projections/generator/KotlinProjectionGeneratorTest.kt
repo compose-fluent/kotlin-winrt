@@ -1133,6 +1133,10 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Windows.Foundation",
                             name = "Point",
                             kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Single"),
+                                WinRtFieldDefinition("Y", "Single"),
+                            ),
                         ),
                     ),
                 ),
@@ -1180,16 +1184,21 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val contents = KotlinProjectionGenerator()
+        val filesByName = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("AdvancedColorInfo.kt")
-            .contents
+        val contents = filesByName.getValue("AdvancedColorInfo.kt").contents
+        val pointContents = filesByName.getValue("Point.kt").contents
 
         assertTrue(contents, contents.contains("override var redPrimary: Point"))
         assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, Point.Metadata.layout.sizeBytes)"))
         assertTrue(contents, contents.contains("return Point.Metadata.fromAbi(__resultOut)"))
         assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
+        assertTrue(pointContents, pointContents.contains("Metadata.register()"))
+        assertTrue(pointContents, pointContents.contains("WinRtValueBoxingRegistration.registerStruct("))
+        assertTrue(pointContents, pointContents.contains("Point::class"))
+        assertTrue(pointContents, pointContents.contains("\"struct(Windows.Foundation.Point;f4;f4)\""))
+        assertTrue(pointContents, pointContents.contains("emptyArray<Point>()::class"))
     }
 
     @Test
