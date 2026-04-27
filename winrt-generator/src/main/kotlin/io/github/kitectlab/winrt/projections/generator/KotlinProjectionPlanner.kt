@@ -357,7 +357,11 @@ class KotlinProjectionPlanner(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${event.name.uppercase()}_ADD_SLOT",
-                        returnBinding = classifyAbiTypeBinding("Int", type.namespace, typesByQualifiedName),
+                        returnBinding = classifyAbiTypeBinding(
+                            "Windows.Foundation.EventRegistrationToken",
+                            type.namespace,
+                            typesByQualifiedName,
+                        ),
                         parameterBindings = listOf(
                             KotlinProjectionAbiParameterBinding(
                                 name = "handler",
@@ -381,7 +385,11 @@ class KotlinProjectionPlanner(
                         parameterBindings = listOf(
                             KotlinProjectionAbiParameterBinding(
                                 name = "token",
-                                typeBinding = classifyAbiTypeBinding("Int", type.namespace, typesByQualifiedName),
+                                typeBinding = classifyAbiTypeBinding(
+                                    "Windows.Foundation.EventRegistrationToken",
+                                    type.namespace,
+                                    typesByQualifiedName,
+                                ),
                             ),
                         ),
                         signatureMatcher = { interfaceType ->

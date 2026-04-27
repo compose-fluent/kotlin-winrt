@@ -808,8 +808,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_REMOVE_SLOT: Int = 8"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val name: String"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val changed: WinRtEvent<WidgetHandler>"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): Int"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun removeChanged(token: Int)"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun removeChanged(token: EventRegistrationToken)"))
 
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
@@ -836,13 +836,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("val count: Int"))
         assertTrue(widgetContents.contains("val changed: WinRtEvent<WidgetHandler> by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("WinRtEvent(::addChanged, ::removeChanged)"))
-        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int"))
-        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
-        assertTrue(widgetContents.contains("fun removeChanged(token: Int)"))
-        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun removeChanged(token: EventRegistrationToken)"))
+        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("val loaded: WinRtEvent<WidgetHandler> by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("WinRtEvent(::addLoaded, ::removeLoaded)"))
-        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
@@ -1271,14 +1269,14 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(widgetContents.contains("fun setHandler(handler: WidgetHandler)"))
-        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("WinRtDelegateBridge.createDelegate"))
         assertTrue(widgetContents.contains("parameterKinds = listOf(WinRtDelegateValueKind.HSTRING)"))
         assertTrue(widgetContents.contains("WinRtDelegateValueKind.UNIT"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
         assertTrue(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
         assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
-        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken = error(\"Not yet bound to winrt-runtime\")"))
     }
 
     @Test
@@ -1669,9 +1667,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal val TITLE_GETTER_SLOT: Int = IWidget.Metadata.TITLE_GETTER_SLOT"))
         assertTrue(widgetContents.contains("var title: String"))
         assertTrue(widgetContents.contains("val maxCount: Int"))
-        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int"))
-        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
-        assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler): Int = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
+        assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
     }
 

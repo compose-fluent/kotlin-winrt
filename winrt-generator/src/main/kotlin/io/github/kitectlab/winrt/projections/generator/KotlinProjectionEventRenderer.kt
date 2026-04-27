@@ -154,12 +154,12 @@ internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
         FunSpec.builder("add${event.name}")
             .apply { if (override) addModifiers(KModifier.OVERRIDE) }
             .addParameter("handler", typeName)
-            .returns(Int::class.asClassName())
+            .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", addInvocation)
             .build(),
         FunSpec.builder("remove${event.name}")
             .apply { if (override) addModifiers(KModifier.OVERRIDE) }
-            .addParameter("token", Int::class.asClassName())
+            .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", removeInvocation)
             .build(),
     )
@@ -210,10 +210,10 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(event: WinRtEventDefi
                     addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
                 }
             }
-            .returns(Int::class.asClassName())
+            .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .build(),
         FunSpec.builder("remove${event.name}")
-            .addParameter("token", Int::class.asClassName())
+            .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .apply {
                 if (abstract) {
                     addModifiers(KModifier.ABSTRACT)

@@ -62,7 +62,8 @@
 - [x] Queue 18: generator single-file risk is reduced by splitting the former monolithic `KotlinProjectionGenerator.kt` into model/mapping, planner, renderer, orchestration, and support-renderer files without changing projection behavior.
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
-- [ ] Queue 21 正在做: resume generator feature work from the earliest remaining `.cswinrt/src/cswinrt` writer gap, using the split writer ownership instead of adding new rules to a monolithic renderer.
+- [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
+- [ ] Queue 22 正在做: continue the `.cswinrt/src/cswinrt` writer audit from the next mapped-type or member-shape gap without reintroducing duplicated ABI/type branch tables.
 
 ## Generator Follow-Through
 
@@ -87,7 +88,8 @@
 - [x] Generator structure 19.1: the former 7000-line generator file is split into `KotlinProjectionModel`, `KotlinProjectionPlanner`, `KotlinProjectionRenderer`, `KotlinProjectionGenerator`, and `KotlinProjectionSupportRenderer` ownership files.
 - [x] Generator structure 19.2: split `KotlinProjectionRenderer` into focused collection, member, ABI, event/companion, and type-resolver writer files while preserving current behavior and `.cswinrt` writer responsibility mapping.
 - [x] Generator structure 20.1: split `KotlinProjectionAbiRenderer` into focused marshaler, array/native-struct, async/reference/signature, delegate, and invocation writers; ABI classification remains centralized in shared model/mapping helpers.
-- [ ] Generator structure 21.1 正在做: audit the split generator writers against `.cswinrt/src/cswinrt/code_writers.h` and pick the next feature gap without reintroducing duplicated ABI/type branch tables.
+- [x] Generator structure 21.1: audited the split generator writers against `.cswinrt/src/cswinrt/helpers.h`/`code_writers.h` and closed the first mapped-event gap by projecting `EventRegistrationToken` through the shared mapped-type table, planner ABI bindings, runtime `WinRtEvent`, and generator tests.
+- [ ] Generator structure 22.1 正在做: audit the remaining `.cswinrt` mapped-type table entries and select the next Kotlin-owned runtime/generator-safe mapping slice.
 
 ## Sample Plan
 

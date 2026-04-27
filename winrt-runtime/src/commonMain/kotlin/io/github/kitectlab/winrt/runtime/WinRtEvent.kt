@@ -1,12 +1,12 @@
 package io.github.kitectlab.winrt.runtime
 
 class WinRtEvent<T : Any>(
-    private val subscribe: (T) -> Int,
-    private val unsubscribe: (Int) -> Unit,
+    private val subscribe: (T) -> EventRegistrationToken,
+    private val unsubscribe: (EventRegistrationToken) -> Unit,
 ) {
-    private val tokensByHandler = mutableMapOf<T, MutableList<Int>>()
+    private val tokensByHandler = mutableMapOf<T, MutableList<EventRegistrationToken>>()
 
-    fun add(handler: T): Int {
+    fun add(handler: T): EventRegistrationToken {
         val token = subscribe(handler)
         tokensByHandler.getOrPut(handler) { mutableListOf() }.add(token)
         return token
@@ -16,7 +16,7 @@ class WinRtEvent<T : Any>(
         add(handler)
     }
 
-    fun remove(token: Int) {
+    fun remove(token: EventRegistrationToken) {
         unsubscribe(token)
         tokensByHandler.values.forEach { it.remove(token) }
     }

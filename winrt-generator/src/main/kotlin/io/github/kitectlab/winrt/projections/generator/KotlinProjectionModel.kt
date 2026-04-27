@@ -38,6 +38,7 @@ import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
+import io.github.kitectlab.winrt.runtime.EventRegistrationToken
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.HString
@@ -175,6 +176,7 @@ internal val RUNTIME_QUATERNION_CLASS_NAME = ClassName("io.github.kitectlab.winr
 internal val RUNTIME_MATRIX3X2_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Matrix3x2")
 internal val RUNTIME_MATRIX4X4_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Matrix4x4")
 internal val RUNTIME_PLANE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Plane")
+internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = EventRegistrationToken::class.asClassName()
 
 internal typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
 
@@ -394,6 +396,12 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
     KotlinProjectionMappedType("Windows.Foundation.DateTime", { OFFSET_DATE_TIME_CLASS_NAME }, descriptionName = "DateTime"),
     KotlinProjectionMappedType("Windows.Foundation.TimeSpan", { DURATION_CLASS_NAME }, descriptionName = "TimeSpan"),
     KotlinProjectionMappedType("Windows.Foundation.Uri", { WINRT_URI_CLASS_NAME }, descriptionName = "Uri"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.EventRegistrationToken",
+        { EVENT_REGISTRATION_TOKEN_CLASS_NAME },
+        abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        descriptionName = "EventRegistrationToken",
+    ),
     KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
     KotlinProjectionMappedType(
         "Windows.Foundation.IReference",
