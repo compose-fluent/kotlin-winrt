@@ -451,9 +451,130 @@ class KotlinWinRtPluginTest {
             ),
         )
     }
+
+    @Test
+    fun application_distribution_contains_windowsappsdk_runtime_resources() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-app-dist-test-")
+        val nugetRoot = projectDir.resolve("nuget")
+        writeWindowsAppSdkPackage(
+            nugetRoot = nugetRoot,
+            packageId = "Microsoft.WindowsAppSDK.Foundation",
+            version = "1.8.251104000",
+        )
+        writeWindowsAppSdkPackage(
+            nugetRoot = nugetRoot,
+            packageId = "Microsoft.WindowsAppSDK.InteractiveExperiences",
+            version = "1.8.251104001",
+        )
+        writeWindowsAppSdkPackage(
+            nugetRoot = nugetRoot,
+            packageId = "Microsoft.WindowsAppSDK.WinUI",
+            version = "1.8.251105000",
+            includeWinUiFrameworkAssets = true,
+        )
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-application-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("src/main/java/sample/Main.java"),
+            """
+            package sample;
+
+            public final class Main {
+                public static void main(String[] args) {
+                }
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                application
+                id("io.github.kitectlab.winrt")
+            }
+
+            application {
+                mainClass.set("sample.Main")
+            }
+
+            winRt {
+                nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
+                windowsAppSdk(
+                    winuiVersion = "1.8.251105000",
+                    foundationVersion = "1.8.251104000",
+                    interactiveExperiencesVersion = "1.8.251104001",
+                )
+                application {
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("installDist", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtRuntimeAssets")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":installDist")?.outcome)
+        val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY")
+        assertTrue(Files.isRegularFile(assetsRoot.resolve("resources.pri")))
+        assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
+        assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
+        assertFalse(Files.exists(assetsRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
+    }
 }
 
 private fun writeGradleFile(path: Path, content: String) {
     Files.createDirectories(path.parent)
     Files.writeString(path, content)
+}
+
+private fun writeWindowsAppSdkPackage(
+    nugetRoot: Path,
+    packageId: String,
+    version: String,
+    includeWinUiFrameworkAssets: Boolean = false,
+) {
+    val packageRoot = nugetRoot.resolve(packageId.lowercase()).resolve(version)
+    Files.createDirectories(packageRoot)
+    Files.writeString(
+        packageRoot.resolve("$packageId.nuspec"),
+        """
+        <package>
+          <metadata>
+            <id>$packageId</id>
+            <version>$version</version>
+          </metadata>
+        </package>
+        """.trimIndent(),
+    )
+    if (includeWinUiFrameworkAssets) {
+        val nativeRoot = packageRoot.resolve("runtimes-framework/win-x64/native")
+        Files.createDirectories(nativeRoot.resolve("Microsoft.UI.Xaml"))
+        Files.writeString(nativeRoot.resolve("Microsoft.UI.Xaml.Controls.pri"), "pri")
+        Files.writeString(nativeRoot.resolve("Microsoft.UI.Xaml/Controls.pri"), "nested")
+        Files.createDirectories(packageRoot.resolve("include"))
+        Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
+    }
 }

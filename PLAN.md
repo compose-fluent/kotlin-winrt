@@ -89,9 +89,9 @@
 - [x] Sample 4: expose opt-in WindowsAppSDK split-package declarations matching `.cswinrt/src/Projections/WinAppSDK`.
 - [x] Sample 5: replace checked-in JSON projection reliance with plugin-generated `Windows.Data.Json` output once Queue 14 can compile that namespace deterministically.
 - [x] Sample 6: add a `.cswinrt/src/Samples/NetProjectionSample`-style `SimpleMath().add(5.5, 6.5)` sample, generate `SimpleMathComponent` projection from the real component WinMD, and stage the local component DLL from `winrt-projections` library identity.
-- [ ] Sample 7 正在做: add a real `.cswinrt/src/Samples/WinUIDesktopSample` smoke only after `Microsoft.UI.Xaml` projections are generated and callable: `Application.Start`, `Window.Activate`, `Button.Click`, `MainPage`, and `UIElement.TappedEvent` must use generated WinUI projection classes, not sample-local fakes.
+- [x] Sample 7: added real `.cswinrt/src/Samples/WinUIDesktopSample` smoke surface using generated `Microsoft.UI.Xaml` projections: `Application.Start`, `Window.Activate`, `Button.Click`, `MainPage`, and `UIElement.TappedEvent` no longer use sample-local WinUI fakes.
 - [x] Sample 7.1: WindowsAppSDK projection generation now completes from the plugin path with `.cswinrt/src/Projections/WinAppSDK` package/filter shape; remaining Sample 7 work is real generated WinUI API usage, not sample-local fakes.
-- [ ] Sample 8: move WinUI runtime/resource packaging from current manual staging toward the WindowsAppSDK package/target behavior observed in `.cswinrt` projects.
+- [x] Sample 8: WinUI runtime/resource packaging now follows WindowsAppSDK package staging at the application model and distribution layer, including `resources.pri` aliasing without staging native build headers.
 - [ ] Sample 9: add distribution/run validation for the application model, including staged runtime assets and `kotlin-winrt-runtime-assets` layout.
 - [ ] Sample 10: after Sample 5-9 close, stop sample expansion and reopen `winrt-authoring`; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
 - [ ] Sample 11: implement authoring samples only after `winrt-authoring` is complete; then mirror `.cswinrt/src/Samples/AuthoringDemo` and background-task hosting from authoring-owned contracts.
