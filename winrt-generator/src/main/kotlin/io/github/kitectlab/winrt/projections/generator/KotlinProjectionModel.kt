@@ -166,16 +166,6 @@ internal val NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME = NativeNestedStructFiel
 internal val NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME = NativeScalarFieldSpec::class.asClassName()
 internal val NATIVE_STRUCT_LAYOUT_CLASS_NAME = NativeStructLayout::class.asClassName()
 internal val NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME = NativeStructScalarKind::class.asClassName()
-internal val RUNTIME_POINT_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Point")
-internal val RUNTIME_SIZE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Size")
-internal val RUNTIME_RECT_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Rect")
-internal val RUNTIME_VECTOR2_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Vector2")
-internal val RUNTIME_VECTOR3_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Vector3")
-internal val RUNTIME_VECTOR4_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Vector4")
-internal val RUNTIME_QUATERNION_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Quaternion")
-internal val RUNTIME_MATRIX3X2_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Matrix3x2")
-internal val RUNTIME_MATRIX4X4_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Matrix4x4")
-internal val RUNTIME_PLANE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "Plane")
 internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = EventRegistrationToken::class.asClassName()
 internal val EXCEPTION_CLASS_NAME = Exception::class.asClassName()
 internal val EVENT_HANDLER_CALLBACK_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "EventHandlerCallback")
@@ -477,66 +467,6 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { arguments -> Array::class.asClassName().parameterizedBy(arguments.single().copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.ReferenceArray,
         descriptionName = "IReferenceArray",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Point",
-        { RUNTIME_POINT_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Point",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Size",
-        { RUNTIME_SIZE_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Size",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Rect",
-        { RUNTIME_RECT_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Rect",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Vector2",
-        { RUNTIME_VECTOR2_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Vector2",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Vector3",
-        { RUNTIME_VECTOR3_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Vector3",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Vector4",
-        { RUNTIME_VECTOR4_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Vector4",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Quaternion",
-        { RUNTIME_QUATERNION_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Quaternion",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Matrix3x2",
-        { RUNTIME_MATRIX3X2_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Matrix3x2",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Matrix4x4",
-        { RUNTIME_MATRIX4X4_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Matrix4x4",
-    ),
-    KotlinProjectionMappedType(
-        "Windows.Foundation.Numerics.Plane",
-        { RUNTIME_PLANE_CLASS_NAME },
-        abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        descriptionName = "Plane",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.Collections.IIterable",

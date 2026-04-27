@@ -1123,7 +1123,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_binds_mapped_windows_foundation_struct_getters_and_setters() {
+    fun generator_binds_generated_windows_foundation_struct_getters_and_setters() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
