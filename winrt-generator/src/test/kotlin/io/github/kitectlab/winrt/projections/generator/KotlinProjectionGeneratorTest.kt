@@ -2,6 +2,7 @@ package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtActivationShape
 import io.github.kitectlab.winrt.metadata.WinRtEnumMemberDefinition
+import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
@@ -2096,6 +2097,101 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents, file.contents.contains("fun fetchAsync(): WinRtAsyncOperationReference<String>"))
         assertTrue(file.contents, file.contents.contains("val sourceUri: WinRtUri"))
         assertTrue(file.contents, file.contents.contains("val selection: Int?"))
+    }
+
+    @Test
+    fun generator_uses_runtime_backed_cswinrt_system_mapped_type_names() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "System.Object"),
+                                        WinRtParameterDefinition("args", "T0"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "HResult",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("value", "Int")),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "ISystemMappedSurface",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "lastFailure",
+                                    returnTypeName = "Windows.Foundation.HResult",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "command",
+                                    returnTypeName = "Microsoft.UI.Xaml.Input.ICommand",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "PropertyChanged",
+                                    typeName = "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
+                                    getterMethodName = "get_PropertyChanged",
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "CollectionChanged",
+                                    typeName = "Windows.UI.Xaml.Interop.INotifyCollectionChanged",
+                                    getterMethodName = "get_CollectionChanged",
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "CollectionChangedArgs",
+                                    typeName = "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs",
+                                    getterMethodName = "get_CollectionChangedArgs",
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val file = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("ISystemMappedSurface.kt") }
+
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.EventHandlerCallback"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtCommand"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtCollectionChangedNotifier"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtNotifyCollectionChangedEventArgs"))
+        assertTrue(file.contents, file.contents.contains("import io.github.kitectlab.winrt.runtime.WinRtPropertyChangedNotifier"))
+        assertTrue(file.contents, file.contents.contains("fun lastFailure(): Exception"))
+        assertTrue(file.contents, file.contents.contains("fun command(): WinRtCommand"))
+        assertTrue(file.contents, file.contents.contains("val propertyChanged: WinRtPropertyChangedNotifier"))
+        assertTrue(file.contents, file.contents.contains("val collectionChanged: WinRtCollectionChangedNotifier"))
+        assertTrue(file.contents, file.contents.contains("val collectionChangedArgs: WinRtNotifyCollectionChangedEventArgs"))
+        assertTrue(file.contents, file.contents.contains("fun addChanged(handler: EventHandlerCallback<Int>): EventRegistrationToken"))
     }
 
     @Test

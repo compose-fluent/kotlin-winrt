@@ -63,7 +63,7 @@
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
 - [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
-- [ ] Queue 22 正在做: continue the `.cswinrt/src/cswinrt` writer audit from the next mapped-type or member-shape gap without reintroducing duplicated ABI/type branch tables.
+- [ ] Queue 22 正在做: close remaining `.cswinrt/src/cswinrt/helpers.h` mapped-type gaps through the single generator mapping table before adding new member-shape writers.
 
 ## Generator Follow-Through
 
@@ -89,7 +89,9 @@
 - [x] Generator structure 19.2: split `KotlinProjectionRenderer` into focused collection, member, ABI, event/companion, and type-resolver writer files while preserving current behavior and `.cswinrt` writer responsibility mapping.
 - [x] Generator structure 20.1: split `KotlinProjectionAbiRenderer` into focused marshaler, array/native-struct, async/reference/signature, delegate, and invocation writers; ABI classification remains centralized in shared model/mapping helpers.
 - [x] Generator structure 21.1: audited the split generator writers against `.cswinrt/src/cswinrt/helpers.h`/`code_writers.h` and closed the first mapped-event gap by projecting `EventRegistrationToken` through the shared mapped-type table, planner ABI bindings, runtime `WinRtEvent`, and generator tests.
-- [ ] Generator structure 22.1 正在做: audit the remaining `.cswinrt` mapped-type table entries and select the next Kotlin-owned runtime/generator-safe mapping slice.
+- [x] Generator structure 22.1: audited the remaining `.cswinrt` mapped-type table and selected the runtime-backed Foundation/XAML system projection name slice.
+- [x] Generator structure 22.2: projected `HResult`, `EventHandler<T>`, and runtime-backed XAML system projection names through the shared `MAPPED_TYPES` table; ABI-specific marshaling remains centralized for the next mapped-ABI slice.
+- [ ] Generator structure 22.3 正在做: add centralized mapped-ABI support for custom ABI helper mappings such as `DateTime`, `TimeSpan`, `HResult`, `Uri`, and XAML system projections instead of letting struct/interface fallbacks call invalid generated `Metadata` helpers.
 
 ## Sample Plan
 
