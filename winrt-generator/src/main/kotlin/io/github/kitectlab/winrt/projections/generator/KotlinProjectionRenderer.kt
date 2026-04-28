@@ -1273,7 +1273,7 @@ class KotlinProjectionRenderer {
                     .addModifiers(KModifier.OVERRIDE)
                     .addParameter("value", structTypeName)
                     .addParameter("destination", RAW_ADDRESS_CLASS_NAME)
-                    .addCode(nativeStructWriteCode(fields))
+                    .addCode(nativeStructWriteCode(plan, fields))
                     .build(),
             )
             .addFunction(
@@ -1292,6 +1292,13 @@ class KotlinProjectionRenderer {
                     .addCode("write(value, destination)\n")
                     .build(),
             )
+            .addFunction(
+                FunSpec.builder("disposeAbi")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("source", RAW_ADDRESS_CLASS_NAME)
+                    .addCode(nativeStructDisposeAbiCode(plan, fields))
+                    .build(),
+            )
             .build()
     }
 
@@ -1301,18 +1308,27 @@ class KotlinProjectionRenderer {
             .indent()
             .apply {
                 fields.forEach { field ->
-                    add("%L = %L,\n", field.name.replaceFirstChar(Char::lowercase), nativeStructFieldReadCode(field, "source"))
+                    add("%L = %L,\n", field.name.replaceFirstChar(Char::lowercase), nativeStructFieldReadCode(field, "source", plan.type.namespace, plan.typesByQualifiedName))
                 }
             }
             .unindent()
             .add(")\n")
             .build()
 
-    private fun nativeStructWriteCode(fields: List<WinRtFieldDefinition>): CodeBlock =
+    private fun nativeStructWriteCode(plan: KotlinTypeProjectionPlan, fields: List<WinRtFieldDefinition>): CodeBlock =
         CodeBlock.builder()
             .apply {
                 fields.forEach { field ->
-                    add("%L\n", nativeStructFieldWriteCode(field, "value", "destination"))
+                    add("%L\n", nativeStructFieldWriteCode(field, "value", "destination", plan.type.namespace, plan.typesByQualifiedName))
+                }
+            }
+            .build()
+
+    private fun nativeStructDisposeAbiCode(plan: KotlinTypeProjectionPlan, fields: List<WinRtFieldDefinition>): CodeBlock =
+        CodeBlock.builder()
+            .apply {
+                fields.forEach { field ->
+                    nativeStructFieldDisposeAbiCode(field, "source", plan.type.namespace, plan.typesByQualifiedName)?.let { add("%L\n", it) }
                 }
             }
             .build()
@@ -1386,7 +1402,15 @@ class KotlinProjectionRenderer {
             "Char" -> "c2"
             "Guid",
             "System.Guid" -> "g16"
+            "String" -> "string"
+            "Any",
+            "System.Object",
+            IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
+            "io.github.kitectlab.winrt.runtime.IInspectableReference" -> "cinterface(IInspectable)"
+            IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
+            "io.github.kitectlab.winrt.runtime.IUnknownReference" -> "cinterface(IUnknown)"
             else -> nativeStructGuidSignature(typeName, currentNamespace, typesByQualifiedName, visiting)
+                ?: nativeStructReferenceFieldGuidSignature(typeName, currentNamespace, typesByQualifiedName)
         }
 
     internal fun nativeStructFieldSpec(
@@ -1398,9 +1422,59 @@ class KotlinProjectionRenderer {
         if (scalarKind != null) {
             return CodeBlock.of("%T(%S, %T.%L)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME, scalarKind)
         }
+        if (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) != null) {
+            return CodeBlock.of("%T(%S, %T.ADDRESS)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME)
+        }
         val fieldQualifiedName = nativeNestedStructFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
         val fieldType = runCatching { resolveTypeName(fieldQualifiedName) as? ClassName }.getOrNull() ?: return null
         return CodeBlock.of("%T(%S, %T.Metadata.layout)", NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), fieldType)
+    }
+
+    private fun nativeStructReferenceFieldGuidSignature(
+        typeName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): String? {
+        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        val qualifiedName = when {
+            typesByQualifiedName.containsKey(rawTypeName) -> rawTypeName
+            currentNamespace.isNotBlank() && typesByQualifiedName.containsKey("$currentNamespace.$rawTypeName") -> "$currentNamespace.$rawTypeName"
+            else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") }
+        } ?: return null
+        return when (typesByQualifiedName[qualifiedName]?.kind) {
+            WinRtTypeKind.Interface -> "cinterface($qualifiedName)"
+            WinRtTypeKind.RuntimeClass -> "rc($qualifiedName;default)"
+            else -> null
+        }
+    }
+
+    private fun nativeStructReferenceFieldKind(
+        typeName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): NativeStructReferenceFieldKind? {
+        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        return when (rawTypeName) {
+            "String" -> NativeStructReferenceFieldKind.String
+            "Any",
+            "System.Object",
+            IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
+            "io.github.kitectlab.winrt.runtime.IInspectableReference" -> NativeStructReferenceFieldKind.InspectableReference
+            IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
+            "io.github.kitectlab.winrt.runtime.IUnknownReference" -> NativeStructReferenceFieldKind.UnknownReference
+            else -> {
+                val qualifiedName = when {
+                    typesByQualifiedName.containsKey(rawTypeName) -> rawTypeName
+                    currentNamespace.isNotBlank() && typesByQualifiedName.containsKey("$currentNamespace.$rawTypeName") -> "$currentNamespace.$rawTypeName"
+                    else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") }
+                } ?: return null
+                when (typesByQualifiedName[qualifiedName]?.kind) {
+                    WinRtTypeKind.Interface -> NativeStructReferenceFieldKind.ProjectedInterface
+                    WinRtTypeKind.RuntimeClass -> NativeStructReferenceFieldKind.ProjectedRuntimeClass
+                    else -> null
+                }
+            }
+        }
     }
 
     internal fun nativeStructScalarKind(typeName: String): String? = when (typeName) {
@@ -1448,7 +1522,12 @@ class KotlinProjectionRenderer {
         return qualifiedName.takeIf { typesByQualifiedName[it]?.kind == WinRtTypeKind.Struct }
     }
 
-    internal fun nativeStructFieldReadCode(field: WinRtFieldDefinition, sourceName: String): CodeBlock {
+    internal fun nativeStructFieldReadCode(
+        field: WinRtFieldDefinition,
+        sourceName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
         return when (field.typeName) {
@@ -1475,11 +1554,17 @@ class KotlinProjectionRenderer {
             "Char" -> CodeBlock.of("%T.readChar16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
             "Guid",
             "System.Guid" -> CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            else -> CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
+            else -> nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName) ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
         }
     }
 
-    internal fun nativeStructFieldWriteCode(field: WinRtFieldDefinition, valueName: String, destinationName: String): CodeBlock {
+    internal fun nativeStructFieldWriteCode(
+        field: WinRtFieldDefinition,
+        valueName: String,
+        destinationName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val value = CodeBlock.of("%L.%L", valueName, fieldName)
         val slice = CodeBlock.of("layout.slice(%L, %S)", destinationName, fieldName)
@@ -1507,8 +1592,91 @@ class KotlinProjectionRenderer {
             "Char" -> CodeBlock.of("%T.writeChar16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
             "Guid",
             "System.Guid" -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            else -> CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
+            else -> nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName) ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
         }
+    }
+
+    private fun nativeStructReferenceFieldReadCode(
+        field: WinRtFieldDefinition,
+        sourceName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val fieldName = field.name.replaceFirstChar(Char::lowercase)
+        val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
+        return when (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) ?: return null) {
+            NativeStructReferenceFieldKind.String ->
+                CodeBlock.of("%T.fromHandle(%T.readPointer(%L), owner = false).use { it.toKString() }", HSTRING_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice)
+            NativeStructReferenceFieldKind.UnknownReference ->
+                CodeBlock.of("%T(%T.toRawComPtr(%T.readPointer(%L)), preventReleaseOnDispose = true).use { %T(it.getRefPointer()) }", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice, IUNKNOWN_REFERENCE_CLASS_NAME)
+            NativeStructReferenceFieldKind.InspectableReference ->
+                CodeBlock.of("%T(%T.toRawComPtr(%T.readPointer(%L)), %T.IInspectable, preventReleaseOnDispose = true).use { %T(it.getRefPointer(), %T.IInspectable) }", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, slice, IID_CLASS_NAME, IINSPECTABLE_REFERENCE_CLASS_NAME, IID_CLASS_NAME)
+            NativeStructReferenceFieldKind.ProjectedInterface,
+            NativeStructReferenceFieldKind.ProjectedRuntimeClass -> CodeBlock.of(
+                "run {\nval __fieldRef = %T(%T.toRawComPtr(%T.readPointer(%L)), preventReleaseOnDispose = true)\n%T.Metadata.wrap(%T(__fieldRef.getRefPointer()))\n}",
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                slice,
+                resolveTypeName(field.typeName),
+                IUNKNOWN_REFERENCE_CLASS_NAME,
+            )
+        }
+    }
+
+    private fun nativeStructReferenceFieldWriteCode(
+        field: WinRtFieldDefinition,
+        valueName: String,
+        destinationName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val fieldName = field.name.replaceFirstChar(Char::lowercase)
+        val value = CodeBlock.of("%L.%L", valueName, fieldName)
+        val slice = CodeBlock.of("layout.slice(%L, %S)", destinationName, fieldName)
+        return when (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) ?: return null) {
+            NativeStructReferenceFieldKind.String ->
+                CodeBlock.of("%T.writePointer(%L, %T.create(%L).handle)", PLATFORM_ABI_CLASS_NAME, slice, HSTRING_CLASS_NAME, value)
+            NativeStructReferenceFieldKind.UnknownReference,
+            NativeStructReferenceFieldKind.InspectableReference ->
+                CodeBlock.of("%T.writePointer(%L, %T.fromRawComPtr(%L.getRefPointer()))", PLATFORM_ABI_CLASS_NAME, slice, PLATFORM_ABI_CLASS_NAME, value)
+            NativeStructReferenceFieldKind.ProjectedInterface,
+            NativeStructReferenceFieldKind.ProjectedRuntimeClass ->
+                CodeBlock.of(
+                    "%T.writePointer(%L, %T.fromRawComPtr((%L as %T).nativeObject.getRefPointer()))",
+                    PLATFORM_ABI_CLASS_NAME,
+                    slice,
+                    PLATFORM_ABI_CLASS_NAME,
+                    value,
+                    IWINRT_OBJECT_CLASS_NAME,
+                )
+        }
+    }
+
+    private fun nativeStructFieldDisposeAbiCode(
+        field: WinRtFieldDefinition,
+        sourceName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val fieldName = field.name.replaceFirstChar(Char::lowercase)
+        val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
+        val pointer = CodeBlock.of("%T.readPointer(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+        return when {
+            field.typeName.substringBefore('<').removeSuffix("?") == "String" ->
+                CodeBlock.of("%T.fromHandle(%L, owner = true).close()", HSTRING_CLASS_NAME, pointer)
+            nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) != null ->
+                CodeBlock.of("if (%L != %T.nullPointer) %T(%T.toRawComPtr(%L)).close()", pointer, PLATFORM_ABI_CLASS_NAME, IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, pointer)
+            else -> null
+        }
+    }
+
+    private enum class NativeStructReferenceFieldKind {
+        String,
+        UnknownReference,
+        InspectableReference,
+        ProjectedInterface,
+        ProjectedRuntimeClass,
     }
 
     private fun runtimeClassObjectReferenceCacheInitializer(

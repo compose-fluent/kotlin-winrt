@@ -46,6 +46,7 @@ import io.github.kitectlab.winrt.runtime.EventSource
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.HString
+import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
 import io.github.kitectlab.winrt.runtime.Marshaler
@@ -129,6 +130,7 @@ internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.kitectlab.winrt.projections.support", "WinRTGenericTypeInstantiations")
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
 internal val HSTRING_CLASS_NAME = HString::class.asClassName()
+internal val IID_CLASS_NAME = IID::class.asClassName()
 internal val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 internal val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "IInspectableReference")
 internal val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()

@@ -433,6 +433,7 @@ internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
                 abiLocalName,
             ),
         ),
+        finallyStatements = listOf(CodeBlock.of("%T.Metadata.disposeAbi(%L)", structType, abiLocalName)),
     )
 }
 

@@ -540,7 +540,11 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
                     CodeBlock.of("return %T.%L(__resultOut)\n", customAbi.helperTypeName, customAbi.fromAbiFunctionName)
                 }
             } ?: nativeStructClassName(returnBinding)?.let { returnType ->
-                CodeBlock.of("return %T.Metadata.fromAbi(__resultOut)\n", returnType)
+                CodeBlock.of(
+                    "try {\n    return %T.Metadata.fromAbi(__resultOut)\n} finally {\n    %T.Metadata.disposeAbi(__resultOut)\n}\n",
+                    returnType,
+                    returnType,
+                )
             }
         KotlinProjectionAbiValueKind.MappedKeyValuePair ->
             mappedKeyValuePairReturnReadback(returnBinding)

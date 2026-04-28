@@ -1665,12 +1665,105 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("override var redPrimary: Point"))
         assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, Point.Metadata.layout.sizeBytes)"))
         assertTrue(contents, contents.contains("return Point.Metadata.fromAbi(__resultOut)"))
+        assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__resultOut)"))
         assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
+        assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__valueAbi)"))
         assertTrue(pointContents, pointContents.contains("Metadata.register()"))
         assertTrue(pointContents, pointContents.contains("WinRtValueBoxingRegistration.registerStruct("))
         assertTrue(pointContents, pointContents.contains("Point::class"))
         assertTrue(pointContents, pointContents.contains("\"struct(Windows.Foundation.Point;f4;f4)\""))
         assertTrue(pointContents, pointContents.contains("emptyArray<Point>()::class"))
+    }
+
+    @Test
+    fun generator_binds_non_blittable_struct_abi_helpers() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NamedValue",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("Id", "Int32"),
+                                WinRtFieldDefinition("Name", "String"),
+                                WinRtFieldDefinition("Value", "System.Object"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IRecordSource",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "current",
+                                    returnTypeName = "Sample.Foundation.NamedValue",
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setCurrent",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "Sample.Foundation.NamedValue")),
+                                    methodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "RecordSource",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IRecordSource",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IRecordSource", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "current",
+                                    returnTypeName = "Sample.Foundation.NamedValue",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "setCurrent",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "Sample.Foundation.NamedValue")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val namedValue = filesByName.getValue("NamedValue.kt").contents
+        val recordSource = filesByName.getValue("RecordSource.kt").contents
+
+        assertTrue(namedValue, namedValue.contains("NativeScalarFieldSpec(\"name\", NativeStructScalarKind.ADDRESS)"))
+        assertTrue(namedValue, namedValue.contains("NativeScalarFieldSpec(\"value\", NativeStructScalarKind.ADDRESS)"))
+        assertTrue(namedValue, namedValue.contains("\"struct(Sample.Foundation.NamedValue;i4;string;cinterface(IInspectable))\""))
+        assertTrue(namedValue, namedValue.contains("HString.fromHandle("))
+        assertTrue(namedValue, namedValue.contains("PlatformAbi.readPointer(layout.slice(source, \"name\"))"))
+        assertTrue(namedValue, namedValue.contains("false"))
+        assertTrue(namedValue, namedValue.contains(".use { it.toKString() }"))
+        assertTrue(namedValue, namedValue.contains("PlatformAbi.writePointer("))
+        assertTrue(namedValue, namedValue.contains("layout.slice(destination, \"name\")"))
+        assertTrue(namedValue, namedValue.contains("HString.create(value.name).handle"))
+        assertTrue(namedValue, namedValue.contains("PlatformAbi.toRawComPtr("))
+        assertTrue(namedValue, namedValue.contains("layout.slice(source, \"value\")"))
+        assertTrue(namedValue, namedValue.contains("IID.IInspectable"))
+        assertTrue(namedValue, namedValue.contains("preventReleaseOnDispose = true"))
+        assertTrue(namedValue, namedValue.contains("IInspectableReference(it.getRefPointer(), IID.IInspectable)"))
+        assertTrue(namedValue, namedValue.contains("true"))
+        assertTrue(namedValue, namedValue.contains(").close()"))
+        assertTrue(recordSource, recordSource.contains("PlatformAbi.allocateBytes(__scope, NamedValue.Metadata.layout.sizeBytes)"))
+        assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.copyTo(value, __valueAbi)"))
+        assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__valueAbi)"))
+        assertTrue(recordSource, recordSource.contains("return NamedValue.Metadata.fromAbi(__resultOut)"))
+        assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__resultOut)"))
     }
 
     @Test
