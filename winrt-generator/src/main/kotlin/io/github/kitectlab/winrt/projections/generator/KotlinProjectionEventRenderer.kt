@@ -26,6 +26,7 @@ import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
+import io.github.kitectlab.winrt.metadata.WinRtProjectedAttributeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDeclarationDescriptor
@@ -121,6 +122,7 @@ internal fun KotlinProjectionRenderer.renderBoundEventFunctions(
         addInvocation = renderBoundInvocation(addBinding),
         removeInvocation = renderBoundInvocation(removeBinding),
         override = override,
+        projectedAttributes = addBinding.projectedAttributes,
     )
 }
 
@@ -140,6 +142,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticEventFunctions(
         addInvocation = renderBoundStaticInvocation(addBinding),
         removeInvocation = renderBoundStaticInvocation(removeBinding),
         override = false,
+        projectedAttributes = addBinding.projectedAttributes,
     )
 }
 
@@ -168,16 +171,19 @@ internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
     addInvocation: CodeBlock,
     removeInvocation: CodeBlock,
     override: Boolean,
+    projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
 ): List<FunSpec> {
     val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
     return listOf(
         FunSpec.builder("add${event.name}")
+            .addProjectedAttributeAnnotations(projectedAttributes)
             .apply { if (override) addModifiers(KModifier.OVERRIDE) }
             .addParameter("handler", typeName)
             .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", addInvocation)
             .build(),
         FunSpec.builder("remove${event.name}")
+            .addProjectedAttributeAnnotations(projectedAttributes)
             .apply { if (override) addModifiers(KModifier.OVERRIDE) }
             .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", removeInvocation)
@@ -416,6 +422,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     } ?: return null
     val invocation = renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.name)
+        .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
@@ -446,6 +453,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
     val getterInvocation = renderBoundStaticInvocation(getterBinding)
+    builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
             .addCode("%L\n", getterInvocation)

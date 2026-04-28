@@ -25,6 +25,7 @@ import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
+import io.github.kitectlab.winrt.metadata.WinRtProjectedAttributeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDeclarationDescriptor
@@ -33,6 +34,7 @@ import io.github.kitectlab.winrt.metadata.WinRtTypeRef
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.kitectlab.winrt.metadata.projectedAttributes
 import io.github.kitectlab.winrt.metadata.requireValidForProjection
 import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
@@ -949,6 +951,8 @@ class KotlinProjectionPlanner(
                 parameterBindings = parameterBindings,
                 signatureDescriptor = signatureDescriptor,
                 marshalerPlanDescriptor = marshalerPlanDescriptor,
+                projectedAttributes = typesByQualifiedName.getValue(slotInterfaceQualifiedName).projectedAttributes()
+                    .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute),
             )
         }
         return null
@@ -984,6 +988,8 @@ class KotlinProjectionPlanner(
                 parameterBindings = parameterBindings,
                 signatureDescriptor = signatureDescriptor,
                 marshalerPlanDescriptor = marshalerPlanDescriptor,
+                projectedAttributes = typesByQualifiedName.getValue(slotInterfaceQualifiedName).projectedAttributes()
+                    .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute),
             )
         }
         return null

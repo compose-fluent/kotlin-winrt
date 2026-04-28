@@ -327,6 +327,7 @@ data class KotlinProjectionInstanceMemberBinding(
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
     val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
     val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
 )
 
 data class KotlinProjectionStaticMemberBinding(
@@ -340,6 +341,7 @@ data class KotlinProjectionStaticMemberBinding(
     val parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
     val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
     val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
 )
 
 data class KotlinProjectionReadOnlyCollectionBinding(

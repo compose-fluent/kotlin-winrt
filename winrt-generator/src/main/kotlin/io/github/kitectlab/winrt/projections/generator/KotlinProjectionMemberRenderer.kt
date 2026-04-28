@@ -35,6 +35,7 @@ import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeValue
 import io.github.kitectlab.winrt.metadata.WinRtProjectedAttributeDescriptor
+import io.github.kitectlab.winrt.metadata.projectedAttributes
 import io.github.kitectlab.winrt.metadata.requireValidForProjection
 import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
@@ -166,6 +167,18 @@ internal fun renderProjectedAttributeAnnotation(attribute: WinRtProjectedAttribu
         else -> null
     }
 
+internal fun FunSpec.Builder.addProjectedAttributeAnnotations(
+    attributes: List<WinRtProjectedAttributeDescriptor>,
+): FunSpec.Builder = apply {
+    attributes.mapNotNull(::renderProjectedAttributeAnnotation).forEach(::addAnnotation)
+}
+
+internal fun PropertySpec.Builder.addProjectedAttributeAnnotations(
+    attributes: List<WinRtProjectedAttributeDescriptor>,
+): PropertySpec.Builder = apply {
+    attributes.mapNotNull(::renderProjectedAttributeAnnotation).forEach(::addAnnotation)
+}
+
 internal fun KotlinProjectionRenderer.renderVisibility(visibility: KotlinProjectionVisibility): KModifier = when (visibility) {
     KotlinProjectionVisibility.Public -> KModifier.PUBLIC
     KotlinProjectionVisibility.Internal -> KModifier.INTERNAL
@@ -238,6 +251,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) } ?: return null
     val invocation = renderBoundInvocation(binding)
     return FunSpec.builder(method.name)
+        .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addModifiers(KModifier.OVERRIDE)
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
@@ -258,6 +272,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
     val getterInvocation = renderBoundInvocation(binding = getterBinding)
+    builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
             .addCode("%L\n", getterInvocation)
@@ -487,7 +502,10 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), slotConstantName),
         callPlan = callPlan,
     ) ?: return null
+    val projectedAttributes = slotInterfaceType.projectedAttributes()
+        .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute)
     return FunSpec.builder(method.name)
+        .addProjectedAttributeAnnotations(projectedAttributes)
         .addModifiers(KModifier.OVERRIDE)
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
@@ -503,6 +521,11 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     val builder = PropertySpec.builder(property.propertyName, propertyType)
         .addModifiers(KModifier.OVERRIDE)
         .mutable(property.setter != null)
+    val projectedAttributes = (property.getter?.slotInterfaceType ?: property.setter?.slotInterfaceType)
+        ?.projectedAttributes()
+        ?.filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute)
+        .orEmpty()
+    builder.addProjectedAttributeAnnotations(projectedAttributes)
     property.getter?.let { getter ->
         val callPlan = buildAbiCallPlan(
             returnBinding = renderAbiTypeBinding(getter.property.typeName),

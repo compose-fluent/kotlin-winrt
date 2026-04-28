@@ -1770,6 +1770,82 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_propagates_declaring_interface_platform_attributes_to_runtime_members() {
+        val interfaceAvailability = WinRtAvailabilityMetadata(
+            contractVersion = WinRtContractVersionMetadata(
+                contractName = "Windows.Foundation.UniversalApiContract",
+                version = 0x000a0000,
+                platformVersion = "10.0.22621.0",
+            ),
+        )
+        val interfaceAttributes = listOf(
+            WinRtCustomAttributeDefinition(
+                typeName = "Windows.Foundation.Metadata.ContractVersionAttribute",
+                fixedArguments = listOf(
+                    WinRtCustomAttributeValue.StringValue("Windows.Foundation.UniversalApiContract"),
+                    WinRtCustomAttributeValue.IntegralValue(0x000a0000),
+                ),
+            ),
+        )
+        val getName = WinRtMethodDefinition(name = "getName", returnTypeName = "String")
+        val count = WinRtPropertyDefinition(name = "Count", typeName = "Int", getterMethodName = "get_Count")
+        val create = WinRtMethodDefinition(name = "createWidget", returnTypeName = "Widget", isStatic = true)
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            availability = interfaceAvailability,
+                            customAttributes = interfaceAttributes,
+                            methods = listOf(getName),
+                            properties = listOf(count),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            availability = interfaceAvailability,
+                            customAttributes = interfaceAttributes,
+                            methods = listOf(create),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            methods = listOf(getName, create),
+                            properties = listOf(count),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath == "io/github/kitectlab/winrt/projections/sample/foundation/Widget.kt" }
+            .contents
+
+        assertTrue(contents.contains("@WinRtSupportedOSPlatform(\"Windows10.0.22621.0\")\n  override fun getName(): String"))
+        assertTrue(contents.contains("@WinRtSupportedOSPlatform(\"Windows10.0.22621.0\")\n  override val count: Int"))
+        assertTrue(contents.contains("@WinRtSupportedOSPlatform(\"Windows10.0.22621.0\")\n    public fun createWidget(): Widget"))
+    }
+
+    @Test
     fun generator_emits_deterministic_shell_files_for_equivalent_metadata() {
         val left = WinRtMetadataModel(
             namespaces = listOf(
