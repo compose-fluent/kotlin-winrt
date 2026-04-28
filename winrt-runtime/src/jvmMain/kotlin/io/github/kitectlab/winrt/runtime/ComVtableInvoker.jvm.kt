@@ -19,6 +19,7 @@ actual object ComVtableInvoker {
     private val downcallHandles = ConcurrentCacheMap<ComDowncallKey, MethodHandle>()
     private val callbackEntries = ConcurrentCacheMap<Long, RegisteredCallback>()
     private val nextCallbackId = AtomicLong(1)
+    private val pointerDescriptor = FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS)
     private val hResultDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
     private val hResultPtrDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
     private val hResultInt8Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_BYTE)
@@ -136,6 +137,15 @@ actual object ComVtableInvoker {
             ValueLayout.ADDRESS,
             ValueLayout.JAVA_INT,
         )
+
+    actual fun invokePointer(
+        instance: RawComPtr,
+        slot: Int,
+    ): RawAddress {
+        val instanceSegment = asSegment(instance)
+        return (downcallHandle(instanceSegment, slot, pointerDescriptor).invoke(instanceSegment) as MemorySegment)
+            .asRawAddress()
+    }
 
     actual fun invoke(
         instance: RawComPtr,

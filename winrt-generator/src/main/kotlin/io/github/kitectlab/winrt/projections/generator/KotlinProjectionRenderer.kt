@@ -23,6 +23,7 @@ import io.github.kitectlab.winrt.metadata.WinRtModuleActivationAndAuthoringDescr
 import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
+import io.github.kitectlab.winrt.metadata.WinRtObjectReferencePlanDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
@@ -459,7 +460,10 @@ class KotlinProjectionRenderer {
             ?.substringBefore('<')
             ?.let(objectReferencePlansByInterface::get)
         if (plan.defaultInterfaceIid != null && defaultObjectReferencePlan?.skippedReason == null) {
-            val defaultCacheType = if (defaultObjectReferencePlan?.usesInner == true) {
+            val defaultCacheType = if (
+                defaultObjectReferencePlan?.usesInner == true ||
+                defaultObjectReferencePlan?.usesDefaultInterfaceObjRef == true
+            ) {
                 COM_OBJECT_REFERENCE_CLASS_NAME
             } else {
                 IUNKNOWN_REFERENCE_CLASS_NAME
@@ -476,10 +480,7 @@ class KotlinProjectionRenderer {
                             )
                         } else {
                             delegate(
-                                CodeBlock.of(
-                                    "lazy(%T.PUBLICATION) { Metadata.acquireDefaultInterface(_inner) }",
-                                    LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                                ),
+                                runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, "Metadata.acquireDefaultInterface(_inner)"),
                             )
                         }
                     }
@@ -499,9 +500,9 @@ class KotlinProjectionRenderer {
                     )
                         .addModifiers(KModifier.PRIVATE)
                         .delegate(
-                            CodeBlock.of(
-                                "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %T.Metadata.IID) }",
-                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                            runtimeClassObjectReferenceCacheInitializer(
+                                objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')],
+                                "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
                                 resolveTypeName(binding.qualifiedName),
                             ),
                         )
@@ -1441,6 +1442,36 @@ class KotlinProjectionRenderer {
             "System.Guid" -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
             else -> CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
         }
+    }
+
+    private fun runtimeClassObjectReferenceCacheInitializer(
+        objectReferencePlan: WinRtObjectReferencePlanDescriptor?,
+        acquireExpression: String,
+        vararg acquireArgs: Any,
+    ): CodeBlock {
+        val body = CodeBlock.builder()
+        if (objectReferencePlan?.requiresGenericInstantiation == true) {
+            body.addStatement(
+                "%T.entryForSourceType(%S)?.let { entry -> %T.initializeDependencies(entry) { } }",
+                WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
+                objectReferencePlan.interfaceName,
+                WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
+            )
+        }
+        if (objectReferencePlan?.usesDefaultInterfaceObjRef == true && objectReferencePlan.defaultInterfaceObjRefVtableSlot != null) {
+            body.addStatement("return _inner.getDefaultInterfaceObjectReference(%L)", objectReferencePlan.defaultInterfaceObjRefVtableSlot)
+        } else {
+            body.add("return ")
+            body.add(acquireExpression, *acquireArgs)
+            body.add("\n")
+        }
+        return CodeBlock.builder()
+            .add("lazy(%T.PUBLICATION) {\n", LAZY_THREAD_SAFETY_MODE_CLASS_NAME)
+            .indent()
+            .add(body.build())
+            .unindent()
+            .add("}")
+            .build()
     }
 
     internal fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {

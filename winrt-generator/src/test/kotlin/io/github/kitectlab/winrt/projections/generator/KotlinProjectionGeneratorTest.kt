@@ -2747,7 +2747,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents, widgetContents.contains("Name|start=6|get=6|set=7"))
         assertTrue(widgetContents, widgetContents.contains("Mode|start=8|get=8|set=9"))
         assertTrue(widgetContents, widgetContents.contains("internal val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_FastAbi_IWidgetCache\")"))
-        assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidget|cache=Sample_FastAbi_IWidgetCache|default=true|skip=|inner=false|defaultObjRef=false|hierarchy=|generic=false"))
+        assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidget|cache=Sample_FastAbi_IWidgetCache|default=true|skip=|inner=false|defaultObjRef=false|hierarchy=|defaultObjRefSlot=|generic=false"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|cache=Sample_FastAbi_IWidgetOverridesCache|default=false|skip=fast-abi-non-default-exclusive"))
         assertTrue(widgetContents, widgetContents.contains("internal const val MODE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
         assertFalse(widgetContents, widgetContents.contains("private val _iWidgetOverrides"))
@@ -2755,6 +2755,66 @@ class KotlinProjectionGeneratorTest {
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_GETTER_SLOT: Int = 8"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_SETTER_SLOT: Int = 9"))
+    }
+
+    @Test
+    fun generator_consumes_cswinrt_object_reference_cache_plans() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.FastAbi",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IDefaultExclusive",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(
+                                        io.github.kitectlab.winrt.metadata.WinRtCustomAttributeValue.TypeValue("Sample.FastAbi.FastDefaultExclusiveWidget"),
+                                    ),
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Start", "Unit", methodRowId = 10),
+                                WinRtMethodDefinition("Stop", "Unit", methodRowId = 11),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IGeneric",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "FastDefaultExclusiveWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isFastAbi = true,
+                            isSealedType = false,
+                            defaultInterfaceName = "Sample.FastAbi.IDefaultExclusive",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IDefaultExclusive", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IGeneric<String>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("/FastDefaultExclusiveWidget.kt") }
+            .contents
+
+        assertTrue(widgetContents, widgetContents.contains("private val _defaultInterface: ComObjectReference"))
+        assertTrue(widgetContents, widgetContents.contains("getDefaultInterfaceObjectReference(8)"))
+        assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IDefaultExclusive|cache=Sample_FastAbi_IDefaultExclusiveCache|default=true|skip=|inner=false|defaultObjRef=true|hierarchy=0|defaultObjRefSlot=8|generic=false"))
+        assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IGeneric<String>|cache=Sample_FastAbi_IGeneric_String_Cache|default=false|skip=|inner=false|defaultObjRef=false|hierarchy=|defaultObjRefSlot=|generic=true"))
     }
 
     @Test

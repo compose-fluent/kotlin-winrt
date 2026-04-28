@@ -1,6 +1,11 @@
 package io.github.kitectlab.winrt.runtime
 
 actual object ComVtableInvoker {
+    actual fun invokePointer(
+        instance: RawComPtr,
+        slot: Int,
+    ): RawAddress = TODO()
+
     actual fun invoke(
         instance: RawComPtr,
         slot: Int,

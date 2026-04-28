@@ -2361,6 +2361,10 @@ class WinRtMetadataModelTest {
             namespace = "Sample.FastAbi",
             name = "IDefaultExclusive",
             kind = WinRtTypeKind.Interface,
+            methods = listOf(
+                WinRtMethodDefinition("Start", "Unit", methodRowId = 10),
+                WinRtMethodDefinition("Stop", "Unit", methodRowId = 11),
+            ),
             isExclusiveTo = true,
             customAttributes = listOf(
                 WinRtCustomAttributeDefinition(
@@ -2430,6 +2434,7 @@ class WinRtMetadataModelTest {
         val defaultExclusivePlan = defaultExclusiveDescriptor.objectReferencePlans.single()
         assertEquals(true, defaultExclusivePlan.usesDefaultInterfaceObjRef)
         assertEquals(0, defaultExclusivePlan.defaultInterfaceHierarchyIndex)
+        assertEquals(8, defaultExclusivePlan.defaultInterfaceObjRefVtableSlot)
         val sealedDescriptor = helpers.objectReferenceSurfaceDescriptor(sealedWidget)
         assertEquals(true, sealedDescriptor.objectReferencePlans.single().usesInner)
     }

@@ -499,6 +499,7 @@ data class WinRtObjectReferencePlanDescriptor(
     val usesInner: Boolean = false,
     val usesDefaultInterfaceObjRef: Boolean = false,
     val defaultInterfaceHierarchyIndex: Int? = null,
+    val defaultInterfaceObjRefVtableSlot: Int? = null,
     val requiresGenericInstantiation: Boolean = false,
 )
 
@@ -1626,6 +1627,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         val interfaces = instanceInterfaces.map(WinRtRuntimeClassInterfaceDescriptor::interfaceName)
         val replaceDefaultByInner = type.isSealedType
         val classHierarchyIndex = closure?.classHierarchyIndex ?: 0
+        val fastAbiDefaultSlot = getFastAbiClassForClass(type)
+            ?.interfaceSlots
+            ?.firstOrNull { slot -> slot.isDefault }
         val objectReferencePlans = instanceInterfaces.map { descriptor ->
             val interfaceType = descriptor.definitionType
             val manuallyGenerated = interfaceType?.let { isManuallyGeneratedInterface(it).manuallyGenerated } ?: false
@@ -1645,6 +1649,12 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 usesInner = usesInner,
                 usesDefaultInterfaceObjRef = usesDefaultInterfaceObjRef,
                 defaultInterfaceHierarchyIndex = if (usesDefaultInterfaceObjRef) classHierarchyIndex else null,
+                defaultInterfaceObjRefVtableSlot =
+                    if (usesDefaultInterfaceObjRef && fastAbiDefaultSlot != null) {
+                        fastAbiDefaultSlot.vtableStartIndex + fastAbiDefaultSlot.methodCount + classHierarchyIndex
+                    } else {
+                        null
+                    },
                 requiresGenericInstantiation = (interfaceType?.genericParameterCount ?: 0) != 0,
             )
         }

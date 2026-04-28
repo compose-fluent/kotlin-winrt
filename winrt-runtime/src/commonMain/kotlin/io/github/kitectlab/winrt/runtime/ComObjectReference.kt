@@ -60,6 +60,18 @@ open class ComObjectReference internal constructor(
     fun queryInterface(requestedInterfaceId: Guid): Result<ComObjectReference> =
         asIUnknownView().queryInterface(requestedInterfaceId).map(::wrapQueriedReference)
 
+    fun getDefaultInterfaceObjectReference(vtableSlot: Int): IUnknownReference {
+        throwIfDisposed()
+        val pointer = ComVtableInvoker.invokePointer(comPtr.raw, vtableSlot)
+        if (PlatformAbi.isNull(pointer)) {
+            throw WinRtUnsupportedOperationException(
+                "Fast ABI default-interface object reference returned a null pointer from vtable slot $vtableSlot",
+                KnownHResults.E_POINTER,
+            )
+        }
+        return IUnknownReference(pointer.asRawComPtr())
+    }
+
     fun tryAsInspectable(): IInspectableReference? =
         asIUnknownView().tryQueryInterface(IID.IInspectable)?.let(::InspectableReference)
 

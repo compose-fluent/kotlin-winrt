@@ -1006,6 +1006,7 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
                     "inner=${plan.usesInner}",
                     "defaultObjRef=${plan.usesDefaultInterfaceObjRef}",
                     "hierarchy=${plan.defaultInterfaceHierarchyIndex?.toString().orEmpty()}",
+                    "defaultObjRefSlot=${plan.defaultInterfaceObjRefVtableSlot?.toString().orEmpty()}",
                     "generic=${plan.requiresGenericInstantiation}",
                 ).joinToString("|")
             },

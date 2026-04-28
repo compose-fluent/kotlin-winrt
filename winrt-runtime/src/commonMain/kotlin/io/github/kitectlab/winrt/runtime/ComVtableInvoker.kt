@@ -1,6 +1,11 @@
 package io.github.kitectlab.winrt.runtime
 
 expect object ComVtableInvoker {
+    fun invokePointer(
+        instance: RawComPtr,
+        slot: Int,
+    ): RawAddress
+
     fun invoke(
         instance: RawComPtr,
         slot: Int,

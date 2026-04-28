@@ -116,6 +116,8 @@ internal val GUID_CLASS_NAME = Guid::class.asClassName()
 internal val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
 internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
+internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
+    ClassName("io.github.kitectlab.winrt.projections.support", "WinRTGenericTypeInstantiations")
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
 internal val HSTRING_CLASS_NAME = HString::class.asClassName()
 internal val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
