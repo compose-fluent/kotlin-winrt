@@ -445,6 +445,7 @@ class KotlinProjectionRenderer {
                 )
                 .build(),
         )
+        addRuntimeClassIdentityMembers(builder, plan)
         val objectReferencePlansByInterface = plan.objectReferenceSurfaceDescriptor
             ?.objectReferencePlans
             .orEmpty()
@@ -680,6 +681,34 @@ class KotlinProjectionRenderer {
         }
         appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
         return builder.build()
+    }
+
+    private fun addRuntimeClassIdentityMembers(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        if (plan.type.methods.none { it.isObjectEquals }) {
+            builder.addFunction(
+                FunSpec.builder("equals")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("other", ANY.copy(nullable = true))
+                    .returns(Boolean::class)
+                    .addCode(
+                        "return other is %T && nativeObject.pointer == other.nativeObject.pointer\n",
+                        projectionClassName(plan.type.qualifiedName),
+                    )
+                    .build(),
+            )
+        }
+        if (plan.type.methods.none { it.isObjectGetHashCode }) {
+            builder.addFunction(
+                FunSpec.builder("hashCode")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(Int::class)
+                    .addCode("return nativeObject.pointer.hashCode()\n")
+                    .build(),
+            )
+        }
     }
 
     private fun addMutableCollectionForwardMembers(

@@ -1232,6 +1232,67 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_runtime_class_pointer_identity_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "CustomIdentityWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true)),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Equals",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(WinRtParameterDefinition("obj", "System.Object")),
+                                    isObjectEquals = true,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetHashCode",
+                                    returnTypeName = "Int",
+                                    isObjectGetHashCode = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val generated = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = generated.getValue("Widget.kt").contents
+        val customIdentityContents = generated.getValue("CustomIdentityWidget.kt").contents
+
+        assertTrue(widgetContents.contains("override fun equals(other: Any?): Boolean"))
+        assertTrue(widgetContents.contains("other is Widget &&"))
+        assertTrue(widgetContents.contains("nativeObject.pointer =="))
+        assertTrue(widgetContents.contains("other.nativeObject.pointer"))
+        assertTrue(widgetContents.contains("override fun hashCode(): Int"))
+        assertTrue(widgetContents.contains("nativeObject.pointer.hashCode()"))
+        assertFalse(customIdentityContents.contains("override fun equals(other: Any?): Boolean"))
+        assertFalse(customIdentityContents.contains("override fun hashCode(): Int"))
+    }
+
+    @Test
     fun generator_binds_struct_and_non_unit_delegate_member_marshaling() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
