@@ -192,11 +192,12 @@ internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodD
         .build()
 
 internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefinition, override: Boolean = false): FunSpec {
-    val builder = FunSpec.builder(method.name)
-        .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .returns(resolveTypeName(method.returnTypeName))
+    val objectShape = runtimeObjectMethodShape(method)
+    val builder = FunSpec.builder(objectShape?.name ?: method.name)
+        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
         .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
-    if (override) {
+    if (override || objectShape != null) {
         builder.addModifiers(KModifier.OVERRIDE)
     }
     return builder.build()
@@ -249,14 +250,81 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     method: WinRtMethodDefinition,
 ): FunSpec? {
     val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) } ?: return null
-    val invocation = renderBoundInvocation(binding)
-    return FunSpec.builder(method.name)
+    val objectShape = runtimeObjectMethodShape(method)
+    val invocation = if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
+        renderObjectEqualsInvocation(binding)
+    } else {
+        renderBoundInvocation(binding)
+    }
+    return FunSpec.builder(objectShape?.name ?: method.name)
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
-        .addModifiers(runtimeClassMemberModifiers(plan, binding))
-        .returns(resolveTypeName(method.returnTypeName))
-        .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
+        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
+        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .apply {
+            if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
+                addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
+            }
+        }
         .addCode("%L\n", invocation)
         .build()
+}
+
+private enum class RuntimeObjectMethodKind {
+    ToString,
+    Equals,
+    HashCode,
+}
+
+private data class RuntimeObjectMethodShape(
+    val kind: RuntimeObjectMethodKind,
+    val name: String,
+    val returnType: TypeName,
+    val parameters: List<ParameterSpec>,
+)
+
+private fun runtimeObjectMethodShape(method: WinRtMethodDefinition): RuntimeObjectMethodShape? =
+    when {
+        method.name == "ToString" && method.parameters.isEmpty() && method.returnTypeName == "String" ->
+            RuntimeObjectMethodShape(
+                kind = RuntimeObjectMethodKind.ToString,
+                name = "toString",
+                returnType = String::class.asClassName(),
+                parameters = emptyList(),
+            )
+        method.isObjectEquals ->
+            RuntimeObjectMethodShape(
+                kind = RuntimeObjectMethodKind.Equals,
+                name = "equals",
+                returnType = Boolean::class.asClassName(),
+                parameters = listOf(ParameterSpec.builder("other", ANY.copy(nullable = true)).build()),
+            )
+        method.isObjectGetHashCode ->
+            RuntimeObjectMethodShape(
+                kind = RuntimeObjectMethodKind.HashCode,
+                name = "hashCode",
+                returnType = Int::class.asClassName(),
+                parameters = emptyList(),
+            )
+        else -> null
+    }
+
+private fun KotlinProjectionRenderer.renderObjectEqualsInvocation(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock {
+    val equalsBinding = binding.copy(
+        parameterBindings = listOf(
+            KotlinProjectionAbiParameterBinding(
+                name = "other",
+                typeBinding = KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                    typeName = "Any?",
+                    resolvedTypeName = "System.Object",
+                ),
+            ),
+        ),
+    )
+    return renderBoundInvocation(equalsBinding)
 }
 
 internal fun KotlinProjectionRenderer.renderBoundProperty(

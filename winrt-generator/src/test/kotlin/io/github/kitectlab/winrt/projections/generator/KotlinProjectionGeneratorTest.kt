@@ -102,7 +102,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonValue, jsonValue.contains("IStringable"))
         assertTrue(jsonValue, jsonValue.contains("fun CreateNumberValue(input: Double): JsonValue"))
         assertTrue(jsonValue, jsonValue.contains("fun GetNumber(): Double"))
-        assertTrue(jsonValue, jsonValue.contains("fun ToString(): String"))
+        assertTrue(jsonValue, jsonValue.contains("override fun toString(): String"))
         assertTrue(iJsonValue, iJsonValue.contains("fun GetNumber(): Double"))
     }
 
@@ -1244,6 +1244,26 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "ToString",
+                                    returnTypeName = "String",
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Equals",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(WinRtParameterDefinition("obj", "System.Object")),
+                                    isObjectEquals = true,
+                                    methodRowId = 11,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetHashCode",
+                                    returnTypeName = "Int",
+                                    isObjectGetHashCode = true,
+                                    methodRowId = 12,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -1260,15 +1280,22 @@ class KotlinProjectionGeneratorTest {
                             implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true)),
                             methods = listOf(
                                 WinRtMethodDefinition(
+                                    name = "ToString",
+                                    returnTypeName = "String",
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "Equals",
                                     returnTypeName = "Boolean",
                                     parameters = listOf(WinRtParameterDefinition("obj", "System.Object")),
                                     isObjectEquals = true,
+                                    methodRowId = 11,
                                 ),
                                 WinRtMethodDefinition(
                                     name = "GetHashCode",
                                     returnTypeName = "Int",
                                     isObjectGetHashCode = true,
+                                    methodRowId = 12,
                                 ),
                             ),
                         ),
@@ -1289,8 +1316,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("other.nativeObject.pointer"))
         assertTrue(widgetContents.contains("override fun hashCode(): Int"))
         assertTrue(widgetContents.contains("nativeObject.pointer.hashCode()"))
-        assertFalse(customIdentityContents.contains("override fun equals(other: Any?): Boolean"))
-        assertFalse(customIdentityContents.contains("override fun hashCode(): Int"))
+        assertTrue(customIdentityContents.contains("override fun toString(): String"))
+        assertTrue(customIdentityContents.contains("override fun equals(other: Any?): Boolean"))
+        assertTrue(customIdentityContents, customIdentityContents.contains("return false"))
+        assertTrue(customIdentityContents.contains("nativeObject.pointer"))
+        assertTrue(customIdentityContents.contains("override fun hashCode(): Int"))
+        assertFalse(customIdentityContents.contains("fun ToString()"))
+        assertFalse(customIdentityContents.contains("fun Equals("))
+        assertFalse(customIdentityContents.contains("fun GetHashCode("))
     }
 
     @Test
