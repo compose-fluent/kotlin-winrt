@@ -195,7 +195,7 @@ internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefini
     val builder = FunSpec.builder(method.name)
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .returns(resolveTypeName(method.returnTypeName))
-        .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
+        .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
     if (override) {
         builder.addModifiers(KModifier.OVERRIDE)
     }
@@ -224,14 +224,14 @@ internal fun KotlinProjectionRenderer.renderStubProperty(property: WinRtProperty
     }
     builder.getter(
         FunSpec.getterBuilder()
-            .addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
+            .addCode("return %L\n", missingAbiBindingError("property ${property.name} getter"))
             .build(),
     )
     if (!property.isReadOnly) {
         builder.setter(
             FunSpec.setterBuilder()
                 .addParameter("value", resolveTypeName(property.typeName))
-                .addCode("error(%S)\n", "Not yet bound to winrt-runtime")
+                .addCode("%L\n", missingAbiBindingError("property ${property.name} setter"))
                 .build(),
         )
     }
@@ -285,12 +285,22 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         builder.setter(
             FunSpec.setterBuilder()
                 .addParameter("value", resolveTypeName(property.typeName))
-                .addCode("%L\n", setterBinding?.let(::renderBoundInvocation) ?: CodeBlock.of("error(%S)", "Not yet bound to winrt-runtime"))
+                .addCode(
+                    "%L\n",
+                    setterBinding?.let(::renderBoundInvocation)
+                        ?: missingAbiBindingError("property ${property.name} setter"),
+                )
                 .build(),
         )
     }
     return builder.build()
 }
+
+internal fun missingAbiBindingError(memberName: String): CodeBlock =
+    CodeBlock.of(
+        "error(%S)",
+        "WinRT ABI binding is unavailable for $memberName; projection metadata did not provide a matching interface slot.",
+    )
 
 internal fun KotlinProjectionRenderer.renderBoundInvocation(
     binding: KotlinProjectionInstanceMemberBinding,

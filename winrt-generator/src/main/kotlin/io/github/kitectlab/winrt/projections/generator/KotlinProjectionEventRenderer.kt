@@ -275,7 +275,7 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(event: WinRtEventDefi
                     if (override) {
                         addModifiers(KModifier.OVERRIDE)
                     }
-                    addCode("return error(%S)\n", "Not yet bound to winrt-runtime")
+                    addCode("return %L\n", missingAbiBindingError("event ${event.name} add"))
                 }
             }
             .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
@@ -289,7 +289,7 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(event: WinRtEventDefi
                     if (override) {
                         addModifiers(KModifier.OVERRIDE)
                     }
-                    addCode("error(%S)\n", "Not yet bound to winrt-runtime")
+                    addCode("%L\n", missingAbiBindingError("event ${event.name} remove"))
                 }
             }
             .build(),
@@ -466,7 +466,11 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         builder.setter(
             FunSpec.setterBuilder()
                 .addParameter("value", resolveTypeName(property.typeName))
-                .addCode("%L\n", setterBinding?.let(::renderBoundStaticInvocation) ?: CodeBlock.of("error(%S)", "Not yet bound to winrt-runtime"))
+                .addCode(
+                    "%L\n",
+                    setterBinding?.let(::renderBoundStaticInvocation)
+                        ?: missingAbiBindingError("static property ${property.name} setter"),
+                )
                 .build(),
         )
     }

@@ -168,7 +168,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("fun setNamedValue(name: String, `value`: JsonValue)"))
         assertTrue(jsonObject, jsonObject.contains("(value as IWinRTObject).nativeObject.pointer"))
         assertTrue(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject"))
-        assertFalse(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject = error(\"WinRT ABI binding is unavailable\")"))
         assertTrue(jsonObject, jsonObject.contains("HString.create(json).use { __jsonAbi ->"))
         assertTrue(jsonObject, jsonObject.contains("internal val STATIC_PARSE_SLOT: Int = IJsonObjectStatics.Metadata.PARSE_SLOT"))
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
@@ -276,9 +276,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
         assertTrue(file.contents.contains("public class JsonObject internal constructor("))
         assertTrue(file.contents.contains("private val _inner: IInspectableReference"))
-        assertTrue(file.contents.contains("fun getNamedString(name: String): String = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(file.contents.contains("WinRT ABI binding is unavailable for method getNamedString"))
         assertTrue(file.contents.contains("companion object"))
-        assertTrue(file.contents.contains("fun parse(json: String): JsonObject = error(\"Not yet bound to winrt-runtime\")"))
+        assertTrue(file.contents.contains("WinRT ABI binding is unavailable for method parse"))
+        assertFalse(file.contents.contains("Not yet bound to winrt-runtime"))
         assertFalse(file.contents.contains("JsonValueType"))
     }
 
@@ -1366,8 +1367,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtDelegateBridge.createDelegate"))
         assertTrue(widgetContents.contains("WinRtDelegateValueKind.BOOLEAN"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
-        assertFalse(widgetContents.contains("fun location(): Point = error(\"Not yet bound to winrt-runtime\")"))
-        assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun location(): Point = error(\"WinRT ABI binding is unavailable\")"))
+        assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"WinRT ABI binding is unavailable\")"))
     }
 
     @Test
@@ -1533,8 +1534,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtDelegateValueKind.UNIT"))
         assertTrue(widgetContents.contains("handler(__args[0] as String)"))
         assertTrue(widgetContents.contains("__handlerHandle.createReference().use { __handlerAbi ->"))
-        assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"Not yet bound to winrt-runtime\")"))
-        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun setHandler(handler: WidgetHandler) = error(\"WinRT ABI binding is unavailable\")"))
+        assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken = error(\"WinRT ABI binding is unavailable\")"))
     }
 
     @Test
@@ -1602,7 +1603,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(delegateContents.contains("as Boolean"))
         assertTrue(widgetContents.contains("return WidgetHandler.Metadata.fromAbi(PlatformAbi.readPointer(__resultOut))"))
-        assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"Not yet bound to winrt-runtime\")"))
+        assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"WinRT ABI binding is unavailable\")"))
     }
 
     @Test
