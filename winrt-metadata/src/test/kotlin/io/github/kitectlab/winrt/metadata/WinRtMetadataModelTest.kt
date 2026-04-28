@@ -2328,6 +2328,113 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun object_reference_descriptor_mirrors_cswinrt_class_objref_rules() {
+        val bindableVector = WinRtTypeDefinition(
+            namespace = "Microsoft.UI.Xaml.Interop",
+            name = "IBindableVector",
+            kind = WinRtTypeKind.Interface,
+        )
+        val defaultInterface = WinRtTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "IDefault",
+            kind = WinRtTypeKind.Interface,
+        )
+        val genericInterface = WinRtTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "IGeneric",
+            kind = WinRtTypeKind.Interface,
+            genericParameterCount = 1,
+        )
+        val exclusiveInterface = WinRtTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "IOverrides",
+            kind = WinRtTypeKind.Interface,
+            isExclusiveTo = true,
+            customAttributes = listOf(
+                WinRtCustomAttributeDefinition(
+                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                    fixedArguments = listOf(WinRtCustomAttributeValue.TypeValue("Sample.FastAbi.Widget")),
+                ),
+            ),
+        )
+        val exclusiveDefaultInterface = WinRtTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "IDefaultExclusive",
+            kind = WinRtTypeKind.Interface,
+            isExclusiveTo = true,
+            customAttributes = listOf(
+                WinRtCustomAttributeDefinition(
+                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                    fixedArguments = listOf(WinRtCustomAttributeValue.TypeValue("Sample.FastAbi.FastDefaultExclusiveWidget")),
+                ),
+            ),
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+            isFastAbi = true,
+            defaultInterfaceName = "Sample.FastAbi.IDefault",
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IDefault", isDefault = true),
+                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IOverrides"),
+                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Interop.IBindableVector"),
+                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IGeneric<String>"),
+            ),
+        )
+        val fastDefaultExclusiveWidget = WinRtTypeDefinition(
+            namespace = "Sample.FastAbi",
+            name = "FastDefaultExclusiveWidget",
+            kind = WinRtTypeKind.RuntimeClass,
+            isFastAbi = true,
+            isSealedType = false,
+            defaultInterfaceName = "Sample.FastAbi.IDefaultExclusive",
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IDefaultExclusive", isDefault = true),
+            ),
+        )
+        val sealedWidget = widget.copy(
+            name = "SealedWidget",
+            isFastAbi = false,
+            isSealedType = true,
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IDefault", isDefault = true),
+            ),
+        )
+        val helpers = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace("Microsoft.UI.Xaml.Interop", listOf(bindableVector)),
+                WinRtNamespace(
+                    "Sample.FastAbi",
+                    listOf(
+                        defaultInterface,
+                        genericInterface,
+                        exclusiveInterface,
+                        exclusiveDefaultInterface,
+                        widget,
+                        fastDefaultExclusiveWidget,
+                        sealedWidget,
+                    ),
+                ),
+            ),
+        ).semanticHelpers()
+
+        val descriptor = helpers.objectReferenceSurfaceDescriptor(widget)
+        assertEquals(listOf("Sample_FastAbi_IDefaultCache", "Sample_FastAbi_IGeneric_String_Cache"), descriptor.objectReferenceNames)
+        assertEquals(null, descriptor.objectReferencePlans.single { it.interfaceName == "Sample.FastAbi.IDefault" }.skippedReason)
+        assertEquals("fast-abi-non-default-exclusive", descriptor.objectReferencePlans.single { it.interfaceName == "Sample.FastAbi.IOverrides" }.skippedReason)
+        assertEquals("manual-bindable", descriptor.objectReferencePlans.single { it.interfaceName == "Microsoft.UI.Xaml.Interop.IBindableVector" }.skippedReason)
+        assertEquals(true, descriptor.objectReferencePlans.single { it.interfaceName == "Sample.FastAbi.IGeneric<String>" }.requiresGenericInstantiation)
+
+        val defaultExclusiveDescriptor = helpers.objectReferenceSurfaceDescriptor(fastDefaultExclusiveWidget)
+        val defaultExclusivePlan = defaultExclusiveDescriptor.objectReferencePlans.single()
+        assertEquals(true, defaultExclusivePlan.usesDefaultInterfaceObjRef)
+        assertEquals(0, defaultExclusivePlan.defaultInterfaceHierarchyIndex)
+        val sealedDescriptor = helpers.objectReferenceSurfaceDescriptor(sealedWidget)
+        assertEquals(true, sealedDescriptor.objectReferencePlans.single().usesInner)
+    }
+
+    @Test
     fun required_interface_mapped_helpers_carry_cswinrt_call_mode_and_removal_rules() {
         val iterable = WinRtTypeDefinition(
             namespace = "Windows.Foundation.Collections",

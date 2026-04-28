@@ -484,10 +484,22 @@ data class WinRtObjectReferenceSurfaceDescriptor(
     val typeName: String,
     val inheritanceTypeNames: List<String>,
     val objectReferenceNames: List<String>,
+    val objectReferencePlans: List<WinRtObjectReferencePlanDescriptor>,
     val baseConstructorDispatchTargets: List<String>,
     val exposedTypeMetadataNames: List<String>,
     val hasRcwFactory: Boolean,
     val hasUnwrappableNativeObject: Boolean,
+)
+
+data class WinRtObjectReferencePlanDescriptor(
+    val interfaceName: String,
+    val cacheName: String,
+    val isDefaultInterface: Boolean,
+    val skippedReason: String? = null,
+    val usesInner: Boolean = false,
+    val usesDefaultInterfaceObjRef: Boolean = false,
+    val defaultInterfaceHierarchyIndex: Int? = null,
+    val requiresGenericInstantiation: Boolean = false,
 )
 
 data class WinRtManagedAbiInvokeDescriptor(
@@ -1610,11 +1622,39 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun objectReferenceSurfaceDescriptor(type: WinRtTypeDefinition): WinRtObjectReferenceSurfaceDescriptor {
         val closure = if (type.kind == WinRtTypeKind.RuntimeClass) closureResolver.resolveRuntimeClass(type) else null
-        val interfaces = closure?.instanceInterfaces.orEmpty().map(WinRtRuntimeClassInterfaceDescriptor::interfaceName)
+        val instanceInterfaces = closure?.instanceInterfaces.orEmpty()
+        val interfaces = instanceInterfaces.map(WinRtRuntimeClassInterfaceDescriptor::interfaceName)
+        val replaceDefaultByInner = type.isSealedType
+        val classHierarchyIndex = closure?.classHierarchyIndex ?: 0
+        val objectReferencePlans = instanceInterfaces.map { descriptor ->
+            val interfaceType = descriptor.definitionType
+            val manuallyGenerated = interfaceType?.let { isManuallyGeneratedInterface(it).manuallyGenerated } ?: false
+            val fastAbiNonDefaultExclusive = type.isFastAbi && descriptor.isExclusiveTo && !descriptor.isDefault
+            val usesInner = replaceDefaultByInner && descriptor.isDefault && (interfaceType?.genericParameterCount ?: 0) == 0
+            val usesDefaultInterfaceObjRef =
+                !type.isSealedType && type.isFastAbi && descriptor.isExclusiveTo && descriptor.isDefault
+            WinRtObjectReferencePlanDescriptor(
+                interfaceName = descriptor.interfaceName,
+                cacheName = cacheNameFor(descriptor.interfaceName),
+                isDefaultInterface = descriptor.isDefault,
+                skippedReason = when {
+                    manuallyGenerated -> "manual-bindable"
+                    fastAbiNonDefaultExclusive -> "fast-abi-non-default-exclusive"
+                    else -> null
+                },
+                usesInner = usesInner,
+                usesDefaultInterfaceObjRef = usesDefaultInterfaceObjRef,
+                defaultInterfaceHierarchyIndex = if (usesDefaultInterfaceObjRef) classHierarchyIndex else null,
+                requiresGenericInstantiation = (interfaceType?.genericParameterCount ?: 0) != 0,
+            )
+        }
         return WinRtObjectReferenceSurfaceDescriptor(
             typeName = type.qualifiedName,
             inheritanceTypeNames = listOfNotNull(type.baseTypeName) + interfaces,
-            objectReferenceNames = interfaces.map(::cacheNameFor),
+            objectReferenceNames = objectReferencePlans
+                .filter { plan -> plan.skippedReason == null }
+                .map(WinRtObjectReferencePlanDescriptor::cacheName),
+            objectReferencePlans = objectReferencePlans,
             baseConstructorDispatchTargets = listOfNotNull(type.baseTypeName),
             exposedTypeMetadataNames = listOf(type.qualifiedName) + interfaces,
             hasRcwFactory = type.kind == WinRtTypeKind.RuntimeClass,

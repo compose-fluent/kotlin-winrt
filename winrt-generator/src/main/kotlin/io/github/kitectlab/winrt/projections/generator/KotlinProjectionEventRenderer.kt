@@ -995,6 +995,21 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
     plan.objectReferenceSurfaceDescriptor?.let { descriptor ->
         builder.addStringListProperty("OBJECT_REFERENCE_NAMES", descriptor.objectReferenceNames)
         builder.addStringListProperty("OBJECT_REFERENCE_METADATA_NAMES", descriptor.exposedTypeMetadataNames)
+        builder.addStringListProperty(
+            "OBJECT_REFERENCE_PLANS",
+            descriptor.objectReferencePlans.map { plan ->
+                listOf(
+                    plan.interfaceName,
+                    "cache=${plan.cacheName}",
+                    "default=${plan.isDefaultInterface}",
+                    "skip=${plan.skippedReason.orEmpty()}",
+                    "inner=${plan.usesInner}",
+                    "defaultObjRef=${plan.usesDefaultInterfaceObjRef}",
+                    "hierarchy=${plan.defaultInterfaceHierarchyIndex?.toString().orEmpty()}",
+                    "generic=${plan.requiresGenericInstantiation}",
+                ).joinToString("|")
+            },
+        )
     }
     plan.guidSignatureDescriptor?.let { descriptor ->
         builder.addProperty(
