@@ -106,6 +106,7 @@ import kotlin.io.path.extension
 
 class KotlinProjectionSupportRenderer {
     private val typeRenderer = KotlinProjectionRenderer()
+    private val planner = KotlinProjectionPlanner()
 
     fun render(
         model: WinRtMetadataModel,
@@ -341,6 +342,7 @@ class KotlinProjectionSupportRenderer {
     ): KotlinProjectionFile? {
         val helpers = model.semanticHelpers()
         val plansByType = plans.associateBy { it.type.qualifiedName }
+        val typesByQualifiedName = plans.associate { it.type.qualifiedName to it.type }
         val subclassDescriptors = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
@@ -429,6 +431,9 @@ class KotlinProjectionSupportRenderer {
             appendLine()
             appendLine("    private fun eventSourceFactoryFor(entry: EventSourceEntry): io.github.kitectlab.winrt.runtime.WinRtEventSourceFactory? =")
             appendLine("        when (entry.sourceClass) {")
+            if (subclassDescriptors.any { it.usesSharedEventHandlerSource }) {
+                appendLine("            ${"EventHandlerEventSource".kotlinString()} -> eventHandlerEventSourceFactoryFor(entry)")
+            }
             subclassDescriptors
                 .filterNot { it.usesSharedEventHandlerSource }
                 .forEach { descriptor ->
@@ -439,6 +444,16 @@ class KotlinProjectionSupportRenderer {
                         return@forEach
                     }
                     appendLine("            ${descriptor.sourceClassName.kotlinString()} -> { obj, index -> ${descriptor.sourceClassName}(obj, index) }")
+                }
+            appendLine("            else -> null")
+            appendLine("        }")
+            appendLine()
+            appendLine("    private fun eventHandlerEventSourceFactoryFor(entry: EventSourceEntry): io.github.kitectlab.winrt.runtime.WinRtEventSourceFactory? =")
+            appendLine("        when (entry.eventType) {")
+            subclassDescriptors
+                .filter { it.usesSharedEventHandlerSource }
+                .forEach { descriptor ->
+                    appendSharedEventHandlerFactory(descriptor, typesByQualifiedName)
                 }
             appendLine("            else -> null")
             appendLine("        }")
@@ -650,6 +665,30 @@ class KotlinProjectionSupportRenderer {
         appendLine("                }")
         appendLine("        }")
         appendLine("}")
+    }
+
+    private fun StringBuilder.appendSharedEventHandlerFactory(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ) {
+        val typeBinding = planner.classifyAbiTypeBinding(
+            typeName = descriptor.eventTypeName,
+            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        val invokeShape = typeBinding.delegateInvokeShape ?: return
+        val argumentBinding = typeBinding.typeArguments.singleOrNull() ?: return
+        val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return
+        val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
+        val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
+        appendLine("            ${descriptor.eventTypeName.kotlinString()} -> { obj, index ->")
+        appendLine("                io.github.kitectlab.winrt.runtime.EventHandlerEventSource<$argumentType>(")
+        appendLine("                    objectReference = obj,")
+        appendLine("                    interfaceId = $interfaceId,")
+        appendLine("                    argsKind = $argumentKind,")
+        appendLine("                    vtableIndexForAddHandler = index,")
+        appendLine("                )")
+        appendLine("            }")
     }
 
     private fun delegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =

@@ -988,7 +988,7 @@ class KotlinProjectionPlanner(
         return null
     }
 
-    private fun classifyAbiTypeBinding(
+    internal fun classifyAbiTypeBinding(
         typeName: String,
         currentNamespace: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,

@@ -3561,6 +3561,10 @@ class KotlinProjectionGeneratorTest {
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         assertTrue(eventProjectionHelpers.contains("sourceClass = \"EventHandlerEventSource\""))
         assertTrue(eventProjectionHelpers.contains("usesSharedEventHandlerSource = true"))
+        assertTrue(eventProjectionHelpers.contains("\"EventHandlerEventSource\" -> eventHandlerEventSourceFactoryFor(entry)"))
+        assertTrue(eventProjectionHelpers.contains("fun eventHandlerEventSourceFactoryFor(entry: EventSourceEntry): io.github.kitectlab.winrt.runtime.WinRtEventSourceFactory?"))
+        assertTrue(eventProjectionHelpers.contains("Windows.Foundation.EventHandler<Int>\" -> { obj, index ->"))
+        assertTrue(eventProjectionHelpers.contains("EventHandlerEventSource<kotlin.Int>"))
         assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
         assertTrue(eventProjectionHelpers.contains("EventSource<io.github.kitectlab.winrt.projections.sample.foundation.WidgetHandler>"))
         assertTrue(eventProjectionHelpers.contains("handler.invoke(__args[0] as kotlin.Int)"))
