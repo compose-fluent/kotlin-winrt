@@ -1119,9 +1119,6 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 if (!(isSpecial(method) && (method.name.startsWith("add_") || method.name.startsWith("remove_")))) {
                     rcwFunctions += method.name
                 }
-                if (!isSpecial(method)) {
-                    vtableFunctions += method.name
-                }
             }
             val methods = definition?.methods.orEmpty()
             definition?.properties.orEmpty().forEach { property ->

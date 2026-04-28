@@ -2238,7 +2238,7 @@ class WinRtMetadataModelTest {
         val writerDescriptor = helpers.genericInstantiationWriterDescriptor(inventory.genericTypeInstantiations.single())
         assertEquals(false, writerDescriptor.isDelegateInstantiation)
         assertEquals(listOf("GetAt"), writerDescriptor.rcwFunctionNames)
-        assertEquals(listOf("GetAt"), writerDescriptor.vtableFunctionNames)
+        assertEquals(emptyList<String>(), writerDescriptor.vtableFunctionNames)
         assertEquals(listOf("GetAt"), writerDescriptor.propertyAccessorFunctionNames)
         assertEquals(listOf("Windows.Foundation.EventHandler<T0>"), writerDescriptor.initializationDependencies)
 
