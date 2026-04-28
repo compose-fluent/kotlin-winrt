@@ -1751,7 +1751,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents, contents.contains("override var redPrimary: Point"))
         assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, Point.Metadata.layout.sizeBytes)"))
-        assertTrue(contents, contents.contains("return Point.Metadata.fromAbi(__resultOut)"))
+        assertTrue(contents, contents.contains("val __result = Point.Metadata.fromAbi(__resultOut)"))
         assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__resultOut)"))
         assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
         assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__valueAbi)"))
@@ -1849,7 +1849,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(recordSource, recordSource.contains("PlatformAbi.allocateBytes(__scope, NamedValue.Metadata.layout.sizeBytes)"))
         assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.copyTo(value, __valueAbi)"))
         assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__valueAbi)"))
-        assertTrue(recordSource, recordSource.contains("return NamedValue.Metadata.fromAbi(__resultOut)"))
+        assertTrue(recordSource, recordSource.contains("val __result = NamedValue.Metadata.fromAbi(__resultOut)"))
         assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__resultOut)"))
     }
 
@@ -2005,7 +2005,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(delegateContents.contains("): Boolean"))
         assertTrue(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(delegateContents.contains("as Boolean"))
-        assertTrue(widgetContents.contains("return WidgetHandler.Metadata.fromAbi(PlatformAbi.readPointer(__resultOut))"))
+        assertTrue(widgetContents.contains("val __result = WidgetHandler.Metadata.fromAbi(PlatformAbi.readPointer(__resultOut))"))
         assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"WinRT ABI binding is unavailable\")"))
     }
 
@@ -4079,7 +4079,7 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("CompletableFuture"))
         assertTrue(widgetContents.contains("fun refreshAsync(): WinRtAsyncActionReference"))
-        assertTrue(widgetContents.contains("return WinRtAsyncActionReference(PlatformAbi.readPointer(__resultOut))"))
+        assertTrue(widgetContents.contains("val __result = WinRtAsyncActionReference(PlatformAbi.readPointer(__resultOut))"))
         assertTrue(widgetContents.contains("fun fetchAsync(): WinRtAsyncOperationReference<String>"))
         assertTrue(widgetContents.contains("interfaceId = WinRtAsyncOperationReference.interfaceId(WinRtTypeSignature.string())"))
         assertTrue(widgetContents.contains("completedHandlerInterfaceId ="))
@@ -4489,6 +4489,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_keeps_custom_members_named_like_collection_abi_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555601"),
+                            genericParameterCount = 1,
+                            methods = listOf(WinRtMethodDefinition("First", "Windows.Foundation.Collections.IIterator<T0>")),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IRemovableGroup",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555602"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IIterable<String>"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("value", "String"))),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "RemovableGroup",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IRemovableGroup",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IRemovableGroup", isDefault = true)),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("RemovableGroup.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("Iterable<String>,"))
+        assertTrue(contents, contents.contains("override fun Remove(`value`: String)"))
+        assertFalse(contents, contents.contains("override fun First("))
+    }
+
+    @Test
     fun generator_emits_cswinrt_writer_support_handoffs_when_enabled() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -4711,6 +4766,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("MutableList<String>,"))
         assertTrue(contents, contents.contains("override fun set(index: Int, element: String): String"))
         assertTrue(contents, contents.contains("override fun add(index: Int, element: String)"))
+        assertTrue(contents, contents.contains("override fun subList(fromIndex: Int, toIndex: Int): MutableList<String>"))
         assertTrue(contents, contents.contains("AbstractMutableList<String>()"))
         assertFalse(contents, contents.contains("Iterable<String> by __iNameVectorIterableCollection"))
         assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))

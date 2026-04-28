@@ -480,7 +480,10 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
             val interfaceType = requiredInterface.type
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-                .filterNot { it.name in suppressedMemberNames || it.name in existingMethodNames }
+                .filterNot {
+                    requiredInterface.isMappedCollectionOrIteratorInterface && it.name in suppressedMemberNames ||
+                        it.name in existingMethodNames
+                }
                 .forEach { method ->
                     val substitutedMethod = requiredInterface.substitute(method)
                     val key = "${substitutedMethod.name}:${substitutedMethod.parameters.joinToString(",") { it.typeName }}"
@@ -490,7 +493,10 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
                 }
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
-                .filterNot { it.name in suppressedMemberNames || it.name.replaceFirstChar(Char::lowercase) in existingPropertyNames }
+                .filterNot {
+                    requiredInterface.isMappedCollectionOrIteratorInterface && it.name in suppressedMemberNames ||
+                        it.name.replaceFirstChar(Char::lowercase) in existingPropertyNames
+                }
                 .forEach { property ->
                     val substitutedProperty = requiredInterface.substitute(property)
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
@@ -514,6 +520,13 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
     }
     return members
 }
+
+private val RequiredForwardInterfaceType.isMappedCollectionOrIteratorInterface: Boolean
+    get() = mappedTypeByAbiName(interfaceName.substringBefore('<').removeSuffix("?"))?.let { mappedType ->
+        mappedType.readOnlyCollectionKind != null ||
+            mappedType.mutableCollectionKind != null ||
+            mappedType.descriptionName == "Iterator"
+    } == true
 
 private data class RequiredForwardPropertyAccessor(
     val ownerInterfaceName: String,

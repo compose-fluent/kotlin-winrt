@@ -696,8 +696,8 @@ class KotlinProjectionPlanner(
                                     elementBinding.typeArguments.getOrNull(1)?.resolvedTypeName) in mapEntryPairs
                             )
                 }
-                else -> false
-            }
+	    else -> false
+	}
         }.filterNot { binding -> binding.isRedundantReadOnlyCollectionBinding(mutableBindings) }
     }
 
@@ -1340,21 +1340,24 @@ internal fun KotlinProjectionAbiTypeBinding.describeAbiKind(): String {
 internal fun KotlinProjectionReadOnlyCollectionBinding.isRedundantReadOnlyCollectionBinding(
     mutableBindings: List<KotlinProjectionMutableCollectionBinding>,
 ): Boolean = when (kind) {
-    KotlinProjectionReadOnlyCollectionKind.Iterable ->
-        mutableBindings.any { binding ->
-            when (binding.kind) {
-                KotlinProjectionMutableCollectionKind.Vector ->
-                    binding.elementBinding?.resolvedTypeName == elementBinding?.resolvedTypeName
+	    KotlinProjectionReadOnlyCollectionKind.Iterable ->
+	        mutableBindings.any { binding ->
+	            when (binding.kind) {
+	                KotlinProjectionMutableCollectionKind.Vector ->
+	                    binding.elementBinding?.resolvedTypeName == elementBinding?.resolvedTypeName
                 KotlinProjectionMutableCollectionKind.Map ->
                     elementBinding?.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair &&
                         (
                             elementBinding.typeArguments.firstOrNull()?.resolvedTypeName to
                                 elementBinding.typeArguments.getOrNull(1)?.resolvedTypeName
                             ) == (binding.keyBinding?.resolvedTypeName to binding.valueBinding?.resolvedTypeName)
-            }
-        }
-    else -> false
-}
+	            }
+	        }
+	    KotlinProjectionReadOnlyCollectionKind.VectorView ->
+	        mutableBindings.any { binding -> binding.kind == KotlinProjectionMutableCollectionKind.Vector }
+	    KotlinProjectionReadOnlyCollectionKind.MapView ->
+	        mutableBindings.any { binding -> binding.kind == KotlinProjectionMutableCollectionKind.Map }
+	}
 
 internal fun isMappedCollectionInterfaceName(interfaceName: String): Boolean {
     val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")

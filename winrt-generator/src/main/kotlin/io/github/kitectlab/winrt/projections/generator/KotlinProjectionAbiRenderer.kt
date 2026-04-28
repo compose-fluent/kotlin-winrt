@@ -432,13 +432,13 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         else -> when (returnBinding.kind) {
         KotlinProjectionAbiValueKind.String ->
             CodeBlock.of(
-                "return %T.fromHandle(%T.readPointer(__resultOut), owner = true).use { it.toKString() }\n",
-                HSTRING_CLASS_NAME,
+                "val __resultHandle = %T.readPointer(__resultOut)\nval __resultString = %T.fromHandle(__resultHandle, owner = true)\nreturn __resultString.use { value -> value.toKString() }\n",
                 PLATFORM_ABI_CLASS_NAME,
+                HSTRING_CLASS_NAME,
             )
         KotlinProjectionAbiValueKind.MappedAsyncAction ->
             CodeBlock.of(
-                "return %T(%T.readPointer(__resultOut))\n",
+                "val __result = %T(%T.readPointer(__resultOut))\nreturn __result\n",
                 WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
             )
@@ -449,31 +449,31 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
             asyncOperationWithProgressReturnReadback(returnBinding) ?: return null
         KotlinProjectionAbiValueKind.Boolean ->
-            CodeBlock.of("return %T.readInt8(__resultOut).toInt() != 0\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt8(__resultOut)\nreturn __result.toInt() != 0\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int8 ->
-            CodeBlock.of("return %T.readInt8(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt8(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt8 ->
-            CodeBlock.of("return %T.readInt8(__resultOut).toUByte()\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt8(__resultOut).toUByte()\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int16 ->
-            CodeBlock.of("return %T.readInt16(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt16(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt16 ->
-            CodeBlock.of("return %T.readInt16(__resultOut).toUShort()\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt16(__resultOut).toUShort()\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int32 ->
-            CodeBlock.of("return %T.readInt32(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt32(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt32 ->
-            CodeBlock.of("return %T.readInt32(__resultOut).toUInt()\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt32(__resultOut).toUInt()\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Int64 ->
-            CodeBlock.of("return %T.readInt64(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt64(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.UInt64 ->
-            CodeBlock.of("return %T.readInt64(__resultOut).toULong()\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readInt64(__resultOut).toULong()\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Float ->
-            CodeBlock.of("return %T.readFloat(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readFloat(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Double ->
-            CodeBlock.of("return %T.readDouble(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readDouble(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Char16 ->
-            CodeBlock.of("return %T.readChar16(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readChar16(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.GuidValue ->
-            CodeBlock.of("return %T.readGuid(__resultOut)\n", PLATFORM_ABI_CLASS_NAME)
+            CodeBlock.of("val __result = %T.readGuid(__resultOut)\nreturn __result\n", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Reference ->
             referenceReturnReadback(returnBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME) ?: return null
         KotlinProjectionAbiValueKind.ReferenceArray ->
@@ -483,7 +483,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
             resolvedReturnClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
-                    "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn %T.Metadata.wrap(__resultRef.asInspectable())\n",
+                    "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nval __result = %T.Metadata.wrap(__resultRef.asInspectable())\nreturn __result\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
@@ -493,17 +493,17 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.ProjectedInterface ->
             resolvedReturnClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
-                    "return %T.Metadata.wrap(%T(%T.toRawComPtr(%T.readPointer(__resultOut))))\n",
-                    returnType,
+                    "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nval __result = %T.Metadata.wrap(__resultRef)\nreturn __result\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
+                    returnType,
                 )
             }
         KotlinProjectionAbiValueKind.InspectableReference ->
             if (resolvedReturnClassName(returnBinding) == IINSPECTABLE_REFERENCE_CLASS_NAME) {
                 CodeBlock.of(
-                    "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn __resultRef.use { it.asInspectable() }\n",
+                    "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nval __result = __resultRef.use { it.asInspectable() }\nreturn __result\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
@@ -513,7 +513,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
             }
         KotlinProjectionAbiValueKind.Object ->
             CodeBlock.of(
-                "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn __resultRef.use { it.asInspectable() }\n",
+                "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nval __result = __resultRef.use { it.asInspectable() }\nreturn __result\n",
                 IUNKNOWN_REFERENCE_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
@@ -521,7 +521,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.UnknownReference ->
             if (resolvedReturnClassName(returnBinding) == IUNKNOWN_REFERENCE_CLASS_NAME) {
                 CodeBlock.of(
-                    "return %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n",
+                    "val __result = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn __result\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
@@ -532,7 +532,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.Delegate ->
             resolvedReturnClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
-                    "return %T.Metadata.fromAbi(%T.readPointer(__resultOut)) ?: error(%S)\n",
+                    "val __result = %T.Metadata.fromAbi(%T.readPointer(__resultOut)) ?: error(%S)\nreturn __result\n",
                     returnType,
                     PLATFORM_ABI_CLASS_NAME,
                     "Expected non-null delegate instance from ABI return for ${returnBinding.resolvedTypeName}.",
@@ -542,18 +542,18 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
             customStructAbi(returnBinding)?.let { customAbi ->
                 if (customAbi.disposeAbiFunctionName != null) {
                     CodeBlock.of(
-                        "try {\n    return %T.%L(__resultOut)\n} finally {\n    %T.%L(__resultOut)\n}\n",
+                        "try {\n    val __result = %T.%L(__resultOut)\n    return __result\n} finally {\n    %T.%L(__resultOut)\n}\n",
                         customAbi.helperTypeName,
                         customAbi.fromAbiFunctionName,
                         customAbi.helperTypeName,
                         customAbi.disposeAbiFunctionName,
                     )
                 } else {
-                    CodeBlock.of("return %T.%L(__resultOut)\n", customAbi.helperTypeName, customAbi.fromAbiFunctionName)
+                    CodeBlock.of("val __result = %T.%L(__resultOut)\nreturn __result\n", customAbi.helperTypeName, customAbi.fromAbiFunctionName)
                 }
             } ?: nativeStructClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
-                    "try {\n    return %T.Metadata.fromAbi(__resultOut)\n} finally {\n    %T.Metadata.disposeAbi(__resultOut)\n}\n",
+                    "try {\n    val __result = %T.Metadata.fromAbi(__resultOut)\n    return __result\n} finally {\n    %T.Metadata.disposeAbi(__resultOut)\n}\n",
                     returnType,
                     returnType,
                 )

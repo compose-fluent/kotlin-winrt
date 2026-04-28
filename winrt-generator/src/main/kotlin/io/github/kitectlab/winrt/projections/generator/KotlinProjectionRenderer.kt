@@ -94,6 +94,7 @@ import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.UNIT
+import com.squareup.kotlinpoet.WildcardTypeName
 import com.squareup.kotlinpoet.asClassName
 import java.nio.file.Files
 import java.nio.file.Path
@@ -571,7 +572,10 @@ class KotlinProjectionRenderer {
             builder.addSuperinterface(mutableCollectionProjectedType(binding))
             addMutableCollectionForwardMembers(builder, binding)
         }
-        plan.readOnlyCollectionBindings.forEach { binding ->
+        val readOnlyCollectionBindings = plan.readOnlyCollectionBindings.filterNot { readOnlyBinding ->
+            plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
+        }
+        readOnlyCollectionBindings.forEach { binding ->
             builder.addProperty(renderReadOnlyCollectionDelegateProperty(binding))
             builder.addSuperinterface(readOnlyCollectionProjectedType(binding))
             when (binding.kind) {
@@ -664,13 +668,13 @@ class KotlinProjectionRenderer {
         val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-            .filterNot { it.name in mappedCollectionMemberNames }
+            .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
             .forEach { builder.addFunction(renderRuntimeMethod(plan, it)) }
         plan.type.properties
             .filterNot { it.isStatic }
-            .filterNot { it.name in mappedCollectionMemberNames }
+            .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
             .forEach { builder.addProperty(renderRuntimeProperty(plan, it)) }
         plan.type.events
@@ -775,14 +779,22 @@ class KotlinProjectionRenderer {
         }
     }
 
+    private fun KotlinProjectionMutableCollectionBinding.covers(
+        readOnlyBinding: KotlinProjectionReadOnlyCollectionBinding,
+    ): Boolean = when (kind) {
+        KotlinProjectionMutableCollectionKind.Vector ->
+            readOnlyBinding.kind in setOf(KotlinProjectionReadOnlyCollectionKind.Iterable, KotlinProjectionReadOnlyCollectionKind.VectorView)
+        KotlinProjectionMutableCollectionKind.Map ->
+            readOnlyBinding.kind == KotlinProjectionReadOnlyCollectionKind.MapView
+    }
+
     private fun addMutableListForwardMembers(
         builder: TypeSpec.Builder,
         binding: KotlinProjectionMutableCollectionBinding,
     ) {
         val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
         val collectionType = Collection::class.asClassName().parameterizedBy(elementType)
-        val listIteratorType = ListIterator::class.asClassName().parameterizedBy(elementType)
-        val mutableListType = MutableList::class.asClassName().parameterizedBy(elementType)
+        val mutableListType = MUTABLE_LIST_CLASS_NAME.parameterizedBy(elementType)
         builder.addProperty(
             PropertySpec.builder("size", Int::class)
                 .addModifiers(KModifier.OVERRIDE)
@@ -816,9 +828,9 @@ class KotlinProjectionRenderer {
         forwardBoolean("removeAll", "elements", collectionType)
         forwardBoolean("retainAll", "elements", collectionType)
         builder.addFunction(FunSpec.builder("isEmpty").addModifiers(KModifier.OVERRIDE).returns(Boolean::class).addCode("return %L.isEmpty()\n", binding.delegatePropertyName).build())
-        builder.addFunction(FunSpec.builder("iterator").addModifiers(KModifier.OVERRIDE).returns(MutableIterator::class.asClassName().parameterizedBy(elementType)).addCode("return %L.iterator()\n", binding.delegatePropertyName).build())
-        builder.addFunction(FunSpec.builder("listIterator").addModifiers(KModifier.OVERRIDE).returns(MutableListIterator::class.asClassName().parameterizedBy(elementType)).addCode("return %L.listIterator()\n", binding.delegatePropertyName).build())
-        builder.addFunction(FunSpec.builder("listIterator").addModifiers(KModifier.OVERRIDE).addParameter("index", Int::class).returns(MutableListIterator::class.asClassName().parameterizedBy(elementType)).addCode("return %L.listIterator(index)\n", binding.delegatePropertyName).build())
+        builder.addFunction(FunSpec.builder("iterator").addModifiers(KModifier.OVERRIDE).returns(MUTABLE_ITERATOR_CLASS_NAME.parameterizedBy(elementType)).addCode("return %L.iterator()\n", binding.delegatePropertyName).build())
+        builder.addFunction(FunSpec.builder("listIterator").addModifiers(KModifier.OVERRIDE).returns(MUTABLE_LIST_ITERATOR_CLASS_NAME.parameterizedBy(elementType)).addCode("return %L.listIterator()\n", binding.delegatePropertyName).build())
+        builder.addFunction(FunSpec.builder("listIterator").addModifiers(KModifier.OVERRIDE).addParameter("index", Int::class).returns(MUTABLE_LIST_ITERATOR_CLASS_NAME.parameterizedBy(elementType)).addCode("return %L.listIterator(index)\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("subList").addModifiers(KModifier.OVERRIDE).addParameter("fromIndex", Int::class).addParameter("toIndex", Int::class).returns(mutableListType).addCode("return %L.subList(fromIndex, toIndex)\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("get").addModifiers(KModifier.OVERRIDE).addParameter("index", Int::class).returns(elementType).addCode("return %L[index]\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("indexOf").addModifiers(KModifier.OVERRIDE).addParameter("element", elementType).returns(Int::class).addCode("return %L.indexOf(element)\n", binding.delegatePropertyName).build())
@@ -835,18 +847,24 @@ class KotlinProjectionRenderer {
     ) {
         val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
         val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
-        val entryType = MutableMap.MutableEntry::class.asClassName().parameterizedBy(keyType, valueType)
+        val entryType = MUTABLE_MAP_CLASS_NAME.nestedClass("MutableEntry").parameterizedBy(keyType, valueType)
         builder.addProperty(PropertySpec.builder("size", Int::class).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.size\n", binding.delegatePropertyName).build()).build())
-        builder.addProperty(PropertySpec.builder("entries", MutableSet::class.asClassName().parameterizedBy(entryType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.entries\n", binding.delegatePropertyName).build()).build())
-        builder.addProperty(PropertySpec.builder("keys", MutableSet::class.asClassName().parameterizedBy(keyType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.keys\n", binding.delegatePropertyName).build()).build())
-        builder.addProperty(PropertySpec.builder("values", MutableCollection::class.asClassName().parameterizedBy(valueType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.values\n", binding.delegatePropertyName).build()).build())
+        builder.addProperty(PropertySpec.builder("entries", MUTABLE_SET_CLASS_NAME.parameterizedBy(entryType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.entries\n", binding.delegatePropertyName).build()).build())
+        builder.addProperty(PropertySpec.builder("keys", MUTABLE_SET_CLASS_NAME.parameterizedBy(keyType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.keys\n", binding.delegatePropertyName).build()).build())
+        builder.addProperty(PropertySpec.builder("values", MUTABLE_COLLECTION_CLASS_NAME.parameterizedBy(valueType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.values\n", binding.delegatePropertyName).build()).build())
         builder.addFunction(FunSpec.builder("containsKey").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).returns(Boolean::class).addCode("return %L.containsKey(key)\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("containsValue").addModifiers(KModifier.OVERRIDE).addParameter("value", valueType).returns(Boolean::class).addCode("return %L.containsValue(value)\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("get").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).returns(valueType.copy(nullable = true)).addCode("return %L[key]\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("isEmpty").addModifiers(KModifier.OVERRIDE).returns(Boolean::class).addCode("return %L.isEmpty()\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("clear").addModifiers(KModifier.OVERRIDE).addCode("%L.clear()\n", binding.delegatePropertyName).build())
         builder.addFunction(FunSpec.builder("put").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).addParameter("value", valueType).returns(valueType.copy(nullable = true)).addCode("return %L.put(key, value)\n", binding.delegatePropertyName).build())
-        builder.addFunction(FunSpec.builder("putAll").addModifiers(KModifier.OVERRIDE).addParameter("from", Map::class.asClassName().parameterizedBy(keyType, valueType)).addCode("%L.putAll(from)\n", binding.delegatePropertyName).build())
+        builder.addFunction(
+            FunSpec.builder("putAll")
+                .addModifiers(KModifier.OVERRIDE)
+                .addParameter("from", Map::class.asClassName().parameterizedBy(WildcardTypeName.producerOf(keyType), valueType))
+                .addCode("%L.putAll(from)\n", binding.delegatePropertyName)
+                .build(),
+        )
         builder.addFunction(FunSpec.builder("remove").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).returns(valueType.copy(nullable = true)).addCode("return %L.remove(key)\n", binding.delegatePropertyName).build())
     }
 
@@ -952,6 +970,53 @@ class KotlinProjectionRenderer {
                 "MoveNext",
             )
         }
+
+    private fun WinRtMethodDefinition.isMappedCollectionRuntimeMethod(
+        plan: KotlinTypeProjectionPlan,
+        mappedCollectionMemberNames: Set<String>,
+    ): Boolean {
+        if (name !in mappedCollectionMemberNames) {
+            return false
+        }
+        val bindingName = abiSlotConstantName(plan.type.methods)
+        return plan.instanceMemberBindings
+            .firstOrNull { it.bindingName == bindingName }
+            ?.isMappedCollectionOrIteratorBinding == true
+    }
+
+    private fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(
+        plan: KotlinTypeProjectionPlan,
+        mappedCollectionMemberNames: Set<String>,
+    ): Boolean {
+        if (name !in mappedCollectionMemberNames) {
+            return false
+        }
+        if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
+            val hasGetterBinding = getterMethodName == null ||
+                plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
+            val hasSetterBinding = setterMethodName == null ||
+                plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
+            if (!hasGetterBinding || !hasSetterBinding) {
+                return true
+            }
+        }
+        val getterIsMapped = getterMethodName == null ||
+            plan.instanceMemberBindings
+                .firstOrNull { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
+                ?.isMappedCollectionOrIteratorBinding == true
+        val setterIsMapped = setterMethodName == null ||
+            plan.instanceMemberBindings
+                .firstOrNull { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
+                ?.isMappedCollectionOrIteratorBinding == true
+        return getterIsMapped && setterIsMapped
+    }
+
+    private val KotlinProjectionInstanceMemberBinding.isMappedCollectionOrIteratorBinding: Boolean
+        get() = mappedTypeByAbiName(ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?"))?.let { mappedType ->
+            mappedType.readOnlyCollectionKind != null ||
+                mappedType.mutableCollectionKind != null ||
+                mappedType.descriptionName == "Iterator"
+        } == true
 
     private data class RequiredIteratorBinding(
         val elementBinding: KotlinProjectionAbiTypeBinding,
