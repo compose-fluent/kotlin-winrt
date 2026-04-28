@@ -3569,6 +3569,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)"))
         assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.registerEventSource"))
         assertTrue(eventProjectionHelpers.contains("eventSourceFactory = eventSourceFactoryFor(entry)"))
+        assertTrue(eventProjectionHelpers.contains("fun createEventSource("))
+        assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.createEventSource("))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources(install: (EventSourceEntry) -> Unit)"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))
