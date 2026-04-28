@@ -1133,8 +1133,12 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             }
         }
         val dependencies = buildList {
-            definition?.implementedInterfaces.orEmpty().forEach { implemented -> add(implemented.interfaceType.normalized().typeName) }
-            definition?.events.orEmpty().forEach { event -> add(event.delegateType.normalized().typeName) }
+            definition?.implementedInterfaces.orEmpty().forEach { implemented ->
+                add(implemented.interfaceType.substituteTypeParameters(instantiation.genericArguments).normalized().typeName)
+            }
+            definition?.events.orEmpty().forEach { event ->
+                add(event.delegateType.substituteTypeParameters(instantiation.genericArguments).normalized().typeName)
+            }
         }
         return WinRtGenericInstantiationWriterDescriptor(
             instantiationClassName = instantiation.instantiationClassName,

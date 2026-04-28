@@ -2240,7 +2240,7 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("GetAt"), writerDescriptor.rcwFunctionNames)
         assertEquals(emptyList<String>(), writerDescriptor.vtableFunctionNames)
         assertEquals(listOf("GetAt"), writerDescriptor.propertyAccessorFunctionNames)
-        assertEquals(listOf("Windows.Foundation.EventHandler<T0>"), writerDescriptor.initializationDependencies)
+        assertEquals(listOf("Windows.Foundation.EventHandler<Sample.Foundation.Point>"), writerDescriptor.initializationDependencies)
 
         val typeName = helpers.typeNameDescriptor(
             exclusive,
