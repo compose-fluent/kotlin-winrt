@@ -19,6 +19,7 @@ class WinRtEventSourceRuntimeTest {
             sourceClass = "_EventSource_Windows_Foundation_EventHandler_Int",
             abiEventType = "Windows.Foundation.EventHandler<Int>",
             genericArguments = listOf("Int", "Int"),
+            usesSharedEventHandlerSource = true,
         )
 
         WinRtEventSourceRuntime.registerEventSource(descriptor)
@@ -30,6 +31,7 @@ class WinRtEventSourceRuntimeTest {
             ),
         )
         assertEquals(listOf("Int"), registered.genericArguments)
+        assertEquals(true, registered.usesSharedEventHandlerSource)
         assertEquals(listOf(registered), WinRtEventSourceRuntime.descriptorsForEventType("Windows.Foundation.EventHandler<Int>"))
         assertEquals(listOf(registered), WinRtEventSourceRuntime.descriptorsForOwnerType("Sample.Foundation.IWidget"))
     }

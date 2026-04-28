@@ -3538,7 +3538,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initDelegateCcwInvoke(entry)"))
         assertTrue(genericTypeInstantiations.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
-        assertTrue(eventProjectionHelpers.contains("_EventSource_Windows_Foundation_EventHandler_Int"))
+        assertTrue(eventProjectionHelpers.contains("sourceClass = \"EventHandlerEventSource\""))
+        assertTrue(eventProjectionHelpers.contains("usesSharedEventHandlerSource = true"))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources()"))
         assertTrue(eventProjectionHelpers.contains("WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)"))
         assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.registerEventSource"))

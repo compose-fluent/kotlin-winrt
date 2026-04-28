@@ -2276,8 +2276,9 @@ class WinRtMetadataModelTest {
 
         val eventHelper = helpers.eventHelperSubclassDescriptors(widget).single()
         assertEquals("Windows.Foundation.EventHandler<Sample.Foundation.Point>", eventHelper.eventTypeName)
-        assertEquals("_EventSource_Windows_Foundation_EventHandler_Sample_Foundation_Point_", eventHelper.sourceClassName)
+        assertEquals("EventHandlerEventSource", eventHelper.sourceClassName)
         assertEquals(listOf("Sample.Foundation.Point"), eventHelper.genericArgumentTypeNames)
+        assertEquals(true, eventHelper.usesSharedEventHandlerSource)
 
         val platform = helpers.platformGuardDescriptor(widget.qualifiedName, widget.availability)
         assertEquals(true, platform.checkPlatform)

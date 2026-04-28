@@ -6,6 +6,7 @@ data class WinRtEventSourceDescriptor(
     val sourceClass: String,
     val abiEventType: String,
     val genericArguments: List<String>,
+    val usesSharedEventHandlerSource: Boolean = false,
 )
 
 object WinRtEventSourceRuntime {

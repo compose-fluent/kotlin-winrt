@@ -209,6 +209,7 @@ data class WinRtEventHelperSubclassDescriptor(
     val ownerTypeName: String,
     val sourceClassName: String,
     val genericArgumentTypeNames: List<String>,
+    val usesSharedEventHandlerSource: Boolean,
 )
 
 data class WinRtPlatformGuardDescriptor(
@@ -1469,13 +1470,21 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun eventHelperSubclassDescriptors(type: WinRtTypeDefinition): List<WinRtEventHelperSubclassDescriptor> =
         type.events.map { event ->
             val eventType = event.delegateType.normalized()
+            val usesSharedEventHandlerSource =
+                eventType.qualifiedName in setOf("Windows.Foundation.EventHandler", "System.EventHandler") &&
+                    eventType.typeArguments.size == 1
             WinRtEventHelperSubclassDescriptor(
                 eventTypeName = eventType.typeName,
                 projectedEventTypeName = eventType.typeName,
                 abiEventTypeName = renderAbiTypeName(eventType),
                 ownerTypeName = type.qualifiedName,
-                sourceClassName = escapeTypeNameForIdentifier("_EventSource_${eventType.typeName}"),
+                sourceClassName = if (usesSharedEventHandlerSource) {
+                    "EventHandlerEventSource"
+                } else {
+                    escapeTypeNameForIdentifier("_EventSource_${eventType.typeName}")
+                },
                 genericArgumentTypeNames = eventType.typeArguments.map { it.normalized().typeName },
+                usesSharedEventHandlerSource = usesSharedEventHandlerSource,
             )
         }.distinctBy { it.eventTypeName to it.ownerTypeName }
 
