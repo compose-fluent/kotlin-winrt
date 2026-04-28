@@ -451,21 +451,46 @@ class KotlinProjectionRenderer {
                 )
                 .build(),
         )
-        if (plan.defaultInterfaceIid != null) {
+        val objectReferencePlansByInterface = plan.objectReferenceSurfaceDescriptor
+            ?.objectReferencePlans
+            .orEmpty()
+            .associateBy { it.interfaceName.substringBefore('<') }
+        val defaultObjectReferencePlan = plan.defaultInterfaceName
+            ?.substringBefore('<')
+            ?.let(objectReferencePlansByInterface::get)
+        if (plan.defaultInterfaceIid != null && defaultObjectReferencePlan?.skippedReason == null) {
+            val defaultCacheType = if (defaultObjectReferencePlan?.usesInner == true) {
+                COM_OBJECT_REFERENCE_CLASS_NAME
+            } else {
+                IUNKNOWN_REFERENCE_CLASS_NAME
+            }
             builder.addProperty(
-                PropertySpec.builder("_defaultInterface", IUNKNOWN_REFERENCE_CLASS_NAME)
+                PropertySpec.builder("_defaultInterface", defaultCacheType)
                     .addModifiers(KModifier.PRIVATE)
-                    .delegate(
-                        CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { Metadata.acquireDefaultInterface(_inner) }",
-                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                        ),
-                    )
+                    .apply {
+                        if (defaultObjectReferencePlan?.usesInner == true) {
+                            getter(
+                                FunSpec.getterBuilder()
+                                    .addCode("return _inner\n")
+                                    .build(),
+                            )
+                        } else {
+                            delegate(
+                                CodeBlock.of(
+                                    "lazy(%T.PUBLICATION) { Metadata.acquireDefaultInterface(_inner) }",
+                                    LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                                ),
+                            )
+                        }
+                    }
                     .build(),
             )
         }
         plan.implementedInterfaceBindings
             .filter { it.iid != null }
+            .filter { binding ->
+                objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]?.skippedReason == null
+            }
             .forEach { binding ->
                 builder.addProperty(
                     PropertySpec.builder(

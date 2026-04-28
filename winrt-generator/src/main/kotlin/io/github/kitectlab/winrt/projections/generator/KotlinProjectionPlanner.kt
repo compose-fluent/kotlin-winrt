@@ -354,6 +354,9 @@ class KotlinProjectionPlanner(
                     signatureMatcher = { interfaceType ->
                         interfaceType.methods.any { it.projectionSignatureKey() == method.projectionSignatureKey() }
                     },
+                    ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
+                        fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                    },
                     slotConstantNameResolver = { interfaceType ->
                         interfaceType.methods
                             .firstOrNull { it.projectionSignatureKey() == method.projectionSignatureKey() }
@@ -374,6 +377,9 @@ class KotlinProjectionPlanner(
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null
                             }
                         },
+                        ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
+                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                        },
                     )?.let(::add)
                 }
                 if (property.setterMethodName != null) {
@@ -392,6 +398,9 @@ class KotlinProjectionPlanner(
                             interfaceType.properties.any {
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null
                             }
+                        },
+                        ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
+                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
                         },
                     )?.let(::add)
                 }
@@ -419,6 +428,9 @@ class KotlinProjectionPlanner(
                                     (it.addMethodName != null || it.addMethodRowId != null)
                             }
                         },
+                        ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
+                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
+                        },
                     )?.let(::add)
                 }
                 if (event.removeMethodName != null || event.removeMethodRowId != null) {
@@ -442,6 +454,9 @@ class KotlinProjectionPlanner(
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
                                     (it.removeMethodName != null || it.removeMethodRowId != null)
                             }
+                        },
+                        ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
+                            fastAbiOwnerCachePropertyName(ownerInterface, slotInterface, candidateInterfaces.firstOrNull(), typesByQualifiedName, semanticHelpers)
                         },
                     )?.let(::add)
                 }
@@ -907,6 +922,9 @@ class KotlinProjectionPlanner(
         signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
         marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
+        ownerCachePropertyNameResolver: (String, String) -> String = { ownerInterface, _ ->
+            ownerCachePropertyName(ownerInterface, candidateInterfaces.firstOrNull())
+        },
         slotConstantNameResolver: (WinRtTypeDefinition) -> String? = { null },
     ): KotlinProjectionInstanceMemberBinding? {
         candidateInterfaces.forEach { candidateInterface ->
@@ -919,7 +937,7 @@ class KotlinProjectionPlanner(
             return KotlinProjectionInstanceMemberBinding(
                 bindingName = bindingName ?: slotConstantName,
                 ownerInterfaceQualifiedName = candidateInterface,
-                ownerCachePropertyName = ownerCachePropertyName(candidateInterface, candidateInterfaces.firstOrNull()),
+                ownerCachePropertyName = ownerCachePropertyNameResolver(candidateInterface, slotInterfaceQualifiedName),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
                 slotConstantName = slotConstantNameResolver(typesByQualifiedName.getValue(slotInterfaceQualifiedName)) ?: slotConstantName,
                 returnBinding = returnBinding,
@@ -1144,6 +1162,22 @@ class KotlinProjectionPlanner(
         } else {
             "_${interfaceName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
         }
+
+    private fun fastAbiOwnerCachePropertyName(
+        ownerInterfaceName: String,
+        slotInterfaceName: String,
+        defaultInterfaceName: String?,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): String {
+        val slotInterface = typesByQualifiedName[slotInterfaceName.substringBefore('<')]
+        val fastAbiClass = slotInterface?.let(semanticHelpers::getFastAbiClassForInterface)
+        return if (fastAbiClass?.containsOtherInterface(slotInterfaceName.substringBefore('<')) == true && defaultInterfaceName != null) {
+            ownerCachePropertyName(defaultInterfaceName, defaultInterfaceName)
+        } else {
+            ownerCachePropertyName(ownerInterfaceName, defaultInterfaceName)
+        }
+    }
 
     private fun staticOwnerAccessorName(interfaceName: String): String =
         interfaceName.substringAfterLast('.').replaceFirstChar(Char::lowercase)

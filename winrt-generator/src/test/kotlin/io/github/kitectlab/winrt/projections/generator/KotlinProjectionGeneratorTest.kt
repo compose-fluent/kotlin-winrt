@@ -169,7 +169,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
         assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: ComObjectReference"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
         assertTrue(jsonArray, jsonArray.contains("fun getStringAt(index: UInt): String"))
@@ -816,7 +816,7 @@ class KotlinProjectionGeneratorTest {
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
-        assertTrue(widgetContents.contains("private val _defaultInterface: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("private val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
@@ -2711,6 +2711,20 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.RuntimeClass,
                             isFastAbi = true,
                             defaultInterfaceName = "Sample.FastAbi.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition("get_Mode", "Int", isSpecialName = true, methodRowId = 8),
+                                WinRtMethodDefinition("set_Mode", "Unit", parameters = listOf(WinRtParameterDefinition("value", "Int")), isSpecialName = true, methodRowId = 9),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Mode",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Mode",
+                                    setterMethodName = "set_Mode",
+                                    getterMethodRowId = 8,
+                                    setterMethodRowId = 9,
+                                ),
+                            ),
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Sample.FastAbi.IWidget", isDefault = true),
                                 WinRtInterfaceImplementationDefinition("Sample.FastAbi.IWidgetOverrides"),
@@ -2735,6 +2749,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents, widgetContents.contains("internal val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_FastAbi_IWidgetCache\")"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidget|cache=Sample_FastAbi_IWidgetCache|default=true|skip=|inner=false|defaultObjRef=false|hierarchy=|generic=false"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|cache=Sample_FastAbi_IWidgetOverridesCache|default=false|skip=fast-abi-non-default-exclusive"))
+        assertTrue(widgetContents, widgetContents.contains("internal const val MODE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
+        assertFalse(widgetContents, widgetContents.contains("private val _iWidgetOverrides"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_GETTER_SLOT: Int = 8"))
