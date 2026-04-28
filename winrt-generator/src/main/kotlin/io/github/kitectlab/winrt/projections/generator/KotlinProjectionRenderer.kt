@@ -1356,7 +1356,10 @@ class KotlinProjectionRenderer {
             else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$typeName") }
         } ?: return mappedTypeByAbiName(typeName)?.abiQualifiedName?.let { mapped ->
             when (mapped) {
+                "Windows.Foundation.DateTime" -> "struct(Windows.Foundation.DateTime;i8)"
                 "Windows.Foundation.EventRegistrationToken" -> "struct(Windows.Foundation.EventRegistrationToken;i8)"
+                "Windows.Foundation.HResult" -> "struct(Windows.Foundation.HResult;i4)"
+                "Windows.Foundation.TimeSpan" -> "struct(Windows.Foundation.TimeSpan;i8)"
                 else -> null
             }
         }

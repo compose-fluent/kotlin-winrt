@@ -3044,6 +3044,78 @@ class KotlinProjectionGeneratorTest {
                     ),
                 ),
                 WinRtNamespace(
+                    name = "Windows.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI",
+                            name = "Color",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("A", "Byte"),
+                                WinRtFieldDefinition("R", "Byte"),
+                                WinRtFieldDefinition("G", "Byte"),
+                                WinRtFieldDefinition("B", "Byte"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "CornerRadius",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("TopLeft", "Double")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Duration",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("TimeSpan", "Windows.Foundation.TimeSpan")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "GridLength",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Value", "Double")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Thickness",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Left", "Double")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "CornerRadiusHelper",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IXamlServiceProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Controls.Primitives",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls.Primitives",
+                            name = "GeneratorPosition",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Index", "Int")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls.Primitives",
+                            name = "GeneratorPositionHelper",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
                     name = "Microsoft.UI.Xaml.Media",
                     types = listOf(
                         WinRtTypeDefinition(
@@ -3062,6 +3134,44 @@ class KotlinProjectionGeneratorTest {
                         ),
                     ),
                 ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media.Animation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media.Animation",
+                            name = "KeyTime",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("TimeSpan", "Windows.Foundation.TimeSpan")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media.Animation",
+                            name = "RepeatBehavior",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Count", "Double")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media.Animation",
+                            name = "KeyTimeHelper",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media.Media3D",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media.Media3D",
+                            name = "Matrix3D",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("M11", "Double")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media.Media3D",
+                            name = "Matrix3DHelper",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
             ),
         )
 
@@ -3069,11 +3179,35 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(filesByName.getValue("Point.kt").contents.contains("public class Point("))
         assertTrue(filesByName.getValue("Vector3.kt").contents.contains("public class Vector3("))
+        assertTrue(filesByName.getValue("Color.kt").contents.contains("public class Color("))
+        assertTrue(filesByName.getValue("CornerRadius.kt").contents.contains("public class CornerRadius("))
+        assertTrue(filesByName.getValue("Duration.kt").contents.contains("public class Duration("))
+        assertTrue(filesByName.getValue("GridLength.kt").contents.contains("public class GridLength("))
+        assertTrue(filesByName.getValue("Thickness.kt").contents.contains("public class Thickness("))
+        assertTrue(filesByName.getValue("GeneratorPosition.kt").contents.contains("public class GeneratorPosition("))
         assertTrue(filesByName.getValue("Matrix.kt").contents.contains("public class Matrix("))
+        assertTrue(filesByName.getValue("KeyTime.kt").contents.contains("public class KeyTime("))
+        assertTrue(filesByName.getValue("RepeatBehavior.kt").contents.contains("public class RepeatBehavior("))
+        assertTrue(filesByName.getValue("Matrix3D.kt").contents.contains("public class Matrix3D("))
+        assertFalse(filesByName.containsKey("CornerRadiusHelper.kt"))
+        assertFalse(filesByName.containsKey("GeneratorPositionHelper.kt"))
         assertFalse(filesByName.containsKey("MatrixHelper.kt"))
+        assertFalse(filesByName.containsKey("KeyTimeHelper.kt"))
+        assertFalse(filesByName.containsKey("Matrix3DHelper.kt"))
+        assertFalse(filesByName.containsKey("IXamlServiceProvider.kt"))
         assertEquals(null, mappedTypeByAbiName("Windows.Foundation.Point"))
         assertEquals(null, mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3"))
+        assertEquals(null, mappedTypeByAbiName("Windows.UI.Color"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.CornerRadius"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Duration"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.GridLength"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Thickness"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Controls.Primitives.GeneratorPosition"))
         assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Media.Matrix"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Media.Animation.KeyTime"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Media.Animation.RepeatBehavior"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Media.Media3D.Matrix3D"))
+        assertEquals("IXamlServiceProvider", mappedTypeByAbiName("Microsoft.UI.Xaml.IXamlServiceProvider")?.descriptionName)
     }
 
     @Test
