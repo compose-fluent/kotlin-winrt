@@ -748,7 +748,7 @@ class KotlinProjectionRenderer {
                     .addParameter("other", ANY.copy(nullable = true))
                     .returns(Boolean::class)
                     .addCode(
-                        "return other is %T && nativeObject.pointer == other.nativeObject.pointer\n",
+                        "if (other !is %T) return false\nreturn nativeObject.pointer == other.nativeObject.pointer\n",
                         projectionClassName(plan.type.qualifiedName),
                     )
                     .build(),
@@ -1793,9 +1793,8 @@ class KotlinProjectionRenderer {
             )
         }
         if (objectReferencePlan?.usesDefaultInterfaceObjRef == true && objectReferencePlan.defaultInterfaceObjRefVtableSlot != null) {
-            body.addStatement("return _inner.getDefaultInterfaceObjectReference(%L)", objectReferencePlan.defaultInterfaceObjRefVtableSlot)
+            body.addStatement("_inner.getDefaultInterfaceObjectReference(%L)", objectReferencePlan.defaultInterfaceObjRefVtableSlot)
         } else {
-            body.add("return ")
             body.add(acquireExpression, *acquireArgs)
             body.add("\n")
         }

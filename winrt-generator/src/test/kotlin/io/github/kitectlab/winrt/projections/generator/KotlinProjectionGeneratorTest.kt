@@ -1311,7 +1311,7 @@ class KotlinProjectionGeneratorTest {
         val customIdentityContents = generated.getValue("CustomIdentityWidget.kt").contents
 
         assertTrue(widgetContents.contains("override fun equals(other: Any?): Boolean"))
-        assertTrue(widgetContents.contains("other is Widget &&"))
+        assertTrue(widgetContents.contains("if (other !is Widget) return false"))
         assertTrue(widgetContents.contains("nativeObject.pointer =="))
         assertTrue(widgetContents.contains("other.nativeObject.pointer"))
         assertTrue(widgetContents.contains("override fun hashCode(): Int"))
@@ -2255,6 +2255,81 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents.contains("\"alpha\""))
         assertTrue(interfaceContents.contains("7L"))
         assertTrue(interfaceContents.contains("Category = \"ui\""))
+    }
+
+    @Test
+    fun planner_treats_split_metadata_winrt_interface_references_as_projected_interfaces() {
+        val binding = KotlinProjectionPlanner().classifyAbiTypeBinding(
+            typeName = "Windows.Graphics.IGeometrySource2D",
+            currentNamespace = "Microsoft.UI.Composition",
+            typesByQualifiedName = emptyMap(),
+        )
+
+        assertEquals(KotlinProjectionAbiValueKind.ProjectedInterface, binding.kind)
+        assertEquals("Windows.Graphics.IGeometrySource2D", binding.resolvedTypeName)
+    }
+
+    @Test
+    fun generator_classifies_activation_factory_delegate_parameters_from_projection_model() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ChangedCallback",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    isSpecialName = true,
+                                    parameters = listOf(WinRtParameterDefinition("value", "Int")),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Create",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(WinRtParameterDefinition("callback", "Sample.Foundation.ChangedCallback")),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.substringAfterLast('/') == "Widget.kt" }
+            .contents
+
+        assertTrue(contents.contains("callback: ChangedCallback"))
+        assertTrue(contents.contains("WinRtDelegateBridge.createDelegate"))
     }
 
     @Test

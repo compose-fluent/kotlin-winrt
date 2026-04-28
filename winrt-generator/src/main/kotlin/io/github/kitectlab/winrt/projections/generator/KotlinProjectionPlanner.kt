@@ -1116,6 +1116,7 @@ class KotlinProjectionPlanner(
                     WinRtTypeKind.Delegate -> KotlinProjectionAbiValueKind.Delegate
                     WinRtTypeKind.Unknown -> KotlinProjectionAbiValueKind.Unsupported
                 }
+                rawTypeName.isProjectedWinRtInterfaceReferenceName() -> KotlinProjectionAbiValueKind.ProjectedInterface
                 mappedType != null -> KotlinProjectionAbiValueKind.Unsupported
                 else -> KotlinProjectionAbiValueKind.Unsupported
             }

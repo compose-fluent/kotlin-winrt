@@ -194,6 +194,12 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             ),
         )
     }
+    if (
+        parameterBinding.typeBinding.kind == KotlinProjectionAbiValueKind.Unsupported &&
+        parameterBinding.typeBinding.resolvedTypeName.isProjectedWinRtInterfaceReferenceName()
+    ) {
+        return projectedInterfaceParameterMarshaler(parameterName, parameterBinding)
+    }
     return when (parameterBinding.typeBinding.kind) {
         KotlinProjectionAbiValueKind.String -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
@@ -327,13 +333,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         KotlinProjectionAbiValueKind.MappedMap,
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMapView -> mappedCollectionParameterMarshaler(parameterBinding)
-        KotlinProjectionAbiValueKind.ProjectedInterface -> KotlinProjectionAbiMarshalerPlan(
-            name = parameterName,
-            typeBinding = parameterBinding.typeBinding,
-            isReturn = false,
-            abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
-            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        )
+        KotlinProjectionAbiValueKind.ProjectedInterface -> projectedInterfaceParameterMarshaler(parameterName, parameterBinding)
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
@@ -353,6 +353,18 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         else -> null
     }
 }
+
+private fun projectedInterfaceParameterMarshaler(
+    parameterName: String,
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): KotlinProjectionAbiMarshalerPlan =
+    KotlinProjectionAbiMarshalerPlan(
+        name = parameterName,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+    )
 
 internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
     returnBinding: KotlinProjectionAbiTypeBinding,

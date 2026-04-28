@@ -822,6 +822,13 @@ data class KotlinProjectionWriteSummary(
     val deletedStaleFiles: Int,
 )
 
+internal fun String.isProjectedWinRtInterfaceReferenceName(): Boolean {
+    val simpleName = substringAfterLast('.')
+    return '.' in this &&
+        simpleName.startsWith('I') &&
+        (startsWith("Windows.") || startsWith("Microsoft."))
+}
+
 class KotlinProjectionContractValidator {
     fun validate(model: WinRtMetadataModel): WinRtMetadataModel =
         model.requireValidForProjection(GENERATOR_VALIDATION_OPTIONS)

@@ -57,15 +57,6 @@ winRt {
         type("Microsoft.UI.Xaml.Input.TappedRoutedEventArgs")
         type("Windows.UI.Xaml.Interop.Type")
         type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
-        type("Windows.UI.Xaml.Markup.ContentPropertyAttribute")
-        type("Windows.UI.Xaml.StyleTypedPropertyAttribute")
-        type("Windows.UI.Xaml.TemplatePartAttribute")
-        type("Windows.UI.Xaml.TemplateVisualStateAttribute")
-        type("Windows.UI.Xaml.Data.BindableAttribute")
-        type("Windows.UI.Xaml.Markup.FullXamlMetadataProviderAttribute")
-        type("Windows.UI.Xaml.Markup.MarkupExtensionReturnTypeAttribute")
-        type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
-        type("Windows.UI.Xaml.Media.Animation.IndependentlyAnimatableAttribute")
     }
 }
 

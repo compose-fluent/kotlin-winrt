@@ -704,7 +704,10 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
                 typeName = IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
             )
             val parameterBindings = method.parameters.map { parameter ->
-                KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName))
+                KotlinProjectionAbiParameterBinding(
+                    parameter.name,
+                    KotlinProjectionPlanner().classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+                )
             }
             val callPlan = requireAbiCallPlan(
                 bindingName = "${factoryType.qualifiedName}.${method.name}",
@@ -741,20 +744,24 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
                 .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addCode(
                     "%L\n",
-                    renderComposableFactoryInvocation(factoryType, factoryClassName, method, userParameters),
+                    renderComposableFactoryInvocation(plan, factoryType, factoryClassName, method, userParameters),
                 )
                 .build()
         }
 }
 
 private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
+    plan: KotlinTypeProjectionPlan,
     factoryType: WinRtTypeDefinition,
     factoryClassName: TypeName,
     method: WinRtMethodDefinition,
     userParameters: List<WinRtParameterDefinition>,
 ): CodeBlock {
     val parameterBindings = userParameters.map { parameter ->
-        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName))
+        KotlinProjectionAbiParameterBinding(
+            parameter.name,
+            KotlinProjectionPlanner().classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+        )
     }
     val callPlan = requireAbiCallPlan(
         bindingName = "${factoryType.qualifiedName}.${method.name}",
