@@ -15,7 +15,7 @@
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] Runtime follow-up: vtable invocation now includes the `Double, Double, out Double` ABI shape needed by `.cswinrt/src/Samples/NetProjectionSample` `SimpleMath.add/subtract/multiply/divide`.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
-- [ ] `winrt-generator` remains in `.cswinrt/src/cswinrt` parity follow-through: the latest audit leaves only authoring-gated server activation/module factory rules, frozen until `winrt-authoring` is unfrozen.
+- [ ] `winrt-generator` remains in `.cswinrt/src/cswinrt` parity follow-through: the latest audit leaves runtime-class member visibility/explicit-interface forwarding rules active, while server activation/module factory/user-subclassing rules stay authoring-gated.
 - [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
 - [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and `winRt {}` library/application identity handling.
 - [x] `winrt-samples` is intentionally minimal and now closed through Sample 10; do not expand samples again until authoring-owned contracts exist.
@@ -63,7 +63,7 @@
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
 - [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
-- [ ] Queue 22 正在做: close the remaining `.cswinrt/src/cswinrt/code_writers.h` generator rules before treating WinUI sample output as validation; event-source, mapped-type, required-interface, fast-ABI slot, and WinUI dependency-closure rules are already closed.
+- [ ] Queue 22 正在做: close the remaining `.cswinrt/src/cswinrt/code_writers.h` generator rules before treating WinUI sample output as validation; event-source, mapped-type, required-interface, fast-ABI slot, WinUI dependency-closure, and runtime-class base inheritance rules are already closed.
 
 ## Generator Follow-Through
 
@@ -148,6 +148,7 @@
 - [x] Generator audit 22.11: generated runtime classes now emit pointer-based `equals`/`hashCode` matching `.cswinrt` `write_class` identity rules, while suppressing those overrides when metadata supplies object `Equals`/`GetHashCode`.
 - [x] Generator audit 22.12: remaining ABI fallback stubs are centralized behind one generated diagnostic, and bound member/event/property calls now fail through `requireAbiCallPlan` instead of leaving scattered `Not yet bound to winrt-runtime` placeholders in generated source.
 - [x] Generator audit 22.13: runtime-class base inheritance now aligns with `.cswinrt` `write_type_inheritance`/`write_base_constructor_dispatch`; generated derived runtime classes call the WinRT base runtime-class constructor with the same inspectable reference, and base runtime classes are emitted `open` only when the generated model contains derived runtime classes.
+- [ ] Generator audit 22.15 正在做: align `.cswinrt` `write_class_members`/`write_class_method`/`write_class_event` rules for `OverridableAttribute` and `ProtectedAttribute`; Kotlin must preserve callable public interface overrides while adding the separate protected/open facade or explicit-forward model needed for CsWinRT parity, with any Kotlin visibility constraint documented narrowly.
 - [ ] Generator audit 22.14: keep `.cswinrt` `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, and `write_winrt_exposed_type_class` in the authoring-gated queue; these are CCW/server-activation/user-subclassing surfaces and should not be implemented until `winrt-authoring` is unfrozen for `mingwX64`.
 
 ## Sample Plan
