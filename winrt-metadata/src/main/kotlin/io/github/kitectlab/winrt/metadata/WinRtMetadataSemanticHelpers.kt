@@ -173,6 +173,8 @@ data class WinRtGenericInstantiationWriterDescriptor(
     val rcwFunctionNames: List<String>,
     val vtableFunctionNames: List<String>,
     val propertyAccessorFunctionNames: List<String>,
+    val genericReturnOnlyRcwFunctionNames: List<String> = emptyList(),
+    val projectedGenericFallbackFunctionNames: List<String> = emptyList(),
     val initializationDependencies: List<String>,
 )
 
@@ -1134,27 +1136,55 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         val rcwFunctions = mutableListOf<String>()
         val vtableFunctions = mutableListOf<String>()
         val propertyFunctions = mutableListOf<String>()
+        val genericReturnOnlyRcwFunctions = mutableListOf<String>()
+        val projectedGenericFallbackFunctions = mutableListOf<String>()
         if (definition != null && isDelegate) {
             getDelegateInvoke(definition)?.name?.let { invoke ->
                 rcwFunctions += invoke
                 vtableFunctions += invoke
+                projectedGenericFallbackFunctions += invoke
             }
         } else {
             definition?.methods.orEmpty().forEach { method ->
                 if (!projectedSignatureHasGenericParameters(method.returnType, method.parameters)) return@forEach
                 if (!(isSpecial(method) && (method.name.startsWith("add_") || method.name.startsWith("remove_")))) {
                     rcwFunctions += method.name
+                    projectedGenericFallbackFunctions += method.name
+                    if (signatureHasOnlyGenericReturn(method.returnType, method.parameters)) {
+                        genericReturnOnlyRcwFunctions += method.name
+                    }
                 }
             }
             val methods = definition?.methods.orEmpty()
             definition?.properties.orEmpty().forEach { property ->
                 val getter = property.getterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
                 val setter = property.setterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
-                if (getter != null && projectedSignatureHasGenericParameters(getter.returnType, getter.parameters)) {
-                    propertyFunctions += getter.name
+                val propertyHasGeneric = property.type.containsGenericTypeParameter()
+                if (getter != null) {
+                    if (projectedSignatureHasGenericParameters(getter.returnType, getter.parameters)) {
+                        rcwFunctions += getter.name
+                        propertyFunctions += getter.name
+                        projectedGenericFallbackFunctions += getter.name
+                        if (signatureHasOnlyGenericReturn(getter.returnType, getter.parameters)) {
+                            genericReturnOnlyRcwFunctions += getter.name
+                        }
+                    }
+                } else if (property.getterMethodName != null && propertyHasGeneric) {
+                    rcwFunctions += property.getterMethodName
+                    propertyFunctions += property.getterMethodName
+                    projectedGenericFallbackFunctions += property.getterMethodName
+                    genericReturnOnlyRcwFunctions += property.getterMethodName
                 }
-                if (setter != null && projectedSignatureHasGenericParameters(setter.returnType, setter.parameters)) {
-                    propertyFunctions += setter.name
+                if (setter != null) {
+                    if (projectedSignatureHasGenericParameters(setter.returnType, setter.parameters)) {
+                        rcwFunctions += setter.name
+                        propertyFunctions += setter.name
+                        projectedGenericFallbackFunctions += setter.name
+                    }
+                } else if (property.setterMethodName != null && propertyHasGeneric) {
+                    rcwFunctions += property.setterMethodName
+                    propertyFunctions += property.setterMethodName
+                    projectedGenericFallbackFunctions += property.setterMethodName
                 }
             }
         }
@@ -1173,6 +1203,8 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             rcwFunctionNames = rcwFunctions.distinct(),
             vtableFunctionNames = vtableFunctions.distinct(),
             propertyAccessorFunctionNames = propertyFunctions.distinct(),
+            genericReturnOnlyRcwFunctionNames = genericReturnOnlyRcwFunctions.distinct(),
+            projectedGenericFallbackFunctionNames = projectedGenericFallbackFunctions.distinct(),
             initializationDependencies = dependencies.distinct().sorted(),
         )
     }
@@ -2065,6 +2097,12 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         parameters: List<WinRtParameterDefinition>,
     ): Boolean =
         returnType.containsGenericTypeParameter() || parameters.any { parameter -> parameter.type.containsGenericTypeParameter() }
+
+    private fun signatureHasOnlyGenericReturn(
+        returnType: WinRtTypeRef,
+        parameters: List<WinRtParameterDefinition>,
+    ): Boolean =
+        returnType.containsGenericTypeParameter() && parameters.none { parameter -> parameter.type.containsGenericTypeParameter() }
 
     private fun WinRtTypeRef.containsGenericTypeParameter(): Boolean {
         val normalized = normalized()

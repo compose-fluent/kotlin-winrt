@@ -5,6 +5,8 @@ enum class WinRtGenericTypeInstantiationBindingKind {
     VtableFunctions,
     PropertyAccessors,
     DelegateCcwInvoke,
+    GenericReturnOnlyRcwHelpers,
+    ProjectedGenericFallbacks,
 }
 
 data class WinRtGenericTypeInstantiationBindingEntry(
@@ -55,6 +57,24 @@ object WinRtGenericTypeInstantiationRuntime {
         isDelegate: Boolean,
     ) {
         register(className, sourceType, isDelegate, WinRtGenericTypeInstantiationBindingKind.DelegateCcwInvoke, emptyList())
+    }
+
+    fun bindGenericReturnOnlyRcwHelpers(
+        className: String,
+        sourceType: String,
+        isDelegate: Boolean,
+        functions: List<String>,
+    ) {
+        register(className, sourceType, isDelegate, WinRtGenericTypeInstantiationBindingKind.GenericReturnOnlyRcwHelpers, functions)
+    }
+
+    fun bindProjectedGenericFallbacks(
+        className: String,
+        sourceType: String,
+        isDelegate: Boolean,
+        functions: List<String>,
+    ) {
+        register(className, sourceType, isDelegate, WinRtGenericTypeInstantiationBindingKind.ProjectedGenericFallbacks, functions)
     }
 
     fun bindingFor(

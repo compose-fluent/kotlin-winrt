@@ -31,6 +31,18 @@ class WinRtGenericTypeInstantiationRuntimeTest {
             isDelegate = false,
             functions = listOf("get_Value"),
         )
+        WinRtGenericTypeInstantiationRuntime.bindGenericReturnOnlyRcwHelpers(
+            className = "Windows_Foundation_IReference_Int",
+            sourceType = "Windows.Foundation.IReference<Int>",
+            isDelegate = false,
+            functions = listOf("get_Value", "get_Value"),
+        )
+        WinRtGenericTypeInstantiationRuntime.bindProjectedGenericFallbacks(
+            className = "Windows_Foundation_IReference_Int",
+            sourceType = "Windows.Foundation.IReference<Int>",
+            isDelegate = false,
+            functions = listOf("get_Value"),
+        )
 
         val rcw = assertNotNull(
             WinRtGenericTypeInstantiationRuntime.bindingFor(
@@ -46,8 +58,24 @@ class WinRtGenericTypeInstantiationRuntimeTest {
                 WinRtGenericTypeInstantiationBindingKind.RcwHelpers,
                 WinRtGenericTypeInstantiationBindingKind.VtableFunctions,
                 WinRtGenericTypeInstantiationBindingKind.PropertyAccessors,
+                WinRtGenericTypeInstantiationBindingKind.GenericReturnOnlyRcwHelpers,
+                WinRtGenericTypeInstantiationBindingKind.ProjectedGenericFallbacks,
             ),
             WinRtGenericTypeInstantiationRuntime.bindingsForClass("Windows_Foundation_IReference_Int").map { it.kind },
+        )
+        assertEquals(
+            listOf("get_Value"),
+            WinRtGenericTypeInstantiationRuntime.bindingFor(
+                "Windows_Foundation_IReference_Int",
+                WinRtGenericTypeInstantiationBindingKind.GenericReturnOnlyRcwHelpers,
+            )?.functions,
+        )
+        assertEquals(
+            listOf("get_Value"),
+            WinRtGenericTypeInstantiationRuntime.bindingFor(
+                "Windows_Foundation_IReference_Int",
+                WinRtGenericTypeInstantiationBindingKind.ProjectedGenericFallbacks,
+            )?.functions,
         )
     }
 

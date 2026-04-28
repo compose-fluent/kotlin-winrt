@@ -63,7 +63,7 @@
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
 - [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
-- [ ] Queue 22 正在做: close the remaining `.cswinrt/src/cswinrt/code_writers.h` generator rules before treating WinUI sample output as validation; open non-authoring gap is 22.20 generic/static ABI helper parity. Server activation/CCW remains authoring-gated in 22.14.
+- [x] Queue 22: non-authoring `.cswinrt/src/cswinrt/code_writers.h` generator audit is closed through 22.20 for the current Kotlin runtime boundary; server activation/CCW remains authoring-gated in 22.14.
 
 ## Generator Follow-Through
 
@@ -153,7 +153,7 @@
 - [x] Generator audit 22.17: aligned `.cswinrt` special-name method filtering across `write_class_method`, `write_static_method`, `write_interface_members`, `write_required_interface_members_for_abi_type`, and ABI invoke helpers; generated ordinary method surfaces and member bindings now skip property/event accessors such as `get_*`, `put_*`, `add_*`, and `remove_*` while property/event writers keep their accessor slot constants.
 - [x] Generator audit 22.18: close `.cswinrt` `write_abi_struct` parity for the current Kotlin runtime boundary; generated struct metadata now supports ABI pointer-slot field marshalers for string/object/interface fields, `FromAbi`, `CopyAbi`, and `DisposeAbi` instead of only blittable scalar/nested layout.
 - [x] Generator audit 22.19: close `.cswinrt` `write_abi_delegate`, `get_generic_abi_types`, and `add_abi_delegates_for_type` parity; delegate parameters/returns now cover struct/GUID descriptors and reuse the existing mapped async/object/interface delegate paths without unsupported descriptor cases.
-- [ ] Generator audit 22.20: close remaining `.cswinrt` `write_static_abi_class_members` and `write_generic_type_instantiation` parity; generic return-only RCW helpers, projected-signature generic fallbacks, delegate `InitCcw`, vtable function initialization, required interface dependency initialization, and generic event-type initialization must be represented through Kotlin runtime bindings.
+- [x] Generator audit 22.20: close remaining `.cswinrt` `write_static_abi_class_members` and `write_generic_type_instantiation` parity for the current Kotlin runtime boundary; generic return-only RCW helpers and projected-signature generic fallbacks are represented as runtime bindings alongside delegate `InitCcw`, vtable function initialization, required interface dependency initialization, and generic event-type initialization.
 - [ ] Generator audit 22.14: keep `.cswinrt` `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, and `write_winrt_exposed_type_class` in the authoring-gated queue; these are CCW/server-activation/user-subclassing surfaces and should not be implemented until `winrt-authoring` is unfrozen for `mingwX64`.
 
 ## Sample Plan
