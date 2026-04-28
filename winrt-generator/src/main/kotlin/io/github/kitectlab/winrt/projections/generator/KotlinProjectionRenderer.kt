@@ -420,6 +420,9 @@ class KotlinProjectionRenderer {
     internal fun renderRuntimeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec {
         val builder = TypeSpec.classBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
+        if (plan.hasRuntimeClassDerivedTypes && KotlinProjectionModifier.Sealed !in plan.modifiers) {
+            builder.addModifiers(KModifier.OPEN)
+        }
         if (KotlinProjectionModifier.Sealed in plan.modifiers) {
             builder.addKdoc(
                 "WinRT sealed runtime class shell emitted as a regular Kotlin class because Kotlin sealed constructors would block RCW wrapping and activation.\n",
@@ -428,6 +431,10 @@ class KotlinProjectionRenderer {
         val constructorBuilder = FunSpec.constructorBuilder()
             .addModifiers(KModifier.INTERNAL)
             .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+        plan.runtimeClassBaseTypeName?.let { baseTypeName ->
+            builder.superclass(resolveTypeName(baseTypeName))
+            builder.addSuperclassConstructorParameter("_inner")
+        }
         builder.primaryConstructor(constructorBuilder.build())
         builder.addProperty(
             PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
@@ -438,6 +445,11 @@ class KotlinProjectionRenderer {
         builder.addProperty(
             PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
                 .addModifiers(KModifier.OVERRIDE)
+                .apply {
+                    if (plan.hasRuntimeClassDerivedTypes && KotlinProjectionModifier.Sealed !in plan.modifiers) {
+                        addModifiers(KModifier.OPEN)
+                    }
+                }
                 .getter(
                     FunSpec.getterBuilder()
                         .addCode("return _inner\n")
@@ -682,6 +694,18 @@ class KotlinProjectionRenderer {
         appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
         return builder.build()
     }
+
+    private val KotlinTypeProjectionPlan.runtimeClassBaseTypeName: String?
+        get() = type.baseTypeName
+            ?.takeUnless { it == "System.Object" || it == "Any" }
+
+    private val KotlinTypeProjectionPlan.hasRuntimeClassDerivedTypes: Boolean
+        get() = typesByQualifiedName.values.any { candidate ->
+            candidate.kind == WinRtTypeKind.RuntimeClass &&
+                candidate.baseTypeName?.let { baseName ->
+                    baseName == type.qualifiedName || baseName == type.name
+                } == true
+        }
 
     private fun addRuntimeClassIdentityMembers(
         builder: TypeSpec.Builder,

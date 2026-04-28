@@ -1294,6 +1294,60 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_runtime_class_base_inheritance() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetBase",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetBase",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetBase",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase", isDefault = true)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Foundation.WidgetBase",
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true)),
+                            isSealedType = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val generated = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val baseContents = generated.getValue("WidgetBase.kt").contents
+        val widgetContents = generated.getValue("Widget.kt").contents
+
+        assertTrue(baseContents.contains("public open class WidgetBase internal constructor("))
+        assertTrue(baseContents.contains("open override val nativeObject: ComObjectReference"))
+        assertTrue(widgetContents.contains("public class Widget internal constructor("))
+        assertTrue(widgetContents.contains(") : WidgetBase(_inner),"))
+        assertTrue(widgetContents.contains("IWidget"))
+        assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
+    }
+
+    @Test
     fun generator_binds_struct_and_non_unit_delegate_member_marshaling() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
