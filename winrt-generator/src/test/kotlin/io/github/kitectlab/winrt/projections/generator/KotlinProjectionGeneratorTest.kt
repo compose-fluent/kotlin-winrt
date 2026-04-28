@@ -3257,6 +3257,127 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_suppresses_redundant_collection_surfaces_for_runtime_class_mappings() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IKeyValuePair",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            genericParameterCount = 2,
+                            properties = listOf(
+                                WinRtPropertyDefinition("Key", "T0", getterMethodName = "get_Key"),
+                                WinRtPropertyDefinition("Value", "T1", getterMethodName = "get_Value"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            genericParameterCount = 1,
+                            methods = listOf(WinRtMethodDefinition("First", "Windows.Foundation.Collections.IIterator<T0>")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            genericParameterCount = 1,
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IIterable<T0>")),
+                            methods = listOf(
+                                WinRtMethodDefinition("GetAt", "T0", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition("SetAt", "Unit", parameters = listOf(WinRtParameterDefinition("index", "UInt"), WinRtParameterDefinition("value", "T0"))),
+                                WinRtMethodDefinition("InsertAt", "Unit", parameters = listOf(WinRtParameterDefinition("index", "UInt"), WinRtParameterDefinition("value", "T0"))),
+                                WinRtMethodDefinition("RemoveAt", "Unit", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition("Append", "Unit", parameters = listOf(WinRtParameterDefinition("value", "T0"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            genericParameterCount = 2,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IIterable<Windows.Foundation.Collections.IKeyValuePair<T0, T1>>"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "T1", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"), WinRtParameterDefinition("value", "T1"))),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size")),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IStringVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("55555555-5555-5555-5555-555555555555"),
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<String>")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringVector",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IStringVector",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IStringVector", isDefault = true)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IStringIntMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("66666666-6666-6666-6666-666666666666"),
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IMap<String, Int>")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringIntMap",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IStringIntMap",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IStringIntMap", isDefault = true)),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val vectorContents = filesByName.getValue("StringVector.kt").contents
+        val mapContents = filesByName.getValue("StringIntMap.kt").contents
+
+        assertTrue(vectorContents, vectorContents.contains("MutableList<String>,"))
+        assertTrue(vectorContents, vectorContents.contains("__iStringVectorVectorCollection"))
+        assertFalse(vectorContents, vectorContents.contains("__iStringVectorIterableCollection"))
+        assertFalse(vectorContents, vectorContents.contains("Iterable<String>,"))
+        assertFalse(vectorContents, vectorContents.contains("fun First("))
+        assertFalse(vectorContents, vectorContents.contains("fun GetAt("))
+        assertFalse(vectorContents, vectorContents.contains("val Size"))
+
+        assertTrue(mapContents, mapContents.contains("MutableMap<String, Int>,"))
+        assertTrue(mapContents, mapContents.contains("__iStringIntMapMapCollection"))
+        assertFalse(mapContents, mapContents.contains("__iStringIntMapIterableCollection"))
+        assertFalse(mapContents, mapContents.contains("Iterable<Map.Entry<String, Int>>,"))
+        assertFalse(mapContents, mapContents.contains("fun First("))
+        assertFalse(mapContents, mapContents.contains("fun Lookup("))
+        assertFalse(mapContents, mapContents.contains("fun HasKey("))
+        assertFalse(mapContents, mapContents.contains("val Size"))
+    }
+
+    @Test
     fun generator_emits_cswinrt_writer_support_handoffs_when_enabled() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
