@@ -15,7 +15,7 @@
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] Runtime follow-up: vtable invocation now includes the `Double, Double, out Double` ABI shape needed by `.cswinrt/src/Samples/NetProjectionSample` `SimpleMath.add/subtract/multiply/divide`.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
-- [ ] `winrt-generator` remains in `.cswinrt/src/cswinrt` parity follow-through: the latest audit leaves authoring-gated server activation/module factory rules frozen until `winrt-authoring` is unfrozen.
+- [ ] `winrt-generator` remains in `.cswinrt/src/cswinrt` parity follow-through: the latest audit leaves runtime-class base inheritance plus authoring-gated server activation/module factory rules.
 - [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
 - [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and `winRt {}` library/application identity handling.
 - [x] `winrt-samples` is intentionally minimal and now closed through Sample 10; do not expand samples again until authoring-owned contracts exist.
@@ -147,7 +147,8 @@
 - [x] Generator audit 22.10: aligned HRESULT handling with `.cswinrt` `is_noexcept` and `write_abi_method_call_marshalers`; generated vtable calls now suppress `HResult(__hr).requireSuccess()` for declaring-interface `NoExceptionAttribute` members and remove overloads while retaining normal HRESULT checks elsewhere.
 - [x] Generator audit 22.11: generated runtime classes now emit pointer-based `equals`/`hashCode` matching `.cswinrt` `write_class` identity rules, while suppressing those overrides when metadata supplies object `Equals`/`GetHashCode`.
 - [x] Generator audit 22.12: remaining ABI fallback stubs are centralized behind one generated diagnostic, and bound member/event/property calls now fail through `requireAbiCallPlan` instead of leaving scattered `Not yet bound to winrt-runtime` placeholders in generated source.
-- [ ] Generator audit 22.13: keep `.cswinrt` `write_factory_class`, `write_module_activation_factory`, and `write_winrt_exposed_type_class` in the authoring-gated queue; do not implement server activation/module factory output until `winrt-authoring` is unfrozen for `mingwX64`.
+- [ ] Generator audit 22.13 正在做: align runtime-class base inheritance with `.cswinrt` `write_type_inheritance`/`write_base_constructor_dispatch`; Kotlin runtime-class plans already receive metadata `baseTypeName` indirectly for support tables, but generated class shells still only add interfaces and must emit the WinRT base runtime class as the Kotlin superclass before WinUI projection shape can be considered aligned.
+- [ ] Generator audit 22.14: keep `.cswinrt` `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, and `write_winrt_exposed_type_class` in the authoring-gated queue; these are CCW/server-activation/user-subclassing surfaces and should not be implemented until `winrt-authoring` is unfrozen for `mingwX64`.
 
 ## Sample Plan
 
