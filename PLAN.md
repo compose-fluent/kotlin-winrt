@@ -18,6 +18,21 @@
 - [ ] Generator audit 23.4: remove the temporary `winrt-samples` XAML attribute include list once 23.1-23.3 are closed, then validate the WindowsAppSDK WinUI generation/run command below.
 - [ ] Generator audit boundary: the full non-authoring `.cswinrt/src/cswinrt` generator scan is represented by completed 22.x plus 23.1-23.4. The final unmatched generation-dispatch rules are only dependency closure, mapped skip/value policy, and attribute shape; do not add new top-level generator audit items from sample failures.
 
+## Generator Audit Matrix
+
+- [x] `.cswinrt/src/cswinrt/main.cpp` namespace/type dispatch: Kotlin has matching projection inventory and renderer dispatch for mapped skip, attribute, api contract, runtime class, delegate, enum, interface, struct, ABI companion/support output; remaining gap is Queue 23 dependency closure for filtered WinAppSDK surfaces.
+- [ ] `.cswinrt` mapped type table: metadata mirrors helper-only and runtime-backed mapped entries, but final policy remains open for XAML/WinUI value structs and `Windows.UI.Color` because Kotlin must generate KMP structs instead of .NET aliases while still skipping helper-only types.
+- [x] Type-name/signature writers: projected/nonprojected/ABI name modes, generic arguments, type signatures, GUID/IID signatures, unsigned Kotlin names, `Uri`, `TypeName`, `DateTime`, `TimeSpan`, `HResult`, references, arrays, async, collections, and delegate signatures are closed for the current JVM runtime boundary.
+- [ ] `write_attribute` and projected custom attributes: metadata reads and renders custom/platform attributes, but generated Kotlin attribute declarations still need constructor/property data and dependency closure parity.
+- [x] `write_contract`, `write_enum`, `write_struct`, `write_abi_struct`: api contracts, enum ABI values, generated KMP structs, blittable/non-blittable native struct layout, pointer-slot fields, copy/read/dispose, and value-boxing registration are closed.
+- [x] `write_interface`, `write_interface_members`, `write_static_abi_classes`, `write_abi_interface`: interface shells, member signatures, static ABI slot constants, fast-ABI folded slots, vtable call plans, generic RCW/property/delegate binding hooks, and required-interface forwarding are closed for current runtime calls.
+- [x] `write_class`, `write_static_class`, `write_class_members`, `write_static_members`: runtime-class shells, activation/static/composable public surfaces, default/static interface caches, base class dispatch, object identity, protected/overridable rules, object method overrides, property/event/method filtering, and static events are closed for non-authoring classes.
+- [x] `write_custom_mapped_type_members` and required mapped helpers: collection, bindable, `IClosable`, `INotifyDataErrorInfo`, iterator, map/vector/list forwarding, IDIC/static-ABI call-mode descriptors, and Kotlin runtime helper handoff are closed for projected runtime classes.
+- [x] `write_delegate`, `write_abi_delegate`, `add_generic_type_references_in_type`, `write_generic_type_instantiations`: delegate projection, delegate ABI descriptors, generic fixed-point discovery, RCW/vtable/property/delegate initialization, event delegate dependencies, and fallback runtime bindings are closed.
+- [x] Event helper generation: event source subclass descriptors, shared `EventHandler<T>` factories, generated event source table, runtime-class/interface/static event routing, and `WinRtEvent<T>` surface are closed.
+- [x] Namespace additions/helper outputs: `.cswinrt/src/cswinrt/strings` namespace additions, support handoff files, base-type mapping, generic instantiation support, ABI delegate initialization, event helpers, and plugin identity handoff are modeled; C# addition files are not treated as Kotlin inputs.
+- [ ] Authoring-gated writers: `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, `write_winrt_exposed_type_class`, CCW/server activation/user-subclassing remain frozen until `winrt-authoring` and `mingwX64` prerequisites are ready.
+
 ## Completed Summary
 
 - [x] Module layout exists: `winrt-runtime`, `winrt-metadata`, `winrt-generator`, `winrt-projections`, `winrt-authoring`, and `winrt-samples`.
