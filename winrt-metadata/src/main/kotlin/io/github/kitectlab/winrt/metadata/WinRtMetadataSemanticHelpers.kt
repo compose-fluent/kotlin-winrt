@@ -1092,8 +1092,33 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     fun genericInstantiationWorklist(
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
-    ): WinRtGenericInstantiationWorklistDescriptor =
-        WinRtGenericInstantiationWorklistDescriptor(pending = genericAbiInventory(context).genericTypeInstantiations)
+    ): WinRtGenericInstantiationWorklistDescriptor {
+        val discovered = linkedMapOf<String, WinRtGenericTypeInstantiationDescriptor>()
+        fun enqueue(instantiations: List<WinRtGenericTypeInstantiationDescriptor>) {
+            instantiations.forEach { instantiation ->
+                discovered.putIfAbsent(
+                    instantiation.instantiationClassName,
+                    instantiation.copy(
+                        implementsCcwInterface = instantiation.definitionType
+                            ?.let { definition -> doesAbiInterfaceImplementCcwInterface(definition, context) }
+                            ?: false,
+                    ),
+                )
+            }
+        }
+
+        enqueue(genericAbiInventory(context).genericTypeInstantiations)
+        var index = 0
+        while (index < discovered.size) {
+            val instantiation = discovered.values.elementAt(index++)
+            val dependencies = genericInstantiationWriterDescriptor(instantiation).initializationDependencies
+            enqueue(dependencies.mapNotNull(::genericTypeInstantiationDescriptorForDependency))
+        }
+
+        return WinRtGenericInstantiationWorklistDescriptor(
+            pending = discovered.values.sortedBy(WinRtGenericTypeInstantiationDescriptor::instantiationClassName),
+        )
+    }
 
     fun genericInstantiationWriterDescriptors(
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
@@ -1148,6 +1173,21 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             vtableFunctionNames = vtableFunctions.distinct(),
             propertyAccessorFunctionNames = propertyFunctions.distinct(),
             initializationDependencies = dependencies.distinct().sorted(),
+        )
+    }
+
+    private fun genericTypeInstantiationDescriptorForDependency(typeName: String): WinRtGenericTypeInstantiationDescriptor? {
+        val type = WinRtTypeRef.fromDisplayName(typeName).normalized()
+        if (type.typeArguments.isEmpty()) return null
+        val currentNamespace = type.qualifiedName?.substringBeforeLast('.', "") ?: ""
+        val resolved = resolveTypeReference(type, currentNamespace, typesByQualifiedName)
+        val sourceType = resolved.type
+        return WinRtGenericTypeInstantiationDescriptor(
+            type = sourceType,
+            definitionType = resolved.definitionType,
+            instantiationClassName = escapeTypeNameForIdentifier(sourceType.typeName),
+            genericArguments = sourceType.typeArguments,
+            implementsCcwInterface = false,
         )
     }
 

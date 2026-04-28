@@ -2198,7 +2198,26 @@ class WinRtMetadataModelTest {
                 WinRtNamespace("Windows.Foundation", listOf(eventHandler)),
                 WinRtNamespace("Windows.Foundation.Collections", listOf(vector)),
                 WinRtNamespace("Microsoft.UI.Xaml.Interop", listOf(bindableVector)),
-                WinRtNamespace("Sample.Foundation", listOf(point, iWidget, widget, exclusive)),
+                WinRtNamespace(
+                    "Sample.Foundation",
+                    listOf(
+                        point,
+                        iWidget,
+                        widget,
+                        exclusive,
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IUsesVector",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    "Values",
+                                    "Windows.Foundation.Collections.IVector<Sample.Foundation.Point>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
             ),
         )
         val helpers = model.semanticHelpers()
@@ -2241,6 +2260,9 @@ class WinRtMetadataModelTest {
         assertEquals(emptyList<String>(), writerDescriptor.vtableFunctionNames)
         assertEquals(listOf("GetAt"), writerDescriptor.propertyAccessorFunctionNames)
         assertEquals(listOf("Windows.Foundation.EventHandler<Sample.Foundation.Point>"), writerDescriptor.initializationDependencies)
+        val fixedPointInstantiations = helpers.genericInstantiationWorklist().pending.map { it.instantiationClassName }
+        assertTrue("Windows_Foundation_Collections_IVector_Sample_Foundation_Point_" in fixedPointInstantiations)
+        assertTrue("Windows_Foundation_EventHandler_Sample_Foundation_Point_" in fixedPointInstantiations)
 
         val typeName = helpers.typeNameDescriptor(
             exclusive,
