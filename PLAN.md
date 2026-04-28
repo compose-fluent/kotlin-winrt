@@ -160,6 +160,7 @@
 - [ ] Generator audit 23.2: align `.cswinrt` `get_mapped_type` skip policy for XAML/WinUI helper-only mapped types (`*Helper`, `I*Helper*`, `IXamlServiceProvider`) while preserving the Kotlin-specific decision to generate KMP metadata structs for WinRT value structs instead of .NET value aliases.
 - [ ] Generator audit 23.3: align `.cswinrt` `write_attribute` for Kotlin annotation constraints: generated attribute classes must carry constructor/property data that can compile when projected attributes are emitted, and attribute dependencies must not need manual sample includes.
 - [ ] Generator audit 23.4: remove the temporary `winrt-samples` XAML attribute include list once 23.1-23.3 are closed, then validate the WindowsAppSDK WinUI generation/run command recorded below.
+- [ ] Generator audit boundary: the full non-authoring `.cswinrt/src/cswinrt` generator scan is represented by 22.x plus 23.1-23.4. Do not add new top-level generator audit items from ad hoc sample failures; classify any remaining generator issue under 23.1 dependency closure, 23.2 mapped skip policy, 23.3 attribute shape, or the authoring-gated 22.14 queue.
 
 ## Sample Plan
 
