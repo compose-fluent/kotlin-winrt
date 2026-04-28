@@ -346,7 +346,7 @@ class KotlinProjectionPlanner(
         }.distinct()
 
         return buildList {
-            type.methods.filterNot(WinRtMethodDefinition::isStatic).forEach { method ->
+            type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 val signatureDescriptor = semanticHelpers.signatureWriterDescriptor(method)
                 resolveInstanceMemberBinding(
                     candidateInterfaces = candidateInterfaces,
@@ -508,7 +508,9 @@ class KotlinProjectionPlanner(
         return buildList {
             val staticInterfaces = candidateInterfaces.mapNotNull(typesByQualifiedName::get)
             staticInterfaces.flatMap { staticInterface ->
-                staticInterface.methods.map { method -> staticInterface to method }
+                staticInterface.methods
+                    .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+                    .map { method -> staticInterface to method.copy(isStatic = true) }
             }.forEach { (staticInterface, method) ->
                 val signatureDescriptor = semanticHelpers.signatureWriterDescriptor(method)
                 resolveStaticMemberBinding(
@@ -1582,6 +1584,15 @@ internal fun requireDelegateInvokeMethod(type: WinRtTypeDefinition): WinRtMethod
     return invokeMethods.single()
 }
 
+internal fun WinRtMethodDefinition.isProjectedCallableMethod(): Boolean =
+    !isSpecialName && !isRuntimeSpecialName
+
+internal fun WinRtMethodDefinition.isOrdinaryProjectedMethod(): Boolean =
+    !isStatic && !isSpecialName && !isRuntimeSpecialName
+
+internal fun WinRtMethodDefinition.isOrdinaryProjectedStaticMethod(): Boolean =
+    isStatic && !isSpecialName && !isRuntimeSpecialName
+
 internal fun KotlinProjectionDelegateInvokeShape.isSupportedOutboundDelegateShape(): Boolean =
     interfaceId != null &&
         parameterBindings.all { it.typeBinding.isSupportedDelegateCallbackBinding() } &&
@@ -1775,7 +1786,7 @@ internal fun WinRtTypeDefinition.localAbiMemberOrders(): List<AbiMemberOrder> =
                 members += AbiMemberOrder(rowId, "${event.name.uppercase()}_REMOVE_SLOT")
             }
         }
-        methods.forEach { method ->
+        methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
             method.methodRowId?.let { rowId ->
                 members += AbiMemberOrder(rowId, method.abiSlotConstantName(methods))
             }

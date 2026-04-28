@@ -1436,6 +1436,87 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_skips_special_name_accessors_as_ordinary_methods() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(WinRtMethodDefinition("Invoke", "Unit")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition("get_Name", "String", isSpecialName = true, methodRowId = 6),
+                                WinRtMethodDefinition("put_Name", "Unit", parameters = listOf(WinRtParameterDefinition("value", "String")), isSpecialName = true, methodRowId = 7),
+                                WinRtMethodDefinition("add_Changed", "Windows.Foundation.EventRegistrationToken", parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")), isSpecialName = true, methodRowId = 8),
+                                WinRtMethodDefinition("remove_Changed", "Unit", parameters = listOf(WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")), isSpecialName = true, methodRowId = 9),
+                                WinRtMethodDefinition("Refresh", "Unit", methodRowId = 10),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Name", "String", getterMethodName = "get_Name", setterMethodName = "put_Name", getterMethodRowId = 6, setterMethodRowId = 7),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition("Changed", "Sample.Foundation.WidgetChangedHandler", addMethodName = "add_Changed", removeMethodName = "remove_Changed", addMethodRowId = 8, removeMethodRowId = 9),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true)),
+                            methods = listOf(
+                                WinRtMethodDefinition("get_Name", "String", isSpecialName = true, methodRowId = 6),
+                                WinRtMethodDefinition("put_Name", "Unit", parameters = listOf(WinRtParameterDefinition("value", "String")), isSpecialName = true, methodRowId = 7),
+                                WinRtMethodDefinition("add_Changed", "Windows.Foundation.EventRegistrationToken", parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")), isSpecialName = true, methodRowId = 8),
+                                WinRtMethodDefinition("remove_Changed", "Unit", parameters = listOf(WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")), isSpecialName = true, methodRowId = 9),
+                                WinRtMethodDefinition("Refresh", "Unit", methodRowId = 10),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Name", "String", getterMethodName = "get_Name", setterMethodName = "put_Name", getterMethodRowId = 6, setterMethodRowId = 7),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition("Changed", "Sample.Foundation.WidgetChangedHandler", addMethodName = "add_Changed", removeMethodName = "remove_Changed", addMethodRowId = 8, removeMethodRowId = 9),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val generated = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = generated.getValue("IWidget.kt").contents
+        val widgetContents = generated.getValue("Widget.kt").contents
+
+        assertTrue(interfaceContents.contains("fun Refresh()"))
+        assertTrue(widgetContents.contains("override fun Refresh()"))
+        assertTrue(interfaceContents.contains("var name: String"))
+        assertTrue(widgetContents.contains("override var name: String"))
+        assertTrue(interfaceContents.contains("val changed: WinRtEvent<WidgetChangedHandler>"))
+        assertTrue(widgetContents.contains("override val changed: WinRtEvent<WidgetChangedHandler>"))
+        listOf("get_Name", "put_Name", "add_Changed", "remove_Changed").forEach { accessorName ->
+            assertFalse(interfaceContents.contains("fun $accessorName"))
+            assertFalse(widgetContents.contains("fun $accessorName"))
+        }
+        assertTrue(interfaceContents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
+        assertTrue(interfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
+        assertTrue(interfaceContents.contains("internal const val CHANGED_ADD_SLOT: Int = 8"))
+        assertTrue(interfaceContents.contains("internal const val CHANGED_REMOVE_SLOT: Int = 9"))
+        assertTrue(interfaceContents.contains("internal const val REFRESH_SLOT: Int = 10"))
+    }
+
+    @Test
     fun generator_binds_struct_and_non_unit_delegate_member_marshaling() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

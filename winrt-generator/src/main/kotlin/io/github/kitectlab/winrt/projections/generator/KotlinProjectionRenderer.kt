@@ -129,7 +129,7 @@ class KotlinProjectionRenderer {
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
-        plan.type.methods.forEach { builder.addFunction(renderInterfaceMethod(it)) }
+        plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { builder.addFunction(renderInterfaceMethod(it)) }
         plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderInterfaceProperty(it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
             builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
@@ -172,7 +172,7 @@ class KotlinProjectionRenderer {
             builder.addTypeVariable(TypeVariableName("T$index"))
         }
         collectInterfaceProxyTypes(plan).forEach { interfaceType ->
-            interfaceType.methods.filterNot(WinRtMethodDefinition::isStatic).forEach { method ->
+            interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 builder.addFunction(renderInterfaceProxyMethod(interfaceType, method))
             }
             interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).forEach { property ->
@@ -311,7 +311,7 @@ class KotlinProjectionRenderer {
 
     internal fun canRenderInterfaceProxy(plan: KotlinTypeProjectionPlan): Boolean =
         collectInterfaceProxyTypes(plan).all { interfaceType ->
-            interfaceType.methods.filterNot(WinRtMethodDefinition::isStatic).all { method ->
+            interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).all { method ->
                 runCatching {
                     buildAbiCallPlan(
                         returnBinding = renderAbiTypeBinding(method.returnTypeName),
@@ -645,7 +645,7 @@ class KotlinProjectionRenderer {
         renderComposableConstructors(plan).forEach(builder::addFunction)
         val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.methods
-            .filterNot { it.isStatic }
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .filterNot { it.name in mappedCollectionMemberNames }
             .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
@@ -688,7 +688,7 @@ class KotlinProjectionRenderer {
                     .build(),
             )
         }
-        val staticMethods = plan.type.methods.filter { it.isStatic }
+        val staticMethods = plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedStaticMethod)
         val staticProperties = plan.type.properties.filter { it.isStatic }
         val staticEvents = plan.type.events.filter { it.isStatic }
         if (staticMethods.isNotEmpty() || staticProperties.isNotEmpty() || staticEvents.isNotEmpty() ||

@@ -347,6 +347,7 @@ private fun mergedStaticMethods(
     plan.staticInterfaceNames
         .mapNotNull(plan.typesByQualifiedName::get)
         .flatMap(WinRtTypeDefinition::methods)
+        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
         .forEach { method ->
             merged.putIfAbsent(method.projectionSignatureIgnoringStaticKey(), method.copy(isStatic = true))
         }
@@ -656,6 +657,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
 internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
+        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .map { method ->
             FunSpec.constructorBuilder()
@@ -674,6 +676,7 @@ internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinType
 internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
     val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
+        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
             FunSpec.constructorBuilder()
@@ -693,6 +696,7 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
     val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
+        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
         .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .map { method ->
             val returnBinding = KotlinProjectionAbiTypeBinding(
@@ -728,6 +732,7 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
     val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
+        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
             FunSpec.builder(factoryCreateFunctionName(method))

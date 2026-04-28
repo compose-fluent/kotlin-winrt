@@ -426,7 +426,7 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
     if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
         return emptyList()
     }
-    val existingMethodNames = plan.type.methods.filterNot(WinRtMethodDefinition::isStatic).mapTo(mutableSetOf(), WinRtMethodDefinition::name)
+    val existingMethodNames = plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).mapTo(mutableSetOf(), WinRtMethodDefinition::name)
     val existingPropertyNames = plan.type.properties.filterNot(WinRtPropertyDefinition::isStatic).mapTo(mutableSetOf()) {
         it.name.replaceFirstChar(Char::lowercase)
     }
@@ -438,7 +438,7 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
         collectRequiredForwardInterfaceTypes(ownerInterface, plan, mutableSetOf()).forEach { requiredInterface ->
             val interfaceType = requiredInterface.type
             interfaceType.methods
-                .filterNot(WinRtMethodDefinition::isStatic)
+                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .filterNot { it.name in suppressedMemberNames || it.name in existingMethodNames }
                 .forEach { method ->
                     val substitutedMethod = requiredInterface.substitute(method)
