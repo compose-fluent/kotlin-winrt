@@ -1103,7 +1103,7 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
         )
     }
     plan.moduleActivationAndAuthoringDescriptor?.let { module ->
-        builder.addStringListProperty("MODULE_FACTORY_MEMBERS", module.factoryMemberNames)
-        builder.addStringListProperty("MODULE_ACTIVATION_FACTORY_ENTRIES", module.moduleActivationFactoryEntries)
+        builder.addStringListProperty("DEFERRED_AUTHORING_FACTORY_MEMBERS", module.factoryMemberNames)
+        builder.addStringListProperty("DEFERRED_MODULE_ACTIVATION_FACTORY_ENTRIES", module.moduleActivationFactoryEntries)
     }
 }

@@ -3481,6 +3481,10 @@ class KotlinProjectionGeneratorTest {
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
                             implementedInterfaces = listOf(
                                 io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
                                     interfaceName = "Sample.Foundation.IWidget",
@@ -3491,6 +3495,18 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(
                                     name = "boxed",
                                     returnTypeName = "Windows.Foundation.IReference<Int>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555554"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
                                 ),
                             ),
                         ),
@@ -3514,9 +3530,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("fun installEventSources"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))
-        assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("HELPER_OUTPUTS"))
-        assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("WinRTNamespaceAdditions.kt"))
-        assertTrue(filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents.contains("fun registerBaseTypeMappings"))
+        val typeShapeWriterPlan = filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents
+        assertTrue(typeShapeWriterPlan.contains("HELPER_OUTPUTS"))
+        assertTrue(typeShapeWriterPlan.contains("WinRTNamespaceAdditions.kt"))
+        assertTrue(typeShapeWriterPlan.contains("fun registerBaseTypeMappings"))
+        assertTrue(typeShapeWriterPlan.contains("deferredAuthoringFactoryMembers = listOf(\"Sample.Foundation.IWidgetFactory\")"))
+        assertTrue(typeShapeWriterPlan.contains("deferredModuleActivationEntries = listOf(\"Sample.Foundation.Widget\")"))
+        assertTrue(typeShapeWriterPlan.contains("fun deferredAuthoringFactoryEntries(): List<Pair<String, String>>"))
+        assertFalse(typeShapeWriterPlan.contains("installModuleActivationFactories"))
+        assertFalse(typeShapeWriterPlan.contains("moduleActivationEntries"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("Windows.Foundation"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("fun installNamespaceAdditions"))
         assertFalse(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("sourceFiles"))
