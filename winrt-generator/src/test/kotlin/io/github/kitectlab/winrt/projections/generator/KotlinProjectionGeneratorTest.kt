@@ -3537,8 +3537,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initPropertyAccessors(entry, entry.propertyAccessors)"))
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initDelegateCcwInvoke(entry)"))
         assertTrue(genericTypeInstantiations.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
-        assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("_EventSource_Windows_Foundation_EventHandler_Int"))
-        assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("fun installEventSources"))
+        val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
+        assertTrue(eventProjectionHelpers.contains("_EventSource_Windows_Foundation_EventHandler_Int"))
+        assertTrue(eventProjectionHelpers.contains("fun installEventSources()"))
+        assertTrue(eventProjectionHelpers.contains("WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)"))
+        assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.registerEventSource"))
+        assertTrue(eventProjectionHelpers.contains("fun installEventSources(install: (EventSourceEntry) -> Unit)"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))
         val typeShapeWriterPlan = filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents
