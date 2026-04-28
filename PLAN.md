@@ -12,7 +12,7 @@
 ## Current Focus
 
 - [ ] Queue 23 正在做: close the remaining `.cswinrt/src/cswinrt/main.cpp` generation-dispatch parity gaps that block broad WindowsAppSDK/WinUI generation without sample-side include lists.
-- [ ] Generator audit 23.1 正在做: align projection surface filtering with `.cswinrt` dispatch so cross-namespace dependencies such as `Microsoft.UI.Composition`, `Windows.UI.Core/Input/Text/ViewManagement`, and XAML attribute/type-name support are pulled by metadata references.
+- [x] Generator audit 23.1: projection surface filtering now aligns root include/exclude with `.cswinrt` dispatch while keeping cross-namespace dependencies such as `Microsoft.UI.Composition`, `Windows.UI.Core/Input/Text/ViewManagement`, and XAML attribute/type-name support available through metadata references.
 - [ ] Generator audit 23.2: align `.cswinrt` `get_mapped_type` skip policy for XAML/WinUI helper-only mapped types (`*Helper`, `I*Helper*`, `IXamlServiceProvider`) while preserving the Kotlin-specific decision to generate KMP metadata structs for WinRT value structs instead of .NET value aliases.
 - [ ] Generator audit 23.3: align `.cswinrt` `write_attribute` for Kotlin annotation constraints so generated attribute classes carry usable constructor/property data and attribute dependencies do not need manual sample includes.
 - [ ] Generator audit 23.4: remove the temporary `winrt-samples` XAML attribute include list once 23.1-23.3 are closed, then validate the WindowsAppSDK WinUI generation/run command below.
@@ -20,7 +20,7 @@
 
 ## Generator Audit Matrix
 
-- [x] `.cswinrt/src/cswinrt/main.cpp` namespace/type dispatch: Kotlin has matching projection inventory and renderer dispatch for mapped skip, attribute, api contract, runtime class, delegate, enum, interface, struct, ABI companion/support output; remaining gap is Queue 23 dependency closure for filtered WinAppSDK surfaces.
+- [x] `.cswinrt/src/cswinrt/main.cpp` namespace/type dispatch: Kotlin has matching projection inventory and renderer dispatch for mapped skip, attribute, api contract, runtime class, delegate, enum, interface, struct, ABI companion/support output; filtered WinAppSDK dependency closure now keeps referenced cross-namespace dependencies even when their root namespace is excluded.
 - [ ] `.cswinrt` mapped type table: metadata mirrors helper-only and runtime-backed mapped entries, but final policy remains open for XAML/WinUI value structs and `Windows.UI.Color` because Kotlin must generate KMP structs instead of .NET aliases while still skipping helper-only types.
 - [x] Type-name/signature writers: projected/nonprojected/ABI name modes, generic arguments, type signatures, GUID/IID signatures, unsigned Kotlin names, `Uri`, `TypeName`, `DateTime`, `TimeSpan`, `HResult`, references, arrays, async, collections, and delegate signatures are closed for the current JVM runtime boundary.
 - [ ] `write_attribute` and projected custom attributes: metadata reads and renders custom/platform attributes, but generated Kotlin attribute declarations still need constructor/property data and dependency closure parity.
@@ -55,7 +55,7 @@
 
 ## Validation
 
-- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-metadata:test`
+- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-metadata:test --no-configuration-cache --no-daemon`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-projections:compileKotlin`
 - [x] `./.agent_scripts/run_windows_gradle.sh validateWinRtQueue16 --no-configuration-cache`

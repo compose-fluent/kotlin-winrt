@@ -1916,6 +1916,75 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun projection_surface_filter_keeps_referenced_dependencies_inside_excluded_namespaces() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Window",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetPresenter",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("presenter", "Microsoft.UI.Composition.Compositor"),
+                                        WinRtParameterDefinition("input", "Windows.UI.Input.PointerPoint"),
+                                    ),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Scaling", "Windows.UI.ViewManagement.ViewManagementViewScalingContract"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Composition",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Composition", name = "Compositor", kind = WinRtTypeKind.RuntimeClass),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.UI.Input",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.UI.Input", name = "PointerPoint", kind = WinRtTypeKind.RuntimeClass),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.UI.ViewManagement",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.ViewManagement",
+                            name = "ViewManagementViewScalingContract",
+                            kind = WinRtTypeKind.Struct,
+                            isApiContract = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filtered = model.filterProjectionSurface(
+            namespaces = setOf("Microsoft"),
+            excludedNamespaces = setOf("Windows"),
+        )
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Composition.Compositor",
+                "Microsoft.UI.Xaml.Window",
+                "Windows.UI.Input.PointerPoint",
+                "Windows.UI.ViewManagement.ViewManagementViewScalingContract",
+            ),
+            filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
+        )
+    }
+
+    @Test
     fun projection_inventory_tracks_cswinrt_namespace_additions_for_generated_namespaces() {
         val model = WinRtMetadataModel(
             listOf(

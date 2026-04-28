@@ -97,8 +97,7 @@ private fun WinRtTypeDefinition.isProjectionFilterRootIncluded(filter: WinRtProj
 }
 
 private fun WinRtProjectionSurfaceFilter.isProjectionDependencyExcluded(qualifiedName: String): Boolean =
-    excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) } ||
-        excludedNamespaces.any { qualifiedName.isProjectionFilterMatch(it) }
+    excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) }
 
 private fun WinRtTypeDefinition.referencedProjectionTypeNames(): Set<String> = buildSet {
     baseType?.let(::addTypeRef)
