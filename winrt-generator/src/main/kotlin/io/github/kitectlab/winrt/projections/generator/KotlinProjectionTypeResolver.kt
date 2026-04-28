@@ -129,24 +129,25 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
 
     return when (trimmed) {
         "Unit" -> UNIT
+        "Any?" -> ANY.copy(nullable = true)
         "Any",
         "System.Object" -> IINSPECTABLE_REFERENCE_CLASS_NAME
         "String" -> String::class.asClassName()
         "Int" -> Int::class.asClassName()
-        "UInt" -> UInt::class.asClassName()
+        "UInt" -> KOTLIN_UINT_CLASS_NAME
         "Boolean" -> Boolean::class.asClassName()
         "Byte" -> Byte::class.asClassName()
         "SByte",
         "Int8" -> Byte::class.asClassName()
-        "UInt8" -> UByte::class.asClassName()
+        "UInt8" -> KOTLIN_UBYTE_CLASS_NAME
         "Short" -> Short::class.asClassName()
         "Int16" -> Short::class.asClassName()
-        "UShort" -> UShort::class.asClassName()
-        "UInt16" -> UShort::class.asClassName()
+        "UShort" -> KOTLIN_USHORT_CLASS_NAME
+        "UInt16" -> KOTLIN_USHORT_CLASS_NAME
         "Long" -> Long::class.asClassName()
         "Int64" -> Long::class.asClassName()
         "ULong",
-        "UInt64" -> ULong::class.asClassName()
+        "UInt64" -> KOTLIN_ULONG_CLASS_NAME
         "Float" -> Float::class.asClassName()
         "Double" -> Double::class.asClassName()
         "Char" -> Char::class.asClassName()

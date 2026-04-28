@@ -197,6 +197,11 @@ object WinRtBindableIterableProjection {
         } else {
             FromAbiHelper(WinRtBindableIterableReference(pointer, WinRtBindableInterfaceIds.IBindableIterable))
         }
+
+    fun fromAbi(reference: IUnknownReference): FromAbiHelper =
+        reference.queryInterface(WinRtBindableInterfaceIds.IBindableIterable).getOrThrow().use {
+            FromAbiHelper(WinRtBindableIterableReference(it.getRefPointer().asRawAddress(), WinRtBindableInterfaceIds.IBindableIterable))
+        }
 }
 
 object WinRtBindableIteratorProjection {
@@ -407,6 +412,11 @@ object WinRtBindableVectorViewProjection {
         } else {
             FromAbiHelper(WinRtBindableVectorViewReference(pointer, WinRtBindableInterfaceIds.IBindableVectorView))
         }
+
+    fun fromAbi(reference: IUnknownReference): FromAbiHelper =
+        reference.queryInterface(WinRtBindableInterfaceIds.IBindableVectorView).getOrThrow().use {
+            FromAbiHelper(WinRtBindableVectorViewReference(it.getRefPointer().asRawAddress(), WinRtBindableInterfaceIds.IBindableVectorView))
+        }
 }
 
 object WinRtBindableVectorProjection {
@@ -589,6 +599,11 @@ object WinRtBindableVectorProjection {
             null
         } else {
             FromAbiHelper(WinRtBindableVectorReference(pointer, WinRtBindableInterfaceIds.IBindableVector))
+        }
+
+    fun fromAbi(reference: IUnknownReference): FromAbiHelper =
+        reference.queryInterface(WinRtBindableInterfaceIds.IBindableVector).getOrThrow().use {
+            FromAbiHelper(WinRtBindableVectorReference(it.getRefPointer().asRawAddress(), WinRtBindableInterfaceIds.IBindableVector))
         }
 }
 

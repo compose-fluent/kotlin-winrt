@@ -316,6 +316,7 @@ class KotlinProjectionSupportRenderer {
             appendLine("    val genericInvokeSlots: List<String>,")
             appendLine("    val requiredInterfaces: List<String>,")
             appendLine("    val explicitForwards: List<String>,")
+            appendLine("    val requiredMappedHelpers: List<String>,")
             appendLine(")")
             appendLine()
             appendLine("internal object WinRTAbiImplementationPlan {")
@@ -329,6 +330,7 @@ class KotlinProjectionSupportRenderer {
                 appendLine("            genericInvokeSlots = ${plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty().kotlinListLiteral()},")
                 appendLine("            requiredInterfaces = ${plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty().kotlinListLiteral()},")
                 appendLine("            explicitForwards = ${plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty().kotlinListLiteral()},")
+                appendLine("            requiredMappedHelpers = ${plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().map { it.toSupportPlanString() }.kotlinListLiteral()},")
                 appendLine("        ),")
             }
             appendLine("    )")
@@ -489,6 +491,19 @@ class KotlinProjectionSupportRenderer {
         } else {
             joinToString(prefix = "listOf(", postfix = ")") { it.kotlinString() }
         }
+
+    private fun io.github.kitectlab.winrt.metadata.WinRtRequiredMappedHelperPlanDescriptor.toSupportPlanString(): String =
+        listOf(
+            interfaceName,
+            memberFamily,
+            callMode,
+            "helper=${helperWrapperName.orEmpty()}",
+            "adapter=${adapterFieldName.orEmpty()}",
+            "private=$emitsPrivateMembers",
+            "mappedHelpers=$emitsMappedTypeHelpers",
+            "removeEnumerable=$removesNonGenericEnumerable",
+            "removeGeneric=${removesGenericEnumerableName.orEmpty()}",
+        ).joinToString("|")
 
     private companion object {
         const val SUPPORT_PACKAGE = "io.github.kitectlab.winrt.projections.support"

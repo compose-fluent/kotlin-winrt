@@ -1215,6 +1215,16 @@ class WinRtMetadataModelTest {
                 ),
             ),
         )
+        val widgetBase = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "WidgetBase",
+            kind = WinRtTypeKind.RuntimeClass,
+        )
+        val derivedWidget = widget.copy(
+            name = "DerivedWidget",
+            baseTypeName = "Sample.Foundation.WidgetBase",
+            activation = WinRtActivationShape(),
+        )
         val composableOnly = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "ComposableOnly",
@@ -1264,7 +1274,7 @@ class WinRtMetadataModelTest {
             listOf(
                 WinRtNamespace(
                     name = "Sample.Foundation",
-                    types = listOf(defaultInterface, widget, composableOnly, overrides, factory, statics, flags),
+                    types = listOf(defaultInterface, widgetBase, widget, derivedWidget, composableOnly, overrides, factory, statics, flags),
                 ),
             ),
         )
@@ -1325,10 +1335,22 @@ class WinRtMetadataModelTest {
         val fastAbiClass = requireNotNull(helpers.getFastAbiClassForClass(widget))
         assertEquals("Sample.Foundation.IWidget", fastAbiClass.defaultInterface?.interfaceName)
         assertEquals(listOf("Sample.Foundation.IWidgetOverrides"), fastAbiClass.otherInterfaces.map { it.interfaceName })
+        assertEquals(
+            listOf("Sample.Foundation.IWidget", "Sample.Foundation.IWidgetOverrides"),
+            fastAbiClass.interfaceSlots.map { it.interfaceName },
+        )
+        assertEquals(listOf(6, 10), fastAbiClass.interfaceSlots.map { it.vtableStartIndex })
+        assertEquals(listOf(4, 2), fastAbiClass.interfaceSlots.map { it.methodCount })
+        assertEquals(listOf(0, 0), fastAbiClass.interfaceSlots.map { it.hierarchyOffsetAfterDefault })
+        assertEquals(listOf(10, 12), fastAbiClass.interfaceSlots.map { it.nextVtableStartIndex })
         assertEquals(listOf("Name", "Mode"), fastAbiClass.propertySlots.map { it.propertyName })
         assertEquals(listOf(6, 10), fastAbiClass.propertySlots.map { it.vtableStartIndex })
         assertEquals(listOf(9, 10), fastAbiClass.propertySlots.map { it.getterVtableIndex })
         assertEquals(listOf(null, 11), fastAbiClass.propertySlots.map { it.setterVtableIndex })
+        val derivedFastAbiClass = requireNotNull(helpers.getFastAbiClassForClass(derivedWidget))
+        assertEquals(listOf(6, 11), derivedFastAbiClass.interfaceSlots.map { it.vtableStartIndex })
+        assertEquals(listOf(1, 0), derivedFastAbiClass.interfaceSlots.map { it.hierarchyOffsetAfterDefault })
+        assertEquals(listOf(11, 13), derivedFastAbiClass.interfaceSlots.map { it.nextVtableStartIndex })
         assertEquals(true, fastAbiClass.containsGetter("Name"))
         assertEquals(true, fastAbiClass.containsSetter("Mode"))
         assertEquals(false, fastAbiClass.containsSetter("Name"))
@@ -1377,6 +1399,10 @@ class WinRtMetadataModelTest {
         val helperOnly = requireNotNull(helpers.getMappedType("Windows.UI.Xaml", "IGridLengthHelperStatics"))
         assertEquals(null, helperOnly.mappedQualifiedName)
         assertEquals(true, helperOnly.isXamlAlias)
+        assertEquals(null, helpers.getMappedType("Windows.Foundation", "Point"))
+        assertEquals(null, helpers.getMappedType("Windows.Foundation.Numerics", "Vector3"))
+        assertEquals(null, helpers.getMappedType("Microsoft.UI.Xaml.Media", "Matrix"))
+        assertEquals(null, helpers.getMappedType("Windows.UI.Xaml", "GridLength"))
         assertEquals(
             listOf("IBindableIterable", "IBindableVector", "INotifyCollectionChanged", "NotifyCollectionChangedAction", "NotifyCollectionChangedEventArgs", "NotifyCollectionChangedEventHandler"),
             helpers.getMappedTypesInNamespace("Microsoft.UI.Xaml.Interop").map { it.abiName },
@@ -1441,7 +1467,7 @@ class WinRtMetadataModelTest {
         assertEquals(WinRtTypeLayoutKind.Sequential, pointDescriptor.layout.kind)
         assertEquals(listOf("X", "Y"), pointDescriptor.fields.map { it.field.name })
         assertEquals(listOf(0, 4), pointDescriptor.fields.map { it.offset })
-        assertEquals("Windows.Foundation.Point", pointDescriptor.mappedType?.abiQualifiedName)
+        assertEquals(null, pointDescriptor.mappedType)
 
         val enumDescriptor = helpers.valueTypeDescriptor(mode)
         assertEquals(true, enumDescriptor.isValueType)
@@ -1781,6 +1807,111 @@ class WinRtMetadataModelTest {
         assertEquals(false, inventory.helperOutputs.comInteropHelpersRequired)
         assertEquals(false, inventory.helperOutputs.abiDelegateInitializerRequired)
         assertEquals(false, inventory.helperOutputs.genericTypeInstantiationsHelperRequired)
+    }
+
+    @Test
+    fun projection_surface_filter_includes_transitive_signature_and_activation_dependencies() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Window",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Microsoft.UI.Xaml.DependencyObject",
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IWindow",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IWindow"),
+                            ),
+                            activation = WinRtActivationShape(
+                                activatableFactoryInterfaceName = "Microsoft.UI.Xaml.IWindowFactory",
+                                staticInterfaceNames = listOf("Microsoft.UI.Xaml.IWindowStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetIcon",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "Windows.Foundation.Uri"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml", name = "DependencyObject", kind = WinRtTypeKind.RuntimeClass),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IWindow",
+                            kind = WinRtTypeKind.Interface,
+                            properties = listOf(WinRtPropertyDefinition("Content", "Windows.Foundation.IInspectable")),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    "Closed",
+                                    "Windows.Foundation.TypedEventHandler<Microsoft.UI.Xaml.Window,Windows.Foundation.IInspectable>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml", name = "IWindowFactory", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Microsoft.UI.Xaml", name = "IWindowStatics", kind = WinRtTypeKind.Interface),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "IInspectable", kind = WinRtTypeKind.Interface),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "TypedEventHandler", kind = WinRtTypeKind.Delegate, genericParameterCount = 2),
+                        WinRtTypeDefinition(namespace = "Windows.Foundation", name = "Uri", kind = WinRtTypeKind.RuntimeClass),
+                    ),
+                ),
+            ),
+        )
+
+        val filtered = model.filterProjectionSurface(namespaces = setOf("Microsoft"))
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Xaml.DependencyObject",
+                "Microsoft.UI.Xaml.IWindow",
+                "Microsoft.UI.Xaml.IWindowFactory",
+                "Microsoft.UI.Xaml.IWindowStatics",
+                "Microsoft.UI.Xaml.Window",
+                "Windows.Foundation.IInspectable",
+                "Windows.Foundation.TypedEventHandler",
+                "Windows.Foundation.Uri",
+            ),
+            filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
+        )
+    }
+
+    @Test
+    fun projection_surface_filter_keeps_explicit_windows_include_inside_excluded_namespace() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Windows.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.UI.Xaml", name = "Hidden", kind = WinRtTypeKind.RuntimeClass),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(namespace = "Windows.UI.Xaml.Interop", name = "Type", kind = WinRtTypeKind.Struct),
+                    ),
+                ),
+            ),
+        )
+
+        val filtered = model.filterProjectionSurface(
+            namespaces = setOf("Windows.UI.Xaml.Interop"),
+            excludedNamespaces = setOf("Windows"),
+        )
+
+        assertEquals(
+            listOf("Windows.UI.Xaml.Interop.Type"),
+            filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
+        )
     }
 
     @Test
@@ -2194,6 +2325,62 @@ class WinRtMetadataModelTest {
         assertEquals("WidgetActivationFactory", module.factoryClassName)
         assertEquals("Sample.Foundation.Widget -> Sample.Foundation.BaseWidget", module.baseTypeEntry)
         assertEquals("Sample.Foundation.Widget", module.metadataTypeEntry)
+    }
+
+    @Test
+    fun required_interface_mapped_helpers_carry_cswinrt_call_mode_and_removal_rules() {
+        val iterable = WinRtTypeDefinition(
+            namespace = "Windows.Foundation.Collections",
+            name = "IIterable",
+            kind = WinRtTypeKind.Interface,
+            genericParameterCount = 1,
+        )
+        val vector = WinRtTypeDefinition(
+            namespace = "Windows.Foundation.Collections",
+            name = "IVector",
+            kind = WinRtTypeKind.Interface,
+            genericParameterCount = 1,
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IIterable<T0>"),
+            ),
+        )
+        val ownerInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IStringVectorOwner",
+            kind = WinRtTypeKind.Interface,
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<String>"),
+            ),
+        )
+        val owner = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "StringVectorOwner",
+            kind = WinRtTypeKind.RuntimeClass,
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Sample.Foundation.IStringVectorOwner", isDefault = true),
+            ),
+        )
+        val helpers = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace("Windows.Foundation.Collections", listOf(iterable, vector)),
+                WinRtNamespace("Sample.Foundation", listOf(ownerInterface, owner)),
+            ),
+        ).semanticHelpers()
+
+        val descriptor = helpers.requiredInterfaceAugmentationDescriptor(owner)
+        val vectorPlan = descriptor.mappedHelperPlans.single { it.memberFamily == "IList" }
+        assertEquals("Windows.Foundation.Collections.IVector<String>", vectorPlan.interfaceName)
+        assertEquals("System.Collections.Generic.IList`1", vectorPlan.mappedTypeName)
+        assertEquals("_vectorToList", vectorPlan.adapterFieldName)
+        assertEquals("idic", vectorPlan.callMode)
+        assertEquals(false, vectorPlan.emitsMappedTypeHelpers)
+        assertEquals(true, vectorPlan.emitsPrivateMembers)
+        assertEquals(true, vectorPlan.removesNonGenericEnumerable)
+        assertEquals("System.Collections.Generic.IEnumerable<String>", vectorPlan.removesGenericEnumerableName)
+
+        val iterablePlan = descriptor.mappedHelperPlans.single { it.memberFamily == "IEnumerable" }
+        assertEquals("Windows.Foundation.Collections.IIterable<String>", iterablePlan.interfaceName)
+        assertEquals("_iterableToEnumerable", iterablePlan.adapterFieldName)
     }
 
     @Test

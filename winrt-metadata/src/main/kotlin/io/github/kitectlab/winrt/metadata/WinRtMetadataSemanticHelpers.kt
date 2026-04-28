@@ -61,10 +61,23 @@ data class WinRtFastAbiPropertySlot(
     val setterVtableIndex: Int?,
 )
 
+data class WinRtFastAbiInterfaceSlot(
+    val interfaceName: String,
+    val interfaceType: WinRtTypeRef,
+    val isDefault: Boolean,
+    val vtableStartIndex: Int,
+    val methodCount: Int,
+    val hierarchyOffsetAfterDefault: Int = 0,
+) {
+    val nextVtableStartIndex: Int
+        get() = vtableStartIndex + methodCount + hierarchyOffsetAfterDefault
+}
+
 data class WinRtFastAbiClassDescriptor(
     val classType: WinRtTypeDefinition,
     val defaultInterface: WinRtRuntimeClassInterfaceDescriptor?,
     val otherInterfaces: List<WinRtRuntimeClassInterfaceDescriptor>,
+    val interfaceSlots: List<WinRtFastAbiInterfaceSlot>,
     val propertySlots: List<WinRtFastAbiPropertySlot>,
 ) {
     private val otherInterfaceNames = otherInterfaces.map(WinRtRuntimeClassInterfaceDescriptor::interfaceName).toSet()
@@ -500,8 +513,22 @@ data class WinRtRequiredInterfaceAugmentationDescriptor(
     val requiredInterfaceNames: List<String>,
     val explicitForwardMemberNames: List<String>,
     val mappedAugmentationMembers: List<String>,
+    val mappedHelperPlans: List<WinRtRequiredMappedHelperPlanDescriptor>,
     val genericAbiParameterArrays: List<List<String>>,
     val implementsCcwInterface: Boolean,
+)
+
+data class WinRtRequiredMappedHelperPlanDescriptor(
+    val interfaceName: String,
+    val mappedTypeName: String,
+    val memberFamily: String,
+    val helperWrapperName: String?,
+    val adapterFieldName: String?,
+    val callMode: String,
+    val emitsMappedTypeHelpers: Boolean,
+    val emitsPrivateMembers: Boolean,
+    val removesNonGenericEnumerable: Boolean,
+    val removesGenericEnumerableName: String?,
 )
 
 data class WinRtModuleActivationAndAuthoringDescriptor(
@@ -925,12 +952,17 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             classType = type,
             defaultInterface = defaultInterface,
             otherInterfaces = otherInterfaces,
+            interfaceSlots = fastAbiInterfaceSlots(closure),
             propertySlots = fastAbiPropertySlots(closure),
         )
     }
 
     fun getFastAbiClassForInterface(type: WinRtTypeDefinition): WinRtFastAbiClassDescriptor? {
         if (!type.isExclusiveTo) return null
+        val exclusiveToClass = getExclusiveToType(type)
+        if (exclusiveToClass?.isFastAbi == true) {
+            return getFastAbiClassForClass(exclusiveToClass)
+        }
         val owner = normalizedModel.namespaces
             .flatMap(WinRtNamespace::types)
             .firstOrNull { candidate ->
@@ -1621,9 +1653,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         )
 
     fun requiredInterfaceAugmentationDescriptor(type: WinRtTypeDefinition): WinRtRequiredInterfaceAugmentationDescriptor {
-        val required = type.implementedInterfaces.map { implemented ->
-            resolveTypeReference(implemented.interfaceType, type.namespace, typesByQualifiedName).displayName
-        }.sorted()
+        val required = collectRequiredInterfaceClosure(type)
         val mappedMembers = required.mapNotNull { name ->
             val ref = WinRtTypeRef.fromDisplayName(name)
             val qualifiedName = ref.normalized().qualifiedName.orEmpty()
@@ -1634,12 +1664,142 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             requiredInterfaceNames = required,
             explicitForwardMemberNames = explicitImplementations(type).mapNotNull(WinRtExplicitImplementationDescriptor::declarationName).sorted(),
             mappedAugmentationMembers = mappedMembers,
+            mappedHelperPlans = required.mapNotNull(::requiredMappedHelperPlan),
             genericAbiParameterArrays = type.methods.mapNotNull { method ->
                 getGenericAbiTypes(method).takeIf(List<*>::isNotEmpty)
             },
             implementsCcwInterface = doesAbiInterfaceImplementCcwInterface(type),
         )
     }
+
+    private fun collectRequiredInterfaceClosure(type: WinRtTypeDefinition): List<String> {
+        val required = linkedSetOf<String>()
+        fun visit(interfaceRef: WinRtTypeRef, currentNamespace: String) {
+            val resolved = resolveTypeReference(interfaceRef, currentNamespace, typesByQualifiedName)
+            if (!required.add(resolved.displayName)) {
+                return
+            }
+            val definition = resolved.definitionQualifiedName?.let(typesByQualifiedName::get) ?: return
+            val genericArguments = resolved.type.typeArguments
+            definition.implementedInterfaces.forEach { implemented ->
+                visit(
+                    implemented.interfaceType.substituteTypeParameters(genericArguments).normalized(),
+                    definition.namespace,
+                )
+            }
+        }
+        type.implementedInterfaces.forEach { implemented ->
+            visit(implemented.interfaceType, type.namespace)
+        }
+        return required.sorted()
+    }
+
+    private fun requiredMappedHelperPlan(interfaceName: String): WinRtRequiredMappedHelperPlanDescriptor? {
+        val ref = WinRtTypeRef.fromDisplayName(interfaceName).normalized()
+        val qualifiedName = ref.qualifiedName.orEmpty()
+        val mapping = getMappedType(qualifiedName.substringBeforeLast('.', ""), qualifiedName.substringAfterLast('.')) ?: return null
+        val typeArguments = ref.typeArguments.map { it.normalized().typeName }
+        fun genericEnumerable(elementName: String): String =
+            "System.Collections.Generic.IEnumerable<$elementName>"
+        fun keyValuePairEnumerable(): String? {
+            val key = typeArguments.getOrNull(0) ?: return null
+            val value = typeArguments.getOrNull(1) ?: return null
+            return genericEnumerable("System.Collections.Generic.KeyValuePair<$key, $value>")
+        }
+        val plan = when {
+            mapping.abiName == "IIterable" -> RequiredMappedHelperPlan(
+                memberFamily = "IEnumerable",
+                helperWrapperName = "ABI.System.Collections.Generic.IEnumerable",
+                adapterFieldName = "_iterableToEnumerable",
+                removesNonGenericEnumerable = true,
+                removesGenericEnumerableName = null,
+            )
+            mapping.abiName == "IIterator" -> RequiredMappedHelperPlan(
+                memberFamily = "IEnumerator",
+                helperWrapperName = "ABI.System.Collections.Generic.IEnumerator",
+                adapterFieldName = "_iteratorToEnumerator",
+                removesNonGenericEnumerable = false,
+                removesGenericEnumerableName = null,
+            )
+            mapping.abiName == "IMapView" -> RequiredMappedHelperPlan(
+                memberFamily = "IReadOnlyDictionary",
+                helperWrapperName = "ABI.System.Collections.Generic.IReadOnlyDictionary",
+                adapterFieldName = "_mapViewToReadOnlyDictionary",
+                removesNonGenericEnumerable = true,
+                removesGenericEnumerableName = keyValuePairEnumerable(),
+            )
+            mapping.abiName == "IMap" -> RequiredMappedHelperPlan(
+                memberFamily = "IDictionary",
+                helperWrapperName = "ABI.System.Collections.Generic.IDictionary",
+                adapterFieldName = "_mapToDictionary",
+                removesNonGenericEnumerable = true,
+                removesGenericEnumerableName = keyValuePairEnumerable(),
+            )
+            mapping.abiName == "IVectorView" -> RequiredMappedHelperPlan(
+                memberFamily = "IReadOnlyList",
+                helperWrapperName = "ABI.System.Collections.Generic.IReadOnlyList",
+                adapterFieldName = "_vectorViewToReadOnlyList",
+                removesNonGenericEnumerable = true,
+                removesGenericEnumerableName = typeArguments.singleOrNull()?.let { genericEnumerable(it) },
+            )
+            mapping.abiName == "IVector" -> RequiredMappedHelperPlan(
+                memberFamily = "IList",
+                helperWrapperName = "ABI.System.Collections.Generic.IList",
+                adapterFieldName = "_vectorToList",
+                removesNonGenericEnumerable = true,
+                removesGenericEnumerableName = typeArguments.singleOrNull()?.let { genericEnumerable(it) },
+            )
+            mapping.abiName == "IBindableIterable" -> RequiredMappedHelperPlan(
+                memberFamily = "IEnumerable",
+                helperWrapperName = "ABI.System.Collections.IEnumerable",
+                adapterFieldName = "_bindableIterableToEnumerable",
+                removesNonGenericEnumerable = false,
+                removesGenericEnumerableName = null,
+            )
+            mapping.abiName == "IBindableVector" -> RequiredMappedHelperPlan(
+                memberFamily = "IList",
+                helperWrapperName = "ABI.System.Collections.IList",
+                adapterFieldName = "_bindableVectorToList",
+                removesNonGenericEnumerable = true,
+                removesGenericEnumerableName = null,
+            )
+            mapping.mappedName == "IDisposable" -> RequiredMappedHelperPlan(
+                memberFamily = "IDisposable",
+                helperWrapperName = null,
+                adapterFieldName = null,
+                removesNonGenericEnumerable = false,
+                removesGenericEnumerableName = null,
+            )
+            mapping.mappedName == "INotifyDataErrorInfo" -> RequiredMappedHelperPlan(
+                memberFamily = "INotifyDataErrorInfo",
+                helperWrapperName = null,
+                adapterFieldName = null,
+                removesNonGenericEnumerable = false,
+                removesGenericEnumerableName = null,
+            )
+            else -> return null
+        }
+        return WinRtRequiredMappedHelperPlanDescriptor(
+            interfaceName = interfaceName,
+            mappedTypeName = mapping.mappedQualifiedName ?: mapping.mappedName.orEmpty(),
+            memberFamily = plan.memberFamily,
+            helperWrapperName = plan.helperWrapperName,
+            adapterFieldName = plan.adapterFieldName,
+            callMode = "idic",
+            emitsMappedTypeHelpers = false,
+            emitsPrivateMembers = true,
+            removesNonGenericEnumerable = plan.removesNonGenericEnumerable,
+            removesGenericEnumerableName = plan.removesGenericEnumerableName,
+        )
+    }
+
+    private data class RequiredMappedHelperPlan(
+        val memberFamily: String,
+        val helperWrapperName: String?,
+        val adapterFieldName: String?,
+        val removesNonGenericEnumerable: Boolean,
+        val removesGenericEnumerableName: String?,
+    )
 
     fun moduleActivationAndAuthoringDescriptor(type: WinRtTypeDefinition): WinRtModuleActivationAndAuthoringDescriptor {
         val factory = factorySurfaceDescriptor(type)
@@ -1752,10 +1912,27 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             )
     }
 
-    private fun fastAbiPropertySlots(closure: WinRtRuntimeClassClosureDescriptor): List<WinRtFastAbiPropertySlot> {
+    private fun fastAbiInterfaceSlots(closure: WinRtRuntimeClassClosureDescriptor): List<WinRtFastAbiInterfaceSlot> {
         var vtableStartIndex = 6
+        return closure.fastAbiInterfaces.mapIndexed { index, interfaceDescriptor ->
+            val methodCount = interfaceDescriptor.definitionType?.methods?.size ?: 0
+            val slot = WinRtFastAbiInterfaceSlot(
+                interfaceName = interfaceDescriptor.interfaceName,
+                interfaceType = interfaceDescriptor.interfaceType,
+                isDefault = interfaceDescriptor.isDefault,
+                vtableStartIndex = vtableStartIndex,
+                methodCount = methodCount,
+                hierarchyOffsetAfterDefault = if (index == 0) closure.classHierarchyIndex else 0,
+            )
+            vtableStartIndex = slot.nextVtableStartIndex
+            slot
+        }
+    }
+
+    private fun fastAbiPropertySlots(closure: WinRtRuntimeClassClosureDescriptor): List<WinRtFastAbiPropertySlot> {
         val slots = mutableListOf<WinRtFastAbiPropertySlot>()
-        closure.fastAbiInterfaces.forEachIndexed { index, interfaceDescriptor ->
+        fastAbiInterfaceSlots(closure).forEach { interfaceSlot ->
+            val interfaceDescriptor = closure.fastAbiInterfaces.first { it.interfaceName == interfaceSlot.interfaceName }
             val interfaceType = interfaceDescriptor.definitionType
             val methodOrder = interfaceType?.let(::methodOrderByName).orEmpty()
             interfaceType?.properties.orEmpty().forEach { property ->
@@ -1765,13 +1942,11 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     propertyName = property.name,
                     getterMethodName = property.getterMethodName,
                     setterMethodName = property.setterMethodName,
-                    vtableStartIndex = vtableStartIndex,
-                    getterVtableIndex = getterOffset?.let { vtableStartIndex + it },
-                    setterVtableIndex = setterOffset?.let { vtableStartIndex + it },
+                    vtableStartIndex = interfaceSlot.vtableStartIndex,
+                    getterVtableIndex = getterOffset?.let { interfaceSlot.vtableStartIndex + it },
+                    setterVtableIndex = setterOffset?.let { interfaceSlot.vtableStartIndex + it },
                 )
             }
-            val methodCount = interfaceType?.methods?.size ?: 0
-            vtableStartIndex += methodCount + if (index == 0) closure.classHierarchyIndex else 0
         }
         return slots
     }
@@ -1899,6 +2074,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     }
                     addGenericTypeReferencesInInterfaceType(type)
                 }
+                WinRtTypeKind.RuntimeClass -> addGenericTypeReferencesInRuntimeClass(type)
                 else -> Unit
             }
         }
@@ -1924,6 +2100,21 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             type.events.forEach { event -> addIfGenericTypeReference(event.delegateType, isArray = false, currentNamespace = type.namespace) }
             type.implementedInterfaces.forEach { implemented ->
                 addIfGenericTypeReference(implemented.interfaceType, isArray = false, currentNamespace = type.namespace)
+            }
+        }
+
+        private fun addGenericTypeReferencesInRuntimeClass(type: WinRtTypeDefinition) {
+            type.methods.filterNot(::isSpecial).forEach { method -> addGenericTypeReferencesInMethod(method, type.namespace) }
+            type.properties.forEach { property -> addIfGenericTypeReference(property.type, property.type.kind == WinRtTypeRefKind.Array, type.namespace) }
+            type.events.forEach { event -> addIfGenericTypeReference(event.delegateType, isArray = false, currentNamespace = type.namespace) }
+            type.implementedInterfaces.forEach { implemented ->
+                addIfGenericTypeReference(implemented.interfaceType, isArray = false, currentNamespace = type.namespace)
+            }
+            type.activation.factories.forEach { factory ->
+                typesByQualifiedName[factory.interfaceName]?.let(::addGenericTypeReferencesInInterfaceType)
+            }
+            type.activation.staticInterfaceNames.forEach { interfaceName ->
+                typesByQualifiedName[interfaceName]?.let(::addGenericTypeReferencesInInterfaceType)
             }
         }
 

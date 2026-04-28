@@ -3,9 +3,11 @@ package io.github.kitectlab.winrt.gradle
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageIdentity
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageResolver
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
@@ -34,6 +36,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
 
     @get:Input
+    abstract val useNuGetCliGlobalPackages: Property<Boolean>
+
+    @get:Input
+    abstract val nugetExecutable: Property<String>
+
+    @get:Input
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
 
     @get:InputFiles
@@ -57,6 +65,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
         val roots = WinRtNuGetPackageResolver.globalPackagesRoots(
             explicitRoots = nugetGlobalPackagesRoots.get().map(Path::of),
+            nugetLocalsOutput = nugetCliGlobalPackagesOutput(),
         )
         val resolvedPackages = identities.flatMap { identity ->
             WinRtNuGetPackageResolver.resolveClosure(identity, roots)
@@ -116,6 +125,27 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     private fun copyFile(source: Path, target: Path) {
         Files.createDirectories(target.parent)
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    private fun nugetCliGlobalPackagesOutput(): String? {
+        if (!useNuGetCliGlobalPackages.get()) {
+            return null
+        }
+        val command = listOf(nugetExecutable.get(), "locals", "global-packages", "-list")
+        val process = runCatching {
+            ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .start()
+        }.getOrElse { error ->
+            logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
+            return null
+        }
+        val output = process.inputStream.bufferedReader().use { it.readText() }
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+            throw GradleException("Microsoft NuGet CLI failed to locate global-packages. '${command.joinToString(" ")}' exited $exitCode:${System.lineSeparator()}$output")
+        }
+        return output
     }
 }
 

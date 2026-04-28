@@ -20,6 +20,7 @@ import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
+import io.github.kitectlab.winrt.runtime.EventRegistrationToken
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RuntimeScope
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
@@ -28,7 +29,7 @@ import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
 
 data class WinUiDesktopSampleResult(
     val dependencyPropertyUnsetValueAvailable: Boolean,
-    val clickToken: Int,
+    val clickToken: EventRegistrationToken,
     val tappedHandlerRegistered: Boolean,
 )
 

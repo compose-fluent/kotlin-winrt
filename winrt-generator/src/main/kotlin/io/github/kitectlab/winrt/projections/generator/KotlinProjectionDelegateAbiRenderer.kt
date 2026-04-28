@@ -214,11 +214,10 @@ internal fun KotlinProjectionRenderer.enumReturnReadback(
 ): CodeBlock? {
     val integralType = returnBinding.enumUnderlyingType ?: return null
     val enumType = returnType ?: return null
-    return CodeBlock.of(
-        "return %T.Metadata.fromAbi(%L)\n",
-        enumType,
-        abiIntegralReadbackExpression(integralType),
-    )
+    return CodeBlock.builder()
+        .addStatement("val __enumValue = %L", abiIntegralReadbackExpression(integralType))
+        .addStatement("return %T.Metadata.fromAbi(__enumValue)", enumType)
+        .build()
 }
 
 internal fun KotlinProjectionRenderer.abiResultAllocationForIntegralType(type: WinRtIntegralType): CodeBlock =

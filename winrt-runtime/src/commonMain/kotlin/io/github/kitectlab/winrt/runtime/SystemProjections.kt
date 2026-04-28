@@ -140,7 +140,7 @@ internal interface IUriRuntimeClassProjection
 @WinRtGuid("30D5A829-7FA4-4026-83BB-D75BAE4EA99E")
 internal interface IClosableProjection
 
-internal class WinRtClosableObject(
+class WinRtClosableObject(
     private val inspectable: IInspectableReference,
 ) : AutoCloseable, IWinRTObject {
     override val nativeObject: ComObjectReference

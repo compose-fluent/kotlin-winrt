@@ -242,6 +242,17 @@ actual object ComVtableInvoker {
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
+        arg0: RawComPtr,
+        arg1: RawAddress,
+    ): Int {
+        val instanceSegment = asSegment(instance)
+        return downcallHandle(instanceSegment, slot, hResultPtrPtrDescriptor)
+            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1)) as Int
+    }
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
         arg0: Byte,
         arg1: RawAddress,
     ): Int {
@@ -259,6 +270,18 @@ actual object ComVtableInvoker {
         val instanceSegment = asSegment(instance)
         return downcallHandle(instanceSegment, slot, hResultInt32PtrDescriptor)
             .invoke(instanceSegment, arg0, asSegment(arg1)) as Int
+    }
+
+    actual fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: Int,
+        arg1: RawComPtr,
+        arg2: RawAddress,
+    ): Int {
+        val instanceSegment = asSegment(instance)
+        return downcallHandle(instanceSegment, slot, hResultInt32PtrPtrDescriptor)
+            .invoke(instanceSegment, arg0, asSegment(arg1), asSegment(arg2)) as Int
     }
 
     actual fun invokeArgs(

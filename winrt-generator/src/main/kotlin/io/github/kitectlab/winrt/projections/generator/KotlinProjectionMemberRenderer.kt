@@ -192,7 +192,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     plan: KotlinTypeProjectionPlan,
     method: WinRtMethodDefinition,
 ): FunSpec? {
-    val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${method.name.uppercase()}_SLOT" } ?: return null
+    val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) } ?: return null
     val invocation = renderBoundInvocation(binding)
     return FunSpec.builder(method.name)
         .addModifiers(KModifier.OVERRIDE)
@@ -265,3 +265,234 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
         callPlan = callPlan,
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
 }
+
+internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
+    plan: KotlinTypeProjectionPlan,
+    suppressedMemberNames: Set<String>,
+): List<Any> {
+    if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+        return emptyList()
+    }
+    val existingMethodNames = plan.type.methods.filterNot(WinRtMethodDefinition::isStatic).mapTo(mutableSetOf(), WinRtMethodDefinition::name)
+    val existingPropertyNames = plan.type.properties.filterNot(WinRtPropertyDefinition::isStatic).mapTo(mutableSetOf()) {
+        it.name.replaceFirstChar(Char::lowercase)
+    }
+    val members = mutableListOf<Any>()
+    val emittedMethods = mutableSetOf<String>()
+    val propertyForwards = linkedMapOf<String, RequiredForwardProperty>()
+    plan.type.implementedInterfaces.forEach { implemented ->
+        val ownerInterface = implemented.interfaceName
+        collectRequiredForwardInterfaceTypes(ownerInterface, plan, mutableSetOf()).forEach { requiredInterface ->
+            val interfaceType = requiredInterface.type
+            interfaceType.methods
+                .filterNot(WinRtMethodDefinition::isStatic)
+                .filterNot { it.name in suppressedMemberNames || it.name in existingMethodNames }
+                .forEach { method ->
+                    val substitutedMethod = requiredInterface.substitute(method)
+                    val key = "${substitutedMethod.name}:${substitutedMethod.parameters.joinToString(",") { it.typeName }}"
+                    if (emittedMethods.add(key)) {
+                        renderRequiredForwardMethod(plan, requiredInterface.interfaceName, interfaceType, substitutedMethod)?.let(members::add)
+                    }
+                }
+            interfaceType.properties
+                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filterNot { it.name in suppressedMemberNames || it.name.replaceFirstChar(Char::lowercase) in existingPropertyNames }
+                .forEach { property ->
+                    val substitutedProperty = requiredInterface.substitute(property)
+                    val propertyName = property.name.replaceFirstChar(Char::lowercase)
+                    propertyForwards[propertyName] = propertyForwards[propertyName]
+                        ?.merge(requiredInterface.interfaceName, interfaceType, substitutedProperty)
+                        ?: RequiredForwardProperty(
+                            propertyName = propertyName,
+                            propertyTypeName = substitutedProperty.typeName,
+                            getter = substitutedProperty.takeIf { it.getterMethodName != null }?.let {
+                                RequiredForwardPropertyAccessor(requiredInterface.interfaceName, interfaceType, it)
+                            },
+                            setter = substitutedProperty.takeIf { !it.isReadOnly && it.setterMethodName != null }?.let {
+                                RequiredForwardPropertyAccessor(requiredInterface.interfaceName, interfaceType, it)
+                            },
+                        )
+                }
+        }
+    }
+    propertyForwards.values.forEach { property ->
+        renderRequiredForwardProperty(plan, property)?.let(members::add)
+    }
+    return members
+}
+
+private data class RequiredForwardPropertyAccessor(
+    val ownerInterfaceName: String,
+    val slotInterfaceType: WinRtTypeDefinition,
+    val property: WinRtPropertyDefinition,
+)
+
+internal data class RequiredForwardInterfaceType(
+    val interfaceName: String,
+    val type: WinRtTypeDefinition,
+    val genericArguments: List<WinRtTypeRef>,
+) {
+    fun substitute(method: WinRtMethodDefinition): WinRtMethodDefinition =
+        if (genericArguments.isEmpty()) {
+            method
+        } else {
+            val substitutedReturnType = method.returnType.substituteTypeParameters(genericArguments).normalized()
+            method.copy(
+                returnTypeName = substitutedReturnType.typeName,
+                returnTypeSignature = substitutedReturnType,
+                parameters = method.parameters.map { parameter ->
+                    val substitutedType = parameter.type.substituteTypeParameters(genericArguments).normalized()
+                    parameter.copy(
+                        typeName = substitutedType.typeName,
+                        typeSignature = substitutedType,
+                        typeIsByRef = substitutedType.isByRef,
+                    )
+                },
+            )
+        }
+
+    fun substitute(property: WinRtPropertyDefinition): WinRtPropertyDefinition =
+        if (genericArguments.isEmpty()) {
+            property
+        } else {
+            val substitutedType = property.type.substituteTypeParameters(genericArguments).normalized()
+            property.copy(
+                typeName = substitutedType.typeName,
+                typeSignature = substitutedType,
+            )
+        }
+}
+
+private data class RequiredForwardProperty(
+    val propertyName: String,
+    val propertyTypeName: String,
+    val getter: RequiredForwardPropertyAccessor?,
+    val setter: RequiredForwardPropertyAccessor?,
+) {
+    fun merge(
+        ownerInterfaceName: String,
+        slotInterfaceType: WinRtTypeDefinition,
+        property: WinRtPropertyDefinition,
+    ): RequiredForwardProperty {
+        require(property.typeName == propertyTypeName) {
+            "Cannot merge required interface property '$propertyName' with incompatible types: $propertyTypeName vs ${property.typeName}"
+        }
+        return copy(
+            getter = getter ?: property.takeIf { it.getterMethodName != null }?.let {
+                RequiredForwardPropertyAccessor(ownerInterfaceName, slotInterfaceType, it)
+            },
+            setter = setter ?: property.takeIf { !it.isReadOnly && it.setterMethodName != null }?.let {
+                RequiredForwardPropertyAccessor(ownerInterfaceName, slotInterfaceType, it)
+            },
+        )
+    }
+}
+
+internal fun KotlinProjectionRenderer.collectRequiredForwardInterfaceTypes(
+    interfaceName: String,
+    plan: KotlinTypeProjectionPlan,
+    visiting: MutableSet<String>,
+): List<RequiredForwardInterfaceType> {
+    val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+    val interfaceType = plan.typesByQualifiedName[rawName] ?: return emptyList()
+    val genericArguments = genericArgumentTypeRefs(interfaceName)
+    if (!visiting.add(interfaceName)) {
+        return emptyList()
+    }
+    return try {
+        buildList {
+            add(RequiredForwardInterfaceType(interfaceName, interfaceType, genericArguments))
+            interfaceType.implementedInterfaces.forEach { implemented ->
+                val substitutedInterfaceName = implemented.interfaceType
+                    .substituteTypeParameters(genericArguments)
+                    .normalized()
+                    .typeName
+                addAll(collectRequiredForwardInterfaceTypes(substitutedInterfaceName, plan, visiting))
+            }
+        }
+    } finally {
+        visiting.remove(interfaceName)
+    }
+}
+
+private fun genericArgumentTypeRefs(typeName: String): List<WinRtTypeRef> {
+    val trimmed = typeName.trim()
+    if ('<' !in trimmed || !trimmed.endsWith('>')) {
+        return emptyList()
+    }
+    return splitGenericArguments(trimmed.substringAfter('<').substringBeforeLast('>'))
+        .map(WinRtTypeRef::fromDisplayName)
+}
+
+private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
+    plan: KotlinTypeProjectionPlan,
+    ownerInterfaceName: String,
+    slotInterfaceType: WinRtTypeDefinition,
+    method: WinRtMethodDefinition,
+): FunSpec? {
+    val returnBinding = renderAbiTypeBinding(method.returnTypeName)
+    val parameterBindings = method.parameters.map { parameter ->
+        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName))
+    }
+    val callPlan = buildAbiCallPlan(
+        returnBinding = returnBinding,
+        parameterBindings = parameterBindings,
+    ) ?: return null
+    val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
+    val invocation = renderInlineAbiInvocation(
+        invokeTargetExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
+        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), slotConstantName),
+        callPlan = callPlan,
+    ) ?: return null
+    return FunSpec.builder(method.name)
+        .addModifiers(KModifier.OVERRIDE)
+        .returns(resolveTypeName(method.returnTypeName))
+        .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .addCode("%L\n", invocation)
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
+    plan: KotlinTypeProjectionPlan,
+    property: RequiredForwardProperty,
+): PropertySpec? {
+    val propertyType = resolveTypeName(property.propertyTypeName)
+    val builder = PropertySpec.builder(property.propertyName, propertyType)
+        .addModifiers(KModifier.OVERRIDE)
+        .mutable(property.setter != null)
+    property.getter?.let { getter ->
+        val callPlan = buildAbiCallPlan(
+            returnBinding = renderAbiTypeBinding(getter.property.typeName),
+            parameterBindings = emptyList(),
+        ) ?: return null
+        val invocation = renderInlineAbiInvocation(
+            invokeTargetExpression = requiredForwardOwnerCache(getter.ownerInterfaceName, plan.defaultInterfaceName),
+            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(getter.slotInterfaceType.qualifiedName), "${getter.property.name.uppercase()}_GETTER_SLOT"),
+            callPlan = callPlan,
+        ) ?: return null
+        builder.getter(FunSpec.getterBuilder().addCode("%L\n", invocation).build())
+    }
+    property.setter?.let { setter ->
+        val callPlan = buildAbiCallPlan(
+            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setter.property.typeName))),
+        ) ?: return null
+        val invocation = renderInlineAbiInvocation(
+            invokeTargetExpression = requiredForwardOwnerCache(setter.ownerInterfaceName, plan.defaultInterfaceName),
+            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(setter.slotInterfaceType.qualifiedName), "${setter.property.name.uppercase()}_SETTER_SLOT"),
+            callPlan = callPlan,
+        ) ?: return null
+        builder.setter(FunSpec.setterBuilder().addParameter("value", propertyType).addCode("%L\n", invocation).build())
+    }
+    return builder.build()
+}
+
+internal fun requiredForwardOwnerCache(
+    ownerInterfaceName: String,
+    defaultInterfaceName: String?,
+): String =
+    if (ownerInterfaceName == defaultInterfaceName) {
+        "_defaultInterface"
+    } else {
+        "_${ownerInterfaceName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
+    }

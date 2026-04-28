@@ -16,6 +16,9 @@ fun main() {
         val result = NetProjectionSample.add()
         println("simple-math=${result.expression} = ${result.value}")
     }
+    if (PlatformRuntime.isWindows && shouldRunWinUiSmoke()) {
+        runWinUiSample()
+    }
 }
 
 fun shouldRunNativeSmoke(): Boolean =
@@ -26,3 +29,9 @@ fun shouldRunComponentSmoke(): Boolean =
 
 fun shouldRunWinUiSmoke(): Boolean =
     java.lang.Boolean.getBoolean("kotlin.winrt.samples.runWinUiSmoke")
+
+private fun runWinUiSample() {
+    val sampleClass = Class.forName("io.github.kitectlab.winrt.samples.WinUiDesktopSample")
+    val instance = sampleClass.getField("INSTANCE").get(null)
+    sampleClass.getMethod("start").invoke(instance)
+}

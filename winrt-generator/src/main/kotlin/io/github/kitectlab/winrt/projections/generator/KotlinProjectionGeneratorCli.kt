@@ -1,10 +1,9 @@
 package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataLoader
-import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
-import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSource
+import io.github.kitectlab.winrt.metadata.filterProjectionSurface
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
@@ -15,12 +14,18 @@ import kotlin.streams.asSequence
 fun main(args: Array<String>) {
     val options = KotlinProjectionGeneratorOptions.parse(args.toList())
     val metadataSources = options.metadataSources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
-    val model = WinRtMetadataLoader.loadSources(metadataSources).filterProjectionSurface(options.namespaces, options.types)
+    val model = WinRtMetadataLoader.loadSources(metadataSources).filterProjectionSurface(
+        namespaces = options.namespaces,
+        types = options.types,
+        excludedNamespaces = options.excludedNamespaces,
+        excludedTypes = options.excludedTypes,
+    )
     val fileCount = KotlinProjectionGenerator(
         emitSupportFiles = true,
         projectionContext = WinRtMetadataProjectionContext(
             sources = metadataSources,
             include = options.namespaces + options.types,
+            exclude = options.excludedNamespaces + options.excludedTypes,
             additionExclude = options.additionExcludes,
         ),
     ).generateTo(model, options.outputDirectory)
@@ -33,6 +38,8 @@ internal data class KotlinProjectionGeneratorOptions(
     val metadataSources: List<WinRtMetadataSource>,
     val namespaces: Set<String>,
     val types: Set<String>,
+    val excludedNamespaces: Set<String>,
+    val excludedTypes: Set<String>,
     val additionExcludes: Set<String>,
 ) {
     companion object {
@@ -41,6 +48,8 @@ internal data class KotlinProjectionGeneratorOptions(
             val metadataSources = mutableListOf<WinRtMetadataSource>()
             val namespaces = mutableSetOf<String>()
             val types = mutableSetOf<String>()
+            val excludedNamespaces = mutableSetOf<String>()
+            val excludedTypes = mutableSetOf<String>()
             val additionExcludes = mutableSetOf<String>()
             var index = 0
             while (index < args.size) {
@@ -52,6 +61,8 @@ internal data class KotlinProjectionGeneratorOptions(
                     }
                     "--namespace" -> namespaces += args.valueAfter(index, arg).also { index++ }
                     "--type" -> types += args.valueAfter(index, arg).also { index++ }
+                    "--exclude-namespace" -> excludedNamespaces += args.valueAfter(index, arg).also { index++ }
+                    "--exclude-type" -> excludedTypes += args.valueAfter(index, arg).also { index++ }
                     "--addition-exclude" -> additionExcludes += args.valueAfter(index, arg).also { index++ }
                     "--help", "-h" -> printUsageAndExit()
                     else -> error("Unknown argument: $arg")
@@ -64,6 +75,8 @@ internal data class KotlinProjectionGeneratorOptions(
                 metadataSources = metadataSources,
                 namespaces = namespaces,
                 types = types,
+                excludedNamespaces = excludedNamespaces,
+                excludedTypes = excludedTypes,
                 additionExcludes = additionExcludes,
             )
         }
@@ -95,7 +108,7 @@ internal data class KotlinProjectionGeneratorOptions(
         private fun printUsageAndExit(): Nothing {
             println(
                 """
-                Usage: winrt-generator --output <dir> [--namespace <name>] [--type <full.name>] [--addition-exclude <prefix>] [--winmd <path|sdk|sdk+|version[+]>...]
+                Usage: winrt-generator --output <dir> [--namespace <name>] [--type <full.name>] [--exclude-namespace <name>] [--exclude-type <full.name>] [--addition-exclude <prefix>] [--winmd <path|sdk|sdk+|version[+]>...]
 
                 If --winmd is omitted, the latest Windows SDK Platform.xml API-contract set is used.
                 """.trimIndent(),
@@ -104,20 +117,6 @@ internal data class KotlinProjectionGeneratorOptions(
         }
     }
 }
-
-private fun WinRtMetadataModel.filterProjectionSurface(namespaces: Set<String>, types: Set<String>): WinRtMetadataModel =
-    if (namespaces.isEmpty() && types.isEmpty()) {
-        this
-    } else {
-        WinRtMetadataModel(
-            this.namespaces.mapNotNull { namespace ->
-                val namespaceTypes = namespace.types.filter { type ->
-                    namespace.name in namespaces || type.qualifiedName in types
-                }
-                namespaceTypes.takeIf { it.isNotEmpty() }?.let { WinRtNamespace(namespace.name, it) }
-            },
-        ).normalized()
-    }
 
 private fun List<String>.valueAfter(index: Int, name: String): String {
     require(index + 1 < size) { "$name requires a value." }

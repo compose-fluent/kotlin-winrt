@@ -4,6 +4,7 @@ import io.github.kitectlab.winrt.metadata.WinRtActivationShape
 import io.github.kitectlab.winrt.metadata.WinRtEnumMemberDefinition
 import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
+import io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
@@ -675,7 +676,7 @@ class KotlinProjectionGeneratorTest {
         val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
 
         assertTrue(filesByName.getValue("Status.kt").contents.contains("enum class Status"))
-        assertTrue(filesByName.getValue("Point.kt").contents.contains("data class Point"))
+        assertTrue(filesByName.getValue("Point.kt").contents.contains("class Point"))
         assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("fun interface WidgetHandler"))
         assertTrue(filesByName.getValue("WidgetHandler.kt").contents.contains("public operator fun invoke(title: String, count: Int): Boolean"))
     }
@@ -872,6 +873,102 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_single_native_projection_wrapper_for_method_only_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICalculator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Add",
+                                    returnTypeName = "Int",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("left", "Int"),
+                                        WinRtParameterDefinition("right", "Int"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model).single().contents
+
+        assertTrue(contents.contains("TYPE_HANDLE: WinRtTypeHandle"))
+        assertTrue(contents.contains("WinRtTypeHandle("))
+        assertTrue(contents.contains("private class NativeProjection("))
+        assertTrue(contents.contains("internal fun wrap(instance: IUnknownReference): ICalculator = NativeProjection(instance)"))
+        assertFalse(contents.contains("return object : ICalculator, IWinRTObject"))
+    }
+
+    @Test
+    fun generator_merges_required_interface_property_accessors_across_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameReader",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                    getterMethodRowId = 1,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameWriter",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    setterMethodName = "put_Name",
+                                    setterMethodRowId = 1,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NamedObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameReader",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.INameReader", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.INameWriter"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("NamedObject.kt") }
+            .contents
+
+        assertEquals(1, "override var name: String".toRegex().findAll(contents).count())
+        assertTrue(contents.contains("INameReader.Metadata.NAME_GETTER_SLOT"))
+        assertTrue(contents.contains("INameWriter.Metadata.NAME_SETTER_SLOT"))
+    }
+
+    @Test
     fun generator_binds_static_methods_and_properties_through_static_interfaces() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -908,6 +1005,20 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IWidgetStatics2",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    setterMethodName = "put_Count",
+                                    setterMethodRowId = 12,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
@@ -915,22 +1026,9 @@ class KotlinProjectionGeneratorTest {
                                 io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
                             ),
                             activation = WinRtActivationShape(
-                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
-                            ),
-                            methods = listOf(
-                                WinRtMethodDefinition(
-                                    name = "parse",
-                                    returnTypeName = "Sample.Foundation.Widget",
-                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
-                                    isStatic = true,
-                                ),
-                            ),
-                            properties = listOf(
-                                WinRtPropertyDefinition(
-                                    name = "Count",
-                                    typeName = "Int",
-                                    getterMethodName = "get_Count",
-                                    isStatic = true,
+                                staticInterfaceNames = listOf(
+                                    "Sample.Foundation.IWidgetStatics",
+                                    "Sample.Foundation.IWidgetStatics2",
                                 ),
                             ),
                         ),
@@ -951,8 +1049,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("ComVtableInvoker.invokeArgs"))
         assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics().pointer"))
         assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
-        assertTrue(widgetContents.contains("val count: Int"))
+        assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("internal val STATIC_COUNT_SETTER_SLOT: Int = IWidgetStatics2.Metadata.COUNT_SETTER_SLOT"))
     }
 
     @Test
@@ -1514,10 +1613,7 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model).single()
         println(file.contents)
 
-        assertTrue(
-            file.contents.contains("public sealed class WidgetAttribute : Annotation") ||
-                file.contents.contains("public sealed class WidgetAttribute : kotlin.Annotation"),
-        )
+        assertTrue(file.contents.contains("public annotation class WidgetAttribute"))
         assertTrue(file.contents.contains("attribute WinRT class shell"))
     }
 
@@ -2109,6 +2205,72 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_kmp_metadata_structs_instead_of_dotnet_value_type_aliases() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Numerics",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Numerics",
+                            name = "Vector3",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                                WinRtFieldDefinition("Z", "Float"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "Matrix",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("M11", "Double"),
+                                WinRtFieldDefinition("M12", "Double"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "MatrixHelper",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertTrue(filesByName.getValue("Point.kt").contents.contains("public class Point("))
+        assertTrue(filesByName.getValue("Vector3.kt").contents.contains("public class Vector3("))
+        assertTrue(filesByName.getValue("Matrix.kt").contents.contains("public class Matrix("))
+        assertFalse(filesByName.containsKey("MatrixHelper.kt"))
+        assertEquals(null, mappedTypeByAbiName("Windows.Foundation.Point"))
+        assertEquals(null, mappedTypeByAbiName("Windows.Foundation.Numerics.Vector3"))
+        assertEquals(null, mappedTypeByAbiName("Microsoft.UI.Xaml.Media.Matrix"))
+    }
+
+    @Test
     fun generator_uses_runtime_backed_cswinrt_system_mapped_type_names() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -2488,6 +2650,95 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_hands_fast_abi_class_slots_to_metadata_companion() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.FastAbi",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                            methods = listOf(
+                                WinRtMethodDefinition("get_Name", "String", isSpecialName = true, methodRowId = 6),
+                                WinRtMethodDefinition("set_Name", "Unit", parameters = listOf(WinRtParameterDefinition("value", "String")), isSpecialName = true, methodRowId = 7),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                    setterMethodName = "set_Name",
+                                    getterMethodRowId = 6,
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IWidgetOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555562"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(
+                                        io.github.kitectlab.winrt.metadata.WinRtCustomAttributeValue.TypeValue("Sample.FastAbi.Widget"),
+                                    ),
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("get_Mode", "Int", isSpecialName = true, methodRowId = 8),
+                                WinRtMethodDefinition("set_Mode", "Unit", parameters = listOf(WinRtParameterDefinition("value", "Int")), isSpecialName = true, methodRowId = 9),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Mode",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Mode",
+                                    setterMethodName = "set_Mode",
+                                    getterMethodRowId = 8,
+                                    setterMethodRowId = 9,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isFastAbi = true,
+                            defaultInterfaceName = "Sample.FastAbi.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.FastAbi.IWidgetOverrides"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = filesByName.getValue("Widget.kt").contents
+        val defaultInterfaceContents = filesByName.getValue("IWidget.kt").contents
+        val exclusiveInterfaceContents = filesByName.getValue("IWidgetOverrides.kt").contents
+
+        assertTrue(widgetContents, widgetContents.contains("internal val FAST_ABI_INTERFACE_SLOTS: List<String>"))
+        assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
+        assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))
+        assertTrue(widgetContents, widgetContents.contains("internal val FAST_ABI_PROPERTY_SLOTS: List<String>"))
+        assertTrue(widgetContents, widgetContents.contains("Name|start=6|get=6|set=7"))
+        assertTrue(widgetContents, widgetContents.contains("Mode|start=8|get=8|set=9"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_GETTER_SLOT: Int = 8"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_SETTER_SLOT: Int = 9"))
+    }
+
+    @Test
     fun generator_binds_custom_object_mapped_abi_through_runtime_marshaler_facade() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -2768,14 +3019,16 @@ class KotlinProjectionGeneratorTest {
         val iterableContents = files.getValue("NameIterable.kt").contents
         val listContents = files.getValue("NameList.kt").contents
 
-        assertTrue(iterableContents, iterableContents.contains("Iterable<String> by __iNameIterableIterableCollection"))
+        assertTrue(iterableContents, iterableContents.contains("Iterable<String>,"))
         assertTrue(iterableContents, iterableContents.contains("override fun iterator(): Iterator<String>"))
         assertTrue(iterableContents, iterableContents.contains("IIterable.Metadata.FIRST_SLOT"))
         assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
         assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.HASCURRENT_GETTER_SLOT"))
         assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.MOVENEXT_SLOT"))
 
-        assertTrue(listContents, listContents.contains("List<String> by __iNameListVectorViewCollection"))
+        assertTrue(listContents, listContents.contains("List<String>,"))
+        assertTrue(listContents, listContents.contains("override val size: Int"))
+        assertTrue(listContents, listContents.contains("override fun get(index: Int): String"))
         assertTrue(listContents, listContents.contains("AbstractList"))
         assertTrue(listContents, listContents.contains("IVectorView.Metadata.GETAT_SLOT"))
         assertTrue(listContents, listContents.contains("IVectorView.Metadata.SIZE_GETTER_SLOT"))
@@ -2822,7 +3075,7 @@ class KotlinProjectionGeneratorTest {
             .getValue("NameMap.kt")
             .contents
 
-        assertTrue(mapContents, mapContents.contains("Map<String, Int> by __iNameMapMapViewCollection"))
+        assertTrue(mapContents, mapContents.contains("Map<String, Int>,"))
         assertTrue(mapContents, mapContents.contains("AbstractMap"))
         assertTrue(mapContents, mapContents.contains("IMapView.Metadata.LOOKUP_SLOT"))
         assertTrue(mapContents, mapContents.contains("IMapView.Metadata.HASKEY_SLOT"))
@@ -2915,7 +3168,7 @@ class KotlinProjectionGeneratorTest {
             .getValue("ObjectMap.kt")
             .contents
 
-        assertTrue(mapContents, mapContents.contains("Map<String, IInspectableReference> by __iObjectMapMapViewCollection"))
+        assertTrue(mapContents, mapContents.contains("Map<String, IInspectableReference>,"))
         assertTrue(mapContents, mapContents.contains("Map.Entry<String, IInspectableReference>"))
         assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
         assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
@@ -2972,12 +3225,6 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555553"),
-                            methods = listOf(
-                                WinRtMethodDefinition(
-                                    name = "boxed",
-                                    returnTypeName = "Windows.Foundation.IReference<Int>",
-                                ),
-                            ),
                             events = listOf(
                                 WinRtEventDefinition(
                                     name = "Changed",
@@ -2996,6 +3243,12 @@ class KotlinProjectionGeneratorTest {
                                 io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
                                     interfaceName = "Sample.Foundation.IWidget",
                                     isDefault = true,
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "boxed",
+                                    returnTypeName = "Windows.Foundation.IReference<Int>",
                                 ),
                             ),
                         ),
@@ -3066,7 +3319,9 @@ class KotlinProjectionGeneratorTest {
             .getValue("NameVector.kt")
             .contents
 
-        assertTrue(contents, contents.contains("MutableList<String> by __iNameVectorVectorCollection"))
+        assertTrue(contents, contents.contains("MutableList<String>,"))
+        assertTrue(contents, contents.contains("override fun set(index: Int, element: String): String"))
+        assertTrue(contents, contents.contains("override fun add(index: Int, element: String)"))
         assertTrue(contents, contents.contains("AbstractMutableList<String>()"))
         assertFalse(contents, contents.contains("Iterable<String> by __iNameVectorIterableCollection"))
         assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
@@ -3075,6 +3330,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
         assertTrue(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
         assertTrue(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+        assertTrue(contents, contents.contains("REQUIRED_MAPPED_HELPER_PLANS"))
+        assertTrue(contents, contents.contains("Windows.Foundation.Collections.IVector<String>|IList|idic"))
+        assertTrue(contents, contents.contains("removeGeneric=System.Collections.Generic.IEnumerable<String>"))
     }
 
     @Test
@@ -3192,7 +3450,9 @@ class KotlinProjectionGeneratorTest {
             .getValue("NameMap.kt")
             .contents
 
-        assertTrue(contents, contents.contains("MutableMap<String, Int> by __iNameMapMapCollection"))
+        assertTrue(contents, contents.contains("MutableMap<String, Int>,"))
+        assertTrue(contents, contents.contains("override fun put(key: String, value: Int): Int?"))
+        assertTrue(contents, contents.contains("override fun remove(key: String): Int?"))
         assertTrue(contents, contents.contains("AbstractMutableMap<String, Int>()"))
         assertFalse(contents, contents.contains("Iterable<Map.Entry<String, Int>>"))
         assertTrue(contents, contents.contains("IMap.Metadata.HASKEY_SLOT"))
@@ -3559,6 +3819,324 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("WinRtBindableVectorViewProjection.fromAbi"))
         assertTrue(contents, contents.contains("fun setItems(items: MutableList<Any?>)"))
         assertTrue(contents, contents.contains("WinRtBindableVectorProjection.createMarshaler(items)!!.use"))
+    }
+
+    @Test
+    fun generator_projects_required_notify_data_error_info_helper_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Data",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "INotifyDataErrorInfo",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("0ee6c2cc-273e-567d-bc0a-1dd87ee51eba"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IValidatedObject",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ValidatedObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IValidatedObject",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IValidatedObject", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ValidatedObject.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtDataErrorInfo,"))
+        assertTrue(contents, contents.contains("WinRtDataErrorInfoProjection.fromAbi(_inner)"))
+        assertTrue(contents, contents.contains("override val hasErrors: Boolean"))
+        assertTrue(contents, contents.contains("override fun getErrors(propertyName: String?): Iterable<Any?>?"))
+        assertTrue(contents, contents.contains("override fun addErrorsChanged(handler: WinRtDataErrorsChangedHandler)"))
+        assertTrue(contents, contents.contains("override fun removeErrorsChanged(handler: WinRtDataErrorsChangedHandler)"))
+        assertFalse(contents, contents.contains("INotifyDataErrorInfo.Metadata.IID"))
+    }
+
+    @Test
+    fun generator_projects_required_closable_helper_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IClosable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Close", returnTypeName = "Unit", methodRowId = 6),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IClosableOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555564"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.IClosable"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ClosableOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IClosableOwner",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IClosableOwner", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ClosableOwner.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("AutoCloseable,"))
+        assertTrue(contents, contents.contains("override fun close()"))
+        assertTrue(contents, contents.contains("WinRtClosableObject(_inner).close()"))
+        assertFalse(contents, contents.contains("IClosable.Metadata.IID"))
+    }
+
+    @Test
+    fun generator_projects_required_bindable_vector_helper_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Interop",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Interop",
+                            name = "IBindableIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Interop",
+                            name = "IBindableVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Interop.IBindableIterable"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBindableOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555573"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Interop.IBindableVector"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "BindableOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IBindableOwner",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBindableOwner", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("BindableOwner.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("MutableList<Any?>,"))
+        assertTrue(contents, contents.contains("override fun `set`(index: Int, element: Any?): Any?"))
+        assertTrue(contents, contents.contains("override fun add(index: Int, element: Any?)"))
+        assertTrue(contents, contents.contains("WinRtBindableVectorProjection"))
+        assertFalse(contents, contents.contains("Iterable<Any?>,"))
+    }
+
+    @Test
+    fun generator_projects_required_iterator_helper_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555581"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "MoveNext", returnTypeName = "Boolean", methodRowId = 8),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Current",
+                                    typeName = "T0",
+                                    getterMethodName = "get_Current",
+                                    getterMethodRowId = 6,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "HasCurrent",
+                                    typeName = "Boolean",
+                                    getterMethodName = "get_HasCurrent",
+                                    getterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IStringIteratorOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555582"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IIterator<String>"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringIteratorOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IStringIteratorOwner",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IStringIteratorOwner", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("StringIteratorOwner.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("Iterator<String>,"))
+        assertTrue(contents, contents.contains("override fun hasNext(): Boolean"))
+        assertTrue(contents, contents.contains("override fun next(): String"))
+        assertTrue(contents, contents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
+        assertTrue(contents, contents.contains("IIterator.Metadata.HASCURRENT_GETTER_SLOT"))
+        assertTrue(contents, contents.contains("IIterator.Metadata.MOVENEXT_SLOT"))
+        assertTrue(contents, contents.contains("Metadata.acquireInterface(_inner, IIterator.Metadata.IID)"))
+        assertFalse(contents, contents.contains("override val current: String"))
+        assertFalse(contents, contents.contains("override val hasCurrent: Boolean"))
+        assertFalse(contents, contents.contains("override fun MoveNext"))
+    }
+
+    @Test
+    fun generator_substitutes_required_interface_generic_closure_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "current", returnTypeName = "T0", methodRowId = 6),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "BoxValue",
+                                    typeName = "T0",
+                                    getterMethodName = "get_BoxValue",
+                                    getterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IStringBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555562"),
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IBox<String>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringBox",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IStringBox",
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IStringBox",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("StringBox.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("override fun current(): String"))
+        assertTrue(contents, contents.contains("override val boxValue: String"))
+        assertTrue(contents, contents.contains("Metadata.acquireInterface(_inner, IBox.Metadata.IID)"))
+        assertTrue(contents, contents.contains("_iBox"))
+        assertFalse(contents, contents.contains("T0"))
     }
 
     @Test

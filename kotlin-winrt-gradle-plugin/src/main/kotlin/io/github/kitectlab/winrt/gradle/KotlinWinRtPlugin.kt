@@ -164,6 +164,8 @@ private fun configureWinRtApplicationTasks(
             )
             task.runtimeAssets.set(extension.runtimeAssets)
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
+            task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
+            task.nugetExecutable.set(extension.nugetExecutable)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.dependencyIdentityFiles.from(identityDependencies)
         },

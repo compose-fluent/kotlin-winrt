@@ -15,7 +15,7 @@
 - [x] `winrt-runtime` baseline is closed through Runtime 1.20: ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and bounded Kotlin-specific deviations.
 - [x] Runtime follow-up: vtable invocation now includes the `Double, Double, out Double` ABI shape needed by `.cswinrt/src/Samples/NetProjectionSample` `SimpleMath.add/subtract/multiply/divide`.
 - [x] `winrt-metadata` is complete for the current `.cswinrt/src/cswinrt` audit: WinMD ingestion, normalized model, semantic helpers, source/cache handling, descriptor handoff, and final writer-handoff audit through Metadata Full-Parity 4.52.
-- [x] `winrt-generator` ABI/sample follow-through is coherent for the current JVM path and is validated by `validateWinRtQueue16`.
+- [ ] `winrt-generator` remains in `.cswinrt/src/cswinrt` parity follow-through: ABI 8.4-8.8 are closed; the latest audit shows remaining gaps in factory/composable constructors, interface proxy members, class member merging, mapped helper members, fast-ABI class aggregation, and WinUI dependency closure.
 - [x] `winrt-projections` compiles plugin-generated Foundation support through the included plugin build.
 - [x] `kotlin-winrt` Gradle plugin baseline exists for SDK/NuGet generation inputs, generated-source wiring, NuGet CLI fallback, and `winRt {}` library/application identity handling.
 - [x] `winrt-samples` is intentionally minimal and now closed through Sample 10; do not expand samples again until authoring-owned contracts exist.
@@ -63,7 +63,7 @@
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
 - [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
-- [ ] Queue 22 正在做: close remaining `.cswinrt/src/cswinrt/helpers.h` mapped-type gaps through the single generator mapping table; geometry/numerics WinRT structs are generated projection structs and register their own boxing metadata.
+- [ ] Queue 22 正在做: close remaining `.cswinrt/src/cswinrt/helpers.h` and `code_writers.h` mapped-type/required-interface generator rules before treating WinUI sample output as validation.
 
 ## Generator Follow-Through
 
@@ -77,7 +77,35 @@
 - [x] Generator ABI 5: delegate emission now covers scalar/enum/object/interface async and non-Unit callback returns through runtime delegate descriptors.
 - [x] Generator ABI 6: array and nullable/reference ABI now covers scalar/enum/struct buffers, runtime marshaler-backed string/object/interface arrays, and `IReference/IReferenceArray` PIID generation.
 - [x] Generator ABI 7: struct ABI now uses corrected 16-bit layout, mapped Foundation/Numerics struct aliases, nested blittable struct layout, and rejects non-blittable struct metadata companions instead of generating invalid `.Metadata` calls.
-- [x] Generator ABI 8: WindowsAppSDK generation validation passes for the configured Foundation/InteractiveExperiences/WinUI package set; projection/sample expansion can continue from generated output.
+- [ ] Generator ABI 8 正在做: WindowsAppSDK generation compiles only after remaining `.cswinrt` dependency-closure generator rules are closed; do not mark WinUI generation complete from sample-driven fixes.
+- [x] Generator ABI 8.1: overloaded method slot constants now use the declaring interface method row/slot identity instead of runtime-class method row IDs, matching `.cswinrt` vtable ownership.
+- [ ] Generator ABI 8.2 正在做: runtime classes implementing mapped collection interfaces suppress direct WinRT collection members and mapped collection superinterfaces; `IIterable` delegates are generated, while full `IVector/IMap -> MutableList/MutableMap` helper parity is still open.
+- [x] Generator ABI 8.3: unsigned Kotlin built-ins are resolved through centralized generator TypeNames so KotlinPoet does not emit invalid root imports; generated file write-out no longer patches imports as strings.
+- [x] Generator ABI 8.4: closed the first `write_required_interface_members_for_abi_type` slice for ABI-callable required interface method/property forwarding; mapped-helper and explicit-interface branches remain tracked in 8.11/8.12.
+- [x] Generator ABI 8.5: closed the first mapped collection runtime-class surface slice by replacing constructor-time delegation with explicit Kotlin forwards for current collection owners; full mapped-helper parity remains tracked in 8.12.
+- [x] Generator ABI 8.6: closed the first object/interface wrapping slice with generated `Metadata.wrap(IUnknownReference)` and method-only `NativeProjection`; property/event/inherited/generic interface proxy parity remains tracked in 8.10.
+- [x] Generator ABI 8.7: closed the static member accessor merge slice for `.cswinrt` `write_static_members`; full activatable/composable constructor overload parity remains tracked in 8.9.
+- [x] Generator ABI 8.8: closed the generic ABI delegate inventory collection slice for mapped collection/async/reference/event shapes; fast-path carrier coverage remains limited to runtime-provided invoke shapes and broader fast-ABI class aggregation remains tracked in 8.13.
+- [x] Generator ABI 8.9: factory/composable constructor generation now routes activatable factory methods and composable factory methods with leading user parameters through generated factory helpers, instead of only default activation / no-arg `CreateInstance`.
+- [x] Generator ABI 8.10: generated interface RCW wrappers now use one `NativeProjection` path with `TYPE_HANDLE`, cover methods/properties/events/inherited interfaces, and emit generic wrapper type parameters instead of duplicate object wrappers.
+- [x] Generator ABI 8.11: runtime-class required-interface member generation now mirrors `.cswinrt` property accessor merging by combining getter/setter accessors across implemented interfaces before emitting Kotlin members.
+- [x] Generator ABI 8.12: required-interface mapped-helper discovery now walks substituted interface closure, so generic collection/`IBindable*`/`IClosable` mapped helper metadata and member suppression use one mapped-member owner instead of direct-interface-only rules.
+- [x] Generator ABI 8.13: close the metadata descriptor slice for `.cswinrt` fast-ABI class aggregation; `FastAbiAttribute` classes now expose default/other interface slots, method counts, and hierarchy offsets, while generated static ABI class folding remains tracked in 8.18.
+- [x] Generator ABI 8.14: close the Kotlin mapped-type policy slice; runtime-backed KMP mappings stay explicit while metadata value structs are generated and helper-only XAML/system types are suppressed, while mapped member/helper emission remains tracked in 8.16/8.17.
+- [x] Generator ABI 8.15: WinUI dependency-closure filtering is shared in `winrt-metadata`, used by both CLI and Gradle plugin, and validated with WindowsAppSDK sample generation so Microsoft/Windows UI dependencies no longer depend on sample-side include lists.
+- [ ] Generator ABI 8.16: close `.cswinrt/src/cswinrt/code_writers.h` `write_custom_mapped_type_members` parity for mapped collection/bindable/`IClosable`/`INotifyDataErrorInfo` members, including public vs explicit/private forwarding and static-ABI vs IDIC call modes.
+- [x] Generator ABI 8.17a: required-interface forwarding now walks the substituted generic interface closure, emits member signatures with concrete generic arguments, and uses the actual required-interface cache target for inherited interface slots.
+- [x] Generator ABI 8.17b: runtime-class required-interface mapped helper generation now handles runtime-owned `INotifyDataErrorInfo` by projecting `WinRtDataErrorInfo` through the runtime helper, without depending on a generated mapped interface metadata class.
+- [x] Generator ABI 8.17c: required bindable collection helpers now project `IBindableIterable`/`IBindableVectorView`/`IBindableVector` to `Iterable<Any?>`/`List<Any?>`/`MutableList<Any?>` through runtime bindable projection helpers, while suppressing redundant bindable enumerable surfaces.
+- [x] Generator ABI 8.17d: required `IClosable` mapped helper generation now emits `AutoCloseable` plus runtime `WinRtClosableObject(_inner).close()` and suppresses generated `IClosable.Metadata` cache dependencies.
+- [x] Generator ABI 8.17e: required `IIterator<T>` mapped helper generation now emits `Iterator<T>` stateful forwarding through the actual required iterator cache and suppresses raw `Current`/`HasCurrent`/`MoveNext` members.
+- [x] Generator ABI 8.17f: required mapped-helper descriptors now carry `.cswinrt` call mode, helper wrapper, adapter, private-member, and enumerable-removal rules as structured metadata and generated companion/support handoff data instead of weak member-name strings.
+- [x] Generator ABI 8.17: close current `.cswinrt` `write_required_interface_members_for_abi_type` mapped-helper parity for Kotlin runtime-class projection; static-ABI vs IDIC differences are now explicit descriptor data for the later ABI implementation/static-ABI folding path, while projected runtime classes use Kotlin runtime helpers.
+- [x] Generator ABI 8.18a: fast-ABI class descriptors now flow into generated metadata companions as deterministic default/other interface slot and property slot handoff data, matching `.cswinrt` static ABI class folding inputs.
+- [x] Generator ABI 8.18b: interface ABI slot constants now collapse duplicate accessor MethodDef rows and use the fast-ABI folded vtable start for exclusive interfaces owned by a fast-ABI runtime class.
+- [ ] Generator ABI 8.18: close fast-ABI static ABI class folding from `.cswinrt` `write_static_abi_classes`; generated interface ABI slot tables must use the fast-ABI default + other interface slot sequence when an exclusive interface belongs to a fast-ABI class.
+- [ ] Generator ABI 8.19: close `.cswinrt` object-reference cache rules from `write_class_objrefs_definition`, including manually generated bindable interfaces, fast-ABI non-default exclusive interfaces, unsealed default-interface hierarchy offsets, and generic interface initialization.
+- [ ] Generator ABI 8.20: close `.cswinrt` factory/module activation class parity for authored/activatable types; keep authoring runtime work frozen, but generator descriptors must still distinguish projected activation constructors from server activation factory/member metadata.
 - [x] Namespace additions from `.cswinrt/src/cswinrt/strings` are now modeled at namespace level, flow through generator support handoffs and Gradle identity metadata, and keep `.cswinrt` `addition_exclude` semantics without treating C# addition files as Kotlin projection inputs.
 - [x] Generator memory: CLI and Gradle generation now stream each rendered Kotlin file to disk instead of retaining the full WindowsAppSDK output set in memory.
 - [x] Generator WinUI constructors: composable `CreateInstance(System.Object, System.Object)` factories now produce public default constructors for generated WinUI classes such as `Button`, `Page`, and `Window`.
@@ -111,6 +139,7 @@
 - [x] Sample 8: WinUI runtime/resource packaging now follows WindowsAppSDK package staging at the application model and distribution layer, including `resources.pri` aliasing without staging native build headers.
 - [x] Sample 9: sample validation now checks `installDist` application layout, staged `kotlin-winrt-runtime-assets`, and default `run` bootstrap without opt-in native smoke.
 - [x] Sample 10: Sample 5-9 are closed and sample expansion is stopped. Keep `winrt-authoring` frozen for now; do not implement `.cswinrt/src/Samples/AuthoringDemo` or `BgTaskComponent` samples before authoring support is complete.
+- [x] Sample 10.1: WinUI smoke execution is opt-in through `kotlin.winrt.samples.runWinUiSmoke`; the sample uses explicit WindowsAppSDK package identities and only the `.cswinrt/src/Samples/WinUIDesktopSample` type surface to avoid compiling the full Microsoft namespace during `run`.
 - [ ] Sample 11: resume non-authoring sample validation only when it proves already-completed generator/projection/plugin behavior; keep authoring samples in the deferred native/authoring plan.
 
 ## Completed Milestones
@@ -157,6 +186,7 @@
 - [x] Plugin 4.7: align WindowsAppSDK handling with `.cswinrt/src/Projections/WinAppSDK`: add `windowsAppSdk(...)` split-package DSL and keep WindowsAppSDK staging limited to runtime framework assets, not native-target internals such as `WindowsAppSDK-VersionInfo.h`.
 - [x] Runtime 4.8: remove sample-derived `WindowsAppSdkBootstrap` from `winrt-runtime`; WinUI bootstrap/application packaging belongs to plugin/application integration after matching `.cswinrt` project/package behavior.
 - [x] Plugin 4.9: make plugin projection filters match `.cswinrt/src/Projections/WinAppSDK` include/exclude shape for WindowsAppSDK metadata.
+- [x] Plugin 4.10: application runtime-asset staging now consumes Microsoft NuGet CLI `global-packages` output like projection generation, so WindowsAppSDK resources are resolved from the real NuGet cache instead of Gradle daemon-relative fallback roots.
 
 ## Validation Plan
 
@@ -177,6 +207,7 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test --no-configuration-cache --no-daemon --max-workers=1 -Dkotlin.incremental=false -Dorg.gradle.jvmargs='-Xmx1024m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=2 -XX:-UseCompressedOops -XX:MaxDirectMemorySize=256m -Dfile.encoding=UTF-8'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-runtime:jvmTest :winrt-generator:test --no-configuration-cache --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx768m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=2 -XX:-UseCompressedOops -XX:MaxDirectMemorySize=256m -Dfile.encoding=UTF-8'`
 - [x] `./.agent_scripts/run_windows_gradle.sh :winrt-samples:generateWinRtProjections -PkotlinWinRt.samples.windowsAppSdkWinuiVersion=1.8.251105000 -PkotlinWinRt.samples.windowsAppSdkFoundationVersion=1.8.251104000 -PkotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion=1.8.251104001 --no-configuration-cache --no-daemon --max-workers=1 -Dorg.gradle.jvmargs='-Xmx1024m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=2 -XX:-UseCompressedOops -XX:MaxDirectMemorySize=256m -Dfile.encoding=UTF-8'`
+- [ ] `./.agent_scripts/run_windows_gradle.sh --no-configuration-cache :winrt-samples:run -Dkotlin.winrt.samples.runWinUiSmoke=true -PkotlinWinRt.samples.windowsAppSdkWinuiVersion=1.8.251105000 -PkotlinWinRt.samples.windowsAppSdkFoundationVersion=1.8.251104000 -PkotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion=1.8.251104001` currently blocked by remaining generated WinUI dependency-closure compile gaps (`Microsoft.UI.Composition`, `Windows.UI.Core/Input/Text/ViewManagement`, XAML attribute/type-name structs).
 - [x] Validate touched modules with Windows Gradle via `./.agent_scripts/run_windows_gradle.sh <tasks>`.
 - [x] For generator work, run targeted generator tests and projection compile checks before updating checked-in output.
 - [x] For plugin work, add task-level tests for SDK source resolution, NuGet graph resolution, generated-source wiring, and application resource staging.

@@ -1,15 +1,11 @@
 package io.github.kitectlab.winrt.gradle
 
 import io.github.kitectlab.winrt.metadata.WinRtMetadataLoader
-import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSource
-import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageIdentity
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageResolver
-import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
-import io.github.kitectlab.winrt.metadata.WinRtTypeRef
-import io.github.kitectlab.winrt.metadata.WinRtTypeRefKind
+import io.github.kitectlab.winrt.metadata.filterProjectionSurface
 import io.github.kitectlab.winrt.projections.generator.KotlinProjectionGenerator
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
@@ -342,100 +338,3 @@ private data class NuGetInvocation(
 }
 
 private val LINE_SEPARATOR: String = System.lineSeparator()
-
-private fun WinRtMetadataModel.filterProjectionSurface(
-    namespaces: Set<String>,
-    types: Set<String>,
-    excludedNamespaces: Set<String>,
-    excludedTypes: Set<String>,
-): WinRtMetadataModel =
-    if (namespaces.isEmpty() && types.isEmpty() && excludedNamespaces.isEmpty() && excludedTypes.isEmpty()) {
-        this
-    } else {
-        val typesByQualifiedName = this.namespaces
-            .flatMap(WinRtNamespace::types)
-            .associateBy(WinRtTypeDefinition::qualifiedName)
-        val includedNames = linkedSetOf<String>()
-        this.namespaces.forEach { namespace ->
-            namespace.types.forEach { type ->
-                if (type.isProjectionFilterIncluded(namespaces, types, excludedNamespaces, excludedTypes)) {
-                    includedNames += type.qualifiedName
-                }
-            }
-        }
-        val pending = ArrayDeque(includedNames)
-        while (pending.isNotEmpty()) {
-            val type = typesByQualifiedName[pending.removeFirst()] ?: continue
-            type.referencedTypeNames()
-                .filter { referenced -> referenced in typesByQualifiedName }
-                .filterNot { referenced -> excludedTypes.any { referenced.startsWith("$it.") || referenced == it } }
-                .forEach { referenced ->
-                    if (includedNames.add(referenced)) {
-                        pending += referenced
-                    }
-                }
-        }
-        WinRtMetadataModel(
-            this.namespaces.mapNotNull { namespace ->
-                val namespaceTypes = namespace.types.filter { type -> type.qualifiedName in includedNames }
-                namespaceTypes.takeIf { it.isNotEmpty() }?.let { WinRtNamespace(namespace.name, it) }
-            },
-        ).normalized()
-    }
-
-private fun WinRtTypeDefinition.isProjectionFilterIncluded(
-    namespaces: Set<String>,
-    types: Set<String>,
-    excludedNamespaces: Set<String>,
-    excludedTypes: Set<String>,
-): Boolean {
-    val hasIncludeFilter = namespaces.isNotEmpty() || types.isNotEmpty()
-    val explicitlyIncludedType = types.any { qualifiedName.startsWith("$it.") || qualifiedName == it }
-    val included = !hasIncludeFilter ||
-        namespaces.any { qualifiedName.startsWith("$it.") || qualifiedName == it } ||
-        explicitlyIncludedType
-    val explicitlyExcludedType = excludedTypes.any { qualifiedName.startsWith("$it.") || qualifiedName == it }
-    val namespaceExcludeOverridden = excludedNamespaces.any { excludedNamespace ->
-        namespaces.any { includedNamespace ->
-            includedNamespace.startsWith("$excludedNamespace.") &&
-                (qualifiedName.startsWith("$includedNamespace.") || qualifiedName == includedNamespace)
-        }
-    }
-    val excluded = explicitlyExcludedType ||
-        (
-            !explicitlyIncludedType &&
-                !namespaceExcludeOverridden &&
-                excludedNamespaces.any { qualifiedName.startsWith("$it.") || qualifiedName == it }
-            )
-    return included && !excluded
-}
-
-private fun WinRtTypeDefinition.referencedTypeNames(): Set<String> = buildSet {
-    baseType?.let { addTypeRef(it) }
-    defaultInterface?.let { addTypeRef(it) }
-    implementedInterfaces.forEach { addTypeRef(it.interfaceType) }
-    fields.forEach { addTypeRef(it.type) }
-    methods.forEach { method ->
-        addTypeRef(method.returnType)
-        method.parameters.forEach { addTypeRef(it.type) }
-    }
-    properties.forEach { addTypeRef(it.type) }
-    events.forEach { addTypeRef(it.delegateType) }
-    activation.activatableFactoryInterface?.let { addTypeRef(it) }
-    activation.staticInterfaces.forEach { addTypeRef(it) }
-    activation.composableFactoryInterface?.let { addTypeRef(it) }
-    activation.factories.forEach { addTypeRef(it.interfaceType) }
-}
-
-private fun MutableSet<String>.addTypeRef(type: WinRtTypeRef) {
-    when (type.kind) {
-        WinRtTypeRefKind.Named -> {
-            type.qualifiedName?.let(::add)
-            type.typeArguments.forEach(::addTypeRef)
-        }
-        WinRtTypeRefKind.Array -> type.elementType?.let(::addTypeRef)
-        WinRtTypeRefKind.GenericTypeParameter,
-        WinRtTypeRefKind.MethodTypeParameter,
-        WinRtTypeRefKind.Unknown -> Unit
-    }
-}

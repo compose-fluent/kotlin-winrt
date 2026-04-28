@@ -7,6 +7,7 @@ import io.github.kitectlab.winrt.metadata.WinRtCustomMappedMemberOutputDescripto
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtFastAbiClassDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiInventory
@@ -50,6 +51,7 @@ import io.github.kitectlab.winrt.runtime.ParameterizedInterfaceId
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.kitectlab.winrt.runtime.NativeScalarFieldSpec
+import io.github.kitectlab.winrt.runtime.NativeStructAdapter
 import io.github.kitectlab.winrt.runtime.NativeStructLayout
 import io.github.kitectlab.winrt.runtime.NativeStructScalarKind
 import io.github.kitectlab.winrt.runtime.WinRtBindableIterableProjection
@@ -82,6 +84,7 @@ import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
 import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
 import io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
 import io.github.kitectlab.winrt.runtime.WinRtEvent
+import io.github.kitectlab.winrt.runtime.WinRtClosableObject
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -150,6 +153,7 @@ internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::cla
 internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
 internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
 internal val WINRT_EVENT_CLASS_NAME = WinRtEvent::class.asClassName()
+internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRtClosableObject::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 internal val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 internal val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
@@ -169,6 +173,7 @@ internal val MUTABLE_MAP_CLASS_NAME = ClassName("kotlin.collections", "MutableMa
 internal val RAW_ADDRESS_CLASS_NAME = RawAddress::class.asClassName()
 internal val NATIVE_NESTED_STRUCT_FIELD_SPEC_CLASS_NAME = NativeNestedStructFieldSpec::class.asClassName()
 internal val NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME = NativeScalarFieldSpec::class.asClassName()
+internal val NATIVE_STRUCT_ADAPTER_CLASS_NAME = NativeStructAdapter::class.asClassName()
 internal val NATIVE_STRUCT_LAYOUT_CLASS_NAME = NativeStructLayout::class.asClassName()
 internal val NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME = NativeStructScalarKind::class.asClassName()
 internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = EventRegistrationToken::class.asClassName()
@@ -183,8 +188,17 @@ internal val WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME = ClassName("io.g
 internal val WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtNotifyCollectionChangedEventArgs")
 internal val WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtCollectionChangedHandler")
 internal val WINRT_DATA_ERROR_INFO_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtDataErrorInfo")
+internal val WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtDataErrorInfoProjection")
 internal val WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtDataErrorsChangedEventArgs")
+internal val WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtDataErrorsChangedHandler")
 internal val WINRT_SERVICE_PROVIDER_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtServiceProvider")
+internal val KOTLIN_UBYTE_CLASS_NAME = UByte::class.asClassName().withKotlinPackageIfRoot()
+internal val KOTLIN_UINT_CLASS_NAME = UInt::class.asClassName().withKotlinPackageIfRoot()
+internal val KOTLIN_ULONG_CLASS_NAME = ULong::class.asClassName().withKotlinPackageIfRoot()
+internal val KOTLIN_USHORT_CLASS_NAME = UShort::class.asClassName().withKotlinPackageIfRoot()
+
+private fun ClassName.withKotlinPackageIfRoot(): ClassName =
+    if (packageName.isEmpty()) ClassName("kotlin", simpleNames) else this
 
 internal typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
 
@@ -267,6 +281,7 @@ data class KotlinTypeProjectionPlan(
     val customMappedMemberOutputDescriptor: WinRtCustomMappedMemberOutputDescriptor? = null,
     val genericAbiClassInitializationDescriptor: WinRtGenericAbiClassInitializationDescriptor? = null,
     val requiredInterfaceAugmentationDescriptor: WinRtRequiredInterfaceAugmentationDescriptor? = null,
+    val fastAbiClassDescriptor: WinRtFastAbiClassDescriptor? = null,
     val moduleActivationAndAuthoringDescriptor: WinRtModuleActivationAndAuthoringDescriptor? = null,
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
@@ -657,7 +672,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         literalRenderer = { valueBits -> CodeBlock.of("%L.toByte()", valueBits.toByte()) },
     ),
     WinRtIntegralType.UInt8 to KotlinProjectionIntegralAbiDescriptor(
-        kotlinTypeName = UByte::class.asClassName(),
+        kotlinTypeName = KOTLIN_UBYTE_CLASS_NAME,
         argumentConversionSuffix = ".toByte()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUByte()", valueBits.toUByte()) },
     ),
@@ -666,7 +681,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         literalRenderer = { valueBits -> CodeBlock.of("%L.toShort()", valueBits.toShort()) },
     ),
     WinRtIntegralType.UInt16 to KotlinProjectionIntegralAbiDescriptor(
-        kotlinTypeName = UShort::class.asClassName(),
+        kotlinTypeName = KOTLIN_USHORT_CLASS_NAME,
         argumentConversionSuffix = ".toShort()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUShort()", valueBits.toUShort()) },
     ),
@@ -675,7 +690,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         literalRenderer = { valueBits -> CodeBlock.of("%L", valueBits.toInt()) },
     ),
     WinRtIntegralType.UInt32 to KotlinProjectionIntegralAbiDescriptor(
-        kotlinTypeName = UInt::class.asClassName(),
+        kotlinTypeName = KOTLIN_UINT_CLASS_NAME,
         argumentConversionSuffix = ".toInt()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUInt()", valueBits.toUInt()) },
     ),
@@ -684,7 +699,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits.toLong()}L") },
     ),
     WinRtIntegralType.UInt64 to KotlinProjectionIntegralAbiDescriptor(
-        kotlinTypeName = ULong::class.asClassName(),
+        kotlinTypeName = KOTLIN_ULONG_CLASS_NAME,
         argumentConversionSuffix = ".toLong()",
         literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits}uL") },
     ),

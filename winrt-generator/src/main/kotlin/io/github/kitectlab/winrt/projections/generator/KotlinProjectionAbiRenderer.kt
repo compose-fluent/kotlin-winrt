@@ -483,7 +483,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.InspectableReference ->
             if (resolvedReturnClassName(returnBinding) == IINSPECTABLE_REFERENCE_CLASS_NAME) {
                 CodeBlock.of(
-                "return (%T(%T.toRawComPtr(%T.readPointer(__resultOut))).use({ it.asInspectable() }))\n",
+                    "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn __resultRef.use { it.asInspectable() }\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
                     PLATFORM_ABI_CLASS_NAME,
@@ -493,7 +493,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
             }
         KotlinProjectionAbiValueKind.Object ->
             CodeBlock.of(
-                "return (%T(%T.toRawComPtr(%T.readPointer(__resultOut))).use { it.asInspectable() })\n",
+                "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn __resultRef.use { it.asInspectable() }\n",
                 IUNKNOWN_REFERENCE_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,

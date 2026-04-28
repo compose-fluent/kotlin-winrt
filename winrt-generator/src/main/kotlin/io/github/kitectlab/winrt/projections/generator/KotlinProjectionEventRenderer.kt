@@ -24,6 +24,7 @@ import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtPropertyDefinition
 import io.github.kitectlab.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtSignatureWriterDescriptor
@@ -236,10 +237,13 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
 ): TypeSpec =
     TypeSpec.companionObjectBuilder("Metadata")
         .apply {
+            val projectedStaticMethods = mergedStaticMethods(plan, staticMethods)
+            val projectedStaticProperties = mergedStaticProperties(plan, staticProperties)
+            val projectedStaticEvents = mergedStaticEvents(plan, staticEvents)
             appendMetadataCompanionMembers(this, plan)
-            staticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
-            staticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(it)) }
-            staticEvents.forEach { event ->
+            projectedStaticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
+            projectedStaticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(it)) }
+            projectedStaticEvents.forEach { event ->
                 addProperty(
                     renderEventProperty(
                         event = event,
@@ -252,6 +256,72 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
             }
         }
         .build()
+
+private fun mergedStaticMethods(
+    plan: KotlinTypeProjectionPlan,
+    staticMethods: List<WinRtMethodDefinition>,
+): List<WinRtMethodDefinition> {
+    val merged = linkedMapOf<String, WinRtMethodDefinition>()
+    staticMethods.forEach { method ->
+        merged.putIfAbsent(method.projectionSignatureIgnoringStaticKey(), method.copy(isStatic = true))
+    }
+    plan.staticInterfaceNames
+        .mapNotNull(plan.typesByQualifiedName::get)
+        .flatMap(WinRtTypeDefinition::methods)
+        .forEach { method ->
+            merged.putIfAbsent(method.projectionSignatureIgnoringStaticKey(), method.copy(isStatic = true))
+        }
+    return merged.values.toList()
+}
+
+private fun mergedStaticProperties(
+    plan: KotlinTypeProjectionPlan,
+    staticProperties: List<WinRtPropertyDefinition>,
+): List<WinRtPropertyDefinition> {
+    val merged = linkedMapOf<String, WinRtPropertyDefinition>()
+    fun add(property: WinRtPropertyDefinition) {
+        val staticProperty = property.copy(isStatic = true)
+        val key = staticProperty.projectionSignatureIgnoringStaticKey()
+        merged[key] = merged[key]?.mergeStaticAccessor(staticProperty) ?: staticProperty
+    }
+    staticProperties.forEach(::add)
+    plan.staticInterfaceNames
+        .mapNotNull(plan.typesByQualifiedName::get)
+        .flatMap(WinRtTypeDefinition::properties)
+        .forEach(::add)
+    return merged.values.toList()
+}
+
+private fun mergedStaticEvents(
+    plan: KotlinTypeProjectionPlan,
+    staticEvents: List<WinRtEventDefinition>,
+): List<WinRtEventDefinition> {
+    val merged = linkedMapOf<String, WinRtEventDefinition>()
+    staticEvents.forEach { event ->
+        merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
+    }
+    plan.staticInterfaceNames
+        .mapNotNull(plan.typesByQualifiedName::get)
+        .flatMap(WinRtTypeDefinition::events)
+        .forEach { event ->
+            merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
+        }
+    return merged.values.toList()
+}
+
+private fun WinRtPropertyDefinition.mergeStaticAccessor(other: WinRtPropertyDefinition): WinRtPropertyDefinition {
+    require(name == other.name && typeName == other.typeName) {
+        "Can only merge identical static properties: $name:$typeName vs ${other.name}:${other.typeName}"
+    }
+    return copy(
+        isStatic = true,
+        getterMethodName = getterMethodName ?: other.getterMethodName,
+        setterMethodName = setterMethodName ?: other.setterMethodName,
+        getterMethodRowId = listOfNotNull(getterMethodRowId, other.getterMethodRowId).minOrNull(),
+        setterMethodRowId = listOfNotNull(setterMethodRowId, other.setterMethodRowId).minOrNull(),
+        hasValidAccessors = hasValidAccessors && other.hasValidAccessors,
+    )
+}
 
 internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     plan: KotlinTypeProjectionPlan,
@@ -268,13 +338,27 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
             .addCode("return Metadata.wrap(ActivationFactory.activate())\n")
             .build()
     }
-    val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == "STATIC_${method.name.uppercase()}_SLOT" } ?: return null
+    val binding = plan.staticMemberBindings.firstOrNull {
+        it.bindingName == staticMethodBindingName(plan, method)
+    } ?: return null
     val invocation = renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.name)
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
         .build()
+}
+
+private fun staticMethodBindingName(
+    plan: KotlinTypeProjectionPlan,
+    method: WinRtMethodDefinition,
+): String {
+    val declaringStaticInterface = plan.staticInterfaceNames
+        .mapNotNull(plan.typesByQualifiedName::get)
+        .firstOrNull { staticInterface ->
+            staticInterface.methods.any { it.projectionSignatureIgnoringStaticKey() == method.projectionSignatureIgnoringStaticKey() }
+        }
+    return "STATIC_${method.abiSlotConstantName(declaringStaticInterface?.methods ?: plan.type.methods)}"
 }
 
 internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
@@ -353,6 +437,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                             .build(),
                     )
                 }
+                renderActivationFactoryCreateFunctions(plan).forEach(::addFunction)
             }
             .addFunction(
                 FunSpec.builder("acquire")
@@ -466,9 +551,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                             .build(),
                     )
                 }
-                if (hasDefaultComposableFactoryConstructor(plan)) {
-                    addFunction(renderDefaultComposableFactoryCreateInstance(plan))
-                }
+                renderComposableFactoryCreateFunctions(plan).forEach(::addFunction)
             }
             .addFunction(
                 FunSpec.builder("acquire")
@@ -485,49 +568,185 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
             .build()
 }
 
-internal fun KotlinProjectionRenderer.hasDefaultComposableFactoryConstructor(plan: KotlinTypeProjectionPlan): Boolean {
-    val factoryName = plan.composableFactoryInterfaceName ?: return false
-    val factoryType = plan.typesByQualifiedName[factoryName] ?: return false
-    return factoryType.methods.any { method ->
-        method.name == "CreateInstance" &&
-            method.parameters.size == 2 &&
-            method.parameters[0].type.typeName == "System.Object" &&
-            method.parameters[1].type.typeName == "System.Object" &&
-            method.returnType.typeName == plan.type.qualifiedName
-    }
+internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
+    return factoryType.methods
+        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+        .map { method ->
+            FunSpec.constructorBuilder()
+                .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .callThisConstructor(
+                    CodeBlock.of(
+                        "ActivationFactory.%L(%L)",
+                        factoryCreateFunctionName(method),
+                        method.parameters.joinToString(", ") { parameter -> parameter.name },
+                    ),
+                )
+                .build()
+        }
 }
 
-internal fun KotlinProjectionRenderer.renderDefaultComposableFactoryCreateInstance(plan: KotlinTypeProjectionPlan): FunSpec {
-    val factoryType = resolveTypeName(requireNotNull(plan.composableFactoryInterfaceName))
-    return FunSpec.builder("createInstance")
-        .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
-        .addCode(
-            CodeBlock.builder()
-                .add("val __factory = acquire()\n")
-                .add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
-                .indent()
-                .add("val __innerOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
-                .add("val __resultOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
-                .add(
-                    "val __hr = %T.invokeArgs(instance = __factory.pointer, slot = %T.Metadata.CREATEINSTANCE_SLOT, arg0 = %T.nullPointer, arg1 = __innerOut, arg2 = __resultOut)\n",
-                    COM_VTABLE_INVOKER_CLASS_NAME,
-                    factoryType,
-                    PLATFORM_ABI_CLASS_NAME,
+internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
+    return factoryType.methods
+        .mapNotNull(::composableUserParameters)
+        .map { (method, userParameters) ->
+            FunSpec.constructorBuilder()
+                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .callThisConstructor(
+                    CodeBlock.of(
+                        "ComposableFactory.%L(%L)",
+                        factoryCreateFunctionName(method),
+                        userParameters.joinToString(", ") { parameter -> parameter.name },
+                    ),
                 )
-                .add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
-                .add("val __inner = %T.readPointer(__innerOut)\n", PLATFORM_ABI_CLASS_NAME)
-                .add("if (__inner != %T.nullPointer) {\n", PLATFORM_ABI_CLASS_NAME)
-                .indent()
-                .add("%T(%T.toRawComPtr(__inner)).close()\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-                .unindent()
-                .add("}\n")
-                .add("return %T(%T.toRawComPtr(%T.readPointer(__resultOut))).use { it.asInspectable() }\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-                .unindent()
-                .add("}\n")
-                .build(),
-        )
-        .build()
+                .build()
+        }
 }
+
+internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    val factoryType = plan.activatableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
+    val factoryClassName = resolveTypeName(factoryType.qualifiedName)
+    return factoryType.methods
+        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+        .map { method ->
+            val returnBinding = KotlinProjectionAbiTypeBinding(
+                kind = KotlinProjectionAbiValueKind.InspectableReference,
+                typeName = IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
+            )
+            val parameterBindings = method.parameters.map { parameter ->
+                KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName))
+            }
+            val callPlan = requireAbiCallPlan(
+                bindingName = "${factoryType.qualifiedName}.${method.name}",
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
+            )
+            FunSpec.builder(factoryCreateFunctionName(method))
+                .addModifiers(KModifier.INTERNAL)
+                .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
+                .addCode(
+                    "%L\n",
+                    renderInlineAbiInvocation(
+                        invokeTargetExpression = "acquire()",
+                        slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                        callPlan = callPlan,
+                    ) ?: error("Generator ABI marshaler parity failed to emit factory ${factoryType.qualifiedName}.${method.name}"),
+                )
+                .build()
+        }
+}
+
+internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
+    val factoryClassName = resolveTypeName(factoryType.qualifiedName)
+    return factoryType.methods
+        .mapNotNull(::composableUserParameters)
+        .map { (method, userParameters) ->
+            FunSpec.builder(factoryCreateFunctionName(method))
+                .addModifiers(KModifier.INTERNAL)
+                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
+                .addCode(
+                    "%L\n",
+                    renderComposableFactoryInvocation(factoryType, factoryClassName, method, userParameters),
+                )
+                .build()
+        }
+}
+
+private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
+    factoryType: WinRtTypeDefinition,
+    factoryClassName: TypeName,
+    method: WinRtMethodDefinition,
+    userParameters: List<WinRtParameterDefinition>,
+): CodeBlock {
+    val parameterBindings = userParameters.map { parameter ->
+        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName))
+    }
+    val callPlan = requireAbiCallPlan(
+        bindingName = "${factoryType.qualifiedName}.${method.name}",
+        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+        parameterBindings = parameterBindings,
+    )
+    val code = CodeBlock.builder()
+    val scopedParameterOpeners = callPlan.parameterMarshalers.flatMap { it.scopeOpeners }
+    scopedParameterOpeners.forEach { opener ->
+        code.add("%L\n", opener)
+        code.indent()
+    }
+    code.add("val __factory = acquire()\n")
+    code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
+    code.indent()
+    code.add("val __innerOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
+    code.add("val __resultOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
+    val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
+        listOf(KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind)) +
+            marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
+                KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
+            }
+    } + listOf(
+        KotlinProjectionComArgument(CodeBlock.of("%T.nullPointer", PLATFORM_ABI_CLASS_NAME), KotlinProjectionComArgumentKind.Pointer),
+        KotlinProjectionComArgument(CodeBlock.of("__innerOut"), KotlinProjectionComArgumentKind.Pointer),
+        KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer),
+    )
+    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
+    if (finallyStatements.isNotEmpty()) {
+        code.add("try {\n")
+        code.indent()
+    }
+    code.add("val __hr = ")
+    code.add(
+        renderComVtableInvocation(
+            invokeTargetExpression = "__factory",
+            slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+            abiArguments = abiArguments,
+        ),
+    )
+    code.add("\n")
+    code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+    callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+        code.add("%L\n", postCallStatement)
+    }
+    code.add("val __inner = %T.readPointer(__innerOut)\n", PLATFORM_ABI_CLASS_NAME)
+    code.add("if (__inner != %T.nullPointer) {\n", PLATFORM_ABI_CLASS_NAME)
+    code.indent()
+    code.add("%T(%T.toRawComPtr(__inner)).close()\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+    code.unindent()
+    code.add("}\n")
+    code.add("val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+    code.add("return __resultRef.use { it.asInspectable() }\n")
+    if (finallyStatements.isNotEmpty()) {
+        code.unindent()
+        code.add("} finally {\n")
+        code.indent()
+        finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
+        code.unindent()
+        code.add("}\n")
+    }
+    code.unindent()
+    code.add("}\n")
+    repeat(scopedParameterOpeners.size) {
+        code.unindent()
+        code.add("}\n")
+    }
+    return code.build()
+}
+
+private fun composableUserParameters(method: WinRtMethodDefinition): Pair<WinRtMethodDefinition, List<WinRtParameterDefinition>>? {
+    if (method.returnType.typeName == "Void" || method.parameters.size < 2) {
+        return null
+    }
+    val trailing = method.parameters.takeLast(2)
+    if (trailing.any { parameter -> parameter.type.typeName != "System.Object" }) {
+        return null
+    }
+    return method to method.parameters.dropLast(2)
+}
+
+private fun factoryCreateFunctionName(method: WinRtMethodDefinition): String =
+    method.name.replaceFirstChar(Char::lowercase)
 
 internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     builder: TypeSpec.Builder,
@@ -547,35 +766,13 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                 .build(),
         )
-    }
-    if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
-        builder.addFunction(
-            FunSpec.builder("wrap")
-                .addModifiers(KModifier.INTERNAL)
-                .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
-                .returns(projectedClassName)
-                .addCode(
-                    CodeBlock.builder()
-                        .add("return object : %T, %T {\n", projectedClassName, IWINRT_OBJECT_CLASS_NAME)
-                        .indent()
-                        .add(
-                            "override val nativeObject: %T\n",
-                            COM_OBJECT_REFERENCE_CLASS_NAME,
-                        )
-                        .indent()
-                        .add("get() = instance\n")
-                        .unindent()
-                        .apply {
-                            plan.type.methods.forEach { method ->
-                                add("%L\n", renderInterfaceProxyMethod(method).toBuilder().build())
-                            }
-                        }
-                        .unindent()
-                        .add("}\n")
-                        .build(),
-                )
-                .build(),
-        )
+        if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
+            builder.addProperty(
+                PropertySpec.builder("TYPE_HANDLE", WINRT_TYPE_HANDLE_CLASS_NAME)
+                    .initializer("%T(%S, IID)", WINRT_TYPE_HANDLE_CLASS_NAME, projectedClassName.canonicalName)
+                    .build(),
+            )
+        }
     }
     if (plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
         KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
@@ -626,6 +823,36 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .returns(projectedClassName)
                 .addCode("return %T(instance)\n", projectedClassName)
+                .build(),
+        )
+        builder.addFunction(
+            FunSpec.builder("wrap")
+                .addModifiers(KModifier.INTERNAL)
+                .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
+                .returns(projectedClassName)
+                .addCode("return wrap(instance.asInspectable())\n")
+                .build(),
+        )
+    }
+    if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
+        builder.addFunction(
+            FunSpec.builder("wrap")
+                .addModifiers(KModifier.INTERNAL)
+                .apply {
+                    repeat(plan.type.genericParameterCount) { index ->
+                        addTypeVariable(TypeVariableName("T$index"))
+                    }
+                }
+                .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
+                .returns(plan.projectedSelfTypeName())
+                .addCode(
+                    "return NativeProjection%L(instance)\n",
+                    if (plan.type.genericParameterCount == 0) {
+                        ""
+                    } else {
+                        "<${(0 until plan.type.genericParameterCount).joinToString(", ") { index -> "T$index" }}>"
+                    },
+                )
                 .build(),
         )
     }
@@ -798,6 +1025,48 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
         builder.addStringListProperty("REQUIRED_INTERFACE_NAMES", descriptor.requiredInterfaceNames)
         builder.addStringListProperty("REQUIRED_EXPLICIT_FORWARD_MEMBERS", descriptor.explicitForwardMemberNames)
         builder.addStringListProperty("REQUIRED_MAPPED_AUGMENTATION_MEMBERS", descriptor.mappedAugmentationMembers)
+        builder.addStringListProperty(
+            "REQUIRED_MAPPED_HELPER_PLANS",
+            descriptor.mappedHelperPlans.map { plan ->
+                listOf(
+                    plan.interfaceName,
+                    plan.memberFamily,
+                    plan.callMode,
+                    "helper=${plan.helperWrapperName.orEmpty()}",
+                    "adapter=${plan.adapterFieldName.orEmpty()}",
+                    "private=${plan.emitsPrivateMembers}",
+                    "mappedHelpers=${plan.emitsMappedTypeHelpers}",
+                    "removeEnumerable=${plan.removesNonGenericEnumerable}",
+                    "removeGeneric=${plan.removesGenericEnumerableName.orEmpty()}",
+                ).joinToString("|")
+            },
+        )
+    }
+    plan.fastAbiClassDescriptor?.let { descriptor ->
+        builder.addStringListProperty(
+            "FAST_ABI_INTERFACE_SLOTS",
+            descriptor.interfaceSlots.map { slot ->
+                listOf(
+                    slot.interfaceName,
+                    "default=${slot.isDefault}",
+                    "start=${slot.vtableStartIndex}",
+                    "count=${slot.methodCount}",
+                    "hierarchyOffset=${slot.hierarchyOffsetAfterDefault}",
+                    "next=${slot.nextVtableStartIndex}",
+                ).joinToString("|")
+            },
+        )
+        builder.addStringListProperty(
+            "FAST_ABI_PROPERTY_SLOTS",
+            descriptor.propertySlots.map { slot ->
+                listOf(
+                    slot.propertyName,
+                    "start=${slot.vtableStartIndex}",
+                    "get=${slot.getterVtableIndex ?: ""}",
+                    "set=${slot.setterVtableIndex ?: ""}",
+                ).joinToString("|")
+            },
+        )
     }
     plan.moduleActivationAndAuthoringDescriptor?.let { module ->
         builder.addStringListProperty("MODULE_FACTORY_MEMBERS", module.factoryMemberNames)

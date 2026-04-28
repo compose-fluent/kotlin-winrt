@@ -146,7 +146,9 @@ internal fun KotlinProjectionRenderer.renderMutableCollectionDelegateProperty(
 internal fun KotlinProjectionRenderer.renderMutableCollectionDelegateInitializer(
     binding: KotlinProjectionMutableCollectionBinding,
 ): CodeBlock = when (binding.kind) {
-    KotlinProjectionMutableCollectionKind.Vector -> renderVectorCollectionDelegateInitializer(binding)
+    KotlinProjectionMutableCollectionKind.Vector ->
+        bindableCollectionDelegateInitializer(binding.slotInterfaceQualifiedName, binding.ownerCachePropertyName)
+            ?: renderVectorCollectionDelegateInitializer(binding)
     KotlinProjectionMutableCollectionKind.Map -> renderMapCollectionDelegateInitializer(binding)
 }
 
@@ -282,7 +284,7 @@ internal fun KotlinProjectionRenderer.renderVectorCollectionDelegateInitializer(
             slotConstantName = "CLEAR_SLOT",
             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
         ).toString(),
-        UInt::class.asClassName(),
+        KOTLIN_UINT_CLASS_NAME,
         renderCollectionInvocation(
             invokeTargetExpression = binding.ownerCachePropertyName,
             slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
@@ -471,7 +473,7 @@ internal fun KotlinProjectionRenderer.renderMapCollectionDelegateInitializer(
             elementBinding = null,
             entryBinding = binding.asReadOnlyEntryBinding(),
         ),
-        UInt::class.asClassName(),
+        KOTLIN_UINT_CLASS_NAME,
         renderCollectionInvocation(
             invokeTargetExpression = binding.ownerCachePropertyName,
             slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
@@ -498,10 +500,28 @@ internal fun KotlinProjectionRenderer.renderReadOnlyCollectionDelegateProperty(
 internal fun KotlinProjectionRenderer.renderReadOnlyCollectionDelegateInitializer(
     binding: KotlinProjectionReadOnlyCollectionBinding,
 ): CodeBlock = when (binding.kind) {
-    KotlinProjectionReadOnlyCollectionKind.Iterable -> renderIterableCollectionDelegateInitializer(binding)
-    KotlinProjectionReadOnlyCollectionKind.VectorView -> renderVectorViewCollectionDelegateInitializer(binding)
+    KotlinProjectionReadOnlyCollectionKind.Iterable ->
+        bindableCollectionDelegateInitializer(binding.slotInterfaceQualifiedName, binding.ownerCachePropertyName)
+            ?: renderIterableCollectionDelegateInitializer(binding)
+    KotlinProjectionReadOnlyCollectionKind.VectorView ->
+        bindableCollectionDelegateInitializer(binding.slotInterfaceQualifiedName, binding.ownerCachePropertyName)
+            ?: renderVectorViewCollectionDelegateInitializer(binding)
     KotlinProjectionReadOnlyCollectionKind.MapView -> renderMapViewCollectionDelegateInitializer(binding)
 }
+
+private fun bindableCollectionDelegateInitializer(
+    slotInterfaceQualifiedName: String,
+    ownerCachePropertyName: String,
+): CodeBlock? =
+    when (mappedTypeByAbiName(slotInterfaceQualifiedName)?.abiValueKind) {
+        KotlinProjectionAbiValueKind.MappedBindableIterable ->
+            CodeBlock.of("%T.fromAbi(%L)\n", WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME, ownerCachePropertyName)
+        KotlinProjectionAbiValueKind.MappedBindableVectorView ->
+            CodeBlock.of("%T.fromAbi(%L)\n", WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME, ownerCachePropertyName)
+        KotlinProjectionAbiValueKind.MappedBindableVector ->
+            CodeBlock.of("%T.fromAbi(%L)\n", WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME, ownerCachePropertyName)
+        else -> null
+    }
 
 internal fun KotlinProjectionRenderer.renderIterableCollectionDelegateInitializer(
     binding: KotlinProjectionReadOnlyCollectionBinding,
@@ -582,7 +602,7 @@ internal fun KotlinProjectionRenderer.renderVectorViewCollectionDelegateInitiali
                 ),
             ),
         ).toString(),
-        UInt::class.asClassName(),
+        KOTLIN_UINT_CLASS_NAME,
         renderCollectionInvocation(
             invokeTargetExpression = binding.ownerCachePropertyName,
             slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,

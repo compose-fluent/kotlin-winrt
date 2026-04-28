@@ -34,19 +34,38 @@ winRt {
     }
     sampleWindowsAppSdkWinuiVersion.orNull?.let { winuiVersion ->
         windowsSdk(includeExtensions = true)
-        namespace("Windows.ApplicationModel.Activation")
-        namespace("Windows.ApplicationModel.DataTransfer")
-        namespace("Windows.Graphics")
-        namespace("Windows.Storage.Streams")
-        namespace("Windows.System")
-        namespace("Windows.UI")
-        namespace("Windows.Web.Http")
-        namespace("Windows.Web.Http.Headers")
-        windowsAppSdk(
-            winuiVersion = winuiVersion,
-            foundationVersion = sampleWindowsAppSdkFoundationVersion.orNull ?: winuiVersion,
-            interactiveExperiencesVersion = sampleWindowsAppSdkInteractiveExperiencesVersion.orNull ?: winuiVersion,
+        nugetPackage("Microsoft.WindowsAppSDK.Foundation", sampleWindowsAppSdkFoundationVersion.orNull ?: winuiVersion)
+        nugetPackage(
+            "Microsoft.WindowsAppSDK.InteractiveExperiences",
+            sampleWindowsAppSdkInteractiveExperiencesVersion.orNull ?: winuiVersion,
         )
+        nugetPackage("Microsoft.WindowsAppSDK.WinUI", winuiVersion)
+        type("Microsoft.UI.Xaml.Application")
+        type("Microsoft.UI.Xaml.DependencyProperty")
+        type("Microsoft.UI.Xaml.FrameworkElement")
+        type("Microsoft.UI.Xaml.HorizontalAlignment")
+        type("Microsoft.UI.Xaml.RoutedEventArgs")
+        type("Microsoft.UI.Xaml.RoutedEventHandler")
+        type("Microsoft.UI.Xaml.UIElement")
+        type("Microsoft.UI.Xaml.VerticalAlignment")
+        type("Microsoft.UI.Xaml.Window")
+        type("Microsoft.UI.Xaml.Controls.Button")
+        type("Microsoft.UI.Xaml.Controls.ContentControl")
+        type("Microsoft.UI.Xaml.Controls.Page")
+        type("Microsoft.UI.Xaml.Controls.Primitives.ButtonBase")
+        type("Microsoft.UI.Xaml.Input.TappedEventHandler")
+        type("Microsoft.UI.Xaml.Input.TappedRoutedEventArgs")
+        type("Windows.UI.Xaml.Interop.Type")
+        type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
+        type("Windows.UI.Xaml.Markup.ContentPropertyAttribute")
+        type("Windows.UI.Xaml.StyleTypedPropertyAttribute")
+        type("Windows.UI.Xaml.TemplatePartAttribute")
+        type("Windows.UI.Xaml.TemplateVisualStateAttribute")
+        type("Windows.UI.Xaml.Data.BindableAttribute")
+        type("Windows.UI.Xaml.Markup.FullXamlMetadataProviderAttribute")
+        type("Windows.UI.Xaml.Markup.MarkupExtensionReturnTypeAttribute")
+        type("Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute")
+        type("Windows.UI.Xaml.Media.Animation.IndependentlyAnimatableAttribute")
     }
 }
 
