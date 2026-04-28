@@ -63,7 +63,8 @@
 - [x] Queue 19: generator renderer is split along `.cswinrt/src/cswinrt/code_writers.h`-style writer responsibilities; main renderer now owns type-shell dispatch while collection, member, ABI, event/companion, and type-resolution writers live in separate files.
 - [x] Queue 20: ABI writer is split into marshaling, array/native-struct, async/reference/signature, delegate, and vtable invocation units; no single generator writer file now carries the former 2000+ line ABI surface.
 - [x] Queue 21: resumed generator feature work from `.cswinrt/src/cswinrt` mapped-type/event writer parity; generated event add/remove surfaces now use `Windows.Foundation.EventRegistrationToken` instead of Kotlin `Int`.
-- [x] Queue 22: non-authoring `.cswinrt/src/cswinrt/code_writers.h` generator audit is closed through 22.20 for the current Kotlin runtime boundary; server activation/CCW remains authoring-gated in 22.14.
+- [x] Queue 22: non-authoring `.cswinrt/src/cswinrt/code_writers.h` ABI/runtime-call generator audit is closed through 22.20 for the current Kotlin runtime boundary; server activation/CCW remains authoring-gated in 22.14.
+- [ ] Queue 23 正在做: close the remaining `.cswinrt/src/cswinrt/main.cpp` generation-dispatch parity gaps that still block broad WindowsAppSDK/WinUI generation without sample-side include lists.
 
 ## Generator Follow-Through
 
@@ -155,6 +156,10 @@
 - [x] Generator audit 22.19: close `.cswinrt` `write_abi_delegate`, `get_generic_abi_types`, and `add_abi_delegates_for_type` parity; delegate parameters/returns now cover struct/GUID descriptors and reuse the existing mapped async/object/interface delegate paths without unsupported descriptor cases.
 - [x] Generator audit 22.20: close remaining `.cswinrt` `write_static_abi_class_members` and `write_generic_type_instantiation` parity for the current Kotlin runtime boundary; generic return-only RCW helpers and projected-signature generic fallbacks are represented as runtime bindings alongside delegate `InitCcw`, vtable function initialization, required interface dependency initialization, and generic event-type initialization.
 - [ ] Generator audit 22.14: keep `.cswinrt` `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, and `write_winrt_exposed_type_class` in the authoring-gated queue; these are CCW/server-activation/user-subclassing surfaces and should not be implemented until `winrt-authoring` is unfrozen for `mingwX64`.
+- [ ] Generator audit 23.1 正在做: align the projection surface filter with `.cswinrt/src/cswinrt/main.cpp` dispatch for WinAppSDK dependency closure: root include/exclude rules select the surface, but required cross-namespace dependencies such as `Microsoft.UI.Composition`, `Windows.UI.Core/Input/Text/ViewManagement`, and XAML attribute/type-name support must be pulled by metadata references instead of sample `type(...)` lists.
+- [ ] Generator audit 23.2: align `.cswinrt` `get_mapped_type` skip policy for XAML/WinUI helper-only mapped types (`*Helper`, `I*Helper*`, `IXamlServiceProvider`) while preserving the Kotlin-specific decision to generate KMP metadata structs for WinRT value structs instead of .NET value aliases.
+- [ ] Generator audit 23.3: align `.cswinrt` `write_attribute` for Kotlin annotation constraints: generated attribute classes must carry constructor/property data that can compile when projected attributes are emitted, and attribute dependencies must not need manual sample includes.
+- [ ] Generator audit 23.4: remove the temporary `winrt-samples` XAML attribute include list once 23.1-23.3 are closed, then validate the WindowsAppSDK WinUI generation/run command recorded below.
 
 ## Sample Plan
 
