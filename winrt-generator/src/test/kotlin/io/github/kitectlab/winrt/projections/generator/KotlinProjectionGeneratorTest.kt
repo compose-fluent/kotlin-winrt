@@ -1,6 +1,11 @@
 package io.github.kitectlab.winrt.projections.generator
 
 import io.github.kitectlab.winrt.metadata.WinRtActivationShape
+import io.github.kitectlab.winrt.metadata.WinRtAvailabilityMetadata
+import io.github.kitectlab.winrt.metadata.WinRtContractVersionMetadata
+import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeDefinition
+import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeNamedArgument
+import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeValue
 import io.github.kitectlab.winrt.metadata.WinRtEnumMemberDefinition
 import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
@@ -266,7 +271,6 @@ class KotlinProjectionGeneratorTest {
         )
 
         val file = KotlinProjectionGenerator().generate(model).single()
-        println(file.contents)
 
         assertEquals("io/github/kitectlab/winrt/projections/windows/data/json/JsonObject.kt", file.relativePath)
         assertTrue(file.contents.contains("package io.github.kitectlab.winrt.projections.windows.`data`.json"))
@@ -1695,10 +1699,74 @@ class KotlinProjectionGeneratorTest {
         )
 
         val file = KotlinProjectionGenerator().generate(model).single()
-        println(file.contents)
 
         assertTrue(file.contents.contains("public annotation class WidgetAttribute"))
         assertTrue(file.contents.contains("attribute WinRT class shell"))
+    }
+
+    @Test
+    fun generator_emits_projected_winrt_annotations_from_metadata_attributes() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            availability = WinRtAvailabilityMetadata(
+                                contractVersion = WinRtContractVersionMetadata(
+                                    contractName = "Windows.Foundation.UniversalApiContract",
+                                    version = 0x00030000,
+                                    platformVersion = "10.0.14393.0",
+                                ),
+                            ),
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ContractVersionAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.StringValue("Windows.Foundation.UniversalApiContract"),
+                                        WinRtCustomAttributeValue.IntegralValue(0x00030000),
+                                    ),
+                                ),
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExperimentalAttribute",
+                                ),
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.AttributeUsageAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.EnumValue("Windows.Foundation.Metadata.AttributeTargets", 0x10),
+                                    ),
+                                    namedArguments = listOf(
+                                        WinRtCustomAttributeNamedArgument(
+                                            name = "AllowMultiple",
+                                            value = WinRtCustomAttributeValue.BooleanValue(true),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model).single { it.relativePath.endsWith("IWidget.kt") }.contents
+
+        assertTrue(contents.contains("@WinRtAttributeUsage("))
+        assertTrue(contents.contains("targets = 16L"))
+        assertTrue(contents.contains("allowMultiple = true"))
+        assertTrue(contents.contains("@WinRtSupportedOSPlatform(\"Windows10.0.14393.0\")"))
+        assertTrue(contents.contains("@WinRtContractVersion("))
+        assertTrue(contents.contains("contract = \"Windows.Foundation.UniversalApiContract\""))
+        assertTrue(contents.contains("version = 196_608L"))
+        assertTrue(contents.contains("@WinRtExperimental"))
+        assertTrue(contents.contains("internal val PROJECTED_ATTRIBUTES: List<String>"))
+        assertTrue(contents.contains("listOf("))
+        assertTrue(contents.contains("System.Runtime.Versioning.SupportedOSPlatform"))
+        assertTrue(contents.contains("Windows.Foundation.Metadata.Experimental"))
     }
 
     @Test

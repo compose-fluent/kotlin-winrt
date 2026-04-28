@@ -1035,6 +1035,19 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
     builder: TypeSpec.Builder,
     plan: KotlinTypeProjectionPlan,
 ) {
+    if (plan.projectedAttributes.isNotEmpty()) {
+        builder.addStringListProperty(
+            "PROJECTED_ATTRIBUTES",
+            plan.projectedAttributes.map { attribute ->
+                listOf(
+                    attribute.projectedTypeName,
+                    attribute.metadataTypeName,
+                    "platform=${attribute.isPlatformAttribute}",
+                    "args=${attribute.renderedArguments.joinToString(",")}",
+                ).joinToString("|")
+            },
+        )
+    }
     val declaration = plan.typeDeclarationDescriptor
     builder.addProperty(
         PropertySpec.builder("WRITES_ABI_DECLARATION", Boolean::class)

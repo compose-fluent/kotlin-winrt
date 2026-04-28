@@ -33,6 +33,8 @@ import io.github.kitectlab.winrt.metadata.WinRtTypeRef
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeValue
+import io.github.kitectlab.winrt.metadata.WinRtProjectedAttributeDescriptor
 import io.github.kitectlab.winrt.metadata.requireValidForProjection
 import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
@@ -113,6 +115,7 @@ internal fun KotlinProjectionRenderer.applyCommonTypeShape(
     repeat(plan.type.genericParameterCount) { index ->
         builder.addTypeVariable(TypeVariableName("T$index"))
     }
+    plan.projectedAttributes.mapNotNull(::renderProjectedAttributeAnnotation).forEach(builder::addAnnotation)
     if (addModifiers) {
         plan.modifiers.forEach { modifier ->
             when (modifier) {
@@ -122,6 +125,46 @@ internal fun KotlinProjectionRenderer.applyCommonTypeShape(
         }
     }
 }
+
+internal fun renderProjectedAttributeAnnotation(attribute: WinRtProjectedAttributeDescriptor): AnnotationSpec? =
+    when (attribute.projectedTypeName) {
+        "System.Runtime.Versioning.SupportedOSPlatform" -> {
+            val platform = attribute.arguments.firstOrNull()?.stringValue ?: return null
+            AnnotationSpec.builder(WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME)
+                .addMember("%S", platform)
+                .build()
+        }
+        "Windows.Foundation.Metadata.ContractVersion" -> {
+            val contract = attribute.arguments.getOrNull(0)?.stringValue ?: return null
+            val version = (attribute.arguments.getOrNull(1) as? WinRtCustomAttributeValue.IntegralValue)?.value ?: return null
+            AnnotationSpec.builder(WINRT_CONTRACT_VERSION_CLASS_NAME)
+                .addMember("contract = %S", contract)
+                .addMember("version = %LL", version)
+                .build()
+        }
+        "Windows.Foundation.Metadata.Experimental" ->
+            AnnotationSpec.builder(WINRT_EXPERIMENTAL_CLASS_NAME).build()
+        "System.AttributeUsage" -> {
+            val targets = (attribute.arguments.firstOrNull() as? WinRtCustomAttributeValue.EnumValue)?.value ?: return null
+            val allowMultiple = attribute.namedArguments
+                .firstOrNull { it.name == "AllowMultiple" }
+                ?.let { it.value as? WinRtCustomAttributeValue.BooleanValue }
+                ?.value ?: false
+            AnnotationSpec.builder(WINRT_ATTRIBUTE_USAGE_CLASS_NAME)
+                .addMember("targets = %LL", targets)
+                .addMember("allowMultiple = %L", allowMultiple)
+                .build()
+        }
+        "Windows.Foundation.Metadata.DefaultOverload" ->
+            AnnotationSpec.builder(WINRT_DEFAULT_OVERLOAD_CLASS_NAME).build()
+        "Windows.Foundation.Metadata.Overload" -> {
+            val name = attribute.arguments.firstOrNull()?.stringValue ?: return null
+            AnnotationSpec.builder(WINRT_OVERLOAD_CLASS_NAME)
+                .addMember("%S", name)
+                .build()
+        }
+        else -> null
+    }
 
 internal fun KotlinProjectionRenderer.renderVisibility(visibility: KotlinProjectionVisibility): KModifier = when (visibility) {
     KotlinProjectionVisibility.Public -> KModifier.PUBLIC

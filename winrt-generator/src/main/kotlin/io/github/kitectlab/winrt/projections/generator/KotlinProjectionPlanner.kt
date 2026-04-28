@@ -247,6 +247,7 @@ class KotlinProjectionPlanner(
             } else {
                 null
             },
+            projectedAttributes = semanticHelpers.projectedAttributes(type),
             companionKinds = planCompanions(type),
         )
     }

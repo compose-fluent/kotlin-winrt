@@ -19,6 +19,7 @@ import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionInventory
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
+import io.github.kitectlab.winrt.metadata.WinRtProjectedAttributeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMetadataParameterCategory
 import io.github.kitectlab.winrt.metadata.WinRtModuleActivationAndAuthoringDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMethodVtableDescriptor
@@ -86,6 +87,12 @@ import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
 import io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
 import io.github.kitectlab.winrt.runtime.WinRtEvent
 import io.github.kitectlab.winrt.runtime.WinRtClosableObject
+import io.github.kitectlab.winrt.runtime.WinRtAttributeUsage
+import io.github.kitectlab.winrt.runtime.WinRtContractVersion
+import io.github.kitectlab.winrt.runtime.WinRtDefaultOverload
+import io.github.kitectlab.winrt.runtime.WinRtExperimental
+import io.github.kitectlab.winrt.runtime.WinRtOverload
+import io.github.kitectlab.winrt.runtime.WinRtSupportedOSPlatform
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -198,6 +205,12 @@ internal val WINRT_DATA_ERROR_INFO_PROJECTION_CLASS_NAME = ClassName("io.github.
 internal val WINRT_DATA_ERRORS_CHANGED_EVENT_ARGS_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtDataErrorsChangedEventArgs")
 internal val WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtDataErrorsChangedHandler")
 internal val WINRT_SERVICE_PROVIDER_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtServiceProvider")
+internal val WINRT_ATTRIBUTE_USAGE_CLASS_NAME = WinRtAttributeUsage::class.asClassName()
+internal val WINRT_CONTRACT_VERSION_CLASS_NAME = WinRtContractVersion::class.asClassName()
+internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRtDefaultOverload::class.asClassName()
+internal val WINRT_EXPERIMENTAL_CLASS_NAME = WinRtExperimental::class.asClassName()
+internal val WINRT_OVERLOAD_CLASS_NAME = WinRtOverload::class.asClassName()
+internal val WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME = WinRtSupportedOSPlatform::class.asClassName()
 internal val KOTLIN_UBYTE_CLASS_NAME = UByte::class.asClassName().withKotlinPackageIfRoot()
 internal val KOTLIN_UINT_CLASS_NAME = UInt::class.asClassName().withKotlinPackageIfRoot()
 internal val KOTLIN_ULONG_CLASS_NAME = ULong::class.asClassName().withKotlinPackageIfRoot()
@@ -289,6 +302,7 @@ data class KotlinTypeProjectionPlan(
     val requiredInterfaceAugmentationDescriptor: WinRtRequiredInterfaceAugmentationDescriptor? = null,
     val fastAbiClassDescriptor: WinRtFastAbiClassDescriptor? = null,
     val moduleActivationAndAuthoringDescriptor: WinRtModuleActivationAndAuthoringDescriptor? = null,
+    val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
     val companionKinds: List<KotlinProjectionCompanionKind> = emptyList(),
 )
 
