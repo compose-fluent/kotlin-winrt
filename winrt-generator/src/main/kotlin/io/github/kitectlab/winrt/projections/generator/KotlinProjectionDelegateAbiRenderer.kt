@@ -134,11 +134,13 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(
-                "%T.createDelegate(iid = %L, parameterKinds = %L, returnKind = %L) { __args ->\n%L(%L)\n}.use { %L ->",
+                "%T.createDelegate(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L) { __args ->\n%L(%L)\n}.use { %L ->",
                 WINRT_DELEGATE_BRIDGE_CLASS_NAME,
                 delegateIid,
                 delegateParameterKindsCode(invokeShape.parameterBindings),
                 delegateInvokeReturnKindCode(invokeShape.returnBinding),
+                delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
+                delegateReturnStructAdapterCode(invokeShape.returnBinding),
                 parameterBinding.name,
                 delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
                 handleName,
@@ -267,12 +269,14 @@ internal fun KotlinProjectionRenderer.delegateDescriptorCode(
     invokeShape: KotlinProjectionDelegateInvokeShape,
 ): CodeBlock =
     CodeBlock.of(
-        "%T(interfaceId = %T(%S), parameterKinds = %L, returnKind = %L)",
+        "%T(interfaceId = %T(%S), parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L)",
         WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME,
         GUID_CLASS_NAME,
         invokeShape.interfaceId.toString(),
         delegateInvokeParameterKindsCode(invokeShape.parameterBindings),
         delegateInvokeReturnKindCode(invokeShape.returnBinding),
+        delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
+        delegateReturnStructAdapterCode(invokeShape.returnBinding),
     )
 
 internal fun KotlinProjectionRenderer.delegateInvokeParameterKindsCode(
@@ -309,6 +313,8 @@ internal fun KotlinProjectionRenderer.delegateValueKindCode(typeBinding: KotlinP
     KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.FLOAT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.DOUBLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.CHAR16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.GUID", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.STRUCT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
     KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -350,6 +356,8 @@ internal fun KotlinProjectionRenderer.delegateInvokeValueKindCode(typeBinding: K
     KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.UINT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.FLOAT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.DOUBLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.GUID", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.STRUCT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
     KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedInterface -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
@@ -398,6 +406,8 @@ internal fun KotlinProjectionRenderer.delegateInvokeArgumentCode(
     KotlinProjectionAbiValueKind.UInt64,
     KotlinProjectionAbiValueKind.Float,
     KotlinProjectionAbiValueKind.Double,
+    KotlinProjectionAbiValueKind.GuidValue,
+    KotlinProjectionAbiValueKind.Struct,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference,
     KotlinProjectionAbiValueKind.MappedAsyncAction,
@@ -431,6 +441,11 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
     KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("return %L as ULong\n", nativeInvokeExpression)
     KotlinProjectionAbiValueKind.Float -> CodeBlock.of("return %L as Float\n", nativeInvokeExpression)
     KotlinProjectionAbiValueKind.Double -> CodeBlock.of("return %L as Double\n", nativeInvokeExpression)
+    KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("return %L as %T\n", nativeInvokeExpression, GUID_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Struct -> {
+        val structType = nativeStructClassName(returnBinding) ?: error("Delegate struct return requires generated struct type for ${returnBinding.resolvedTypeName}")
+        CodeBlock.of("return %L as %T\n", nativeInvokeExpression, structType)
+    }
     KotlinProjectionAbiValueKind.Enum -> {
         val enumType = resolveTypeName(returnBinding.resolvedTypeName)
         when (returnBinding.enumUnderlyingType) {
@@ -506,6 +521,11 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
     KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("__args[%L] as ULong", index)
     KotlinProjectionAbiValueKind.Float -> CodeBlock.of("__args[%L] as Float", index)
     KotlinProjectionAbiValueKind.Double -> CodeBlock.of("__args[%L] as Double", index)
+    KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("__args[%L] as %T", index, GUID_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Struct -> {
+        val structType = nativeStructClassName(typeBinding) ?: error("Delegate struct callback binding requires generated struct type for ${typeBinding.resolvedTypeName}")
+        CodeBlock.of("__args[%L] as %T", index, structType)
+    }
     KotlinProjectionAbiValueKind.Enum -> delegateEnumCallbackArgumentCode(index, typeBinding)
     KotlinProjectionAbiValueKind.ProjectedInterface -> CodeBlock.of(
         "%T.Metadata.wrap(__args[%L] as %T)",
@@ -561,3 +581,41 @@ internal fun KotlinProjectionRenderer.delegateEnumCallbackArgumentCode(
         WinRtIntegralType.UInt64 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as ULong)", enumType, index)
     }
 }
+
+internal fun KotlinProjectionRenderer.delegateParameterStructAdaptersCode(
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+): CodeBlock {
+    val adapters = parameterBindings.map { binding ->
+        if (binding.typeBinding.kind == KotlinProjectionAbiValueKind.Struct) {
+            nativeStructClassName(binding.typeBinding)?.let { CodeBlock.of("%T.Metadata", it) }
+                ?: error("Delegate struct parameter requires generated struct type for ${binding.typeBinding.resolvedTypeName}")
+        } else {
+            CodeBlock.of("null")
+        }
+    }
+    if (adapters.all { it.toString() == "null" }) {
+        return CodeBlock.of("emptyList()")
+    }
+    return CodeBlock.builder()
+        .add("listOf(")
+        .apply {
+            adapters.forEachIndexed { index, adapter ->
+                if (index > 0) {
+                    add(", ")
+                }
+                add("%L", adapter)
+            }
+        }
+        .add(")")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.delegateReturnStructAdapterCode(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock =
+    if (returnBinding.kind == KotlinProjectionAbiValueKind.Struct) {
+        nativeStructClassName(returnBinding)?.let { CodeBlock.of("%T.Metadata", it) }
+            ?: error("Delegate struct return requires generated struct type for ${returnBinding.resolvedTypeName}")
+    } else {
+        CodeBlock.of("null")
+    }

@@ -122,4 +122,6 @@ interface NativeStructAdapter<T> {
     fun read(source: RawAddress): T
 
     fun write(value: T, destination: RawAddress)
+
+    fun disposeAbi(source: RawAddress) {}
 }

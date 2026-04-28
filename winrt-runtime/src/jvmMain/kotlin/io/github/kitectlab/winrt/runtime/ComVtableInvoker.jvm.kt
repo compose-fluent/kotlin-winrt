@@ -3,6 +3,7 @@ package io.github.kitectlab.winrt.runtime
 import java.lang.foreign.Arena
 import java.lang.foreign.FunctionDescriptor
 import java.lang.foreign.Linker
+import java.lang.foreign.MemoryLayout
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
@@ -727,6 +728,9 @@ private fun toJavaLayout(kind: ComAbiValueKind) =
         ComAbiValueKind.Int64 -> ValueLayout.JAVA_LONG
         ComAbiValueKind.Float -> ValueLayout.JAVA_FLOAT
         ComAbiValueKind.Double -> ValueLayout.JAVA_DOUBLE
+        is ComAbiValueKind.Struct ->
+            MemoryLayout.structLayout(MemoryLayout.paddingLayout(kind.layout.byteSize * 8))
+                .withByteAlignment(kind.layout.byteAlignment)
     }
 
 private fun carrierClass(kind: ComAbiValueKind): Class<*> =
@@ -738,6 +742,7 @@ private fun carrierClass(kind: ComAbiValueKind): Class<*> =
         ComAbiValueKind.Int64 -> Long::class.javaPrimitiveType!!
         ComAbiValueKind.Float -> Float::class.javaPrimitiveType!!
         ComAbiValueKind.Double -> Double::class.javaPrimitiveType!!
+        is ComAbiValueKind.Struct -> MemorySegment::class.java
     }
 
 private fun toCarrier(
@@ -752,6 +757,7 @@ private fun toCarrier(
         ComAbiValueKind.Int64 -> word
         ComAbiValueKind.Float -> Float.fromBits(word.toInt())
         ComAbiValueKind.Double -> Double.fromBits(word)
+        is ComAbiValueKind.Struct -> asSegment(RawAddress(word)).reinterpret(kind.layout.byteSize)
     }
 
 private fun genericArgumentKind(value: Any): ComAbiValueKind =
@@ -803,6 +809,7 @@ private fun fromCarrier(
         ComAbiValueKind.Float,
         ComAbiValueKind.Double,
         -> value
+        is ComAbiValueKind.Struct -> (value as MemorySegment).reinterpret(kind.layout.byteSize).asRawAddress()
     }
 
 private fun asSegment(pointer: RawComPtr): MemorySegment =

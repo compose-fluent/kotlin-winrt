@@ -19,12 +19,16 @@ object WinRtDelegateBridge {
         iid: Guid,
         parameterKinds: List<WinRtDelegateValueKind>,
         returnKind: WinRtDelegateValueKind,
+        parameterStructAdapters: List<NativeStructAdapter<*>?> = emptyList(),
+        returnStructAdapter: NativeStructAdapter<*>? = null,
         callback: (List<Any?>) -> Any?,
     ): WinRtDelegateHandle {
         val descriptor = WinRtDelegateDescriptor(
             interfaceId = iid,
             parameterKinds = parameterKinds,
             returnKind = returnKind,
+            parameterStructAdapters = parameterStructAdapters,
+            returnStructAdapter = returnStructAdapter,
         )
         val comObject = WinRtDelegateComObject(
             descriptor = descriptor,

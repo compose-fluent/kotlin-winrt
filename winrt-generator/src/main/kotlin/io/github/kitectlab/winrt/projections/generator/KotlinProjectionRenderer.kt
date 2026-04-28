@@ -1294,7 +1294,7 @@ class KotlinProjectionRenderer {
             )
             .addFunction(
                 FunSpec.builder("disposeAbi")
-                    .addModifiers(KModifier.INTERNAL)
+                    .addModifiers(KModifier.OVERRIDE)
                     .addParameter("source", RAW_ADDRESS_CLASS_NAME)
                     .addCode(nativeStructDisposeAbiCode(plan, fields))
                     .build(),

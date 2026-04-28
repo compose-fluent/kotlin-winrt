@@ -4,12 +4,32 @@ data class WinRtDelegateDescriptor(
     val interfaceId: Guid,
     val parameterKinds: List<WinRtDelegateValueKind>,
     val returnKind: WinRtDelegateValueKind = WinRtDelegateValueKind.UNIT,
+    val parameterStructAdapters: List<NativeStructAdapter<*>?> = emptyList(),
+    val returnStructAdapter: NativeStructAdapter<*>? = null,
 ) {
     init {
         require(returnKind.isSupportedDelegateReturnKind()) {
             "Unsupported delegate return kind: $returnKind."
         }
+        require(parameterStructAdapters.isEmpty() || parameterStructAdapters.size == parameterKinds.size) {
+            "Delegate struct adapter count ${parameterStructAdapters.size} must match parameter kind count ${parameterKinds.size}."
+        }
+        parameterKinds.forEachIndexed { index, kind ->
+            if (kind == WinRtDelegateValueKind.STRUCT) {
+                require(parameterStructAdapter(index) != null) {
+                    "Delegate STRUCT parameter at index $index requires a NativeStructAdapter."
+                }
+            }
+        }
+        if (returnKind == WinRtDelegateValueKind.STRUCT) {
+            require(returnStructAdapter != null) {
+                "Delegate STRUCT return requires a NativeStructAdapter."
+            }
+        }
     }
+
+    fun parameterStructAdapter(index: Int): NativeStructAdapter<*>? =
+        parameterStructAdapters.getOrNull(index)
 
     fun typedEventHandlerSignature(
         genericDelegateIid: Guid,
@@ -37,6 +57,8 @@ private fun WinRtDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =
         WinRtDelegateValueKind.FLOAT,
         WinRtDelegateValueKind.DOUBLE,
         WinRtDelegateValueKind.CHAR16,
+        WinRtDelegateValueKind.GUID,
+        WinRtDelegateValueKind.STRUCT,
         WinRtDelegateValueKind.HSTRING,
         WinRtDelegateValueKind.OBJECT,
         WinRtDelegateValueKind.IUNKNOWN,

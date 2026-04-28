@@ -1,13 +1,14 @@
 package io.github.kitectlab.winrt.runtime
 
-internal enum class ComAbiValueKind {
-    Pointer,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    Float,
-    Double,
+internal sealed class ComAbiValueKind {
+    data object Pointer : ComAbiValueKind()
+    data object Int8 : ComAbiValueKind()
+    data object Int16 : ComAbiValueKind()
+    data object Int32 : ComAbiValueKind()
+    data object Int64 : ComAbiValueKind()
+    data object Float : ComAbiValueKind()
+    data object Double : ComAbiValueKind()
+    data class Struct(val layout: NativeAbiLayout) : ComAbiValueKind()
 }
 
 internal data class ComMethodSignature(

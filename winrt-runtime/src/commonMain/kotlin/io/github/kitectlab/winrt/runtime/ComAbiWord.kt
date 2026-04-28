@@ -75,6 +75,12 @@ internal object ComAbiWord {
                     is Float -> double(value.toDouble())
                     else -> error("Expected double-compatible ABI value, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
                 }
+
+            is ComAbiValueKind.Struct ->
+                when (value) {
+                    is RawAddress -> pointer(value)
+                    else -> error("Expected struct-compatible ABI address, got '${value?.let { it::class.qualifiedName } ?: "null"}'.")
+                }
         }
 
     fun fromDynamicArgs(

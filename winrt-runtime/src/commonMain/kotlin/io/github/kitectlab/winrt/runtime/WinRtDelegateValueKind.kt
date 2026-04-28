@@ -15,6 +15,8 @@ enum class WinRtDelegateValueKind {
     FLOAT,
     DOUBLE,
     CHAR16,
+    GUID,
+    STRUCT,
     HSTRING,
     IUNKNOWN,
     IINSPECTABLE,

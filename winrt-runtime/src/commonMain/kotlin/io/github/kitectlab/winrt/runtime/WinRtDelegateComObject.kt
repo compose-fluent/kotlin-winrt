@@ -74,14 +74,14 @@ internal class WinRtDelegateComObject(
             val abiArguments = if (hasReturnValue) rawArguments.dropLast(1) else rawArguments
             val returnValue = callback(
                 WinRtDelegateAbiMarshaller.decodeArguments(
-                    parameterKinds = descriptor.parameterKinds,
+                    descriptor = descriptor,
                     abiArguments = abiArguments,
                 ),
             )
             if (hasReturnValue) {
                 val resultOut = rawArguments.last() as? RawAddress
                     ?: error("Non-unit delegate invocation requires a trailing ABI return buffer.")
-                WinRtDelegateAbiMarshaller.writeReturnValue(descriptor.returnKind, returnValue, resultOut)
+                WinRtDelegateAbiMarshaller.writeReturnValue(descriptor, returnValue, resultOut)
             }
             KnownHResults.S_OK.value
         } catch (error: Throwable) {
@@ -126,7 +126,7 @@ class WinRtDelegateReference internal constructor(
     }
 
     fun invokeAbi(arguments: List<Any?>): HResult {
-        WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor.parameterKinds, arguments).use { encodedArguments ->
+        WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor, arguments).use { encodedArguments ->
             val signature = WinRtDelegateAbiMarshaller.functionSignature(descriptor)
             val words = ComAbiWord.fromDynamicArgs(signature.explicitParameterKinds, encodedArguments.values)
             return HResult(
@@ -148,8 +148,8 @@ class WinRtDelegateReference internal constructor(
             Unit
         } else {
             PlatformAbi.confinedScope().use { scope ->
-                WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor.parameterKinds, arguments).use { encodedArguments ->
-                    val resultOut = WinRtDelegateAbiMarshaller.allocateReturnOut(descriptor.returnKind, scope)
+                WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor, arguments).use { encodedArguments ->
+                    val resultOut = WinRtDelegateAbiMarshaller.allocateReturnOut(descriptor, scope)
                     val signature = WinRtDelegateAbiMarshaller.functionSignature(descriptor)
                     val abiArguments = encodedArguments.values + resultOut
                     val words = ComAbiWord.fromDynamicArgs(signature.explicitParameterKinds, abiArguments)
@@ -159,7 +159,7 @@ class WinRtDelegateReference internal constructor(
                         args = words,
                     )
                     WinRtPlatformApi.checkSucceededRaw(hr)
-                    WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor.returnKind, resultOut)
+                    WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor, resultOut)
                 }
             }
         }

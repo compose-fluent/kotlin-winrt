@@ -648,6 +648,8 @@ private fun abiKindForDelegateValue(kind: WinRtDelegateValueKind): ComAbiValueKi
         -> ComAbiValueKind.Int64
         WinRtDelegateValueKind.FLOAT -> ComAbiValueKind.Float
         WinRtDelegateValueKind.DOUBLE -> ComAbiValueKind.Double
+        WinRtDelegateValueKind.GUID -> ComAbiValueKind.Struct(NativeAbiLayout.GUID)
+        WinRtDelegateValueKind.STRUCT -> error("STRUCT progress ABI value kind requires a typed adapter.")
     }
 
 private fun delegateAbiWord(value: Any?): Long =

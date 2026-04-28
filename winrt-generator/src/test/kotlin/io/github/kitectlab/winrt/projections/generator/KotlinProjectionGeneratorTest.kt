@@ -1595,6 +1595,93 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_guid_and_struct_delegate_abi_shapes() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Single"),
+                                WinRtFieldDefinition("Y", "Single"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "TransformHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Sample.Foundation.Point",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("id", "System.Guid"),
+                                        WinRtParameterDefinition("point", "Sample.Foundation.Point"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ITransformer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setTransform",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.TransformHandler")),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Transformer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ITransformer",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ITransformer", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setTransform",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.TransformHandler")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val delegateContents = filesByName.getValue("TransformHandler.kt").contents
+        val transformerContents = filesByName.getValue("Transformer.kt").contents
+
+        assertTrue(delegateContents.contains("WinRtDelegateValueKind.GUID"))
+        assertTrue(delegateContents.contains("WinRtDelegateValueKind.STRUCT"))
+        assertTrue(delegateContents.contains("parameterStructAdapters = listOf(null, Point.Metadata)"))
+        assertTrue(delegateContents.contains("returnStructAdapter = Point.Metadata"))
+        assertTrue(delegateContents.contains("operator fun invoke(id: Guid, point: Point): Point"))
+        assertTrue(delegateContents.contains("__native.invoke(listOf(id, point)) as Point"))
+        assertTrue(delegateContents.contains("return __native.invoke(listOf(id, point)) as Point"))
+        assertTrue(transformerContents.contains("WinRtDelegateBridge.createDelegate"))
+        assertTrue(transformerContents.contains("parameterStructAdapters = listOf(null,"))
+        assertTrue(transformerContents.contains("Point.Metadata), returnStructAdapter = Point.Metadata"))
+        assertTrue(transformerContents.contains("handler(__args[0] as Guid, __args[1] as Point)"))
+        assertFalse(transformerContents.contains("fun setTransform(handler: TransformHandler) = error(\"WinRT ABI binding is unavailable\")"))
+    }
+
+    @Test
     fun generator_binds_generated_windows_foundation_struct_getters_and_setters() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

@@ -6,6 +6,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WinRtDelegateBridgeTest {
+    private data class TestPoint(val x: Float, val y: Float)
+
+    private object TestPointAdapter : NativeStructAdapter<TestPoint> {
+        override val layout: NativeStructLayout = NativeStructLayout.sequential(
+            NativeScalarFieldSpec("x", NativeStructScalarKind.FLOAT32),
+            NativeScalarFieldSpec("y", NativeStructScalarKind.FLOAT32),
+        )
+
+        override fun read(source: RawAddress): TestPoint =
+            TestPoint(
+                x = PlatformAbi.readFloat(layout.slice(source, "x")),
+                y = PlatformAbi.readFloat(layout.slice(source, "y")),
+            )
+
+        override fun write(value: TestPoint, destination: RawAddress) {
+            PlatformAbi.writeFloat(layout.slice(destination, "x"), value.x)
+            PlatformAbi.writeFloat(layout.slice(destination, "y"), value.y)
+        }
+    }
+
     @Test
     fun delegate_handle_invokes_callback_with_matching_arguments() {
         var captured: List<Any?> = emptyList()
@@ -203,8 +223,45 @@ class WinRtDelegateBridgeTest {
         }
         uintHandle.use {
             it.createReference().use { reference ->
-                assertEquals(15u, reference.invoke(listOf(5)))
+        assertEquals(15u, reference.invoke(listOf(5)))
             }
+        }
+    }
+
+    @Test
+    fun delegate_descriptor_supports_guid_and_struct_abi_shapes() {
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+            parameterKinds = listOf(WinRtDelegateValueKind.GUID, WinRtDelegateValueKind.STRUCT),
+            returnKind = WinRtDelegateValueKind.STRUCT,
+            parameterStructAdapters = listOf(null, TestPointAdapter),
+            returnStructAdapter = TestPointAdapter,
+        )
+
+        val signature = WinRtDelegateAbiMarshaller.functionSignature(descriptor)
+        assertEquals(
+            listOf(
+                ComAbiValueKind.Struct(NativeAbiLayout.GUID),
+                ComAbiValueKind.Struct(TestPointAdapter.layout.abiLayout),
+                ComAbiValueKind.Pointer,
+            ),
+            signature.explicitParameterKinds,
+        )
+
+        val id = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val point = TestPoint(1.5f, 2.5f)
+        PlatformAbi.confinedScope().use { scope ->
+            val idAbi = PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
+            PlatformAbi.writeGuid(idAbi, id)
+            val pointAbi = PlatformAbi.allocateBytes(scope, TestPointAdapter.layout.sizeBytes)
+            TestPointAdapter.write(point, pointAbi)
+
+            assertEquals(listOf(id, point), WinRtDelegateAbiMarshaller.decodeArguments(descriptor, listOf(idAbi, pointAbi)))
+
+            val resultOut = WinRtDelegateAbiMarshaller.allocateReturnOut(descriptor, scope)
+            WinRtDelegateAbiMarshaller.writeReturnValue(descriptor, TestPoint(3.5f, 4.5f), resultOut)
+
+            assertEquals(TestPoint(3.5f, 4.5f), WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor, resultOut))
         }
     }
 }
