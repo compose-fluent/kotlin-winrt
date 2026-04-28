@@ -40,6 +40,7 @@ import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
+import io.github.kitectlab.winrt.runtime.EventSource
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.HString
@@ -155,6 +156,9 @@ internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::cla
 internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
 internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
 internal val WINRT_EVENT_CLASS_NAME = WinRtEvent::class.asClassName()
+internal val WINRT_EVENT_SOURCE_CLASS_NAME = EventSource::class.asClassName()
+internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
+    ClassName("io.github.kitectlab.winrt.projections.support", "WinRTEventProjectionHelpers")
 internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRtClosableObject::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 internal val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()

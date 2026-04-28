@@ -179,7 +179,18 @@ class KotlinProjectionRenderer {
                 builder.addProperty(renderInterfaceProxyProperty(interfaceType, property))
             }
             interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
-                builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = false, override = true))
+                builder.addProperty(
+                    renderEventProperty(
+                        event = event,
+                        eventInvokeDescriptor = null,
+                        abstract = false,
+                        override = true,
+                        eventSourceOwnerTypeName = interfaceType.qualifiedName,
+                        eventSourceObjectReference = CodeBlock.of("nativeObject"),
+                        eventSourceAddSlot = CodeBlock.of("%T.Metadata.%L", resolveTypeName(interfaceType.qualifiedName), "${event.name.uppercase()}_ADD_SLOT"),
+                        fallbackToAddRemove = false,
+                    ),
+                )
                 renderInterfaceProxyEventFunctions(interfaceType, event).forEach(builder::addFunction)
             }
         }
@@ -278,30 +289,20 @@ class KotlinProjectionRenderer {
         slotInterfaceType: WinRtTypeDefinition,
         event: WinRtEventDefinition,
     ): List<FunSpec> {
-        val addCallPlan = requireAbiCallPlan(
-            bindingName = "${slotInterfaceType.qualifiedName}.${event.name}.add",
-            returnBinding = renderAbiTypeBinding("Windows.Foundation.EventRegistrationToken"),
-            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("handler", renderAbiTypeBinding(event.delegateTypeName))),
-        )
-        val removeCallPlan = requireAbiCallPlan(
-            bindingName = "${slotInterfaceType.qualifiedName}.${event.name}.remove",
-            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("token", renderAbiTypeBinding("Windows.Foundation.EventRegistrationToken"))),
-        )
-        return buildBoundEventFunctions(
-            event = event,
-            eventInvokeDescriptor = null,
-            addInvocation = renderInlineAbiInvocation(
-                invokeTargetExpression = "nativeObject",
-                slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${event.name.uppercase()}_ADD_SLOT"),
-                callPlan = addCallPlan,
-            ) ?: error("Generator interface proxy parity failed to emit add ${event.name}"),
-            removeInvocation = renderInlineAbiInvocation(
-                invokeTargetExpression = "nativeObject",
-                slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${event.name.uppercase()}_REMOVE_SLOT"),
-                callPlan = removeCallPlan,
-            ) ?: error("Generator interface proxy parity failed to emit remove ${event.name}"),
-            override = true,
+        val typeName = resolveTypeName(event.delegateTypeName)
+        val propertyName = event.name.replaceFirstChar(Char::lowercase)
+        return listOf(
+            FunSpec.builder("add${event.name}")
+                .addModifiers(KModifier.OVERRIDE)
+                .addParameter("handler", typeName)
+                .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+                .addCode("return %L.add(handler)\n", propertyName)
+                .build(),
+            FunSpec.builder("remove${event.name}")
+                .addModifiers(KModifier.OVERRIDE)
+                .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+                .addCode("%L.remove(token)\n", propertyName)
+                .build(),
         )
     }
 
@@ -335,18 +336,7 @@ class KotlinProjectionRenderer {
                             )
                 } &&
                 interfaceType.events.filterNot(WinRtEventDefinition::isStatic).all { event ->
-                    runCatching {
-                        buildAbiCallPlan(
-                            returnBinding = renderAbiTypeBinding("Windows.Foundation.EventRegistrationToken"),
-                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("handler", renderAbiTypeBinding(event.delegateTypeName))),
-                        ) != null
-                    }.getOrDefault(false) &&
-                        runCatching {
-                            buildAbiCallPlan(
-                                returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("token", renderAbiTypeBinding("Windows.Foundation.EventRegistrationToken"))),
-                            ) != null
-                        }.getOrDefault(false)
+                    event.addMethodName != null || event.addMethodRowId != null
                 }
         }
 
@@ -651,12 +641,20 @@ class KotlinProjectionRenderer {
             .filterNot { it.isStatic }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "ErrorsChanged" }
             .forEach { event ->
+            val addBinding = plan.instanceMemberBindings.firstOrNull {
+                it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
+            }
             builder.addProperty(
                 renderEventProperty(
                     event = event,
                     eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
                     abstract = false,
                     override = true,
+                    eventSourceOwnerTypeName = addBinding?.ownerInterfaceQualifiedName,
+                    eventSourceObjectReference = addBinding?.let { CodeBlock.of("nativeObject") },
+                    eventSourceAddSlot = addBinding?.let {
+                        CodeBlock.of("%T.Metadata.%L", resolveTypeName(it.slotInterfaceQualifiedName), it.slotConstantName)
+                    },
                 ),
             )
             (renderBoundEventFunctions(plan, event, override = true) ?: renderEventFunctions(event, abstract = false, override = true))

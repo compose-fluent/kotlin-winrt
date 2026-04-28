@@ -171,6 +171,10 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
     eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
     abstract: Boolean,
     override: Boolean = false,
+    eventSourceOwnerTypeName: String? = null,
+    eventSourceObjectReference: CodeBlock? = null,
+    eventSourceAddSlot: CodeBlock? = null,
+    fallbackToAddRemove: Boolean = true,
 ): PropertySpec {
     val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
     val builder = PropertySpec.builder(
@@ -182,6 +186,44 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
     }
     if (override) {
         builder.addModifiers(KModifier.OVERRIDE)
+    }
+    if (eventSourceOwnerTypeName != null && eventSourceObjectReference != null && eventSourceAddSlot != null) {
+        return builder
+            .delegate(
+                CodeBlock.builder()
+                    .add("lazy(%T.PUBLICATION) {\n", LAZY_THREAD_SAFETY_MODE_CLASS_NAME)
+                    .indent()
+                    .addStatement(
+                        "val __eventSource = %T.createEventSource(%S, %S, %L, %L) as? %T",
+                        WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME,
+                        eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName,
+                        eventSourceOwnerTypeName,
+                        eventSourceObjectReference,
+                        eventSourceAddSlot,
+                        WINRT_EVENT_SOURCE_CLASS_NAME.parameterizedBy(typeName),
+                    )
+                    .apply {
+                        if (fallbackToAddRemove) {
+                            addStatement(
+                                "__eventSource?.let { %T(it) } ?: %T(::add%L, ::remove%L)",
+                                WINRT_EVENT_CLASS_NAME,
+                                WINRT_EVENT_CLASS_NAME,
+                                event.name,
+                                event.name,
+                            )
+                        } else {
+                            addStatement(
+                                "__eventSource?.let { %T(it) } ?: error(%S)",
+                                WINRT_EVENT_CLASS_NAME,
+                                "Event source ${event.name} is not registered.",
+                            )
+                        }
+                    }
+                    .unindent()
+                    .add("}")
+                    .build(),
+            )
+            .build()
     }
     return builder
         .delegate(

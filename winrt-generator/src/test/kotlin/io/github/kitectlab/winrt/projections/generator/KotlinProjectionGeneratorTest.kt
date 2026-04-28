@@ -910,6 +910,72 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_native_projection_events_through_event_source_table() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("33333333-2222-3333-4444-555555555555"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "System.Object"),
+                                        WinRtParameterDefinition("args", "T0"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICalculator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodRowId = 7,
+                                    removeMethodRowId = 8,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model).single { it.relativePath.endsWith("ICalculator.kt") }.contents
+
+        assertTrue(contents.contains("private class NativeProjection("))
+        assertTrue(contents.contains("WinRTEventProjectionHelpers.createEventSource("))
+        assertTrue(contents.contains("\"Windows.Foundation.EventHandler<Int>\""))
+        assertTrue(contents.contains("\"Sample.Foundation.ICalculator\""))
+        assertTrue(contents.contains("ICalculator.Metadata.CHANGED_ADD_SLOT"))
+        assertTrue(contents.contains(".add(handler)"))
+        assertTrue(contents.contains(".remove(token)"))
+    }
+
+    @Test
     fun generator_merges_required_interface_property_accessors_across_interfaces() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
