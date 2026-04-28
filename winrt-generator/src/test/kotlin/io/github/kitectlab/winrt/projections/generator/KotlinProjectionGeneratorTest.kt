@@ -2157,6 +2157,24 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.RuntimeClass,
                             isAttributeType = true,
                             isSealedType = true,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = ".ctor",
+                                    returnTypeName = "Unit",
+                                    isRuntimeSpecialName = true,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("version", "UInt32"),
+                                    ),
+                                ),
+                            ),
+                            fields = listOf(
+                                WinRtFieldDefinition("Category", "String"),
+                                WinRtFieldDefinition("Enabled", "Boolean"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("SourceType", "System.Type"),
+                            ),
                         ),
                     ),
                 ),
@@ -2166,7 +2184,77 @@ class KotlinProjectionGeneratorTest {
         val file = KotlinProjectionGenerator().generate(model).single()
 
         assertTrue(file.contents.contains("public annotation class WidgetAttribute"))
+        assertTrue(file.contents.contains("val name: String"))
+        assertTrue(file.contents.contains("val version: Long"))
+        assertTrue(file.contents.contains("val Category: String = \"\""))
+        assertTrue(file.contents.contains("val Enabled: Boolean = false"))
+        assertTrue(file.contents.contains("val SourceType: KClass<*> = Any::class"))
         assertTrue(file.contents.contains("attribute WinRT class shell"))
+    }
+
+    @Test
+    fun generator_emits_custom_winrt_attribute_annotations_with_constructor_and_named_values() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetAttribute",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isAttributeType = true,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = ".ctor",
+                                    returnTypeName = "Unit",
+                                    isRuntimeSpecialName = true,
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("version", "UInt32"),
+                                    ),
+                                ),
+                            ),
+                            fields = listOf(WinRtFieldDefinition("Category", "String")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Sample.Foundation.WidgetAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.StringValue("alpha"),
+                                        WinRtCustomAttributeValue.IntegralValue(7),
+                                    ),
+                                    namedArguments = listOf(
+                                        WinRtCustomAttributeNamedArgument(
+                                            name = "Category",
+                                            value = WinRtCustomAttributeValue.StringValue("ui"),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+        val attributeContents = files.getValue("WidgetAttribute.kt").contents
+        val interfaceContents = files.getValue("IWidget.kt").contents
+
+        assertTrue(attributeContents.contains("public annotation class WidgetAttribute("))
+        assertTrue(attributeContents.contains("val name: String"))
+        assertTrue(attributeContents.contains("val version: Long"))
+        assertTrue(attributeContents.contains("val Category: String = \"\""))
+        assertTrue(interfaceContents.contains("@WidgetAttribute("))
+        assertTrue(interfaceContents.contains("\"alpha\""))
+        assertTrue(interfaceContents.contains("7L"))
+        assertTrue(interfaceContents.contains("Category = \"ui\""))
     }
 
     @Test

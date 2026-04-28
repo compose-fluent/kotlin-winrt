@@ -164,7 +164,48 @@ internal fun renderProjectedAttributeAnnotation(attribute: WinRtProjectedAttribu
                 .addMember("%S", name)
                 .build()
         }
-        else -> null
+        else -> renderGeneratedWinRtAttributeAnnotation(attribute)
+    }
+
+private fun renderGeneratedWinRtAttributeAnnotation(attribute: WinRtProjectedAttributeDescriptor): AnnotationSpec? {
+    val attributeTypeName = attribute.metadataTypeName.takeIf { it.endsWith("Attribute") }
+        ?: "${attribute.projectedTypeName}Attribute"
+    return AnnotationSpec.builder(projectionClassNameForQualifiedName(attributeTypeName))
+        .apply {
+            attribute.arguments.forEach { value ->
+                val rendered = renderGeneratedAttributeValue(value) ?: return null
+                addMember("%L", rendered)
+            }
+            attribute.namedArguments.forEach { argument ->
+                val rendered = renderGeneratedAttributeValue(argument.value) ?: return null
+                addMember("%L = %L", argument.name, rendered)
+            }
+        }
+        .build()
+}
+
+private fun renderGeneratedAttributeValue(value: WinRtCustomAttributeValue): CodeBlock? =
+    when (value) {
+        is WinRtCustomAttributeValue.StringValue -> CodeBlock.of("%S", value.value.orEmpty())
+        is WinRtCustomAttributeValue.TypeValue -> value.typeName?.let { CodeBlock.of("%T::class", projectionClassNameForQualifiedName(it)) }
+        is WinRtCustomAttributeValue.BooleanValue -> CodeBlock.of("%L", value.value)
+        is WinRtCustomAttributeValue.IntegralValue -> CodeBlock.of("%LL", value.value)
+        is WinRtCustomAttributeValue.FloatingPointValue -> CodeBlock.of("%L", value.value)
+        is WinRtCustomAttributeValue.EnumValue -> CodeBlock.of("%LL", value.value)
+        is WinRtCustomAttributeValue.ArrayValue -> {
+            val values = value.values.map { renderGeneratedAttributeValue(it) ?: return null }
+            CodeBlock.builder()
+                .add("[")
+                .apply {
+                    values.forEachIndexed { index, rendered ->
+                        if (index > 0) add(", ")
+                        add("%L", rendered)
+                    }
+                }
+                .add("]")
+                .build()
+        }
+        WinRtCustomAttributeValue.NullValue -> null
     }
 
 internal fun FunSpec.Builder.addProjectedAttributeAnnotations(

@@ -191,6 +191,10 @@ internal fun KotlinProjectionRenderer.splitGenericArguments(arguments: String): 
 }
 
 internal fun KotlinProjectionRenderer.projectionClassName(qualifiedName: String?): ClassName {
+    return projectionClassNameForQualifiedName(qualifiedName)
+}
+
+internal fun projectionClassNameForQualifiedName(qualifiedName: String?): ClassName {
     require(!qualifiedName.isNullOrBlank()) {
         "Projection class name requires a non-blank qualified name."
     }

@@ -105,15 +105,33 @@ import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
 class KotlinProjectionRenderer {
-    fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
-        KotlinProjectionFile(
+    fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+        val renderedContents = FileSpec.builder(plan.packageName, plan.type.name)
+            .apply { addType(renderType(plan)) }
+            .build()
+            .toString()
+        val contents = if (KotlinProjectionSpecializationKind.AttributeClass in plan.specializationKinds) {
+            addValToAnnotationConstructorParameters(renderedContents, attributeConstructorParameters(plan).map { it.name })
+        } else {
+            renderedContents
+        }
+        return KotlinProjectionFile(
             relativePath = plan.relativePath,
             packageName = plan.packageName,
-            contents = FileSpec.builder(plan.packageName, plan.type.name)
-                .apply { addType(renderType(plan)) }
-                .build()
-                .toString(),
+            contents = contents,
         )
+    }
+
+    private fun addValToAnnotationConstructorParameters(contents: String, parameterNames: List<String>): String {
+        if (parameterNames.isEmpty()) {
+            return contents
+        }
+        return contents.lines().joinToString("\n") { line ->
+            val parameterName = parameterNames.firstOrNull { name -> line.trimStart().startsWith("$name: ") }
+                ?: return@joinToString line
+            line.replaceFirst("$parameterName: ", "val $parameterName: ")
+        }
+    }
 
     internal fun renderType(plan: KotlinTypeProjectionPlan): TypeSpec = when (plan.declarationKind) {
         KotlinProjectionDeclarationKind.Interface -> renderInterfaceShell(plan)
@@ -1106,9 +1124,88 @@ class KotlinProjectionRenderer {
         TypeSpec.annotationBuilder(plan.type.name)
             .apply {
                 addModifiers(renderVisibility(plan.visibility))
+                val constructorParameters = attributeConstructorParameters(plan)
+                if (constructorParameters.isNotEmpty()) {
+                    primaryConstructor(
+                        FunSpec.constructorBuilder()
+                            .addParameters(constructorParameters)
+                            .build(),
+                    )
+                }
                 addKdoc("attribute WinRT class shell\n")
             }
             .build()
+
+    private fun attributeConstructorParameters(plan: KotlinTypeProjectionPlan): List<ParameterSpec> {
+        val primaryCtorParameters = plan.type.methods
+            .filter { method -> method.name == ".ctor" && method.isRuntimeSpecialName }
+            .maxWithOrNull(compareBy<WinRtMethodDefinition>({ it.parameters.size }, { -(it.methodRowId ?: Int.MAX_VALUE) }))
+            ?.parameters
+            .orEmpty()
+            .mapNotNull { parameter ->
+                attributeParameterSpec(parameter.name, parameter.typeName, hasDefault = false)
+            }
+        val requiredNames = primaryCtorParameters.mapTo(linkedSetOf()) { it.name }
+        val optionalFieldParameters = plan.type.fields
+            .filterNot { field -> field.isStatic || field.isLiteral || field.name in requiredNames }
+            .mapNotNull { field -> attributeParameterSpec(field.name, field.typeName, hasDefault = true) }
+        val optionalPropertyParameters = plan.type.properties
+            .filterNot { property -> property.isStatic || property.name in requiredNames }
+            .mapNotNull { property -> attributeParameterSpec(property.name, property.typeName, hasDefault = true) }
+        return primaryCtorParameters + optionalFieldParameters + optionalPropertyParameters
+    }
+
+    private fun attributeParameterSpec(
+        name: String,
+        typeName: String,
+        hasDefault: Boolean,
+    ): ParameterSpec? {
+        val annotationTypeName = attributeParameterTypeName(typeName) ?: return null
+        return ParameterSpec.builder(name, annotationTypeName)
+            .apply {
+                if (hasDefault) {
+                    defaultValue(attributeParameterDefaultValue(typeName) ?: return null)
+                }
+            }
+            .build()
+    }
+
+    private fun attributeParameterTypeName(typeName: String): TypeName? {
+        val trimmed = typeName.trim()
+        if (trimmed.startsWith("Array<") && trimmed.endsWith(">")) {
+            val elementType = attributeParameterTypeName(trimmed.substringAfter('<').substringBeforeLast('>')) ?: return null
+            return Array::class.asClassName().parameterizedBy(elementType)
+        }
+        return when (trimmed) {
+            "Boolean", "System.Boolean" -> Boolean::class.asClassName()
+            "Char", "System.Char" -> Char::class.asClassName()
+            "String", "System.String" -> String::class.asClassName()
+            "Float", "Single", "System.Single" -> Float::class.asClassName()
+            "Double", "System.Double" -> Double::class.asClassName()
+            "Byte", "SByte", "Int8", "UInt8",
+            "Short", "Int16", "UShort", "UInt16",
+            "Int", "Int32", "UInt", "UInt32",
+            "Long", "Int64", "ULong", "UInt64" -> Long::class.asClassName()
+            "System.Type" -> KCLASS_STAR_TYPE_NAME
+            else -> Long::class.asClassName()
+        }
+    }
+
+    private fun attributeParameterDefaultValue(typeName: String): CodeBlock? {
+        val trimmed = typeName.trim()
+        if (trimmed.startsWith("Array<") && trimmed.endsWith(">")) {
+            return CodeBlock.of("[]")
+        }
+        return when (trimmed) {
+            "Boolean", "System.Boolean" -> CodeBlock.of("false")
+            "Char", "System.Char" -> CodeBlock.of("'\\u0000'")
+            "String", "System.String" -> CodeBlock.of("%S", "")
+            "Float", "Single", "System.Single" -> CodeBlock.of("0.0f")
+            "Double", "System.Double" -> CodeBlock.of("0.0")
+            "System.Type" -> CodeBlock.of("Any::class")
+            else -> CodeBlock.of("0L")
+        }
+    }
 
     internal fun renderStaticClassShell(plan: KotlinTypeProjectionPlan): TypeSpec =
         TypeSpec.classBuilder(plan.type.name)
