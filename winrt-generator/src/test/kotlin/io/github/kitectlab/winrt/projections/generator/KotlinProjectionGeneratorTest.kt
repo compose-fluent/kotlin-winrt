@@ -1846,6 +1846,85 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_suppresses_hresult_throw_for_declaring_interface_noexception_members() {
+        val noThrowMethod = WinRtMethodDefinition(
+            name = "tryRefresh",
+            returnTypeName = "Boolean",
+            isNoException = true,
+        )
+        val noThrowProperty = WinRtPropertyDefinition(
+            name = "Status",
+            typeName = "Int",
+            getterMethodName = "get_Status",
+            setterMethodName = "put_Status",
+            isNoException = true,
+        )
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(noThrowMethod),
+                            properties = listOf(noThrowProperty),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            methods = listOf(WinRtMethodDefinition(name = "Invoke", returnTypeName = "Unit")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                            methods = listOf(noThrowMethod.copy(isNoException = false)),
+                            properties = listOf(noThrowProperty.copy(isNoException = false)),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath == "io/github/kitectlab/winrt/projections/sample/foundation/Widget.kt" }
+            .contents
+
+        assertFalse(contents.memberBody("override fun tryRefresh").contains("requireSuccess()"))
+        assertFalse(contents.memberBody("override var status").contains("requireSuccess()"))
+        assertTrue(contents.memberBody("override fun addChanged").contains("requireSuccess()"))
+        assertFalse(contents.memberBody("override fun removeChanged").contains("requireSuccess()"))
+    }
+
+    @Test
     fun generator_emits_deterministic_shell_files_for_equivalent_metadata() {
         val left = WinRtMetadataModel(
             namespaces = listOf(
@@ -4972,6 +5051,15 @@ class KotlinProjectionGeneratorTest {
         return KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
+    }
+
+    private fun String.memberBody(marker: String): String {
+        val start = indexOf(marker)
+        require(start >= 0) { "Missing generated member marker: $marker" }
+        val nextMember = indexOf("\n  override ", start + marker.length).takeIf { it >= 0 }
+            ?: indexOf("\n    public fun ", start + marker.length).takeIf { it >= 0 }
+            ?: length
+        return substring(start, nextMember)
     }
 
     private fun WinRtMetadataModel.filterToWindowsDataJson(): WinRtMetadataModel =

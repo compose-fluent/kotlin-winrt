@@ -221,6 +221,7 @@ class KotlinProjectionRenderer {
             bindingName = "${slotInterfaceType.qualifiedName}.${method.name}",
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
         )
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = "nativeObject",
@@ -249,6 +250,7 @@ class KotlinProjectionRenderer {
             bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
             returnBinding = renderAbiTypeBinding(property.typeName),
             parameterBindings = emptyList(),
+            suppressHResultCheck = property.isNoException,
         )
         builder.getter(
             FunSpec.getterBuilder()
@@ -267,6 +269,7 @@ class KotlinProjectionRenderer {
                 bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.set",
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                 parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName))),
+                suppressHResultCheck = property.isNoException,
             )
             builder.setter(
                 FunSpec.setterBuilder()

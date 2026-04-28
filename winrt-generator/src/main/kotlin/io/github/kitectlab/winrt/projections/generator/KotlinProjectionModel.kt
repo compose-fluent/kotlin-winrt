@@ -328,6 +328,7 @@ data class KotlinProjectionInstanceMemberBinding(
     val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
     val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
     val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    val suppressHResultCheck: Boolean = false,
 )
 
 data class KotlinProjectionStaticMemberBinding(
@@ -342,6 +343,7 @@ data class KotlinProjectionStaticMemberBinding(
     val signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
     val marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
     val projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+    val suppressHResultCheck: Boolean = false,
 )
 
 data class KotlinProjectionReadOnlyCollectionBinding(
@@ -780,6 +782,7 @@ internal data class KotlinProjectionAbiCallPlan(
     val parameterMarshalers: List<KotlinProjectionAbiMarshalerPlan>,
     val returnMarshaler: KotlinProjectionAbiMarshalerPlan? = null,
     val descriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+    val suppressHResultCheck: Boolean = false,
 )
 
 internal enum class KotlinProjectionComArgumentKind {

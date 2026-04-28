@@ -106,12 +106,18 @@ import kotlin.io.path.extension
 internal fun KotlinProjectionRenderer.buildAbiCallPlan(
     binding: KotlinProjectionInstanceMemberBinding,
 ): KotlinProjectionAbiCallPlan? =
-    buildAbiCallPlan(binding.returnBinding, binding.parameterBindings, binding.marshalerPlanDescriptor)
+    buildAbiCallPlan(
+        binding.returnBinding,
+        binding.parameterBindings,
+        binding.marshalerPlanDescriptor,
+        suppressHResultCheck = binding.suppressHResultCheck,
+    )
 
 internal fun KotlinProjectionRenderer.buildAbiCallPlan(
     returnBinding: KotlinProjectionAbiTypeBinding,
     parameterBindings: List<KotlinProjectionAbiParameterBinding>,
     marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+    suppressHResultCheck: Boolean = marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
 ): KotlinProjectionAbiCallPlan? {
     val parameterMarshalers = parameterBindings.map { parameterBinding ->
         val slot = marshalerPlanDescriptor?.marshalers?.firstOrNull { !it.isReturn && it.name == parameterBinding.name }
@@ -128,6 +134,7 @@ internal fun KotlinProjectionRenderer.buildAbiCallPlan(
         parameterMarshalers = parameterMarshalers,
         returnMarshaler = returnMarshaler,
         descriptor = marshalerPlanDescriptor,
+        suppressHResultCheck = suppressHResultCheck || marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
     )
 }
 
@@ -136,8 +143,9 @@ internal fun KotlinProjectionRenderer.requireAbiCallPlan(
     returnBinding: KotlinProjectionAbiTypeBinding,
     parameterBindings: List<KotlinProjectionAbiParameterBinding>,
     marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+    suppressHResultCheck: Boolean = marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
 ): KotlinProjectionAbiCallPlan {
-    return requireNotNull(buildAbiCallPlan(returnBinding, parameterBindings, marshalerPlanDescriptor)) {
+    return requireNotNull(buildAbiCallPlan(returnBinding, parameterBindings, marshalerPlanDescriptor, suppressHResultCheck)) {
         val unsupportedKinds = buildList {
             if (
                 returnBinding.kind != KotlinProjectionAbiValueKind.Unit &&

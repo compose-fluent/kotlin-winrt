@@ -300,6 +300,7 @@ internal fun KotlinProjectionRenderer.renderBoundInvocation(
         returnBinding = binding.returnBinding,
         parameterBindings = binding.parameterBindings,
         marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
+        suppressHResultCheck = binding.suppressHResultCheck,
     )
     return renderInlineAbiInvocation(
         invokeTargetExpression = binding.ownerCachePropertyName,
@@ -316,6 +317,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
         returnBinding = binding.returnBinding,
         parameterBindings = binding.parameterBindings,
         marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
+        suppressHResultCheck = binding.suppressHResultCheck,
     )
     return renderInlineAbiInvocation(
         invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
@@ -495,6 +497,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     val callPlan = buildAbiCallPlan(
         returnBinding = returnBinding,
         parameterBindings = parameterBindings,
+        suppressHResultCheck = method.isNoException,
     ) ?: return null
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
     val invocation = renderInlineAbiInvocation(
@@ -530,6 +533,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         val callPlan = buildAbiCallPlan(
             returnBinding = renderAbiTypeBinding(getter.property.typeName),
             parameterBindings = emptyList(),
+            suppressHResultCheck = getter.property.isNoException,
         ) ?: return null
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = requiredForwardOwnerCache(getter.ownerInterfaceName, plan.defaultInterfaceName),
@@ -542,6 +546,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         val callPlan = buildAbiCallPlan(
             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
             parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setter.property.typeName))),
+            suppressHResultCheck = setter.property.isNoException,
         ) ?: return null
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = requiredForwardOwnerCache(setter.ownerInterfaceName, plan.defaultInterfaceName),

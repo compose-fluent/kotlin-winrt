@@ -358,6 +358,12 @@ class KotlinProjectionPlanner(
                     },
                     signatureDescriptor = signatureDescriptor,
                     marshalerPlanDescriptor = semanticHelpers.abiMarshalerPlanDescriptor(method),
+                    suppressHResultCheckResolver = { interfaceType ->
+                        interfaceType.methods
+                            .firstOrNull { it.projectionSignatureKey() == method.projectionSignatureKey() }
+                            ?.let(semanticHelpers::isNoException)
+                            ?: semanticHelpers.isNoException(method)
+                    },
                     signatureMatcher = { interfaceType ->
                         interfaceType.methods.any { it.projectionSignatureKey() == method.projectionSignatureKey() }
                     },
@@ -379,6 +385,12 @@ class KotlinProjectionPlanner(
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
                         returnBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
                         parameterBindings = emptyList(),
+                        suppressHResultCheckResolver = { interfaceType ->
+                            interfaceType.properties
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null }
+                                ?.let(semanticHelpers::isNoException)
+                                ?: semanticHelpers.isNoException(property)
+                        },
                         signatureMatcher = { interfaceType ->
                             interfaceType.properties.any {
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null
@@ -401,6 +413,12 @@ class KotlinProjectionPlanner(
                                 typeBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
                             ),
                         ),
+                        suppressHResultCheckResolver = { interfaceType ->
+                            interfaceType.properties
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null }
+                                ?.let(semanticHelpers::isNoException)
+                                ?: semanticHelpers.isNoException(property)
+                        },
                         signatureMatcher = { interfaceType ->
                             interfaceType.properties.any {
                                 it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null
@@ -429,6 +447,7 @@ class KotlinProjectionPlanner(
                                 typeBinding = classifyAbiTypeBinding(event.delegateTypeName, type.namespace, typesByQualifiedName),
                             ),
                         ),
+                        suppressHResultCheck = false,
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
@@ -456,6 +475,7 @@ class KotlinProjectionPlanner(
                                 ),
                             ),
                         ),
+                        suppressHResultCheck = true,
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
@@ -501,6 +521,12 @@ class KotlinProjectionPlanner(
                     },
                     signatureDescriptor = signatureDescriptor,
                     marshalerPlanDescriptor = semanticHelpers.abiMarshalerPlanDescriptor(method),
+                    suppressHResultCheckResolver = { interfaceType ->
+                        interfaceType.methods
+                            .firstOrNull { it.projectionSignatureIgnoringStaticKey() == method.projectionSignatureIgnoringStaticKey() }
+                            ?.let(semanticHelpers::isNoException)
+                            ?: semanticHelpers.isNoException(method)
+                    },
                     signatureMatcher = { interfaceType ->
                         interfaceType.qualifiedName == staticInterface.qualifiedName
                     },
@@ -522,6 +548,12 @@ class KotlinProjectionPlanner(
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
                         returnBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
                         parameterBindings = emptyList(),
+                        suppressHResultCheckResolver = { interfaceType ->
+                            interfaceType.properties
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null }
+                                ?.let(semanticHelpers::isNoException)
+                                ?: semanticHelpers.isNoException(property)
+                        },
                         signatureMatcher = { interfaceType ->
                             interfaceType.qualifiedName == staticInterface.qualifiedName
                         },
@@ -540,6 +572,12 @@ class KotlinProjectionPlanner(
                                 typeBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
                             ),
                         ),
+                        suppressHResultCheckResolver = { interfaceType ->
+                            interfaceType.properties
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null }
+                                ?.let(semanticHelpers::isNoException)
+                                ?: semanticHelpers.isNoException(property)
+                        },
                         signatureMatcher = { interfaceType ->
                             interfaceType.qualifiedName == staticInterface.qualifiedName
                         },
@@ -565,6 +603,7 @@ class KotlinProjectionPlanner(
                             typeBinding = classifyAbiTypeBinding(event.delegateTypeName, type.namespace, typesByQualifiedName),
                         ),
                     ),
+                    suppressHResultCheck = false,
                     signatureMatcher = { interfaceType ->
                         interfaceType.qualifiedName == staticInterface.qualifiedName
                     },
@@ -585,6 +624,7 @@ class KotlinProjectionPlanner(
                             ),
                         ),
                     ),
+                    suppressHResultCheck = true,
                     signatureMatcher = { interfaceType ->
                         interfaceType.qualifiedName == staticInterface.qualifiedName
                     },
@@ -928,6 +968,8 @@ class KotlinProjectionPlanner(
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
         signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
         marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+        suppressHResultCheck: Boolean = marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
+        suppressHResultCheckResolver: (WinRtTypeDefinition) -> Boolean = { suppressHResultCheck },
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
         ownerCachePropertyNameResolver: (String, String) -> String = { ownerInterface, _ ->
             ownerCachePropertyName(ownerInterface, candidateInterfaces.firstOrNull())
@@ -941,18 +983,20 @@ class KotlinProjectionPlanner(
                 visiting = mutableSetOf(),
                 signatureMatcher = signatureMatcher,
             ) ?: return@forEach
+            val slotInterfaceType = typesByQualifiedName.getValue(slotInterfaceQualifiedName)
             return KotlinProjectionInstanceMemberBinding(
                 bindingName = bindingName ?: slotConstantName,
                 ownerInterfaceQualifiedName = candidateInterface,
                 ownerCachePropertyName = ownerCachePropertyNameResolver(candidateInterface, slotInterfaceQualifiedName),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
-                slotConstantName = slotConstantNameResolver(typesByQualifiedName.getValue(slotInterfaceQualifiedName)) ?: slotConstantName,
+                slotConstantName = slotConstantNameResolver(slotInterfaceType) ?: slotConstantName,
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
                 signatureDescriptor = signatureDescriptor,
                 marshalerPlanDescriptor = marshalerPlanDescriptor,
-                projectedAttributes = typesByQualifiedName.getValue(slotInterfaceQualifiedName).projectedAttributes()
+                projectedAttributes = slotInterfaceType.projectedAttributes()
                     .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute),
+                suppressHResultCheck = suppressHResultCheckResolver(slotInterfaceType),
             )
         }
         return null
@@ -967,6 +1011,8 @@ class KotlinProjectionPlanner(
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
         signatureDescriptor: WinRtSignatureWriterDescriptor? = null,
         marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+        suppressHResultCheck: Boolean = marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
+        suppressHResultCheckResolver: (WinRtTypeDefinition) -> Boolean = { suppressHResultCheck },
         signatureMatcher: (WinRtTypeDefinition) -> Boolean,
         slotConstantNameResolver: (WinRtTypeDefinition) -> String? = { null },
     ): KotlinProjectionStaticMemberBinding? {
@@ -977,19 +1023,21 @@ class KotlinProjectionPlanner(
                 visiting = mutableSetOf(),
                 signatureMatcher = signatureMatcher,
             ) ?: return@forEach
+            val slotInterfaceType = typesByQualifiedName.getValue(slotInterfaceQualifiedName)
             return KotlinProjectionStaticMemberBinding(
                 bindingName = bindingName,
                 ownerInterfaceQualifiedName = candidateInterface,
                 ownerAccessorName = staticOwnerAccessorName(candidateInterface),
                 ownerCachePropertyName = staticOwnerCachePropertyName(candidateInterface),
                 slotInterfaceQualifiedName = slotInterfaceQualifiedName,
-                slotConstantName = slotConstantNameResolver(typesByQualifiedName.getValue(slotInterfaceQualifiedName)) ?: slotConstantName,
+                slotConstantName = slotConstantNameResolver(slotInterfaceType) ?: slotConstantName,
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
                 signatureDescriptor = signatureDescriptor,
                 marshalerPlanDescriptor = marshalerPlanDescriptor,
-                projectedAttributes = typesByQualifiedName.getValue(slotInterfaceQualifiedName).projectedAttributes()
+                projectedAttributes = slotInterfaceType.projectedAttributes()
                     .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute),
+                suppressHResultCheck = suppressHResultCheckResolver(slotInterfaceType),
             )
         }
         return null

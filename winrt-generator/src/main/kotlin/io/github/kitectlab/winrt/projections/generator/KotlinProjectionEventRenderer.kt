@@ -702,6 +702,7 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
                 bindingName = "${factoryType.qualifiedName}.${method.name}",
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
+                suppressHResultCheck = method.isNoException,
             )
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
@@ -750,6 +751,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         bindingName = "${factoryType.qualifiedName}.${method.name}",
         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
         parameterBindings = parameterBindings,
+        suppressHResultCheck = method.isNoException,
     )
     val code = CodeBlock.builder()
     val scopedParameterOpeners = callPlan.parameterMarshalers.flatMap { it.scopeOpeners }
@@ -786,7 +788,9 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         ),
     )
     code.add("\n")
-    code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+    if (!callPlan.suppressHResultCheck) {
+        code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+    }
     callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
         code.add("%L\n", postCallStatement)
     }

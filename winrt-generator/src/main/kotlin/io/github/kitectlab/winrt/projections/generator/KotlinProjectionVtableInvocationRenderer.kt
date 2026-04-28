@@ -158,7 +158,9 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
         ),
     )
     code.add("\n")
-    code.addStatement("%T(__hr).requireSuccess()", HRESULT_CLASS_NAME)
+    if (!callPlan.suppressHResultCheck) {
+        code.addStatement("%T(__hr).requireSuccess()", HRESULT_CLASS_NAME)
+    }
     callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
         code.add("%L\n", postCallStatement)
     }
