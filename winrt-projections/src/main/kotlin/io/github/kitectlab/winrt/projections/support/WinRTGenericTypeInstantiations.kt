@@ -269,6 +269,7 @@ internal object WinRTGenericTypeInstantiations {
     )
     val ENTRIES_BY_CLASS_NAME: Map<String, GenericTypeInstantiationEntry> = ENTRIES.associateBy { it.className }
     val ENTRIES_BY_SOURCE_TYPE: Map<String, GenericTypeInstantiationEntry> = ENTRIES.associateBy { it.sourceType }
+    private val INITIALIZED_CLASS_NAMES: MutableSet<String> = linkedSetOf()
 
     fun entryForClassName(className: String): GenericTypeInstantiationEntry? =
         ENTRIES_BY_CLASS_NAME[className]
@@ -276,14 +277,59 @@ internal object WinRTGenericTypeInstantiations {
     fun entryForSourceType(sourceType: String): GenericTypeInstantiationEntry? =
         ENTRIES_BY_SOURCE_TYPE[sourceType]
 
-    fun initializeAll(initialize: (GenericTypeInstantiationEntry) -> Unit) {
-        ENTRIES.forEach(initialize)
+    fun isInitialized(entry: GenericTypeInstantiationEntry): Boolean =
+        entry.className in INITIALIZED_CLASS_NAMES
+
+    fun initializeAll() {
+        val visited = linkedSetOf<String>()
+        ENTRIES.forEach { initializeWithDependencies(it, visited) }
+    }
+
+    fun initializeBySourceType(sourceType: String) {
+        entryForSourceType(sourceType)?.let(::initializeEntry)
+    }
+
+    fun initializeEntry(entry: GenericTypeInstantiationEntry) {
+        initializeWithDependencies(entry, linkedSetOf())
     }
 
     fun initializeDependencies(
         entry: GenericTypeInstantiationEntry,
         initialize: (GenericTypeInstantiationEntry) -> Unit,
     ) {
-        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get).forEach(initialize)
+        val visited = linkedSetOf(entry.className)
+        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)
+            .forEach { initializeWithDependencies(it, visited, initialize) }
+    }
+
+    fun initializeDependencies(entry: GenericTypeInstantiationEntry) {
+        val visited = linkedSetOf(entry.className)
+        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)
+            .forEach { initializeWithDependencies(it, visited) }
+    }
+
+    private fun initializeWithDependencies(
+        entry: GenericTypeInstantiationEntry,
+        visited: MutableSet<String>,
+        initialize: (GenericTypeInstantiationEntry) -> Unit,
+    ) {
+        if (!visited.add(entry.className)) return
+        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)
+            .forEach { initializeWithDependencies(it, visited, initialize) }
+        initialize(entry)
+    }
+
+    private fun initializeWithDependencies(
+        entry: GenericTypeInstantiationEntry,
+        visited: MutableSet<String>,
+    ) {
+        if (!visited.add(entry.className)) return
+        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)
+            .forEach { initializeWithDependencies(it, visited) }
+        registerGenericInstantiation(entry)
+    }
+
+    private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry) {
+        INITIALIZED_CLASS_NAMES.add(entry.className)
     }
 }

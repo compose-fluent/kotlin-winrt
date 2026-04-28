@@ -493,17 +493,18 @@ class KotlinProjectionRenderer {
                 objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]?.skippedReason == null
             }
             .forEach { binding ->
+                val objectReferencePlan = objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]
                 builder.addProperty(
                     PropertySpec.builder(
-                        "_${binding.qualifiedName.substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
+                        "_${binding.qualifiedName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}",
                         IUNKNOWN_REFERENCE_CLASS_NAME,
                     )
                         .addModifiers(KModifier.PRIVATE)
                         .delegate(
                             runtimeClassObjectReferenceCacheInitializer(
-                                objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')],
+                                objectReferencePlan,
                                 "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
-                                resolveTypeName(binding.qualifiedName),
+                                projectionClassName(binding.qualifiedName.substringBefore('<')),
                             ),
                         )
                         .build(),
@@ -1452,10 +1453,9 @@ class KotlinProjectionRenderer {
         val body = CodeBlock.builder()
         if (objectReferencePlan?.requiresGenericInstantiation == true) {
             body.addStatement(
-                "%T.entryForSourceType(%S)?.let { entry -> %T.initializeDependencies(entry) { } }",
+                "%T.initializeBySourceType(%S)",
                 WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
                 objectReferencePlan.interfaceName,
-                WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME,
             )
         }
         if (objectReferencePlan?.usesDefaultInterfaceObjRef == true && objectReferencePlan.defaultInterfaceObjRefVtableSlot != null) {

@@ -2853,6 +2853,8 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(widgetContents, widgetContents.contains("private val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents, widgetContents.contains("getDefaultInterfaceObjectReference(8)"))
+        assertTrue(widgetContents, widgetContents.contains("initializeBySourceType("))
+        assertFalse(widgetContents, widgetContents.contains("initializeDependencies(entry) { }"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IDefaultExclusive|cache=Sample_FastAbi_IDefaultExclusiveCache|default=true|skip=|inner=false|defaultObjRef=true|hierarchy=0|defaultObjRefSlot=8|generic=false"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IGeneric<String>|cache=Sample_FastAbi_IGeneric_String_Cache|default=false|skip=|inner=false|defaultObjRef=false|hierarchy=|defaultObjRefSlot=|generic=true"))
     }
@@ -3506,6 +3508,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("fun registerAbiDelegates"))
         assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("Windows_Foundation_IReference_Int"))
         assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("fun initializeAll"))
+        assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("fun initializeBySourceType(sourceType: String)"))
+        assertTrue(filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
         assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("_EventSource_Windows_Foundation_EventHandler_Int"))
         assertTrue(filesByName.getValue("WinRTEventProjectionHelpers.kt").contents.contains("fun installEventSources"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))

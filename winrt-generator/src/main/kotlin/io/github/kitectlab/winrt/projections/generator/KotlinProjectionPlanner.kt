@@ -148,6 +148,10 @@ class KotlinProjectionPlanner(
         if (mappedTypeByAbiName(type.qualifiedName)?.isRuntimeOwnedProjection() == true) {
             return null
         }
+        fun interfaceIidFor(interfaceName: String): Guid? =
+            interfaceIidsByName[interfaceName]
+                ?: interfaceIidsByName[interfaceName.substringBefore('<').removeSuffix("?")]
+
         val declarationKind = when (type.kind) {
             WinRtTypeKind.Interface -> KotlinProjectionDeclarationKind.Interface
             WinRtTypeKind.RuntimeClass -> KotlinProjectionDeclarationKind.Class
@@ -178,7 +182,7 @@ class KotlinProjectionPlanner(
             staticInterfaceBindings = type.activation.staticInterfaceNames.map { interfaceName ->
                 KotlinProjectionInterfaceBinding(
                     qualifiedName = interfaceName,
-                    iid = interfaceIidsByName[interfaceName],
+                    iid = interfaceIidFor(interfaceName),
                 )
             },
             implementedInterfaceBindings = type.implementedInterfaces
@@ -186,7 +190,7 @@ class KotlinProjectionPlanner(
                 .map { implemented ->
                     KotlinProjectionInterfaceBinding(
                         qualifiedName = implemented.interfaceName,
-                        iid = interfaceIidsByName[implemented.interfaceName],
+                        iid = interfaceIidFor(implemented.interfaceName),
                     )
                 },
             activatableFactoryInterfaceName = type.activation.activatableFactoryInterfaceName,
