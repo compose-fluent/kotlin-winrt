@@ -842,7 +842,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun removeChanged(token: EventRegistrationToken)"))
         assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("val loaded: WinRtEvent<WidgetHandler> by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(widgetContents.contains("WinRtEvent(::addLoaded, ::removeLoaded)"))
+        assertTrue(widgetContents.contains("\"Sample.Foundation.IWidgetStatics\""))
+        assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics()"))
+        assertTrue(widgetContents.contains("fun addLoaded(handler: WidgetHandler): EventRegistrationToken ="))
+        assertTrue(widgetContents.contains("loaded.add(handler)"))
         assertTrue(widgetContents.contains("public object ActivationFactory"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("val FACTORY_INTERFACE_IID: Guid = Guid(\"44444444-2222-3333-4444-555555555555\")"))
@@ -1068,6 +1071,14 @@ class KotlinProjectionGeneratorTest {
                                     getterMethodRowId = 11,
                                 ),
                             ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodRowId = 13,
+                                    removeMethodRowId = 14,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -1118,6 +1129,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_SETTER_SLOT: Int = IWidgetStatics2.Metadata.COUNT_SETTER_SLOT"))
+        assertTrue(widgetContents.contains("val changed: WinRtEvent<EventHandlerCallback<Int>> by"))
+        assertTrue(widgetContents.contains("lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(widgetContents.contains("WinRTEventProjectionHelpers.createEventSource("))
+        assertTrue(widgetContents.contains("\"Windows.Foundation.EventHandler<Int>\""))
+        assertTrue(widgetContents.contains("\"Sample.Foundation.IWidgetStatics\""))
+        assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics()"))
+        assertTrue(widgetContents.contains("STATIC_CHANGED_ADD_SLOT"))
     }
 
     @Test

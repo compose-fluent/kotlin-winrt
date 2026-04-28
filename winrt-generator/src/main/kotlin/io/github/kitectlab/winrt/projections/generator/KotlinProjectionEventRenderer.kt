@@ -143,6 +143,25 @@ internal fun KotlinProjectionRenderer.renderBoundStaticEventFunctions(
     )
 }
 
+internal fun KotlinProjectionRenderer.renderStaticEventSourceFunctions(
+    event: WinRtEventDefinition,
+    eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+): List<FunSpec> {
+    val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
+    val propertyName = event.name.replaceFirstChar(Char::lowercase)
+    return listOf(
+        FunSpec.builder("add${event.name}")
+            .addParameter("handler", typeName)
+            .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+            .addCode("return %L.add(handler)\n", propertyName)
+            .build(),
+        FunSpec.builder("remove${event.name}")
+            .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+            .addCode("%L.remove(token)\n", propertyName)
+            .build(),
+    )
+}
+
 internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
     event: WinRtEventDefinition,
     eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
@@ -286,14 +305,26 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
             projectedStaticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
             projectedStaticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(it)) }
             projectedStaticEvents.forEach { event ->
+                val eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic }
+                val addBinding = plan.staticMemberBindings.firstOrNull {
+                    it.bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT"
+                }
                 addProperty(
                     renderEventProperty(
                         event = event,
-                        eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic },
+                        eventInvokeDescriptor = eventInvokeDescriptor,
                         abstract = false,
+                        eventSourceOwnerTypeName = addBinding?.ownerInterfaceQualifiedName,
+                        eventSourceObjectReference = addBinding?.let { CodeBlock.of("StaticInterfaces.%L()", it.ownerAccessorName) },
+                        eventSourceAddSlot = addBinding?.let { CodeBlock.of("%L", it.bindingName) },
+                        fallbackToAddRemove = addBinding == null,
                     ),
                 )
-                (renderBoundStaticEventFunctions(plan, event) ?: renderEventFunctions(event, abstract = false))
+                (
+                    addBinding?.let { renderStaticEventSourceFunctions(event, eventInvokeDescriptor) }
+                        ?: renderBoundStaticEventFunctions(plan, event)
+                        ?: renderEventFunctions(event, abstract = false)
+                    )
                     .forEach(::addFunction)
             }
         }
