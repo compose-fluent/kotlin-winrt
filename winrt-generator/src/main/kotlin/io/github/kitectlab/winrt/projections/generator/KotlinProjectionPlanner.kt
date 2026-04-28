@@ -229,6 +229,11 @@ class KotlinProjectionPlanner(
             } else {
                 null
             },
+            classMemberMergeDescriptor = if (type.kind == WinRtTypeKind.RuntimeClass) {
+                semanticHelpers.classMemberMergeDescriptor(type)
+            } else {
+                null
+            },
             genericAbiClassInitializationDescriptor = if (type.kind in setOf(WinRtTypeKind.Interface, WinRtTypeKind.Delegate)) {
                 semanticHelpers.genericAbiClassInitializationDescriptor(type)
             } else {

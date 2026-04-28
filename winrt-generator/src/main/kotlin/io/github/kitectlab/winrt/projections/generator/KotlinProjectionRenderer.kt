@@ -537,11 +537,13 @@ class KotlinProjectionRenderer {
             }
         plan.defaultInterfaceName
             ?.takeUnless(::isMappedCollectionInterfaceName)
+            ?.takeIf { interfaceName -> plan.isPublicRuntimeClassInterface(interfaceName) }
             ?.let { defaultInterfaceName ->
             builder.addSuperinterface(resolveTypeName(defaultInterfaceName))
         }
         plan.type.implementedInterfaces
             .filterNot { it.isDefault }
+            .filter { implemented -> plan.isPublicRuntimeClassInterface(implemented.interfaceName) }
             .filterNot { implemented ->
                 isMappedCollectionInterfaceName(implemented.interfaceName)
             }
@@ -660,12 +662,14 @@ class KotlinProjectionRenderer {
             val addBinding = plan.instanceMemberBindings.firstOrNull {
                 it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
             }
+            val eventModifiers = addBinding?.let { runtimeClassMemberModifiers(plan, it) } ?: listOf(KModifier.OVERRIDE)
             builder.addProperty(
                 renderEventProperty(
                     event = event,
                     eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
                     abstract = false,
                     override = true,
+                    modifiers = eventModifiers,
                     eventSourceOwnerTypeName = addBinding?.ownerInterfaceQualifiedName,
                     eventSourceObjectReference = addBinding?.let { CodeBlock.of("nativeObject") },
                     eventSourceAddSlot = addBinding?.let {
@@ -698,6 +702,14 @@ class KotlinProjectionRenderer {
     private val KotlinTypeProjectionPlan.runtimeClassBaseTypeName: String?
         get() = type.baseTypeName
             ?.takeUnless { it == "System.Object" || it == "Any" }
+
+    private fun KotlinTypeProjectionPlan.isPublicRuntimeClassInterface(interfaceName: String): Boolean {
+        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        val descriptor = classMemberMergeDescriptor
+            ?.interfaceDescriptors
+            ?.firstOrNull { it.interfaceTypeName == rawName }
+        return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
+    }
 
     private val KotlinTypeProjectionPlan.hasRuntimeClassDerivedTypes: Boolean
         get() = typesByQualifiedName.values.any { candidate ->

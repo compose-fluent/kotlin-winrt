@@ -1348,6 +1348,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_protected_overridable_runtime_class_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Refresh", returnTypeName = "Unit", methodRowId = 10),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Title", "String", getterMethodName = "get_Title"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Refresh", returnTypeName = "Unit", methodRowId = 10),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Title", "String", getterMethodName = "get_Title"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val generated = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetContents = generated.getValue("Widget.kt").contents
+
+        assertFalse(widgetContents.contains("IWidget,\n"))
+        assertTrue(widgetContents.contains("protected open fun Refresh()"))
+        assertFalse(widgetContents.contains("override fun Refresh()"))
+        assertTrue(widgetContents.contains("protected open val title: String"))
+        assertFalse(widgetContents.contains("override val title: String"))
+    }
+
+    @Test
     fun generator_binds_struct_and_non_unit_delegate_member_marshaling() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

@@ -121,7 +121,7 @@ internal fun KotlinProjectionRenderer.renderBoundEventFunctions(
         eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
         addInvocation = renderBoundInvocation(addBinding),
         removeInvocation = renderBoundInvocation(removeBinding),
-        override = override,
+        modifiers = if (override) runtimeClassMemberModifiers(plan, addBinding) else emptyList(),
         projectedAttributes = addBinding.projectedAttributes,
     )
 }
@@ -141,7 +141,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticEventFunctions(
         eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic },
         addInvocation = renderBoundStaticInvocation(addBinding),
         removeInvocation = renderBoundStaticInvocation(removeBinding),
-        override = false,
+        modifiers = emptyList(),
         projectedAttributes = addBinding.projectedAttributes,
     )
 }
@@ -170,21 +170,21 @@ internal fun KotlinProjectionRenderer.buildBoundEventFunctions(
     eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
     addInvocation: CodeBlock,
     removeInvocation: CodeBlock,
-    override: Boolean,
+    modifiers: List<KModifier>,
     projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
 ): List<FunSpec> {
     val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
     return listOf(
         FunSpec.builder("add${event.name}")
             .addProjectedAttributeAnnotations(projectedAttributes)
-            .apply { if (override) addModifiers(KModifier.OVERRIDE) }
+            .addModifiers(modifiers)
             .addParameter("handler", typeName)
             .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", addInvocation)
             .build(),
         FunSpec.builder("remove${event.name}")
             .addProjectedAttributeAnnotations(projectedAttributes)
-            .apply { if (override) addModifiers(KModifier.OVERRIDE) }
+            .addModifiers(modifiers)
             .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L\n", removeInvocation)
             .build(),
@@ -196,6 +196,7 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
     eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
     abstract: Boolean,
     override: Boolean = false,
+    modifiers: List<KModifier> = if (override) listOf(KModifier.OVERRIDE) else emptyList(),
     eventSourceOwnerTypeName: String? = null,
     eventSourceObjectReference: CodeBlock? = null,
     eventSourceAddSlot: CodeBlock? = null,
@@ -209,9 +210,7 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
     if (abstract) {
         return builder.addModifiers(KModifier.ABSTRACT).build()
     }
-    if (override) {
-        builder.addModifiers(KModifier.OVERRIDE)
-    }
+    builder.addModifiers(modifiers)
     if (eventSourceOwnerTypeName != null && eventSourceObjectReference != null && eventSourceAddSlot != null) {
         return builder
             .delegate(
@@ -263,7 +262,12 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
         .build()
 }
 
-internal fun KotlinProjectionRenderer.renderEventFunctions(event: WinRtEventDefinition, abstract: Boolean, override: Boolean = false): List<FunSpec> {
+internal fun KotlinProjectionRenderer.renderEventFunctions(
+    event: WinRtEventDefinition,
+    abstract: Boolean,
+    override: Boolean = false,
+    modifiers: List<KModifier> = if (override) listOf(KModifier.OVERRIDE) else emptyList(),
+): List<FunSpec> {
     val typeName = resolveTypeName(event.delegateTypeName)
     return listOf(
         FunSpec.builder("add${event.name}")
@@ -272,9 +276,7 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(event: WinRtEventDefi
                 if (abstract) {
                     addModifiers(KModifier.ABSTRACT)
                 } else {
-                    if (override) {
-                        addModifiers(KModifier.OVERRIDE)
-                    }
+                    addModifiers(modifiers)
                     addCode("return %L\n", missingAbiBindingError("event ${event.name} add"))
                 }
             }
@@ -286,9 +288,7 @@ internal fun KotlinProjectionRenderer.renderEventFunctions(event: WinRtEventDefi
                 if (abstract) {
                     addModifiers(KModifier.ABSTRACT)
                 } else {
-                    if (override) {
-                        addModifiers(KModifier.OVERRIDE)
-                    }
+                    addModifiers(modifiers)
                     addCode("%L\n", missingAbiBindingError("event ${event.name} remove"))
                 }
             }

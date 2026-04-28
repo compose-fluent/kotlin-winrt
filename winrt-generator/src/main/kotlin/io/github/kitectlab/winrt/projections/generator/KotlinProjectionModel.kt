@@ -3,6 +3,7 @@ package io.github.kitectlab.winrt.projections.generator
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtClassMemberMergeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
 import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
@@ -298,6 +299,7 @@ data class KotlinTypeProjectionPlan(
     val guidSignatureDescriptor: WinRtGuidSignatureDescriptor? = null,
     val interfaceMemberSignatureSetDescriptor: WinRtInterfaceMemberSignatureSetDescriptor? = null,
     val customMappedMemberOutputDescriptor: WinRtCustomMappedMemberOutputDescriptor? = null,
+    val classMemberMergeDescriptor: WinRtClassMemberMergeDescriptor? = null,
     val genericAbiClassInitializationDescriptor: WinRtGenericAbiClassInitializationDescriptor? = null,
     val requiredInterfaceAugmentationDescriptor: WinRtRequiredInterfaceAugmentationDescriptor? = null,
     val fastAbiClassDescriptor: WinRtFastAbiClassDescriptor? = null,

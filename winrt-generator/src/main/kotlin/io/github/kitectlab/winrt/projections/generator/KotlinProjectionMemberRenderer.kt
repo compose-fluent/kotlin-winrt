@@ -252,7 +252,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     val invocation = renderBoundInvocation(binding)
     return FunSpec.builder(method.name)
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
-        .addModifiers(KModifier.OVERRIDE)
+        .addModifiers(runtimeClassMemberModifiers(plan, binding))
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
@@ -267,10 +267,10 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(property.typeName),
     ).mutable(!property.isReadOnly)
-        .addModifiers(KModifier.OVERRIDE)
     val getterBinding = plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
+    builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
     val getterInvocation = renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -301,6 +301,21 @@ internal fun missingAbiBindingError(memberName: String): CodeBlock =
         "error(%S)",
         "WinRT ABI binding is unavailable for $memberName; projection metadata did not provide a matching interface slot.",
     )
+
+internal fun runtimeClassMemberModifiers(
+    plan: KotlinTypeProjectionPlan,
+    binding: KotlinProjectionInstanceMemberBinding,
+): List<KModifier> {
+    val ownerInterfaceName = binding.ownerInterfaceQualifiedName.substringBefore('<')
+    val descriptor = plan.classMemberMergeDescriptor
+        ?.interfaceDescriptors
+        ?.firstOrNull { it.interfaceTypeName == ownerInterfaceName }
+    return when {
+        descriptor?.isOverridableInterface == true && !plan.type.isSealedType -> listOf(KModifier.PROTECTED, KModifier.OPEN)
+        descriptor?.isOverridableInterface == true || descriptor?.isProtectedInterface == true -> listOf(KModifier.PROTECTED)
+        else -> listOf(KModifier.OVERRIDE)
+    }
+}
 
 internal fun KotlinProjectionRenderer.renderBoundInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
