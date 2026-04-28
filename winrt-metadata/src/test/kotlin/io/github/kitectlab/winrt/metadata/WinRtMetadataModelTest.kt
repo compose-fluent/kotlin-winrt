@@ -1355,6 +1355,7 @@ class WinRtMetadataModelTest {
         assertEquals(true, fastAbiClass.containsSetter("Mode"))
         assertEquals(false, fastAbiClass.containsSetter("Name"))
         assertEquals(true, fastAbiClass.containsOtherInterface("Sample.Foundation.IWidgetOverrides"))
+        assertEquals(true, helpers.getFastAbiClassForInterface(defaultInterface) != null)
         assertEquals(listOf("Invoke_0", "UpdateArrays_1", "remove_Changed_2", "get_Name_3"), helpers.methodVtableDescriptors(defaultInterface).map { it.vmethodName })
         assertEquals(true, helpers.isImplementedAsPrivateMethod(widget, overrides, overrides.methods.first()).isImplementedAsPrivateMethod)
         assertEquals(true, helpers.isImplementedAsPrivateMappedInterface(widget, overrides).isImplementedAsPrivateMappedInterface)
@@ -2287,6 +2288,13 @@ class WinRtMetadataModelTest {
         assertEquals("Microsoft.UI.Xaml.Interop.IBindableVector", mapped?.interfaceTypeName)
         assertEquals("static-abi", mapped?.callMode)
         assertEquals(true, mapped?.emitsExplicitMembers)
+        val privateIdicMapped = helpers.customMappedMemberOutputDescriptor(
+            bindableVector,
+            context = WinRtMetadataProjectionContext(sources = emptyList(), target = WinRtMetadataTarget.NetStandard20),
+            isPrivate = true,
+        )
+        assertEquals("idic", privateIdicMapped?.callMode)
+        assertEquals(true, privateIdicMapped?.emitsPrivateMembers)
 
         val interfaceSignatures = helpers.interfaceMemberSignatureSetDescriptor(iWidget)
         assertEquals(listOf("GetValue"), interfaceSignatures.methodSignatures.map { it.methodName })

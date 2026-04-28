@@ -1032,6 +1032,24 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
     }
     plan.customMappedMemberOutputDescriptor?.let { descriptor ->
         builder.addStringListProperty("CUSTOM_MAPPED_MEMBER_PLANS", descriptor.memberPlans)
+        builder.addProperty(
+            PropertySpec.builder("CUSTOM_MAPPED_MEMBER_CALL_MODE", String::class)
+                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .initializer("%S", descriptor.callMode)
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("CUSTOM_MAPPED_MEMBER_EXPLICIT", Boolean::class)
+                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .initializer("%L", descriptor.emitsExplicitMembers)
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("CUSTOM_MAPPED_MEMBER_PRIVATE", Boolean::class)
+                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .initializer("%L", descriptor.emitsPrivateMembers)
+                .build(),
+        )
     }
     plan.genericAbiClassInitializationDescriptor?.let { descriptor ->
         builder.addStringListProperty("GENERIC_ABI_INVOKE_SLOTS", descriptor.invokeSlotNames)

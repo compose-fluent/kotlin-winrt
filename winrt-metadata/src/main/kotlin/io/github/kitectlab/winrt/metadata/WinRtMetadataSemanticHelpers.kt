@@ -971,10 +971,11 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     }
 
     fun getFastAbiClassForInterface(type: WinRtTypeDefinition): WinRtFastAbiClassDescriptor? {
-        if (!type.isExclusiveTo) return null
-        val exclusiveToClass = getExclusiveToType(type)
-        if (exclusiveToClass?.isFastAbi == true) {
-            return getFastAbiClassForClass(exclusiveToClass)
+        if (type.isExclusiveTo) {
+            val exclusiveToClass = getExclusiveToType(type)
+            if (exclusiveToClass?.isFastAbi == true) {
+                return getFastAbiClassForClass(exclusiveToClass)
+            }
         }
         val owner = normalizedModel.namespaces
             .flatMap(WinRtNamespace::types)

@@ -2205,6 +2205,40 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_hands_custom_mapped_member_call_modes_to_companions_and_support_plan() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val iterableContents = filesByName.getValue("IIterable.kt").contents
+        val shapePlanContents = filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents
+
+        assertTrue(iterableContents, iterableContents.contains("internal val CUSTOM_MAPPED_MEMBER_PLANS: List<String>"))
+        assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_CALL_MODE: String = \"static-abi\""))
+        assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_EXPLICIT: Boolean = true"))
+        assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_PRIVATE: Boolean = false"))
+        assertTrue(shapePlanContents, shapePlanContents.contains("mappedCallMode = \"static-abi\""))
+        assertTrue(shapePlanContents, shapePlanContents.contains("mappedExplicit = true"))
+        assertTrue(shapePlanContents, shapePlanContents.contains("mappedPrivate = false"))
+    }
+
+    @Test
     fun generator_emits_kmp_metadata_structs_instead_of_dotnet_value_type_aliases() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -2751,8 +2785,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|cache=Sample_FastAbi_IWidgetOverridesCache|default=false|skip=fast-abi-non-default-exclusive"))
         assertTrue(widgetContents, widgetContents.contains("internal const val MODE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
         assertFalse(widgetContents, widgetContents.contains("private val _iWidgetOverrides"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal val FAST_ABI_INTERFACE_SLOTS: List<String>"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal val FAST_ABI_INTERFACE_SLOTS: List<String>"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_GETTER_SLOT: Int = 8"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_SETTER_SLOT: Int = 9"))
     }
