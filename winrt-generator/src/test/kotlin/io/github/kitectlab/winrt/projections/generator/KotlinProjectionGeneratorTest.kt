@@ -3474,6 +3474,27 @@ class KotlinProjectionGeneratorTest {
                                     addMethodName = "add_Changed",
                                     removeMethodName = "remove_Changed",
                                 ),
+                                WinRtEventDefinition(
+                                    name = "Ticked",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodName = "add_Ticked",
+                                    removeMethodName = "remove_Ticked",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "Int"),
+                                    ),
+                                ),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -3540,9 +3561,14 @@ class KotlinProjectionGeneratorTest {
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         assertTrue(eventProjectionHelpers.contains("sourceClass = \"EventHandlerEventSource\""))
         assertTrue(eventProjectionHelpers.contains("usesSharedEventHandlerSource = true"))
+        assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
+        assertTrue(eventProjectionHelpers.contains("EventSource<io.github.kitectlab.winrt.projections.sample.foundation.WidgetHandler>"))
+        assertTrue(eventProjectionHelpers.contains("handler.invoke(__args[0] as kotlin.Int)"))
+        assertTrue(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" -> { obj, index -> _EventSource_Sample_Foundation_WidgetHandler(obj, index) }"))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources()"))
         assertTrue(eventProjectionHelpers.contains("WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)"))
         assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.registerEventSource"))
+        assertTrue(eventProjectionHelpers.contains("eventSourceFactory = eventSourceFactoryFor(entry)"))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources(install: (EventSourceEntry) -> Unit)"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
         assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))

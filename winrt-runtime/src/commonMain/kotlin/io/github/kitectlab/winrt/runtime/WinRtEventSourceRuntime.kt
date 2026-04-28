@@ -1,5 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
+typealias WinRtEventSourceFactory = (ComObjectReference, Int) -> EventSource<*>
+
 data class WinRtEventSourceDescriptor(
     val eventType: String,
     val ownerType: String,
@@ -7,6 +9,7 @@ data class WinRtEventSourceDescriptor(
     val abiEventType: String,
     val genericArguments: List<String>,
     val usesSharedEventHandlerSource: Boolean = false,
+    val eventSourceFactory: WinRtEventSourceFactory? = null,
 )
 
 object WinRtEventSourceRuntime {
@@ -33,6 +36,16 @@ object WinRtEventSourceRuntime {
         descriptorsByKey.values
             .filter { descriptor -> descriptor.ownerType == ownerType }
             .sortedWith(compareBy(WinRtEventSourceDescriptor::eventType, WinRtEventSourceDescriptor::sourceClass))
+
+    fun createEventSource(
+        eventType: String,
+        ownerType: String,
+        objectReference: ComObjectReference,
+        vtableIndexForAddHandler: Int,
+    ): EventSource<*>? =
+        descriptorFor(eventType, ownerType)
+            ?.eventSourceFactory
+            ?.invoke(objectReference, vtableIndexForAddHandler)
 
     internal fun clearForTests() {
         descriptorsByKey.clear()

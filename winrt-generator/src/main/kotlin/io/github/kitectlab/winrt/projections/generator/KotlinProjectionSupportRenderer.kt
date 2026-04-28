@@ -5,6 +5,7 @@ import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtEventDefinition
+import io.github.kitectlab.winrt.metadata.WinRtEventHelperSubclassDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
@@ -104,6 +105,8 @@ import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
 class KotlinProjectionSupportRenderer {
+    private val typeRenderer = KotlinProjectionRenderer()
+
     fun render(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
@@ -115,7 +118,7 @@ class KotlinProjectionSupportRenderer {
         return listOfNotNull(
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiations(genericInstantiationWriters),
-            renderEventProjectionHelpers(model, inventory),
+            renderEventProjectionHelpers(model, plans, inventory),
             renderAbiImplementationPlan(plans),
             renderTypeShapeWriterPlan(inventory, plans),
             renderNamespaceAdditions(inventory),
@@ -333,9 +336,11 @@ class KotlinProjectionSupportRenderer {
 
     private fun renderEventProjectionHelpers(
         model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
         inventory: WinRtMetadataProjectionInventory,
     ): KotlinProjectionFile? {
         val helpers = model.semanticHelpers()
+        val plansByType = plans.associateBy { it.type.qualifiedName }
         val subclassDescriptors = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
@@ -355,6 +360,18 @@ class KotlinProjectionSupportRenderer {
             appendLine("    val usesSharedEventHandlerSource: Boolean,")
             appendLine(")")
             appendLine()
+            subclassDescriptors
+                .filterNot { it.usesSharedEventHandlerSource }
+                .forEach { descriptor ->
+                    val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
+                    val delegatePlan = plansByType[rawEventType] ?: return@forEach
+                    val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
+                    if (!invokeShape.isSupportedProjectedDelegateShape()) {
+                        return@forEach
+                    }
+                    appendEventSourceSubclass(descriptor, delegatePlan, invokeShape)
+                    appendLine()
+                }
             appendLine("internal object WinRTEventProjectionHelpers {")
             appendLine("    val EVENT_SOURCES: List<EventSourceEntry> = listOf(")
             subclassDescriptors.forEach { descriptor ->
@@ -386,13 +403,30 @@ class KotlinProjectionSupportRenderer {
             appendLine("                    eventType = entry.eventType,")
             appendLine("                    ownerType = entry.ownerType,")
             appendLine("                    sourceClass = entry.sourceClass,")
-                    appendLine("                    abiEventType = entry.abiEventType,")
-                    appendLine("                    genericArguments = entry.genericArguments,")
-                    appendLine("                    usesSharedEventHandlerSource = entry.usesSharedEventHandlerSource,")
-                    appendLine("                ),")
+            appendLine("                    abiEventType = entry.abiEventType,")
+            appendLine("                    genericArguments = entry.genericArguments,")
+            appendLine("                    usesSharedEventHandlerSource = entry.usesSharedEventHandlerSource,")
+            appendLine("                    eventSourceFactory = eventSourceFactoryFor(entry),")
+            appendLine("                ),")
             appendLine("            )")
             appendLine("        }")
             appendLine("    }")
+            appendLine()
+            appendLine("    private fun eventSourceFactoryFor(entry: EventSourceEntry): io.github.kitectlab.winrt.runtime.WinRtEventSourceFactory? =")
+            appendLine("        when (entry.sourceClass) {")
+            subclassDescriptors
+                .filterNot { it.usesSharedEventHandlerSource }
+                .forEach { descriptor ->
+                    val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
+                    val delegatePlan = plansByType[rawEventType] ?: return@forEach
+                    val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
+                    if (!invokeShape.isSupportedProjectedDelegateShape()) {
+                        return@forEach
+                    }
+                    appendLine("            ${descriptor.sourceClassName.kotlinString()} -> { obj, index -> ${descriptor.sourceClassName}(obj, index) }")
+                }
+            appendLine("            else -> null")
+            appendLine("        }")
             appendLine()
             appendLine("    fun installEventSources(install: (EventSourceEntry) -> Unit) {")
             appendLine("        EVENT_SOURCES.forEach(install)")
@@ -560,6 +594,73 @@ class KotlinProjectionSupportRenderer {
         }
         return supportFile("WinRTNamespaceAdditions.kt", contents)
     }
+
+    private fun StringBuilder.appendEventSourceSubclass(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        delegatePlan: KotlinTypeProjectionPlan,
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ) {
+        val delegateType = typeRenderer.resolveTypeName(delegatePlan.type.qualifiedName).toString()
+        val parameterList = invokeShape.parameterBindings.joinToString(", ") { binding ->
+            "${binding.name}: ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
+        }
+        val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
+            "__args[$index] as ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
+        }
+        val invokeArguments = invokeShape.parameterBindings.joinToString(", ") { it.name }
+        appendLine("internal class ${descriptor.sourceClassName}(")
+        appendLine("    objectReference: io.github.kitectlab.winrt.runtime.ComObjectReference,")
+        appendLine("    vtableIndexForAddHandler: Int,")
+        appendLine(") : io.github.kitectlab.winrt.runtime.EventSource<$delegateType>(objectReference, vtableIndexForAddHandler) {")
+        appendLine("    override fun createMarshaler(handler: $delegateType): io.github.kitectlab.winrt.runtime.WinRtDelegateHandle =")
+        appendLine("        io.github.kitectlab.winrt.runtime.WinRtDelegateBridge.createDelegate(")
+        appendLine("            iid = io.github.kitectlab.winrt.runtime.Guid(${invokeShape.interfaceId.toString().kotlinString()}),")
+        appendLine("            parameterKinds = ${delegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding })},")
+        appendLine("            returnKind = ${delegateValueKindName(invokeShape.returnBinding)},")
+        appendLine("        ) { __args ->")
+        appendLine("            handler.invoke(${callbackArguments.joinToString(", ")})")
+        appendLine("        }")
+        appendLine()
+        appendLine("    override fun createEventSourceState(): io.github.kitectlab.winrt.runtime.EventSourceState<$delegateType> =")
+        appendLine("        object : io.github.kitectlab.winrt.runtime.EventSourceState<$delegateType>(io.github.kitectlab.winrt.runtime.RawAddress(nativeObjectReference.pointer.value), eventIndex) {")
+        appendLine("            override fun createEventInvoke(): $delegateType =")
+        appendLine("                $delegateType { $parameterList ->")
+        if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            appendLine("                    snapshotHandlers().forEach { handler -> handler.invoke($invokeArguments) }")
+        } else {
+            appendLine("                    var __result = ${defaultValueExpression(invokeShape.returnBinding)}")
+            appendLine("                    snapshotHandlers().forEach { handler -> __result = handler.invoke($invokeArguments) }")
+            appendLine("                    __result")
+        }
+        appendLine("                }")
+        appendLine("        }")
+        appendLine("}")
+    }
+
+    private fun delegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
+        bindings.joinToString(prefix = "listOf(", postfix = ")") { delegateValueKindName(it) }
+
+    private fun delegateValueKindName(binding: KotlinProjectionAbiTypeBinding): String =
+        typeRenderer.delegateInvokeValueKindCode(binding).toString()
+
+    private fun defaultValueExpression(binding: KotlinProjectionAbiTypeBinding): String =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.Boolean -> "false"
+            KotlinProjectionAbiValueKind.Int8 -> "0.toByte()"
+            KotlinProjectionAbiValueKind.UInt8 -> "0.toUByte()"
+            KotlinProjectionAbiValueKind.Int16 -> "0.toShort()"
+            KotlinProjectionAbiValueKind.UInt16 -> "0.toUShort()"
+            KotlinProjectionAbiValueKind.Char16 -> "'\\u0000'"
+            KotlinProjectionAbiValueKind.Int32,
+            KotlinProjectionAbiValueKind.Enum -> "0"
+            KotlinProjectionAbiValueKind.UInt32 -> "0.toUInt()"
+            KotlinProjectionAbiValueKind.Int64 -> "0L"
+            KotlinProjectionAbiValueKind.UInt64 -> "0.toULong()"
+            KotlinProjectionAbiValueKind.Float -> "0.0f"
+            KotlinProjectionAbiValueKind.Double -> "0.0"
+            KotlinProjectionAbiValueKind.String -> "\"\""
+            else -> "null"
+        }
 
     private fun supportFile(fileName: String, contents: String): KotlinProjectionFile =
         KotlinProjectionFile(
