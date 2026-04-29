@@ -383,8 +383,7 @@ object WinRtNuGetPackageResolver {
     }
 
     private fun packageIdentity(packageRoot: Path): WinRtNuGetPackageIdentity {
-        val nuspec = findNuspec(packageRoot)
-            ?: throw IllegalArgumentException("NuGet package root '$packageRoot' does not contain a .nuspec file.")
+        val nuspec = findNuspec(packageRoot) ?: return packageIdentityFromInstallDirectory(packageRoot)
         val builder = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
             setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
@@ -400,6 +399,22 @@ object WinRtNuGetPackageResolver {
         return WinRtNuGetPackageIdentity(
             packageId = metadata.childText("id"),
             version = metadata.childText("version"),
+        )
+    }
+
+    private fun packageIdentityFromInstallDirectory(packageRoot: Path): WinRtNuGetPackageIdentity {
+        val packageName = Files.list(packageRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() }
+                .map { it.fileName.toString() }
+                .firstOrNull { it.endsWith(".nupkg", ignoreCase = true) }
+                ?.removeSuffix(".nupkg")
+        } ?: packageRoot.fileName.toString()
+        val match = Regex("""^(.+)\.([0-9]+(?:\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?)$""").matchEntire(packageName)
+            ?: throw IllegalArgumentException("NuGet package root '$packageRoot' does not contain a .nuspec file and its directory name is not '<id>.<version>'.")
+        return WinRtNuGetPackageIdentity(
+            packageId = match.groupValues[1],
+            version = match.groupValues[2],
         )
     }
 
