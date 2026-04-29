@@ -641,6 +641,7 @@ class KotlinProjectionSupportRenderer {
             appendHeader("WinRTNamespaceAdditions")
             appendLine("internal data class NamespaceAdditionEntry(")
             appendLine("    val namespace: String,")
+            appendLine("    val kind: String,")
             appendLine(")")
             appendLine()
             appendLine("internal object WinRTNamespaceAdditions {")
@@ -648,6 +649,7 @@ class KotlinProjectionSupportRenderer {
             inventory.namespaceAdditions.forEach { addition ->
                 appendLine("        NamespaceAdditionEntry(")
                 appendLine("            namespace = ${addition.namespace.kotlinString()},")
+                appendLine("            kind = ${addition.kind.name.kotlinString()},")
                 appendLine("        ),")
             }
             appendLine("    )")

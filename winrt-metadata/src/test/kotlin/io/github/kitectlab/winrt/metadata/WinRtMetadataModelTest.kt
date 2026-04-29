@@ -2017,6 +2017,16 @@ class WinRtMetadataModelTest {
                     ),
                 ),
                 WinRtNamespace(
+                    name = "Windows.ApplicationModel.DataTransfer",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "DataTransferManager",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
                         WinRtTypeDefinition(namespace = "Sample.Foundation", name = "Widget", kind = WinRtTypeKind.RuntimeClass),
@@ -2028,12 +2038,16 @@ class WinRtMetadataModelTest {
         val inventory = model.projectionInventory(
             WinRtMetadataProjectionContext(
                 sources = emptyList(),
-                include = setOf("Windows.Foundation", "Microsoft.UI.Xaml"),
+                include = setOf("Windows.Foundation", "Microsoft.UI.Xaml", "Windows.ApplicationModel.DataTransfer"),
                 additionExclude = setOf("Microsoft.UI.Xaml.Media.Animation"),
             ),
         )
 
-        assertEquals(listOf("Windows.Foundation"), inventory.namespaceAdditions.map { it.namespace })
+        assertEquals(
+            listOf("Windows.ApplicationModel.DataTransfer", "Windows.Foundation"),
+            inventory.namespaceAdditions.map { it.namespace },
+        )
+        assertEquals(WinRtNamespaceAdditionKind.ComInteropAdapter, inventory.namespaceAdditions.first().kind)
         assertEquals(true, inventory.helperOutputs.namespaceAdditionsRequired)
         assertTrue("WinRTNamespaceAdditions.kt" in inventory.helperOutputs.requiredHelperFileNames)
     }

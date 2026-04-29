@@ -4856,6 +4856,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(typeShapeWriterPlan.contains("installModuleActivationFactories"))
         assertFalse(typeShapeWriterPlan.contains("moduleActivationEntries"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("Windows.Foundation"))
+        assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("SourceAddition"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("fun installNamespaceAdditions"))
         assertFalse(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("sourceFiles"))
     }

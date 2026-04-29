@@ -38,7 +38,13 @@ data class WinRtProjectionHelperOutputInventory(
 
 data class WinRtNamespaceAddition(
     val namespace: String,
+    val kind: WinRtNamespaceAdditionKind = WinRtNamespaceAdditionKind.SourceAddition,
 )
+
+enum class WinRtNamespaceAdditionKind {
+    SourceAddition,
+    ComInteropAdapter,
+}
 
 object WinRtNamespaceAdditions {
     val all: List<WinRtNamespaceAddition> = listOf(
@@ -56,6 +62,20 @@ object WinRtNamespaceAdditions {
         WinRtNamespaceAddition("Windows.UI.Xaml.Media"),
         WinRtNamespaceAddition("Windows.UI.Xaml.Media.Animation"),
         WinRtNamespaceAddition("Windows.UI.Xaml.Media.Media3D"),
+        WinRtNamespaceAddition("WinRT.Interop", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.ApplicationModel.DataTransfer", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.ApplicationModel.DataTransfer.DragDrop.Core", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.Graphics.Display", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.Graphics.Printing", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.Media", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.Media.PlayTo", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.Security.Authentication.Web.Core", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.Security.Credentials.UI", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.UI.ApplicationSettings", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.UI.Input", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.UI.Input.Core", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.UI.Input.Spatial", WinRtNamespaceAdditionKind.ComInteropAdapter),
+        WinRtNamespaceAddition("Windows.UI.ViewManagement", WinRtNamespaceAdditionKind.ComInteropAdapter),
     ).sortedBy(WinRtNamespaceAddition::namespace)
 
     fun forNamespaces(namespaces: Iterable<String>, filter: WinRtMetadataFilter): List<WinRtNamespaceAddition> {
