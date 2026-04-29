@@ -1268,10 +1268,7 @@ class KotlinProjectionPlanner(
     }
 
     private fun shouldEmitMetadataCompanion(type: WinRtTypeDefinition): Boolean = when (type.kind) {
-        WinRtTypeKind.Interface -> !type.isExclusiveTo ||
-            type.methods.isNotEmpty() ||
-            type.properties.isNotEmpty() ||
-            type.events.isNotEmpty()
+        WinRtTypeKind.Interface -> true
         WinRtTypeKind.RuntimeClass -> (!type.isStaticType && !type.isAttributeType) ||
             (type.isStaticType && type.activation.staticInterfaceNames.isNotEmpty())
         else -> false

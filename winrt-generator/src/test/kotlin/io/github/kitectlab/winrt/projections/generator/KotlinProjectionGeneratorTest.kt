@@ -612,7 +612,10 @@ class KotlinProjectionGeneratorTest {
             listOf(KotlinProjectionSpecializationKind.ExclusiveInterface),
             plansByName.getValue("IWidgetOverrides").specializationKinds,
         )
-        assertTrue(plansByName.getValue("IWidgetOverrides").companionKinds.isEmpty())
+        assertEquals(
+            listOf(KotlinProjectionCompanionKind.Metadata),
+            plansByName.getValue("IWidgetOverrides").companionKinds,
+        )
 
         assertEquals(KotlinProjectionVisibility.Internal, plansByName.getValue("InternalContract").visibility)
         assertEquals(
@@ -915,6 +918,34 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("private class NativeProjection("))
         assertTrue(contents.contains("internal fun wrap(instance: IUnknownReference): ICalculator = NativeProjection(instance)"))
         assertFalse(contents.contains("return object : ICalculator, IWinRTObject"))
+    }
+
+    @Test
+    fun generator_emits_metadata_for_empty_exclusive_interfaces_with_native_projection() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            isExclusiveTo = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model).single().contents
+
+        assertTrue(contents, contents.contains("private class NativeProjection("))
+        assertTrue(contents, contents.contains("public companion object Metadata"))
+        assertTrue(contents, contents.contains("TYPE_HANDLE: WinRtTypeHandle"))
+        assertTrue(contents, contents.contains("internal fun wrap(instance: IUnknownReference): IWidgetFactory = NativeProjection(instance)"))
+        assertFalse(contents, contents.contains("Unresolved"))
     }
 
     @Test
