@@ -1011,7 +1011,14 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .build(),
         )
     }
-    plan.instanceMemberBindings.forEach { binding ->
+    val abiSlotBindingNames = plan.abiSlotBindings.mapTo(mutableSetOf()) { it.constantName }
+    plan.instanceMemberBindings
+        .filterNot { it.bindingName in abiSlotBindingNames }
+        .filterNot { binding ->
+            plan.requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyPropertyChanged") &&
+                mappedTypeByAbiName(binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?"))?.descriptionName == "INotifyPropertyChanged"
+        }
+        .forEach { binding ->
         builder.addProperty(
             PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
                 .addModifiers(KModifier.INTERNAL, KModifier.CONST)

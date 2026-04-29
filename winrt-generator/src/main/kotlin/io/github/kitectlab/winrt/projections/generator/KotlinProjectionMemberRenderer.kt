@@ -225,12 +225,19 @@ internal fun KotlinProjectionRenderer.renderVisibility(visibility: KotlinProject
     KotlinProjectionVisibility.Internal -> KModifier.INTERNAL
 }
 
-internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodDefinition): FunSpec =
-    FunSpec.builder(method.name)
+internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodDefinition): FunSpec {
+    val objectShape = runtimeObjectMethodShape(method)
+    return FunSpec.builder(objectShape?.name ?: method.name)
         .addModifiers(KModifier.ABSTRACT)
-        .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .returns(resolveTypeName(method.returnTypeName))
+        .apply {
+            if (objectShape != null) {
+                addModifiers(KModifier.OVERRIDE)
+            }
+        }
+        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
         .build()
+}
 
 internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefinition, override: Boolean = false): FunSpec {
     val objectShape = runtimeObjectMethodShape(method)
@@ -696,6 +703,12 @@ internal fun KotlinProjectionRenderer.metadataSlotExpression(
 ): CodeBlock =
     if (slotInterfaceQualifiedName == "Windows.Foundation.IClosable" && slotConstantName == "CLOSE_SLOT") {
         CodeBlock.of("6")
+    } else if (mappedTypeByAbiName(slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")) != null) {
+        CodeBlock.of(
+            "%T.Metadata.%L",
+            projectionClassName(slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+            slotConstantName,
+        )
     } else {
         CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceQualifiedName), slotConstantName)
     }

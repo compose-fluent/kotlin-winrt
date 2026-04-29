@@ -552,6 +552,74 @@ internal fun KotlinProjectionRenderer.mappedCollectionReturnReadback(
     return null
 }
 
+internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? {
+    if (returnBinding.resolvedTypeName != "Windows.Foundation.Collections.IObservableVector") {
+        return null
+    }
+    val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
+    val binding = createMutableCollectionBindingPlan(
+        collectionKind = KotlinProjectionMutableCollectionKind.Vector,
+        ownerInterfaceQualifiedName = returnBinding.typeName,
+        ownerCachePropertyName = "__collectionRef",
+        slotInterfaceQualifiedName = "Windows.Foundation.Collections.IVector",
+        delegatePropertyName = "__observableVectorList",
+        typeArguments = listOf(elementBinding),
+        errorContext = returnBinding.typeName,
+        requireSupportedBinding = true,
+        bindingLocationLabel = "return",
+    ) ?: return null
+    val elementType = resolveTypeName(elementBinding.typeName)
+    val observableVectorType = resolveTypeName(returnBinding.typeName)
+    val vectorChangedHandlerType = projectionClassName("Windows.Foundation.Collections.VectorChangedEventHandler")
+        .parameterizedBy(elementType)
+    val vectorChangedEventType = WINRT_EVENT_CLASS_NAME.parameterizedBy(vectorChangedHandlerType)
+    val eventSourceType = WINRT_EVENT_SOURCE_CLASS_NAME.parameterizedBy(vectorChangedHandlerType)
+    return CodeBlock.of(
+        """
+        val __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))
+        val __observableVectorList = %L
+        return object : %T, %T by __observableVectorList, %T {
+            override val nativeObject: %T
+                get() = __collectionRef
+
+            override val vectorChanged: %T by lazy(%T.PUBLICATION) {
+                val __eventSource = %T.createEventSource(%S, %S, __collectionRef, %T.Metadata.VECTORCHANGED_ADD_SLOT) as? %T
+                __eventSource?.let { %T(it) } ?: error(%S)
+            }
+
+            override fun addVectorChanged(handler: %T): %T =
+                vectorChanged.add(handler)
+
+            override fun removeVectorChanged(token: %T) {
+                vectorChanged.remove(token)
+            }
+        }
+        """.trimIndent() + "\n",
+        IUNKNOWN_REFERENCE_CLASS_NAME,
+        PLATFORM_ABI_CLASS_NAME,
+        PLATFORM_ABI_CLASS_NAME,
+        renderMutableCollectionDelegateInitializer(binding),
+        observableVectorType,
+        MUTABLE_LIST_CLASS_NAME.parameterizedBy(elementType),
+        IWINRT_OBJECT_CLASS_NAME,
+        COM_OBJECT_REFERENCE_CLASS_NAME,
+        vectorChangedEventType,
+        LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+        WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME,
+        "Windows.Foundation.Collections.VectorChangedEventHandler<${elementBinding.resolvedTypeName}>",
+        "Windows.Foundation.Collections.IObservableVector",
+        projectionClassName("Windows.Foundation.Collections.IObservableVector"),
+        eventSourceType,
+        WINRT_EVENT_CLASS_NAME,
+        "Event source VectorChanged is not registered.",
+        vectorChangedHandlerType,
+        EVENT_REGISTRATION_TOKEN_CLASS_NAME,
+        EVENT_REGISTRATION_TOKEN_CLASS_NAME,
+    )
+}
+
 internal fun KotlinProjectionRenderer.readOnlyCollectionBindingForReturn(
     returnBinding: KotlinProjectionAbiTypeBinding,
 ): KotlinProjectionReadOnlyCollectionBinding? {

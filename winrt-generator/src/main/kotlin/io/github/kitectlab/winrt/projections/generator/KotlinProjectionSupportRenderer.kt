@@ -519,20 +519,13 @@ class KotlinProjectionSupportRenderer {
             appendLine(")")
             appendLine()
             appendLine("internal object WinRTAbiImplementationPlan {")
-            appendLine("    val ENTRIES: List<AbiImplementationEntry> = listOf(")
-            abiPlans.sortedBy { it.type.qualifiedName }.forEach { plan ->
-                appendLine("        AbiImplementationEntry(")
-                appendLine("            typeName = ${plan.type.qualifiedName.kotlinString()},")
-                appendLine("            writesAbi = ${plan.typeDeclarationDescriptor.writesAbiDeclaration},")
-                appendLine("            writesImplementationClass = ${plan.typeDeclarationDescriptor.writesImplementationClass},")
-                appendLine("            vtableSlots = ${plan.abiSlotBindings.map { it.constantName }.kotlinListLiteral()},")
-                appendLine("            genericInvokeSlots = ${plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty().kotlinListLiteral()},")
-                appendLine("            requiredInterfaces = ${plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty().kotlinListLiteral()},")
-                appendLine("            explicitForwards = ${plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty().kotlinListLiteral()},")
-                appendLine("            requiredMappedHelpers = ${plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().map { it.toSupportPlanString() }.kotlinListLiteral()},")
-                appendLine("        ),")
+            val sortedAbiPlans = abiPlans.sortedBy { it.type.qualifiedName }
+            val chunkedAbiPlans = sortedAbiPlans.chunked(96)
+            appendLine("    val ENTRIES: List<AbiImplementationEntry> = buildList {")
+            chunkedAbiPlans.indices.forEach { index ->
+                appendLine("        addAll(entriesChunk$index())")
             }
-            appendLine("    )")
+            appendLine("    }")
             appendLine("    val ENTRIES_BY_TYPE_NAME: Map<String, AbiImplementationEntry> = ENTRIES.associateBy { it.typeName }")
             appendLine()
             appendLine("    fun entryForType(typeName: String): AbiImplementationEntry? =")
@@ -547,6 +540,23 @@ class KotlinProjectionSupportRenderer {
             appendLine()
             appendLine("    fun requiredInterfaceNames(): Set<String> =")
             appendLine("        ENTRIES.flatMap { it.requiredInterfaces }.toSet()")
+            chunkedAbiPlans.forEachIndexed { index, chunk ->
+                appendLine()
+                appendLine("    private fun entriesChunk$index(): List<AbiImplementationEntry> = listOf(")
+                chunk.forEach { plan ->
+                    appendLine("        AbiImplementationEntry(")
+                    appendLine("            typeName = ${plan.type.qualifiedName.kotlinString()},")
+                    appendLine("            writesAbi = ${plan.typeDeclarationDescriptor.writesAbiDeclaration},")
+                    appendLine("            writesImplementationClass = ${plan.typeDeclarationDescriptor.writesImplementationClass},")
+                    appendLine("            vtableSlots = ${plan.abiSlotBindings.map { it.constantName }.kotlinListLiteral()},")
+                    appendLine("            genericInvokeSlots = ${plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty().kotlinListLiteral()},")
+                    appendLine("            requiredInterfaces = ${plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty().kotlinListLiteral()},")
+                    appendLine("            explicitForwards = ${plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty().kotlinListLiteral()},")
+                    appendLine("            requiredMappedHelpers = ${plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().map { it.toSupportPlanString() }.kotlinListLiteral()},")
+                    appendLine("        ),")
+                }
+                appendLine("    )")
+            }
             appendLine("}")
         }
         return supportFile("WinRTAbiImplementationPlan.kt", contents)
@@ -683,7 +693,12 @@ class KotlinProjectionSupportRenderer {
         appendLine("    override fun createEventSourceState(): io.github.kitectlab.winrt.runtime.EventSourceState<$delegateType> =")
         appendLine("        object : io.github.kitectlab.winrt.runtime.EventSourceState<$delegateType>(io.github.kitectlab.winrt.runtime.RawAddress(nativeObjectReference.pointer.value), eventIndex) {")
         appendLine("            override fun createEventInvoke(): $delegateType =")
-        appendLine("                $delegateType { $parameterList ->")
+        if (delegateType.startsWith("kotlin.Function") || mappedTypeByAbiName(delegatePlan.type.qualifiedName) != null) {
+            val inferredParameterList = invokeShape.parameterBindings.joinToString(", ") { it.name }
+            appendLine("                { $inferredParameterList ->")
+        } else {
+            appendLine("                $delegateType { $parameterList ->")
+        }
         if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             appendLine("                    snapshotHandlers().forEach { handler -> handler.invoke($invokeArguments) }")
         } else {

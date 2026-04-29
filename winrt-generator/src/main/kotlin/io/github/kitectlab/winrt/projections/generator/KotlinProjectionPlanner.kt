@@ -202,8 +202,8 @@ class KotlinProjectionPlanner(
             abiSlotBindings = planAbiSlotBindings(type, typesByQualifiedName, semanticHelpers),
             instanceMemberBindings = planInstanceMemberBindings(type, typesByQualifiedName, semanticHelpers),
             staticMemberBindings = planStaticMemberBindings(type, typesByQualifiedName, semanticHelpers),
-            readOnlyCollectionBindings = planReadOnlyCollectionBindings(type, typesByQualifiedName),
-            mutableCollectionBindings = planMutableCollectionBindings(type, typesByQualifiedName),
+            readOnlyCollectionBindings = planReadOnlyCollectionBindings(type, typesByQualifiedName, semanticHelpers),
+            mutableCollectionBindings = planMutableCollectionBindings(type, typesByQualifiedName, semanticHelpers),
             delegateInvokeShape =
                 if (type.kind == WinRtTypeKind.Delegate) {
                     classifyAbiTypeBinding(type.qualifiedName, type.namespace, typesByQualifiedName).delegateInvokeShape
@@ -323,11 +323,15 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): List<KotlinProjectionInstanceMemberBinding> {
-        if (type.kind != WinRtTypeKind.RuntimeClass) {
+        if (type.kind != WinRtTypeKind.RuntimeClass && type.kind != WinRtTypeKind.Interface) {
             return emptyList()
         }
         val candidateInterfaces = buildList {
-            type.defaultInterfaceName?.let(::add)
+            if (type.kind == WinRtTypeKind.Interface) {
+                add(type.qualifiedName)
+            } else {
+                type.defaultInterfaceName?.let(::add)
+            }
             type.implementedInterfaces
                 .filterNot { it.isDefault }
                 .mapTo(this) { it.interfaceName }
@@ -631,24 +635,20 @@ class KotlinProjectionPlanner(
     private fun planReadOnlyCollectionBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): List<KotlinProjectionReadOnlyCollectionBinding> {
-        if (type.kind != WinRtTypeKind.RuntimeClass) {
+        if (type.kind != WinRtTypeKind.RuntimeClass && type.kind != WinRtTypeKind.Interface) {
             return emptyList()
         }
-        val mutableBindings = planMutableCollectionBindings(type, typesByQualifiedName)
-        val candidateInterfaces = buildList {
-            type.defaultInterfaceName?.let(::add)
-            type.implementedInterfaces
-                .filterNot { it.isDefault }
-                .mapTo(this) { it.interfaceName }
-        }.distinct()
+        val mutableBindings = planMutableCollectionBindings(type, typesByQualifiedName, semanticHelpers)
+        val candidateInterfaces = collectionInterfaceTraversalRoots(type, semanticHelpers)
 
-        val bindings = candidateInterfaces.flatMap { ownerInterface ->
+        val bindings = candidateInterfaces.flatMap { (ownerInterface, currentInterface) ->
             collectReadOnlyCollectionBindings(
                 ownerInterface = ownerInterface,
-                defaultInterfaceName = type.defaultInterfaceName,
-                currentInterfaceName = ownerInterface,
-                currentNamespace = ownerInterface.substringBeforeLast('.', type.namespace),
+                defaultInterfaceName = type.defaultInterfaceName?.takeIf { type.kind == WinRtTypeKind.RuntimeClass },
+                currentInterfaceName = currentInterface,
+                currentNamespace = currentInterface.substringBeforeLast('.', type.namespace),
                 typesByQualifiedName = typesByQualifiedName,
                 visiting = mutableSetOf(),
             )
@@ -677,12 +677,7 @@ class KotlinProjectionPlanner(
             when (binding.kind) {
                 KotlinProjectionReadOnlyCollectionKind.Iterable -> {
                     val elementBinding = binding.elementBinding ?: return@filterNot false
-                    elementBinding.resolvedTypeName in vectorElements ||
-                        (
-                            elementBinding.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair &&
-                                (elementBinding.typeArguments.firstOrNull()?.resolvedTypeName to
-                                    elementBinding.typeArguments.getOrNull(1)?.resolvedTypeName) in mapEntryPairs
-                            )
+                    elementBinding.resolvedTypeName in vectorElements
                 }
 	    else -> false
 	}
@@ -692,23 +687,19 @@ class KotlinProjectionPlanner(
     private fun planMutableCollectionBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): List<KotlinProjectionMutableCollectionBinding> {
-        if (type.kind != WinRtTypeKind.RuntimeClass) {
+        if (type.kind != WinRtTypeKind.RuntimeClass && type.kind != WinRtTypeKind.Interface) {
             return emptyList()
         }
-        val candidateInterfaces = buildList {
-            type.defaultInterfaceName?.let(::add)
-            type.implementedInterfaces
-                .filterNot { it.isDefault }
-                .mapTo(this) { it.interfaceName }
-        }.distinct()
+        val candidateInterfaces = collectionInterfaceTraversalRoots(type, semanticHelpers)
 
-        return candidateInterfaces.flatMap { ownerInterface ->
+        return candidateInterfaces.flatMap { (ownerInterface, currentInterface) ->
             collectMutableCollectionBindings(
                 ownerInterface = ownerInterface,
-                defaultInterfaceName = type.defaultInterfaceName,
-                currentInterfaceName = ownerInterface,
-                currentNamespace = ownerInterface.substringBeforeLast('.', type.namespace),
+                defaultInterfaceName = type.defaultInterfaceName?.takeIf { type.kind == WinRtTypeKind.RuntimeClass },
+                currentInterfaceName = currentInterface,
+                currentNamespace = currentInterface.substringBeforeLast('.', type.namespace),
                 typesByQualifiedName = typesByQualifiedName,
                 visiting = mutableSetOf(),
             )
@@ -721,6 +712,31 @@ class KotlinProjectionPlanner(
                 append(binding.keyBinding?.resolvedTypeName)
                 append('|')
                 append(binding.valueBinding?.resolvedTypeName)
+            }
+        }
+    }
+
+    private fun collectionInterfaceTraversalRoots(
+        type: WinRtTypeDefinition,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): List<Pair<String, String>> {
+        val ownerInterfaces = buildList {
+            if (type.kind == WinRtTypeKind.Interface) {
+                add(type.qualifiedName)
+            } else {
+                type.defaultInterfaceName?.let(::add)
+            }
+            type.implementedInterfaces
+                .filterNot { it.isDefault }
+                .mapTo(this) { it.interfaceName }
+        }.distinct()
+        val requiredInterfaces = semanticHelpers.requiredInterfaceAugmentationDescriptor(type).requiredInterfaceNames
+        return ownerInterfaces.flatMap { ownerInterface ->
+            buildList {
+                add(ownerInterface to ownerInterface)
+                requiredInterfaces.forEach { requiredInterface ->
+                    add(ownerInterface to requiredInterface)
+                }
             }
         }
     }

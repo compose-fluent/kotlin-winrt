@@ -425,7 +425,20 @@ internal object XamlSystemProjectionMappings {
 }
 
 internal object WinRtCommandProjection
-internal object WinRtPropertyChangedNotifierProjection
+object WinRtPropertyChangedNotifierProjection {
+    fun fromAbi(reference: IUnknownReference): WinRtPropertyChangedNotifier =
+        createPropertyChangedNotifierObject(reference.asInspectable())
+
+    fun fromAbi(reference: IInspectableReference): WinRtPropertyChangedNotifier =
+        createPropertyChangedNotifierObject(reference)
+
+    fun fromAbi(pointer: RawAddress): WinRtPropertyChangedNotifier? =
+        if (PlatformAbi.isNull(pointer)) {
+            null
+        } else {
+            createPropertyChangedNotifierObject(IInspectableReference(pointer.asRawComPtr(), IID.IInspectable))
+        }
+}
 internal object WinRtCollectionChangedNotifierProjection
 object WinRtDataErrorInfoProjection {
     fun fromAbi(reference: IUnknownReference): WinRtDataErrorInfo =

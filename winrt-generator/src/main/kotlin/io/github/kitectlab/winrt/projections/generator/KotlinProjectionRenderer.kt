@@ -191,16 +191,21 @@ class KotlinProjectionRenderer {
             builder.addTypeVariable(TypeVariableName("T$index"))
         }
         plan.mutableCollectionBindings.forEach { binding ->
-            builder.addProperty(renderMutableCollectionDelegateProperty(binding))
-            addMutableCollectionForwardMembers(builder, binding)
+            val nativeBinding = binding.copy(ownerCachePropertyName = "nativeObject")
+            builder.addProperty(renderMutableCollectionDelegateProperty(nativeBinding))
+            if (nativeBinding.kind == KotlinProjectionMutableCollectionKind.Map) {
+                builder.addSuperinterface(mapIterableType(nativeBinding))
+            }
+            addMutableCollectionForwardMembers(builder, nativeBinding)
         }
         plan.readOnlyCollectionBindings
             .filterNot { readOnlyBinding ->
                 plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
             }
             .forEach { binding ->
-                builder.addProperty(renderReadOnlyCollectionDelegateProperty(binding))
-                addReadOnlyCollectionForwardMembers(builder, binding)
+                val nativeBinding = binding.copy(ownerCachePropertyName = "nativeObject")
+                builder.addProperty(renderReadOnlyCollectionDelegateProperty(nativeBinding))
+                addReadOnlyCollectionForwardMembers(builder, nativeBinding)
             }
         if (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) {
             builder.addFunction(
@@ -272,7 +277,7 @@ class KotlinProjectionRenderer {
             slotExpression = metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods)),
             callPlan = callPlan,
         ) ?: error("Generator interface proxy parity failed to emit ${method.name}")
-        val objectShape = closableMethodShape(slotInterfaceType, method)
+        val objectShape = closableMethodShape(slotInterfaceType, method) ?: runtimeObjectMethodShape(method)
         return FunSpec.builder(objectShape?.name ?: method.name)
             .addModifiers(KModifier.OVERRIDE)
             .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
@@ -357,9 +362,10 @@ class KotlinProjectionRenderer {
 
     internal fun canRenderInterfaceProxy(plan: KotlinTypeProjectionPlan): Boolean =
         !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
-            !isMappedCollectionInterfaceName(plan.type.qualifiedName) &&
-            plan.readOnlyCollectionBindings.isEmpty() &&
-            plan.mutableCollectionBindings.isEmpty() &&
+            mappedTypeByAbiName(plan.type.qualifiedName)?.abiValueKind != KotlinProjectionAbiValueKind.MappedKeyValuePair &&
+            (!isMappedCollectionInterfaceName(plan.type.qualifiedName) || plan.readOnlyCollectionBindings.isNotEmpty() || plan.mutableCollectionBindings.isNotEmpty()) &&
+            !(plan.type.genericParameterCount > 0 && (plan.readOnlyCollectionBindings.isNotEmpty() || plan.mutableCollectionBindings.isNotEmpty())) &&
+            !(plan.type.genericParameterCount > 0 && plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().isNotEmpty()) &&
             collectInterfaceProxyTypes(plan).all { interfaceType ->
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).all { method ->
                 runCatching {
@@ -394,28 +400,80 @@ class KotlinProjectionRenderer {
         }
 
     private fun collectInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<WinRtTypeDefinition> =
-        collectInterfaceProxyTypes(plan.type, plan, linkedSetOf())
+        collectInterfaceProxyTypes(plan.type, plan, linkedSetOf(), emptyList())
 
     private fun collectInterfaceProxyTypes(
         interfaceType: WinRtTypeDefinition,
         plan: KotlinTypeProjectionPlan,
         visited: MutableSet<String>,
+        genericArguments: List<WinRtTypeRef>,
     ): List<WinRtTypeDefinition> {
         if (!visited.add(interfaceType.qualifiedName)) {
             return emptyList()
         }
         return buildList {
             interfaceType.implementedInterfaces.forEach { implemented ->
-                val implementedRawName = implemented.interfaceName.substringBefore('<').removeSuffix("?")
-                if (isRuntimeOwnedMappedTypeName(implementedRawName) || isMappedCollectionInterfaceName(implementedRawName)) {
+                val substitutedInterfaceName = implemented.interfaceType
+                    .substituteTypeParameters(genericArguments)
+                    .normalized()
+                    .typeName
+                val implementedRawName = substitutedInterfaceName.substringBefore('<').removeSuffix("?")
+                val mappedType = mappedTypeByAbiName(implementedRawName)
+                if (
+                    isRuntimeOwnedMappedTypeName(implementedRawName) ||
+                    isMappedCollectionInterfaceName(implementedRawName) ||
+                    mappedType?.descriptionName == "Iterator"
+                ) {
                     return@forEach
                 }
                 plan.typesByQualifiedName[implementedRawName]?.let { baseType ->
-                    addAll(collectInterfaceProxyTypes(baseType, plan, visited))
+                    addAll(collectInterfaceProxyTypes(baseType, plan, visited, genericArgumentTypeRefs(substitutedInterfaceName)))
                 }
             }
-            add(interfaceType)
+            add(interfaceType.substituteInterfaceProxyMembers(genericArguments))
         }
+    }
+
+    private fun WinRtTypeDefinition.substituteInterfaceProxyMembers(
+        genericArguments: List<WinRtTypeRef>,
+    ): WinRtTypeDefinition =
+        if (genericArguments.isEmpty()) {
+            this
+        } else {
+            copy(
+                methods = methods.map { method ->
+                    val substitutedReturnType = method.returnType.substituteTypeParameters(genericArguments).normalized()
+                    method.copy(
+                        returnTypeName = substitutedReturnType.typeName,
+                        returnTypeSignature = substitutedReturnType,
+                        parameters = method.parameters.map { parameter ->
+                            val substitutedType = parameter.type.substituteTypeParameters(genericArguments).normalized()
+                            parameter.copy(
+                                typeName = substitutedType.typeName,
+                                typeSignature = substitutedType,
+                                typeIsByRef = substitutedType.isByRef,
+                            )
+                        },
+                    )
+                },
+                properties = properties.map { property ->
+                    val substitutedType = property.type.substituteTypeParameters(genericArguments).normalized()
+                    property.copy(typeName = substitutedType.typeName, typeSignature = substitutedType)
+                },
+                events = events.map { event ->
+                    val substitutedType = event.delegateType.substituteTypeParameters(genericArguments).normalized()
+                    event.copy(delegateTypeName = substitutedType.typeName, delegateTypeSignature = substitutedType)
+                },
+            )
+        }
+
+    private fun genericArgumentTypeRefs(typeName: String): List<WinRtTypeRef> {
+        val trimmed = typeName.trim()
+        if ('<' !in trimmed || !trimmed.endsWith('>')) {
+            return emptyList()
+        }
+        return splitGenericArguments(trimmed.substringAfter('<').substringBeforeLast('>'))
+            .map(WinRtTypeRef::fromDisplayName)
     }
 
     internal fun renderAbiTypeBinding(
@@ -655,6 +713,9 @@ class KotlinProjectionRenderer {
         plan.mutableCollectionBindings.forEach { binding ->
             builder.addProperty(renderMutableCollectionDelegateProperty(binding))
             builder.addSuperinterface(mutableCollectionProjectedType(binding))
+            if (binding.kind == KotlinProjectionMutableCollectionKind.Map) {
+                builder.addSuperinterface(mapIterableType(binding))
+            }
             addMutableCollectionForwardMembers(builder, binding)
         }
         val readOnlyCollectionBindings = plan.readOnlyCollectionBindings.filterNot { readOnlyBinding ->
@@ -670,6 +731,10 @@ class KotlinProjectionRenderer {
         }
         if (plan.usesMappedDataErrorInfoAugmentation) {
             addMappedDataErrorInfoForwardMembers(builder, plan)
+        }
+        if (plan.usesMappedPropertyChangedAugmentation) {
+            builder.addSuperinterface(WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME)
+            addMappedPropertyChangedForwardMembers(builder)
         }
         if (plan.usesMappedDisposableAugmentation) {
             builder.addSuperinterface(AUTO_CLOSEABLE_CLASS_NAME)
@@ -711,6 +776,7 @@ class KotlinProjectionRenderer {
         plan.type.events
             .filterNot { it.isStatic }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "ErrorsChanged" }
+            .filterNot { plan.usesMappedPropertyChangedAugmentation && it.name == "PropertyChanged" }
             .forEach { event ->
             val addBinding = plan.instanceMemberBindings.firstOrNull {
                 it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
@@ -947,6 +1013,19 @@ class KotlinProjectionRenderer {
                 .build(),
         )
         builder.addFunction(FunSpec.builder("remove").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).returns(valueType.copy(nullable = true)).addCode("return %L.remove(key)\n", binding.delegatePropertyName).build())
+        builder.addFunction(
+            FunSpec.builder("iterator")
+                .addModifiers(KModifier.OVERRIDE)
+                .returns(Iterator::class.asClassName().parameterizedBy(Map.Entry::class.asClassName().parameterizedBy(keyType, valueType)))
+                .addCode("return %L.entries.iterator()\n", binding.delegatePropertyName)
+                .build(),
+        )
+    }
+
+    private fun mapIterableType(binding: KotlinProjectionMutableCollectionBinding): TypeName {
+        val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
+        val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
+        return Iterable::class.asClassName().parameterizedBy(Map.Entry::class.asClassName().parameterizedBy(keyType, valueType))
     }
 
     private val KotlinTypeProjectionPlan.usesMappedDisposableAugmentation: Boolean
@@ -962,6 +1041,9 @@ class KotlinProjectionRenderer {
 
     private val KotlinTypeProjectionPlan.usesMappedDataErrorInfoAugmentation: Boolean
         get() = requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyDataErrorInfo")
+
+    private val KotlinTypeProjectionPlan.usesMappedPropertyChangedAugmentation: Boolean
+        get() = requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyPropertyChanged")
 
     private val KotlinTypeProjectionPlan.hasDirectMappedDataErrorInfoSuperinterface: Boolean
         get() = sequenceOf(defaultInterfaceName)
@@ -1014,6 +1096,36 @@ class KotlinProjectionRenderer {
                 .addModifiers(KModifier.OVERRIDE)
                 .addParameter("handler", WINRT_DATA_ERRORS_CHANGED_HANDLER_CLASS_NAME)
                 .addCode("__dataErrorInfo.removeErrorsChanged(handler)\n")
+                .build(),
+        )
+    }
+
+    private fun addMappedPropertyChangedForwardMembers(builder: TypeSpec.Builder) {
+        builder.addProperty(
+            PropertySpec.builder("__propertyChangedNotifier", WINRT_PROPERTY_CHANGED_NOTIFIER_CLASS_NAME)
+                .addModifiers(KModifier.PRIVATE)
+                .delegate(
+                    CodeBlock.of(
+                        "lazy(%T.PUBLICATION) { %T.fromAbi(%L) }",
+                        LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                        WINRT_PROPERTY_CHANGED_NOTIFIER_PROJECTION_CLASS_NAME,
+                        "_inner",
+                    ),
+                )
+                .build(),
+        )
+        builder.addFunction(
+            FunSpec.builder("addPropertyChanged")
+                .addModifiers(KModifier.OVERRIDE)
+                .addParameter("handler", WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME)
+                .addCode("__propertyChangedNotifier.addPropertyChanged(handler)\n")
+                .build(),
+        )
+        builder.addFunction(
+            FunSpec.builder("removePropertyChanged")
+                .addModifiers(KModifier.OVERRIDE)
+                .addParameter("handler", WINRT_PROPERTY_CHANGED_HANDLER_CLASS_NAME)
+                .addCode("__propertyChangedNotifier.removePropertyChanged(handler)\n")
                 .build(),
         )
     }
@@ -1251,6 +1363,7 @@ class KotlinProjectionRenderer {
             .filterNot { required ->
                 val mappedType = mappedTypeByAbiName(required.interfaceName.substringBefore('<').removeSuffix("?"))
                 mappedType?.descriptionName == "INotifyDataErrorInfo" ||
+                    mappedType?.descriptionName == "INotifyPropertyChanged" ||
                     mappedType?.descriptionName == "IClosable" ||
                     mappedType?.abiValueKind == KotlinProjectionAbiValueKind.MappedBindableIterable ||
                     mappedType?.abiValueKind == KotlinProjectionAbiValueKind.MappedBindableVectorView ||
@@ -1609,7 +1722,11 @@ class KotlinProjectionRenderer {
         if (qualifiedName in visiting) {
             return null
         }
-        val type = typesByQualifiedName[qualifiedName]?.takeIf { it.kind == WinRtTypeKind.Struct } ?: return null
+        val resolvedType = typesByQualifiedName[qualifiedName] ?: return null
+        if (resolvedType.kind == WinRtTypeKind.Enum) {
+            return "enum($qualifiedName;i4)"
+        }
+        val type = resolvedType.takeIf { it.kind == WinRtTypeKind.Struct } ?: return null
         val fieldSignatures = type.fields
             .filterNot { it.isStatic || it.isLiteral }
             .map { field ->
@@ -1671,6 +1788,16 @@ class KotlinProjectionRenderer {
         }
         if (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) != null) {
             return CodeBlock.of("%T(%S, %T.ADDRESS)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME)
+        }
+        val enumQualifiedName = field.typeName.substringBefore('<').removeSuffix("?").let { rawTypeName ->
+            when {
+                typesByQualifiedName[rawTypeName]?.kind == WinRtTypeKind.Enum -> rawTypeName
+                currentNamespace.isNotBlank() && typesByQualifiedName["$currentNamespace.$rawTypeName"]?.kind == WinRtTypeKind.Enum -> "$currentNamespace.$rawTypeName"
+                else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") && typesByQualifiedName[it]?.kind == WinRtTypeKind.Enum }
+            }
+        }
+        if (enumQualifiedName != null) {
+            return CodeBlock.of("%T(%S, %T.INT32)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME)
         }
         val fieldQualifiedName = nativeNestedStructFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
         val fieldType = runCatching { resolveTypeName(fieldQualifiedName) as? ClassName }.getOrNull() ?: return null
@@ -1803,7 +1930,9 @@ class KotlinProjectionRenderer {
             "Char" -> CodeBlock.of("%T.readChar16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
             "Guid",
             "System.Guid" -> CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            else -> nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName) ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
+            else -> nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName)
+                ?: nativeStructEnumFieldReadCode(field, slice, currentNamespace, typesByQualifiedName)
+                ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
         }
     }
 
@@ -1842,7 +1971,43 @@ class KotlinProjectionRenderer {
             "Char" -> CodeBlock.of("%T.writeChar16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
             "Guid",
             "System.Guid" -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            else -> nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName) ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
+            else -> nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName)
+                ?: nativeStructEnumFieldWriteCode(field, value, slice, currentNamespace, typesByQualifiedName)
+                ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
+        }
+    }
+
+    private fun nativeStructEnumFieldReadCode(
+        field: WinRtFieldDefinition,
+        slice: CodeBlock,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val enumType = nativeStructEnumFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
+        return CodeBlock.of("%T.Metadata.fromAbi(%T.readInt32(%L))", resolveTypeName(enumType), PLATFORM_ABI_CLASS_NAME, slice)
+    }
+
+    private fun nativeStructEnumFieldWriteCode(
+        field: WinRtFieldDefinition,
+        value: CodeBlock,
+        slice: CodeBlock,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val enumType = nativeStructEnumFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
+        return CodeBlock.of("%T.writeInt32(%L, %T.Metadata.toAbi(%L))", PLATFORM_ABI_CLASS_NAME, slice, resolveTypeName(enumType), value)
+    }
+
+    private fun nativeStructEnumFieldTypeName(
+        typeName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): String? {
+        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        return when {
+            typesByQualifiedName[rawTypeName]?.kind == WinRtTypeKind.Enum -> rawTypeName
+            currentNamespace.isNotBlank() && typesByQualifiedName["$currentNamespace.$rawTypeName"]?.kind == WinRtTypeKind.Enum -> "$currentNamespace.$rawTypeName"
+            else -> typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") && typesByQualifiedName[it]?.kind == WinRtTypeKind.Enum }
         }
     }
 

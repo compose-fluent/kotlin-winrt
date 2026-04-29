@@ -491,7 +491,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
                 )
             }
         KotlinProjectionAbiValueKind.ProjectedInterface ->
-            resolvedReturnClassName(returnBinding)?.let { returnType ->
+            observableVectorReturnReadback(returnBinding) ?: resolvedReturnClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
                     "val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nval __result = %T.Metadata.wrap(__resultRef)\nreturn __result\n",
                     IUNKNOWN_REFERENCE_CLASS_NAME,
