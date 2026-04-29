@@ -259,18 +259,6 @@ class KotlinProjectionPlanner(
         )
     }
 
-    private fun KotlinProjectionMappedType.isRuntimeOwnedProjection(): Boolean =
-        customStructAbi != null ||
-            customObjectAbi != null ||
-            abiQualifiedName in setOf(
-                "System.Object",
-                "Windows.Foundation.EventRegistrationToken",
-                "Windows.Foundation.HResult",
-                "Windows.Foundation.IClosable",
-                "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
-                "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
-            )
-
     private fun planAbiSlotBindings(
         type: WinRtTypeDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,

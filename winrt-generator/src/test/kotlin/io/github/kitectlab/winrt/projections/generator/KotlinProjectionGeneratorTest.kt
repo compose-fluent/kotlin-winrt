@@ -174,7 +174,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
         assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: ComObjectReference"))
+        assertTrue(jsonObject, jsonObject.contains("protected val _defaultInterface: ComObjectReference"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
         assertTrue(jsonArray, jsonArray.contains("fun getStringAt(index: UInt): String"))
@@ -824,7 +824,7 @@ class KotlinProjectionGeneratorTest {
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
-        assertTrue(widgetContents.contains("private val _defaultInterface: ComObjectReference"))
+        assertTrue(widgetContents.contains("protected val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
@@ -3951,7 +3951,7 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.endsWith("/FastDefaultExclusiveWidget.kt") }
             .contents
 
-        assertTrue(widgetContents, widgetContents.contains("private val _defaultInterface: ComObjectReference"))
+        assertTrue(widgetContents, widgetContents.contains("protected val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents, widgetContents.contains("getDefaultInterfaceObjectReference(8)"))
         assertTrue(widgetContents, widgetContents.contains("initializeBySourceType("))
         assertFalse(widgetContents, widgetContents.contains("initializeDependencies(entry) { }"))
@@ -5230,6 +5230,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_marshals_string_collection_parameters_with_runtime_value_adapter() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IStringSink",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setNames",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("names", "Windows.Foundation.Collections.IIterable<String>"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringSink",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IStringSink",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setNames",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("names", "Windows.Foundation.Collections.IIterable<String>"),
+                                    ),
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IStringSink", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("StringSink.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(names, WinRtReferenceValueAdapters.string)"))
+        assertFalse(contents, contents.contains("createMarshaler(names, null)"))
+    }
+
+    @Test
     fun generator_marshals_winui_bindable_collection_parameters_and_returns() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -5407,6 +5462,108 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("override fun close()"))
         assertTrue(contents, contents.contains("WinRtClosableObject(_inner).close()"))
         assertFalse(contents, contents.contains("IClosable.Metadata.IID"))
+        assertFalse(contents, contents.contains("private val _iClosable"))
+        assertFalse(contents, contents.contains("import io.github.kitectlab.winrt.projections.windows.foundation.IClosable"))
+    }
+
+    @Test
+    fun generator_maps_projected_closable_interface_close_to_kotlin_close() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IClosable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Close", returnTypeName = "Unit", methodRowId = 6),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IOutputStream",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555565"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.IClosable"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IOutputStream.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("public interface IOutputStream : AutoCloseable"))
+        assertTrue(contents, contents.contains("override fun close()"))
+        assertTrue(contents, contents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer, slot = 6)"))
+        assertFalse(contents, contents.contains("override fun Close()"))
+        assertFalse(contents, contents.contains("AutoCloseable.Metadata"))
+    }
+
+    @Test
+    fun generator_marks_default_interface_cache_open_and_override_across_runtime_class_hierarchy() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBaseWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555566"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IDerivedWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555567"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "BaseWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IBaseWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBaseWidget", isDefault = true),
+                            ),
+                            isSealedType = false,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "DerivedWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Foundation.BaseWidget",
+                            defaultInterfaceName = "Sample.Foundation.IDerivedWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IDerivedWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertTrue(files.getValue("BaseWidget.kt").contents.contains("protected open val _defaultInterface"))
+        assertTrue(files.getValue("DerivedWidget.kt").contents.contains("protected override val _defaultInterface"))
     }
 
     @Test

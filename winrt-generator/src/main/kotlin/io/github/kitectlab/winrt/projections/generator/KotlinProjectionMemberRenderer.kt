@@ -311,20 +311,21 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         .build()
 }
 
-private enum class RuntimeObjectMethodKind {
+internal enum class RuntimeObjectMethodKind {
     ToString,
     Equals,
     HashCode,
+    Close,
 }
 
-private data class RuntimeObjectMethodShape(
+internal data class RuntimeObjectMethodShape(
     val kind: RuntimeObjectMethodKind,
     val name: String,
     val returnType: TypeName,
     val parameters: List<ParameterSpec>,
 )
 
-private fun runtimeObjectMethodShape(method: WinRtMethodDefinition): RuntimeObjectMethodShape? =
+internal fun runtimeObjectMethodShape(method: WinRtMethodDefinition): RuntimeObjectMethodShape? =
     when {
         method.name == "ToString" && method.parameters.isEmpty() && method.returnTypeName == "String" ->
             RuntimeObjectMethodShape(
@@ -348,6 +349,26 @@ private fun runtimeObjectMethodShape(method: WinRtMethodDefinition): RuntimeObje
                 parameters = emptyList(),
             )
         else -> null
+    }
+
+internal fun closableMethodShape(
+    slotInterfaceType: WinRtTypeDefinition,
+    method: WinRtMethodDefinition,
+): RuntimeObjectMethodShape? =
+    if (
+        slotInterfaceType.qualifiedName == "Windows.Foundation.IClosable" &&
+        method.name == "Close" &&
+        method.parameters.isEmpty() &&
+        method.returnTypeName == "Unit"
+    ) {
+        RuntimeObjectMethodShape(
+            kind = RuntimeObjectMethodKind.Close,
+            name = "close",
+            returnType = UNIT,
+            parameters = emptyList(),
+        )
+    } else {
+        null
     }
 
 private fun KotlinProjectionRenderer.renderObjectEqualsInvocation(
@@ -648,20 +669,31 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     ) ?: return null
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
     val invocation = renderInlineAbiInvocation(
-        invokeTargetExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
-        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), slotConstantName),
-        callPlan = callPlan,
-    ) ?: return null
+            invokeTargetExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
+            slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName),
+            callPlan = callPlan,
+        ) ?: return null
+    val objectShape = closableMethodShape(slotInterfaceType, method)
     val projectedAttributes = slotInterfaceType.projectedAttributes()
         .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute)
-    return FunSpec.builder(method.name)
+    return FunSpec.builder(objectShape?.name ?: method.name)
         .addProjectedAttributeAnnotations(projectedAttributes)
         .addModifiers(KModifier.OVERRIDE)
-        .returns(resolveTypeName(method.returnTypeName))
-        .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
+        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
         .build()
 }
+
+internal fun KotlinProjectionRenderer.metadataSlotExpression(
+    slotInterfaceType: WinRtTypeDefinition,
+    slotConstantName: String,
+): CodeBlock =
+    if (slotInterfaceType.qualifiedName == "Windows.Foundation.IClosable" && slotConstantName == "CLOSE_SLOT") {
+        CodeBlock.of("6")
+    } else {
+        CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), slotConstantName)
+    }
 
 private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     plan: KotlinTypeProjectionPlan,

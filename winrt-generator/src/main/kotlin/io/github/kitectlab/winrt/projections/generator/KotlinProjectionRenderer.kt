@@ -206,7 +206,7 @@ class KotlinProjectionRenderer {
                         override = true,
                         eventSourceOwnerTypeName = interfaceType.qualifiedName,
                         eventSourceObjectReference = CodeBlock.of("nativeObject"),
-                        eventSourceAddSlot = CodeBlock.of("%T.Metadata.%L", resolveTypeName(interfaceType.qualifiedName), "${event.name.uppercase()}_ADD_SLOT"),
+                        eventSourceAddSlot = metadataSlotExpression(interfaceType, "${event.name.uppercase()}_ADD_SLOT"),
                         fallbackToAddRemove = false,
                     ),
                 )
@@ -244,13 +244,14 @@ class KotlinProjectionRenderer {
         )
         val invocation = renderInlineAbiInvocation(
             invokeTargetExpression = "nativeObject",
-            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), method.abiSlotConstantName(slotInterfaceType.methods)),
+            slotExpression = metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods)),
             callPlan = callPlan,
         ) ?: error("Generator interface proxy parity failed to emit ${method.name}")
-        return FunSpec.builder(method.name)
+        val objectShape = closableMethodShape(slotInterfaceType, method)
+        return FunSpec.builder(objectShape?.name ?: method.name)
             .addModifiers(KModifier.OVERRIDE)
-            .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-            .returns(resolveTypeName(method.returnTypeName))
+            .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+            .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
             .addCode("%L\n", invocation)
             .build()
     }
@@ -486,6 +487,8 @@ class KotlinProjectionRenderer {
             ?.let(objectReferencePlansByInterface::get)
         if (plan.defaultInterfaceIid != null && defaultObjectReferencePlan?.skippedReason == null) {
             val defaultCacheType = if (
+                plan.runtimeClassBaseTypeName != null ||
+                plan.hasRuntimeClassDerivedTypes ||
                 defaultObjectReferencePlan?.usesInner == true ||
                 defaultObjectReferencePlan?.usesDefaultInterfaceObjRef == true
             ) {
@@ -495,7 +498,13 @@ class KotlinProjectionRenderer {
             }
             builder.addProperty(
                 PropertySpec.builder("_defaultInterface", defaultCacheType)
-                    .addModifiers(KModifier.PRIVATE)
+                    .addModifiers(KModifier.PROTECTED)
+                    .apply {
+                        when {
+                            plan.runtimeClassBaseTypeName != null -> addModifiers(KModifier.OVERRIDE)
+                            plan.hasRuntimeClassDerivedTypes -> addModifiers(KModifier.OPEN)
+                        }
+                    }
                     .apply {
                         if (defaultObjectReferencePlan?.usesInner == true) {
                             getter(
@@ -514,6 +523,7 @@ class KotlinProjectionRenderer {
         }
         plan.implementedInterfaceBindings
             .filter { it.iid != null }
+            .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
             .filter { binding ->
                 objectReferencePlansByInterface[binding.qualifiedName.substringBefore('<')]?.skippedReason == null
             }
@@ -537,6 +547,7 @@ class KotlinProjectionRenderer {
         }
         requiredInterfaceCacheBindings(plan)
             .filter { it.iid != null }
+            .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
             .forEach { binding ->
                 builder.addProperty(
                     PropertySpec.builder(
@@ -556,6 +567,7 @@ class KotlinProjectionRenderer {
             }
         plan.defaultInterfaceName
             ?.takeUnless(::isMappedCollectionInterfaceName)
+            ?.takeUnless(::isRuntimeOwnedMappedTypeName)
             ?.takeIf { interfaceName -> plan.isPublicRuntimeClassInterface(interfaceName) }
             ?.let { defaultInterfaceName ->
             builder.addSuperinterface(resolveTypeName(defaultInterfaceName))
@@ -565,6 +577,9 @@ class KotlinProjectionRenderer {
             .filter { implemented -> plan.isPublicRuntimeClassInterface(implemented.interfaceName) }
             .filterNot { implemented ->
                 isMappedCollectionInterfaceName(implemented.interfaceName)
+            }
+            .filterNot { implemented ->
+                isRuntimeOwnedMappedTypeName(implemented.interfaceName)
             }
             .forEach { implemented -> builder.addSuperinterface(resolveTypeName(implemented.interfaceName)) }
         plan.mutableCollectionBindings.forEach { binding ->
@@ -641,7 +656,7 @@ class KotlinProjectionRenderer {
         if (plan.usesMappedDataErrorInfoAugmentation) {
             addMappedDataErrorInfoForwardMembers(builder, plan)
         }
-        if (plan.usesMappedDisposableAugmentation && !plan.hasDirectMappedDisposableSuperinterface) {
+        if (plan.usesMappedDisposableAugmentation) {
             builder.addSuperinterface(AUTO_CLOSEABLE_CLASS_NAME)
         }
         requiredIteratorBinding(plan)?.let { iteratorBinding ->

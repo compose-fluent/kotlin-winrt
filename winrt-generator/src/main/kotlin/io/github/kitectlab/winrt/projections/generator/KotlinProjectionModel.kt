@@ -77,6 +77,7 @@ import io.github.kitectlab.winrt.runtime.WinRtReadOnlyListProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceArrayProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapter
+import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapters
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import io.github.kitectlab.winrt.runtime.WinRtSystemProjectionMarshalers
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
@@ -156,6 +157,7 @@ internal val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProje
 internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayProjection::class.asClassName()
 internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
+internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
@@ -697,6 +699,23 @@ internal val MAPPED_TYPES_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, KotlinP
     MAPPED_TYPES.mapNotNull { mappedType ->
         mappedType.abiValueKind?.let { abiValueKind -> abiValueKind to mappedType }
     }.toMap()
+
+internal fun KotlinProjectionMappedType.isRuntimeOwnedProjection(): Boolean =
+    customStructAbi != null ||
+        customObjectAbi != null ||
+        abiQualifiedName in setOf(
+            "System.Object",
+            "Windows.Foundation.EventRegistrationToken",
+            "Windows.Foundation.HResult",
+            "Windows.Foundation.IClosable",
+            "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
+            "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
+        )
+
+internal fun isRuntimeOwnedMappedTypeName(typeName: String): Boolean {
+    val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+    return mappedTypeByAbiName(rawTypeName)?.isRuntimeOwnedProjection() == true
+}
 
 internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(
     WinRtIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(

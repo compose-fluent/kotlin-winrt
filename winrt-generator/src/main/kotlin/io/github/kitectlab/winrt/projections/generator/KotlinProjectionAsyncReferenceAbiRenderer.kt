@@ -657,6 +657,9 @@ internal fun KotlinProjectionRenderer.mappedCollectionParameterMarshaler(
 internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     typeBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.String) {
+        return CodeBlock.of("%T.string", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME)
+    }
     when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.ProjectedInterface,

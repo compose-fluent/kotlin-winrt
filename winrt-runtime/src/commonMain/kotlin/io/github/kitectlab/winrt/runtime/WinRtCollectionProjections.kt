@@ -21,6 +21,28 @@ class WinRtReferenceValueAdapter<T>(
     val marshaller: (T) -> ComObjectReference,
 )
 
+object WinRtReferenceValueAdapters {
+    val string: WinRtReferenceValueAdapter<String> =
+        WinRtReferenceValueAdapter(
+            projectedTypeName = "String",
+            typeSignature = WinRtTypeSignature.string(),
+            projector = { reference ->
+                if (reference == null) {
+                    ""
+                } else {
+                    WinRtReferenceReference(
+                        pointer = reference.pointer.asRawAddress(),
+                        interfaceId = IID.NullableString,
+                        preventReleaseOnDispose = true,
+                    ).use { valueReference ->
+                        ValueBoxingInterop.readReferenceValue(IID.NullableString, valueReference) as? String ?: ""
+                    }
+                }
+            },
+            marshaller = { value -> ComWrappersSupport.createCCWForObject(value, IID.NullableString) },
+        )
+}
+
 typealias WinRtCollectionProjectionMarshaler = WinRtProjectionMarshaler
 
 object WinRtIterableProjection {
