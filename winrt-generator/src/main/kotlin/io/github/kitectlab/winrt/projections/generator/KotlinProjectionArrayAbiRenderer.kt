@@ -223,7 +223,7 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
             GUID_CLASS_NAME,
             customAbi.interfaceId.toString(),
             projectedType,
-            "Expected non-null projected instance from ABI return for ${binding.resolvedTypeName}.",
+            "WINRT_E_NULL_ABI_PROJECTED_RETURN",
         )
     } else {
         CodeBlock.of(
@@ -232,7 +232,7 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
             nullReadback,
             WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
             customAbi.fromAbiFunctionName,
-            "Expected non-null projected instance from ABI return for ${binding.resolvedTypeName}.",
+            "WINRT_E_NULL_ABI_PROJECTED_RETURN",
         )
     }
 }

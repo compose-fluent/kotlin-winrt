@@ -323,6 +323,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         KotlinProjectionAbiValueKind.Struct -> nativeStructParameterMarshaler(parameterBinding)
         KotlinProjectionAbiValueKind.Reference -> referenceParameterMarshaler(parameterBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME)
         KotlinProjectionAbiValueKind.ReferenceArray -> referenceParameterMarshaler(parameterBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME)
+        KotlinProjectionAbiValueKind.GenericParameter -> genericParameterMarshaler(parameterName, parameterBinding)
         KotlinProjectionAbiValueKind.Array -> arrayParameterMarshaler(parameterBinding, descriptor)
         KotlinProjectionAbiValueKind.Delegate -> delegateParameterMarshaler(parameterBinding)
         KotlinProjectionAbiValueKind.MappedBindableIterable,
@@ -366,6 +367,33 @@ private fun projectedInterfaceParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
 
+private fun genericParameterMarshaler(
+    parameterName: String,
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): KotlinProjectionAbiMarshalerPlan {
+    val abiReferenceName = "__${parameterName}AbiReference"
+    return KotlinProjectionAbiMarshalerPlan(
+        name = parameterName,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of(
+            "%L?.let { %T.fromRawComPtr(it.pointer) } ?: %T.nullPointer",
+            abiReferenceName,
+            PLATFORM_ABI_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+        ),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+        scopeOpeners = listOf(
+            CodeBlock.of(
+                "%T.createReference(%L)\n.use { %L ->",
+                WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
+                parameterName,
+                abiReferenceName,
+            ),
+        ),
+    )
+}
+
 internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
     returnBinding: KotlinProjectionAbiTypeBinding,
     descriptor: WinRtAbiMarshalerSlotDescriptor? = null,
@@ -388,6 +416,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.InspectableReference,
         KotlinProjectionAbiValueKind.Reference,
         KotlinProjectionAbiValueKind.ReferenceArray -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
+        KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.allocatePointerSlot(__scope)", PLATFORM_ABI_CLASS_NAME)
         KotlinProjectionAbiValueKind.Enum -> abiResultAllocationForIntegralType(returnBinding.enumUnderlyingType ?: return null)
@@ -478,6 +507,13 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
             referenceReturnReadback(returnBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME) ?: return null
         KotlinProjectionAbiValueKind.ReferenceArray ->
             referenceReturnReadback(returnBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME) ?: return null
+        KotlinProjectionAbiValueKind.GenericParameter ->
+            CodeBlock.of(
+                "val __resultPointer = %T.readPointer(__resultOut)\nval __result = %T.fromAbi<%T>(__resultPointer)\nreturn __result\n",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
+                resolveTypeName(returnBinding.typeName),
+            )
         KotlinProjectionAbiValueKind.Enum ->
             enumReturnReadback(returnBinding, resolvedReturnClassName(returnBinding))
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
@@ -597,7 +633,7 @@ internal fun abiNullReturnReadback(binding: KotlinProjectionAbiTypeBinding): Cod
         CodeBlock.of(
             "if (%T.isNull(__resultPointer)) error(%S)\n",
             PLATFORM_ABI_CLASS_NAME,
-            "Expected non-null ABI object pointer from return for ${binding.resolvedTypeName}.",
+            "WINRT_E_NULL_ABI_RETURN",
         )
     }
 

@@ -1110,6 +1110,7 @@ class KotlinProjectionPlanner(
             "io.github.kitectlab.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
             "io.github.kitectlab.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
             else -> when {
+                rawTypeName.isGenericTypeParameterName() -> KotlinProjectionAbiValueKind.GenericParameter
                 rawTypeName == "Array" -> KotlinProjectionAbiValueKind.Array
                 rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
                 isProjectedKeyValuePair -> KotlinProjectionAbiValueKind.MappedKeyValuePair
@@ -1167,6 +1168,9 @@ class KotlinProjectionPlanner(
             typeArguments = typeArguments,
         )
     }
+
+    private fun String.isGenericTypeParameterName(): Boolean =
+        (startsWith("T") || startsWith("M")) && drop(1).toIntOrNull() != null
 
     private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
         when (kind) {
@@ -1574,7 +1578,8 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedReadOnlyCollectionElement
     KotlinProjectionAbiValueKind.MappedVector,
     KotlinProjectionAbiValueKind.MappedVectorView,
     KotlinProjectionAbiValueKind.MappedMap,
-    KotlinProjectionAbiValueKind.MappedMapView -> true
+    KotlinProjectionAbiValueKind.MappedMapView,
+    KotlinProjectionAbiValueKind.GenericParameter -> true
     KotlinProjectionAbiValueKind.MappedKeyValuePair -> typeArguments.size == 2
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false

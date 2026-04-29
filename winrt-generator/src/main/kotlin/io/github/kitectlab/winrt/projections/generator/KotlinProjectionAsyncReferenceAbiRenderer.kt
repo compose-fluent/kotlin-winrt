@@ -501,7 +501,7 @@ internal fun KotlinProjectionRenderer.customObjectAsyncOperationResultReadbackEx
         CodeBlock.of(
             "if (%T.isNull(__operationResultPointer)) error(%S) else ",
             PLATFORM_ABI_CLASS_NAME,
-            "Expected non-null ABI object pointer from async result for ${resultBinding.resolvedTypeName}.",
+            "WINRT_E_NULL_ASYNC_ABI_RESULT",
         )
     }
     val readback = if (customAbi.fromAbiFunctionName == "objectFromAbi") {
@@ -514,14 +514,14 @@ internal fun KotlinProjectionRenderer.customObjectAsyncOperationResultReadbackEx
             GUID_CLASS_NAME,
             customAbi.interfaceId.toString(),
             projectedType,
-            "Expected non-null projected instance from async result for ${resultBinding.resolvedTypeName}.",
+            "WINRT_E_NULL_ASYNC_PROJECTED_RESULT",
         )
     } else {
         CodeBlock.of(
             "%T.%L(__operationResultPointer) ?: error(%S)",
             WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
             customAbi.fromAbiFunctionName,
-            "Expected non-null projected instance from async result for ${resultBinding.resolvedTypeName}.",
+            "WINRT_E_NULL_ASYNC_PROJECTED_RESULT",
         )
     }
     return CodeBlock.of(
@@ -803,6 +803,15 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
             projectedType,
             typeBinding.resolvedTypeName,
             typeSignature,
+        )
+    }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.GenericParameter) {
+        val projectedType = resolveTypeName(typeBinding.typeName)
+        return CodeBlock.of(
+            "%T.genericParameter<%T>(%S)",
+            WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
+            projectedType,
+            typeBinding.typeName,
         )
     }
     when (typeBinding.kind) {

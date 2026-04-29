@@ -364,8 +364,6 @@ class KotlinProjectionRenderer {
         !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
             mappedTypeByAbiName(plan.type.qualifiedName)?.abiValueKind != KotlinProjectionAbiValueKind.MappedKeyValuePair &&
             (!isMappedCollectionInterfaceName(plan.type.qualifiedName) || plan.readOnlyCollectionBindings.isNotEmpty() || plan.mutableCollectionBindings.isNotEmpty()) &&
-            !(plan.type.genericParameterCount > 0 && (plan.readOnlyCollectionBindings.isNotEmpty() || plan.mutableCollectionBindings.isNotEmpty())) &&
-            !(plan.type.genericParameterCount > 0 && plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().isNotEmpty()) &&
             collectInterfaceProxyTypes(plan).all { interfaceType ->
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).all { method ->
                 runCatching {

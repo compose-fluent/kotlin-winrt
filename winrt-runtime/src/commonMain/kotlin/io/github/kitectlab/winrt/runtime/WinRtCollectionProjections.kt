@@ -91,6 +91,37 @@ object WinRtReferenceValueAdapters {
             },
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, nullableInterfaceId) },
         )
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T> genericParameter(projectedTypeName: String): WinRtReferenceValueAdapter<T> =
+        WinRtReferenceValueAdapter(
+            projectedTypeName = projectedTypeName,
+            typeSignature = WinRtTypeSignature.object_(),
+            projector = { reference ->
+                val pointer = reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
+                if (PlatformAbi.isNull(pointer)) {
+                    null as T
+                } else {
+                    (WinRtInspectableComObject.findManagedValue(pointer)
+                        ?: ComWrappersSupport.createRcwForComObject(pointer)) as T
+                }
+            },
+            marshaller = { value -> ComWrappersSupport.createCCWForObject(value as Any, IID.IInspectable) },
+        )
+}
+
+object WinRtGenericParameterProjection {
+    @Suppress("UNCHECKED_CAST")
+    fun <T> fromAbi(pointer: RawAddress): T {
+        if (PlatformAbi.isNull(pointer)) {
+            return null as T
+        }
+        return (WinRtInspectableComObject.findManagedValue(pointer)
+            ?: ComWrappersSupport.createRcwForComObject(pointer)) as T
+    }
+
+    fun <T> createReference(value: T): ComObjectReference? =
+        value?.let { ComWrappersSupport.createCCWForObject(it as Any, IID.IInspectable) }
 }
 
 typealias WinRtCollectionProjectionMarshaler = WinRtProjectionMarshaler

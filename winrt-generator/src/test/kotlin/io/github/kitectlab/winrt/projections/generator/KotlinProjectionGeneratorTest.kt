@@ -4351,6 +4351,51 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
+                            name = "IVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("55555555-5555-5555-5555-555555555555"),
+                            genericParameterCount = 1,
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IIterable<T0>",
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("GetAt", "T0", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition("SetAt", "Unit", parameters = listOf(WinRtParameterDefinition("index", "UInt"), WinRtParameterDefinition("value", "T0"))),
+                                WinRtMethodDefinition("InsertAt", "Unit", parameters = listOf(WinRtParameterDefinition("index", "UInt"), WinRtParameterDefinition("value", "T0"))),
+                                WinRtMethodDefinition("RemoveAt", "Unit", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                                WinRtMethodDefinition("Append", "Unit", parameters = listOf(WinRtParameterDefinition("value", "T0"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("66666666-6666-6666-6666-666666666666"),
+                            genericParameterCount = 2,
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IIterable<Windows.Foundation.Collections.IKeyValuePair<T0, T1>>",
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "T1", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"), WinRtParameterDefinition("value", "T1"))),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
                             name = "IMapView",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("33333333-3333-3333-3333-333333333333"),
@@ -4358,6 +4403,30 @@ class KotlinProjectionGeneratorTest {
                             implementedInterfaces = listOf(
                                 io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
                                     interfaceName = "Windows.Foundation.Collections.IIterable<Windows.Foundation.Collections.IKeyValuePair<T0, T1>>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IObservableVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("77777777-7777-7777-7777-777777777777"),
+                            genericParameterCount = 1,
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IVector<T0>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IObservableMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("88888888-8888-8888-8888-888888888888"),
+                            genericParameterCount = 2,
+                            implementedInterfaces = listOf(
+                                io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IMap<T0, T1>",
                                 ),
                             ),
                         ),
@@ -4400,12 +4469,28 @@ class KotlinProjectionGeneratorTest {
 
         val mapViewInterfaceContents = filesByName.getValue("IMapView.kt").contents
         assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("public interface IMapView<T0, T1>"))
+        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("private class NativeProjection<T0, T1>("))
+        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("Iterable<Map.Entry<T0, T1>>,"))
+        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("WinRtGenericParameterProjection.fromAbi<T1>(__resultPointer)"))
         assertFalse(mapViewInterfaceContents, mapViewInterfaceContents.contains("import T0"))
         assertFalse(mapViewInterfaceContents, mapViewInterfaceContents.contains("import T1"))
 
         val iterableInterfaceContents = filesByName.getValue("IIterable.kt").contents
         assertTrue(iterableInterfaceContents, iterableInterfaceContents.contains("public interface IIterable<T0>"))
         assertFalse(iterableInterfaceContents, iterableInterfaceContents.contains("import T0"))
+
+        val observableVectorContents = filesByName.getValue("IObservableVector.kt").contents
+        assertTrue(observableVectorContents, observableVectorContents.contains("MutableList<T0>,"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("private val __iObservableVectorVectorCollection"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("override fun set(index: Int, element: T0): T0"))
+        assertTrue(observableVectorContents, observableVectorContents.contains(".use { __elementAbiReference ->"))
+
+        val observableMapContents = filesByName.getValue("IObservableMap.kt").contents
+        assertTrue(observableMapContents, observableMapContents.contains("MutableMap<T0, T1>,"))
+        assertTrue(observableMapContents, observableMapContents.contains("private val __iObservableMapMapCollection"))
+        assertTrue(observableMapContents, observableMapContents.contains("override fun put(key: T0, value: T1): T1?"))
+        assertTrue(observableMapContents, observableMapContents.contains(".use { __keyAbiReference ->"))
+        assertTrue(observableMapContents, observableMapContents.contains(".use { __valueAbiReference ->"))
 
         val mapContents = filesByName
             .getValue("ObjectMap.kt")

@@ -78,6 +78,7 @@ import io.github.kitectlab.winrt.runtime.WinRtReferenceArrayProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
 import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.kitectlab.winrt.runtime.WinRtReferenceValueAdapters
+import io.github.kitectlab.winrt.runtime.WinRtGenericParameterProjection
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import io.github.kitectlab.winrt.runtime.WinRtSystemProjectionMarshalers
 import io.github.kitectlab.winrt.runtime.WinRtTypeSignature
@@ -159,6 +160,7 @@ internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayPr
 internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
+internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRtGenericParameterProjection::class.asClassName()
 internal val WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME =
     MemberName("io.github.kitectlab.winrt.runtime", "winRtKeyValuePairAdapter")
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
@@ -417,6 +419,7 @@ enum class KotlinProjectionAbiValueKind {
     Struct,
     Delegate,
     Object,
+    GenericParameter,
     UnknownReference,
     InspectableReference,
     Unsupported,
