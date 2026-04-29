@@ -452,7 +452,7 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
     KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of(
-            "%T(%T.toRawComPtr(%T.readPointer(__operationResultOut))).use { it.asInspectable() }",
+            "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n__operationInspectable\n}",
             IUNKNOWN_REFERENCE_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,

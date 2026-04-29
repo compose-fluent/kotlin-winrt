@@ -190,12 +190,24 @@ class KotlinProjectionRenderer {
         repeat(plan.type.genericParameterCount) { index ->
             builder.addTypeVariable(TypeVariableName("T$index"))
         }
+        if (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) {
+            builder.addFunction(
+                FunSpec.builder("close")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addCode(
+                        "val __hr = %T.invoke(instance = nativeObject.pointer, slot = 6)\n%T(__hr).requireSuccess()\n",
+                        COM_VTABLE_INVOKER_CLASS_NAME,
+                        HRESULT_CLASS_NAME,
+                    )
+                    .build(),
+            )
+        }
         collectInterfaceProxyTypes(plan).forEach { interfaceType ->
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
-                builder.addFunction(renderInterfaceProxyMethod(interfaceType, method))
+                builder.addFunction(renderInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName))
             }
             interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).forEach { property ->
-                builder.addProperty(renderInterfaceProxyProperty(interfaceType, property))
+                builder.addProperty(renderInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName))
             }
             interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
                 builder.addProperty(
@@ -228,12 +240,13 @@ class KotlinProjectionRenderer {
     internal fun renderInterfaceProxyMethod(
         slotInterfaceType: WinRtTypeDefinition,
         method: WinRtMethodDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): FunSpec {
-        val returnBinding = renderAbiTypeBinding(method.returnTypeName)
+        val returnBinding = renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName)
         val parameterBindings = method.parameters.map { parameter ->
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
-                typeBinding = renderAbiTypeBinding(parameter.typeName),
+                typeBinding = renderAbiTypeBinding(parameter.typeName, typesByQualifiedName),
             )
         }
         val callPlan = requireAbiCallPlan(
@@ -259,6 +272,7 @@ class KotlinProjectionRenderer {
     internal fun renderInterfaceProxyProperty(
         slotInterfaceType: WinRtTypeDefinition,
         property: WinRtPropertyDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): PropertySpec {
         val builder = PropertySpec.builder(
             property.name.replaceFirstChar(Char::lowercase),
@@ -268,7 +282,7 @@ class KotlinProjectionRenderer {
             .addModifiers(KModifier.OVERRIDE)
         val getterCallPlan = requireAbiCallPlan(
             bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
-            returnBinding = renderAbiTypeBinding(property.typeName),
+            returnBinding = renderAbiTypeBinding(property.typeName, typesByQualifiedName),
             parameterBindings = emptyList(),
             suppressHResultCheck = property.isNoException,
         )
@@ -288,7 +302,7 @@ class KotlinProjectionRenderer {
             val setterCallPlan = requireAbiCallPlan(
                 bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.set",
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName))),
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName, typesByQualifiedName))),
                 suppressHResultCheck = property.isNoException,
             )
             builder.setter(
@@ -330,13 +344,17 @@ class KotlinProjectionRenderer {
     }
 
     internal fun canRenderInterfaceProxy(plan: KotlinTypeProjectionPlan): Boolean =
-        collectInterfaceProxyTypes(plan).all { interfaceType ->
+        !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
+            !isMappedCollectionInterfaceName(plan.type.qualifiedName) &&
+            plan.readOnlyCollectionBindings.isEmpty() &&
+            plan.mutableCollectionBindings.isEmpty() &&
+            collectInterfaceProxyTypes(plan).all { interfaceType ->
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).all { method ->
                 runCatching {
                     buildAbiCallPlan(
-                        returnBinding = renderAbiTypeBinding(method.returnTypeName),
+                        returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName),
                         parameterBindings = method.parameters.map { parameter ->
-                            KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName))
+                            KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName))
                         },
                     ) != null
                 }.getOrDefault(false)
@@ -344,7 +362,7 @@ class KotlinProjectionRenderer {
                 interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).all { property ->
                     runCatching {
                         buildAbiCallPlan(
-                            returnBinding = renderAbiTypeBinding(property.typeName),
+                                    returnBinding = renderAbiTypeBinding(property.typeName, plan.typesByQualifiedName),
                             parameterBindings = emptyList(),
                         ) != null
                     }.getOrDefault(false) &&
@@ -353,7 +371,7 @@ class KotlinProjectionRenderer {
                                 runCatching {
                                     buildAbiCallPlan(
                                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                                        parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName))),
+                                        parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName, plan.typesByQualifiedName))),
                                     ) != null
                                 }.getOrDefault(false)
                             )
@@ -376,7 +394,11 @@ class KotlinProjectionRenderer {
         }
         return buildList {
             interfaceType.implementedInterfaces.forEach { implemented ->
-                plan.typesByQualifiedName[implemented.interfaceName.substringBefore('<').removeSuffix("?")]?.let { baseType ->
+                val implementedRawName = implemented.interfaceName.substringBefore('<').removeSuffix("?")
+                if (isRuntimeOwnedMappedTypeName(implementedRawName) || isMappedCollectionInterfaceName(implementedRawName)) {
+                    return@forEach
+                }
+                plan.typesByQualifiedName[implementedRawName]?.let { baseType ->
                     addAll(collectInterfaceProxyTypes(baseType, plan, visited))
                 }
             }
@@ -384,15 +406,20 @@ class KotlinProjectionRenderer {
         }
     }
 
-    internal fun renderAbiTypeBinding(typeName: String): KotlinProjectionAbiTypeBinding {
+    internal fun renderAbiTypeBinding(
+        typeName: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
+    ): KotlinProjectionAbiTypeBinding {
         val trimmed = typeName.trim()
         val rawTypeName = trimmed.substringBefore('<').removeSuffix("?")
         val typeArguments = if ('<' in trimmed && trimmed.endsWith('>')) {
-            splitGenericArguments(trimmed.substringAfter('<').substringBeforeLast('>')).map(::renderAbiTypeBinding)
+            splitGenericArguments(trimmed.substringAfter('<').substringBeforeLast('>'))
+                .map { renderAbiTypeBinding(it, typesByQualifiedName) }
         } else {
             emptyList()
         }
         val mappedType = mappedTypeByAbiName(rawTypeName)
+        val resolvedType = typesByQualifiedName[rawTypeName]
         val kind = when (trimmed) {
             "Unit" -> KotlinProjectionAbiValueKind.Unit
             "String" -> KotlinProjectionAbiValueKind.String
@@ -421,15 +448,33 @@ class KotlinProjectionRenderer {
             "io.github.kitectlab.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
             "Any",
             "System.Object" -> KotlinProjectionAbiValueKind.Object
-            else -> mappedType?.abiValueKind ?: KotlinProjectionAbiValueKind.Unsupported
+            else -> mappedType?.abiValueKind ?: when (resolvedType?.kind) {
+                WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
+                WinRtTypeKind.RuntimeClass -> KotlinProjectionAbiValueKind.ProjectedRuntimeClass
+                WinRtTypeKind.Enum -> KotlinProjectionAbiValueKind.Enum
+                WinRtTypeKind.Struct -> KotlinProjectionAbiValueKind.Struct
+                WinRtTypeKind.Delegate -> KotlinProjectionAbiValueKind.Delegate
+                WinRtTypeKind.Unknown,
+                null -> KotlinProjectionAbiValueKind.Unsupported
+            }
         }
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
             typeName = trimmed,
             resolvedTypeName = rawTypeName,
+            sourceTypeKind = resolvedType?.kind,
+            interfaceId = resolvedType?.iid ?: mappedReferenceGenericInterfaceId(kind),
+            enumUnderlyingType = resolvedType?.enumUnderlyingType,
             typeArguments = typeArguments,
         )
     }
+
+    private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
+        when (kind) {
+            KotlinProjectionAbiValueKind.Reference -> IREFERENCE_GENERIC_INTERFACE_ID
+            KotlinProjectionAbiValueKind.ReferenceArray -> IREFERENCE_ARRAY_GENERIC_INTERFACE_ID
+            else -> null
+        }
 
     internal fun renderClassShell(plan: KotlinTypeProjectionPlan): TypeSpec = when {
         KotlinProjectionSpecializationKind.AttributeClass in plan.specializationKinds -> renderAttributeClassShell(plan)
