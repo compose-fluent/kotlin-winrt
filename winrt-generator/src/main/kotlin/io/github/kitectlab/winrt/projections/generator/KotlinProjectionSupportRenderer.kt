@@ -374,7 +374,8 @@ class KotlinProjectionSupportRenderer {
         val subclassDescriptors = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
-            .distinctBy { it.eventTypeName to it.ownerTypeName }
+            .filter { it.usesSharedEventHandlerSource || it.genericArgumentTypeNames.isEmpty() }
+            .distinctBy { it.sourceClassName }
             .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
         if (inventory.eventSourceMappings.isEmpty() && subclassDescriptors.isEmpty()) {
             return null

@@ -139,6 +139,7 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         "Byte" -> Byte::class.asClassName()
         "SByte",
         "Int8" -> Byte::class.asClassName()
+        "UByte",
         "UInt8" -> KOTLIN_UBYTE_CLASS_NAME
         "Short" -> Short::class.asClassName()
         "Int16" -> Short::class.asClassName()

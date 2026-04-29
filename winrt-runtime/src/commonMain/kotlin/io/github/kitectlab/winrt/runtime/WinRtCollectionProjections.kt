@@ -41,6 +41,16 @@ object WinRtReferenceValueAdapters {
             },
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, IID.NullableString) },
         )
+
+    val inspectable: WinRtReferenceValueAdapter<IInspectableReference> =
+        WinRtReferenceValueAdapter(
+            projectedTypeName = "io.github.kitectlab.winrt.runtime.IInspectableReference",
+            typeSignature = WinRtTypeSignature.object_(),
+            projector = { reference ->
+                reference?.asInspectable() ?: IInspectableReference(PlatformAbi.nullComPtr, IID.IInspectable)
+            },
+            marshaller = { value -> IInspectableReference(value.getRefPointer(), IID.IInspectable) },
+        )
 }
 
 typealias WinRtCollectionProjectionMarshaler = WinRtProjectionMarshaler
@@ -661,8 +671,8 @@ object WinRtReadOnlyDictionaryProjection {
                     mapView.interfaceId,
                     preventReleaseOnDispose = true,
                 ),
-                iterableInterfaceId = iterableInterfaceId(keyValuePairAdapter(keyAdapter, valueAdapter)),
-                iteratorInterfaceId = iteratorInterfaceId(keyValuePairAdapter(keyAdapter, valueAdapter)),
+                iterableInterfaceId = iterableInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
+                iteratorInterfaceId = iteratorInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
                 keyValuePairInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                 keyProjector = keyAdapter.projector,
                 valueProjector = valueAdapter.projector,
@@ -690,7 +700,7 @@ object WinRtReadOnlyDictionaryProjection {
         private val host = WinRtInspectableComObject(
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
-                    elementAdapter = keyValuePairAdapter(keyAdapter, valueAdapter),
+                    elementAdapter = winRtKeyValuePairAdapter(keyAdapter, valueAdapter),
                     iteratorFactory = { managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
                 ),
                 WinRtInspectableInterfaceDefinition(
@@ -807,8 +817,8 @@ object WinRtDictionaryProjection {
                     preventReleaseOnDispose = true,
                 ),
                 mapViewInterfaceId = mapViewInterfaceId(keyAdapter, valueAdapter),
-                iterableInterfaceId = iterableInterfaceId(keyValuePairAdapter(keyAdapter, valueAdapter)),
-                iteratorInterfaceId = iteratorInterfaceId(keyValuePairAdapter(keyAdapter, valueAdapter)),
+                iterableInterfaceId = iterableInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
+                iteratorInterfaceId = iteratorInterfaceId(winRtKeyValuePairAdapter(keyAdapter, valueAdapter)),
                 keyValuePairInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                 keyProjector = keyAdapter.projector,
                 valueProjector = valueAdapter.projector,
@@ -843,7 +853,7 @@ object WinRtDictionaryProjection {
         private val host = WinRtInspectableComObject(
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
-                    elementAdapter = keyValuePairAdapter(keyAdapter, valueAdapter),
+                    elementAdapter = winRtKeyValuePairAdapter(keyAdapter, valueAdapter),
                     iteratorFactory = { managed.entries.map { ProjectionEntrySnapshot(it.key, it.value) }.iterator() },
                 ),
                 WinRtInspectableInterfaceDefinition(
@@ -1018,7 +1028,7 @@ private fun <K, V> mapTypeHandle(
         mapInterfaceId(keyAdapter, valueAdapter),
     )
 
-private fun <K, V> keyValuePairAdapter(
+fun <K, V> winRtKeyValuePairAdapter(
     keyAdapter: WinRtReferenceValueAdapter<K>,
     valueAdapter: WinRtReferenceValueAdapter<V>,
 ): WinRtReferenceValueAdapter<Map.Entry<K, V>> =

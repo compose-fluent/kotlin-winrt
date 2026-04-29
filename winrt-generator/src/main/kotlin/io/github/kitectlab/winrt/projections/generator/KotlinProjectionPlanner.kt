@@ -1062,6 +1062,7 @@ class KotlinProjectionPlanner(
         val resolvedTypeName = qualifyTypeName(rawTypeName, currentNamespace, typesByQualifiedName) ?: rawTypeName
         val resolvedType = typesByQualifiedName[resolvedTypeName]
         val mappedType = mappedTypeByAbiName(rawTypeName)
+        val isProjectedKeyValuePair = rawTypeName == "Map.Entry" || rawTypeName == "kotlin.collections.Map.Entry"
         val kind = when (trimmedTypeName) {
             "Unit" -> KotlinProjectionAbiValueKind.Unit
             "String" -> KotlinProjectionAbiValueKind.String
@@ -1095,6 +1096,7 @@ class KotlinProjectionPlanner(
             else -> when {
                 rawTypeName == "Array" -> KotlinProjectionAbiValueKind.Array
                 rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
+                isProjectedKeyValuePair -> KotlinProjectionAbiValueKind.MappedKeyValuePair
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
                 resolvedType != null -> when (resolvedType.kind) {
                     WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface

@@ -103,6 +103,7 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
@@ -158,6 +159,8 @@ internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayPr
 internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
+internal val WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME =
+    MemberName("io.github.kitectlab.winrt.runtime", "winRtKeyValuePairAdapter")
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
@@ -220,13 +223,10 @@ internal val WINRT_DEFAULT_OVERLOAD_CLASS_NAME = WinRtDefaultOverload::class.asC
 internal val WINRT_EXPERIMENTAL_CLASS_NAME = WinRtExperimental::class.asClassName()
 internal val WINRT_OVERLOAD_CLASS_NAME = WinRtOverload::class.asClassName()
 internal val WINRT_SUPPORTED_OS_PLATFORM_CLASS_NAME = WinRtSupportedOSPlatform::class.asClassName()
-internal val KOTLIN_UBYTE_CLASS_NAME = UByte::class.asClassName().withKotlinPackageIfRoot()
-internal val KOTLIN_UINT_CLASS_NAME = UInt::class.asClassName().withKotlinPackageIfRoot()
-internal val KOTLIN_ULONG_CLASS_NAME = ULong::class.asClassName().withKotlinPackageIfRoot()
-internal val KOTLIN_USHORT_CLASS_NAME = UShort::class.asClassName().withKotlinPackageIfRoot()
-
-private fun ClassName.withKotlinPackageIfRoot(): ClassName =
-    if (packageName.isEmpty()) ClassName("kotlin", simpleNames) else this
+internal val KOTLIN_UBYTE_CLASS_NAME = ClassName("kotlin", "UByte")
+internal val KOTLIN_UINT_CLASS_NAME = ClassName("kotlin", "UInt")
+internal val KOTLIN_ULONG_CLASS_NAME = ClassName("kotlin", "ULong")
+internal val KOTLIN_USHORT_CLASS_NAME = ClassName("kotlin", "UShort")
 
 internal typealias SpecialTypeResolver = (List<TypeName>) -> TypeName
 

@@ -485,7 +485,10 @@ class KotlinProjectionRenderer {
         val defaultObjectReferencePlan = plan.defaultInterfaceName
             ?.substringBefore('<')
             ?.let(objectReferencePlansByInterface::get)
-        if (plan.defaultInterfaceIid != null && defaultObjectReferencePlan?.skippedReason == null) {
+        if (plan.defaultInterfaceIid != null ||
+            defaultObjectReferencePlan != null ||
+            isMappedCollectionInterfaceName(plan.defaultInterfaceName.orEmpty())
+        ) {
             val defaultCacheType = if (
                 plan.runtimeClassBaseTypeName != null ||
                 plan.hasRuntimeClassDerivedTypes ||
@@ -511,6 +514,14 @@ class KotlinProjectionRenderer {
                                 FunSpec.getterBuilder()
                                     .addCode("return _inner\n")
                                     .build(),
+                            )
+                        } else if (defaultObjectReferencePlan != null) {
+                            delegate(
+                                runtimeClassObjectReferenceCacheInitializer(
+                                    defaultObjectReferencePlan,
+                                    "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
+                                    projectionClassName(defaultObjectReferencePlan.interfaceName.substringBefore('<')),
+                                ),
                             )
                         } else {
                             delegate(
@@ -1904,7 +1915,7 @@ class KotlinProjectionRenderer {
         )
         val invokeShape = plan.delegateInvokeShape
         if (invokeShape != null && invokeShape.isSupportedProjectedDelegateShape()) {
-            val projectedType = resolveTypeName(plan.type.qualifiedName)
+            val projectedType = plan.projectedSelfTypeName()
             builder.addType(
                 TypeSpec.companionObjectBuilder("Metadata")
                     .addProperty(
@@ -1916,6 +1927,11 @@ class KotlinProjectionRenderer {
                     .addFunction(
                         FunSpec.builder("fromAbi")
                             .addModifiers(KModifier.INTERNAL)
+                            .apply {
+                                repeat(plan.type.genericParameterCount) { index ->
+                                    addTypeVariable(TypeVariableName("T$index"))
+                                }
+                            }
                             .addParameter("pointer", RAW_ADDRESS_CLASS_NAME)
                             .returns(projectedType.copy(nullable = true))
                             .addCode(
