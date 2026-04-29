@@ -47,12 +47,6 @@ interface BaseWinRtExtension {
     fun nugetPackage(packageId: String, version: String)
 
     fun nugetPackage(packageId: String, action: Action<in KotlinWinRtNuGetPackage>)
-
-    fun windowsAppSdk(
-        winuiVersion: String,
-        foundationVersion: String = winuiVersion,
-        interactiveExperiencesVersion: String = winuiVersion,
-    )
 }
 
 abstract class BaseWinRtExtensionSupport @Inject constructor(
@@ -123,46 +117,6 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
         nugetPackages.create(packageId, action)
     }
 
-    override fun windowsAppSdk(
-        winuiVersion: String,
-        foundationVersion: String,
-        interactiveExperiencesVersion: String,
-    ) {
-        setNuGetPackageVersion("Microsoft.WindowsAppSDK.Foundation", foundationVersion)
-        setNuGetPackageVersion("Microsoft.WindowsAppSDK.InteractiveExperiences", interactiveExperiencesVersion)
-        setNuGetPackageVersion("Microsoft.WindowsAppSDK.WinUI", winuiVersion)
-        includeNamespaces.add("Microsoft")
-        includeTypes.addAll(
-            listOf(
-                "Windows.UI.Xaml.Interop.Type",
-                "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
-                "Windows.UI.Xaml.Markup.ContentPropertyAttribute",
-                "Windows.UI.Xaml.StyleTypedPropertyAttribute",
-                "Windows.UI.Xaml.TemplatePartAttribute",
-                "Windows.UI.Xaml.TemplateVisualStateAttribute",
-                "Windows.UI.Xaml.Data.BindableAttribute",
-                "Windows.UI.Xaml.Markup.FullXamlMetadataProviderAttribute",
-                "Windows.UI.Xaml.Markup.MarkupExtensionReturnTypeAttribute",
-                "Windows.UI.Xaml.Media.Animation.ConditionallyIndependentlyAnimatableAttribute",
-                "Windows.UI.Xaml.Media.Animation.IndependentlyAnimatableAttribute",
-            ),
-        )
-        excludeTypes.addAll(
-            listOf(
-                "Microsoft.UI.Xaml.Controls.WebView2",
-                "Microsoft.UI.Xaml.Controls.IWebView",
-                "Microsoft.UI.Xaml.Automation.Peers.IWebView",
-                "Microsoft.UI.Xaml.Automation.Peers.WebView",
-            ),
-        )
-        excludeNamespaces.addAll(listOf("Windows", "Windows.UI.Xaml.Media.Animation"))
-    }
-
-    private fun setNuGetPackageVersion(packageId: String, version: String) {
-        val existing = nugetPackages.findByName(packageId)
-        val target = existing ?: nugetPackages.create(packageId)
-        target.version.set(version)
-    }
 }
 
 abstract class WinRtExtension @Inject constructor(

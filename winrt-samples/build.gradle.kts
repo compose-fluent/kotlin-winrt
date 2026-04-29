@@ -4,14 +4,11 @@ plugins {
     application
 }
 
-val sampleWindowsAppSdkWinuiVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkWinuiVersion")
-val sampleWindowsAppSdkFoundationVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkFoundationVersion")
-val sampleWindowsAppSdkInteractiveExperiencesVersion =
-    providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkInteractiveExperiencesVersion")
+val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
 
 kotlin {
     jvmToolchain(22)
-    if (sampleWindowsAppSdkWinuiVersion.orNull != null) {
+    if (sampleWindowsAppSdkVersion.orNull != null) {
         sourceSets.named("main") {
             kotlin.srcDir("src/winuiSample/kotlin")
         }
@@ -32,14 +29,9 @@ winRt {
     namespace("Windows.Data.Json")
     application {
     }
-    sampleWindowsAppSdkWinuiVersion.orNull?.let { winuiVersion ->
+    sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         windowsSdk(includeExtensions = true)
-        nugetPackage("Microsoft.WindowsAppSDK.Foundation", sampleWindowsAppSdkFoundationVersion.orNull ?: winuiVersion)
-        nugetPackage(
-            "Microsoft.WindowsAppSDK.InteractiveExperiences",
-            sampleWindowsAppSdkInteractiveExperiencesVersion.orNull ?: winuiVersion,
-        )
-        nugetPackage("Microsoft.WindowsAppSDK.WinUI", winuiVersion)
+        nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
         type("Microsoft.UI.Xaml.Application")
         type("Microsoft.UI.Xaml.DependencyProperty")
         type("Microsoft.UI.Xaml.FrameworkElement")
@@ -82,23 +74,15 @@ val verifyWinRtSampleIdentity by tasks.registering {
         check("winrt-runtime" !in identityJson) {
             "Runtime implementation dependencies must not be treated as Kotlin WinRT identity metadata."
         }
-        val expectedWinuiVersion = sampleWindowsAppSdkWinuiVersion.orNull
-        if (expectedWinuiVersion == null) {
+        val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.orNull
+        if (expectedWindowsAppSdkVersion == null) {
             check("Microsoft.WindowsAppSDK" !in identityJson) {
-                "WindowsAppSDK should only be declared when kotlinWinRt.samples.windowsAppSdkWinuiVersion is set."
+                "WindowsAppSDK should only be declared when kotlinWinRt.samples.windowsAppSdkVersion is set."
             }
         } else {
-            val expectedFoundationVersion = sampleWindowsAppSdkFoundationVersion.orNull ?: expectedWinuiVersion
-            val expectedInteractiveExperiencesVersion = sampleWindowsAppSdkInteractiveExperiencesVersion.orNull ?: expectedWinuiVersion
-            val expectedPackages = listOf(
-                "Microsoft.WindowsAppSDK.Foundation@$expectedFoundationVersion",
-                "Microsoft.WindowsAppSDK.InteractiveExperiences@$expectedInteractiveExperiencesVersion",
-                "Microsoft.WindowsAppSDK.WinUI@$expectedWinuiVersion",
-            )
-            expectedPackages.forEach { expectedPackage ->
-                check(expectedPackage in identityJson) {
-                    "Expected sample application identity JSON to include $expectedPackage."
-                }
+            val expectedPackage = "Microsoft.WindowsAppSDK@$expectedWindowsAppSdkVersion"
+            check(expectedPackage in identityJson) {
+                "Expected sample application identity JSON to include $expectedPackage."
             }
         }
     }

@@ -3,13 +3,13 @@ package io.github.kitectlab.winrt.gradle
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageIdentity
 import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageResolver
 import org.gradle.api.DefaultTask
-import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -42,6 +42,15 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val nugetExecutable: Property<String>
 
     @get:Input
+    abstract val nugetCliVersion: Property<String>
+
+    @get:Internal
+    abstract val nugetCliCacheDirectory: DirectoryProperty
+
+    @get:Input
+    abstract val restoreNuGetPackages: Property<Boolean>
+
+    @get:Input
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
 
     @get:InputFiles
@@ -67,9 +76,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             explicitRoots = nugetGlobalPackagesRoots.get().map(Path::of),
             nugetLocalsOutput = nugetCliGlobalPackagesOutput(),
         )
-        val resolvedPackages = identities.flatMap { identity ->
-            WinRtNuGetPackageResolver.resolveClosure(identity, roots)
-        }.distinctBy { it.packageRoot.toAbsolutePath().normalize().toString().lowercase() }
+        val resolvedPackages = resolveNuGetPackages(identities, roots)
         val rid = runtimeIdentifier.get()
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
@@ -82,6 +89,58 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             }
         }
         stageResourcesPriAlias(outputRoot)
+    }
+
+    private fun resolveNuGetPackages(
+        identities: List<WinRtNuGetPackageIdentity>,
+        roots: List<Path>,
+    ): List<io.github.kitectlab.winrt.metadata.WinRtNuGetResolvedPackage> {
+        val resolvedFromRoots = mutableListOf<io.github.kitectlab.winrt.metadata.WinRtNuGetResolvedPackage>()
+        val missingIdentities = mutableListOf<WinRtNuGetPackageIdentity>()
+        identities.forEach { identity ->
+            runCatching {
+                WinRtNuGetPackageResolver.resolveClosure(identity, roots)
+            }.onSuccess { resolvedFromRoots += it }
+                .onFailure { missingIdentities += identity }
+        }
+        val restoredPackages = if (restoreNuGetPackages.get() && missingIdentities.isNotEmpty()) {
+            restoreNuGetPackages(missingIdentities).map(WinRtNuGetPackageResolver::resolvePackageRoot)
+        } else {
+            emptyList()
+        }
+        require(missingIdentities.isEmpty() || restoredPackages.isNotEmpty()) {
+            "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingIdentities.joinToString()}"
+        }
+        return (resolvedFromRoots + restoredPackages)
+            .distinctBy { it.packageRoot.toAbsolutePath().normalize().toString().lowercase() }
+    }
+
+    private fun restoreNuGetPackages(
+        identities: List<WinRtNuGetPackageIdentity>,
+    ): List<Path> {
+        val installRoot = temporaryDir.toPath().resolve("nuget-install")
+        Files.createDirectories(installRoot)
+        identities.forEach { identity ->
+            nuGetCli().run(
+                arguments = listOf(
+                    "install",
+                    identity.normalizedPackageId,
+                    "-Version",
+                    identity.normalizedVersion,
+                    "-NonInteractive",
+                    "-OutputDirectory",
+                    installRoot.toString(),
+                ),
+                workingDirectory = installRoot,
+                description = "install $identity",
+            )
+        }
+        return Files.list(installRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isDirectory() }
+                .sortedBy { it.name.lowercase() }
+                .toList()
+        }
     }
 
     private fun stageTopLevelDlls(packageRoot: Path, outputRoot: Path) {
@@ -131,22 +190,23 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         if (!useNuGetCliGlobalPackages.get()) {
             return null
         }
-        val command = listOf(nugetExecutable.get(), "locals", "global-packages", "-list")
-        val process = runCatching {
-            ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start()
+        return runCatching {
+            nuGetCli().run(
+                arguments = listOf("locals", "global-packages", "-list"),
+                description = "locate global-packages",
+            ).output
         }.getOrElse { error ->
             logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
-            return null
+            null
         }
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        val exitCode = process.waitFor()
-        if (exitCode != 0) {
-            throw GradleException("Microsoft NuGet CLI failed to locate global-packages. '${command.joinToString(" ")}' exited $exitCode:${System.lineSeparator()}$output")
-        }
-        return output
     }
+
+    private fun nuGetCli(): NuGetCliSupport = NuGetCliSupport(
+        executable = nugetExecutable.get(),
+        cliVersion = nugetCliVersion.get(),
+        cliCacheDirectory = nugetCliCacheDirectory.get().asFile.toPath(),
+        logger = logger,
+    )
 }
 
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkPackage(): Boolean =

@@ -166,6 +166,15 @@ private fun configureWinRtApplicationTasks(
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
             task.nugetExecutable.set(extension.nugetExecutable)
+            task.nugetCliVersion.set(extension.nugetCliVersion)
+            task.nugetCliCacheDirectory.set(
+                project.layout.dir(
+                    project.provider {
+                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/nuget-cli")
+                    },
+                ),
+            )
+            task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.dependencyIdentityFiles.from(identityDependencies)
         },

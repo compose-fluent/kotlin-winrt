@@ -31,11 +31,10 @@ class KotlinWinRtPluginTest {
         extension.useNuGetCliGlobalPackages.set(false)
         extension.nugetGlobalPackagesRoots.add(project.layout.projectDirectory.dir("nuget-cache").asFile.absolutePath)
         extension.runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
-        extension.windowsAppSdk(
-            winuiVersion = "1.8.251105000",
-            foundationVersion = "1.8.251104000",
-            interactiveExperiencesVersion = "1.8.251104001",
-        )
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+        extension.namespace("Microsoft")
+        extension.type("Windows.UI.Xaml.Interop.Type")
+        extension.excludeNamespace("Windows")
 
         val task = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
 
@@ -43,11 +42,10 @@ class KotlinWinRtPluginTest {
         assertTrue("Windows.Foundation.IStringable" in task.includeTypes.get())
         assertTrue("Windows.UI.Xaml.Interop.Type" in task.includeTypes.get())
         assertEquals(
-            listOf("Sample.Hidden", "Windows", "Windows.UI.Xaml.Media.Animation"),
+            listOf("Sample.Hidden", "Windows"),
             task.excludeNamespaces.get(),
         )
         assertTrue("Microsoft.UI.Xaml.Controls.WebView2" in task.excludeTypes.get())
-        assertTrue("Microsoft.UI.Xaml.Controls.IWebView" in task.excludeTypes.get())
         assertEquals(listOf("Microsoft.UI.Xaml.Media.Animation"), task.additionExcludeNamespaces.get())
         assertEquals(listOf("sdk+"), task.metadataInputs.get())
         assertEquals("10.0.26100.0", task.windowsSdkVersion.get())
@@ -61,11 +59,7 @@ class KotlinWinRtPluginTest {
             project.extensions.getByType(WinRtExtension::class.java).runtimeAssets.get(),
         )
         assertEquals(
-            listOf(
-                "Microsoft.WindowsAppSDK.Foundation@1.8.251104000",
-                "Microsoft.WindowsAppSDK.InteractiveExperiences@1.8.251104001",
-                "Microsoft.WindowsAppSDK.WinUI@1.8.251105000",
-            ),
+            listOf("Microsoft.WindowsAppSDK@1.8.260416003"),
             task.nugetPackages.get(),
         )
     }
@@ -130,11 +124,11 @@ class KotlinWinRtPluginTest {
         extension.type("Windows.Foundation.IStringable")
         extension.excludeAdditionNamespace("Microsoft.UI.Xaml.Media.Animation")
         extension.windowsSdk("10.0.26100.0", includeExtensions = true)
-        extension.windowsAppSdk(
-            winuiVersion = "1.8.251105000",
-            foundationVersion = "1.8.251104000",
-            interactiveExperiencesVersion = "1.8.251104001",
-        )
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+        extension.namespace("Microsoft")
+        extension.type("Windows.UI.Xaml.Interop.Type")
+        extension.excludeNamespace("Windows")
+        extension.excludeType("Microsoft.UI.Xaml.Controls.WebView2")
 
         val task = project.tasks.named("generateWinRtIdentity", GenerateWinRtIdentityTask::class.java).get()
         task.generate()
@@ -146,16 +140,14 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
         assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
-        assertTrue(json.contains("\"excludeNamespaces\": [\"Windows\", \"Windows.UI.Xaml.Media.Animation\"]"))
+        assertTrue(json.contains("\"excludeNamespaces\": [\"Windows\"]"))
         assertTrue(json.contains("\"excludeTypes\": [\"Microsoft.UI.Xaml.Controls.WebView2\""))
         assertTrue(json.contains("\"additionExcludeNamespaces\": [\"Microsoft.UI.Xaml.Media.Animation\"]"))
         assertTrue(json.contains("\"version\": \"10.0.26100.0\""))
         assertTrue(json.contains("\"includeExtensions\": true"))
         assertTrue(
             json.contains(
-                "\"nugetPackages\": [\"Microsoft.WindowsAppSDK.Foundation@1.8.251104000\", " +
-                    "\"Microsoft.WindowsAppSDK.InteractiveExperiences@1.8.251104001\", " +
-                    "\"Microsoft.WindowsAppSDK.WinUI@1.8.251105000\"]",
+                "\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260416003\"]",
             ),
         )
     }
@@ -283,6 +275,9 @@ class KotlinWinRtPluginTest {
             registeredTask.nugetGlobalPackagesRoots.set(emptyList())
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
@@ -332,6 +327,9 @@ class KotlinWinRtPluginTest {
             registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
@@ -382,6 +380,9 @@ class KotlinWinRtPluginTest {
             registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
@@ -492,18 +493,28 @@ class KotlinWinRtPluginTest {
         val nugetRoot = projectDir.resolve("nuget")
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
+            packageId = "Microsoft.WindowsAppSDK",
+            version = "1.8.260416003",
+            dependencies = listOf(
+                "Microsoft.WindowsAppSDK.Foundation" to "1.8.260415000",
+                "Microsoft.WindowsAppSDK.InteractiveExperiences" to "1.8.260415001",
+                "Microsoft.WindowsAppSDK.WinUI" to "1.8.260415005",
+            ),
+        )
+        writeWindowsAppSdkPackage(
+            nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK.Foundation",
-            version = "1.8.251104000",
+            version = "1.8.260415000",
         )
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK.InteractiveExperiences",
-            version = "1.8.251104001",
+            version = "1.8.260415001",
         )
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK.WinUI",
-            version = "1.8.251105000",
+            version = "1.8.260415005",
             includeWinUiFrameworkAssets = true,
         )
         writeGradleFile(
@@ -551,11 +562,8 @@ class KotlinWinRtPluginTest {
 
             winRt {
                 nugetGlobalPackagesRoots.add("${nugetRoot.toString().replace("\\", "\\\\")}")
-                windowsAppSdk(
-                    winuiVersion = "1.8.251105000",
-                    foundationVersion = "1.8.251104000",
-                    interactiveExperiencesVersion = "1.8.251104001",
-                )
+                restoreNuGetPackages.set(false)
+                nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
                 application {
                 }
             }
@@ -589,6 +597,7 @@ private fun writeWindowsAppSdkPackage(
     packageId: String,
     version: String,
     includeWinUiFrameworkAssets: Boolean = false,
+    dependencies: List<Pair<String, String>> = emptyList(),
 ) {
     val packageRoot = nugetRoot.resolve(packageId.lowercase()).resolve(version)
     Files.createDirectories(packageRoot)
@@ -599,6 +608,7 @@ private fun writeWindowsAppSdkPackage(
           <metadata>
             <id>$packageId</id>
             <version>$version</version>
+            ${dependencies.toNuspecDependencies()}
           </metadata>
         </package>
         """.trimIndent(),
@@ -611,4 +621,15 @@ private fun writeWindowsAppSdkPackage(
         Files.createDirectories(packageRoot.resolve("include"))
         Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
     }
+}
+
+private fun List<Pair<String, String>>.toNuspecDependencies(): String {
+    if (isEmpty()) {
+        return ""
+    }
+    return joinToString(
+        separator = System.lineSeparator(),
+        prefix = "<dependencies>${System.lineSeparator()}",
+        postfix = "${System.lineSeparator()}</dependencies>",
+    ) { (id, version) -> """<dependency id="$id" version="$version" />""" }
 }

@@ -325,6 +325,15 @@ object WinRtNuGetPackageResolver {
         globalPackagesRoots: List<Path> = globalPackagesRoots(),
     ): WinRtNuGetResolvedPackage {
         val root = packageRoot(identity, globalPackagesRoots)
+        return resolvePackageRoot(root, identity)
+    }
+
+    fun resolvePackageRoot(
+        packageRoot: Path,
+        identityOverride: WinRtNuGetPackageIdentity? = null,
+    ): WinRtNuGetResolvedPackage {
+        val root = nuGetCanonicalizePath(packageRoot)
+        val identity = identityOverride ?: packageIdentity(root)
         return WinRtNuGetResolvedPackage(
             identity = identity,
             packageRoot = root,
@@ -373,6 +382,27 @@ object WinRtNuGetPackageResolver {
         }.distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
     }
 
+    private fun packageIdentity(packageRoot: Path): WinRtNuGetPackageIdentity {
+        val nuspec = findNuspec(packageRoot)
+            ?: throw IllegalArgumentException("NuGet package root '$packageRoot' does not contain a .nuspec file.")
+        val builder = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        }.newDocumentBuilder()
+        val document = builder.parse(nuspec.toFile())
+        val metadataNodes = document.getElementsByTagNameNS("*", "metadata")
+            .takeIf { it.length > 0 }
+            ?: document.getElementsByTagName("metadata")
+        val metadata = (0 until metadataNodes.length)
+            .mapNotNull { metadataNodes.item(it) as? org.w3c.dom.Element }
+            .firstOrNull()
+            ?: throw IllegalArgumentException("NuGet package '$packageRoot' has no metadata node in ${nuspec.fileName}.")
+        return WinRtNuGetPackageIdentity(
+            packageId = metadata.childText("id"),
+            version = metadata.childText("version"),
+        )
+    }
+
     private fun findNuspec(packageRoot: Path): Path? =
         Files.list(packageRoot).use { stream ->
             stream.asSequence()
@@ -388,6 +418,18 @@ object WinRtNuGetPackageResolver {
         nuGetCanonicalizePath(path).toString().let { value ->
             if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) value.lowercase() else value
         }
+}
+
+private fun org.w3c.dom.Element.childText(name: String): String {
+    val nodes = getElementsByTagNameNS("*", name)
+        .takeIf { it.length > 0 }
+        ?: getElementsByTagName(name)
+    for (index in 0 until nodes.length) {
+        val element = nodes.item(index) as? org.w3c.dom.Element ?: continue
+        return element.textContent.trim().takeIf(String::isNotEmpty)
+            ?: throw IllegalArgumentException("NuGet nuspec <$name> must not be blank.")
+    }
+    throw IllegalArgumentException("NuGet nuspec is missing <$name>.")
 }
 
 enum class WinRtPackageAssetKind {

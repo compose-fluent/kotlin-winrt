@@ -8,7 +8,6 @@ import io.github.kitectlab.winrt.metadata.WinRtNuGetPackageResolver
 import io.github.kitectlab.winrt.metadata.filterProjectionSurface
 import io.github.kitectlab.winrt.projections.generator.KotlinProjectionGenerator
 import org.gradle.api.DefaultTask
-import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
@@ -21,13 +20,10 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.zip.ZipInputStream
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
-import kotlin.io.path.notExists
 import kotlin.streams.asSequence
 
 abstract class GenerateWinRtProjectionsTask : DefaultTask() {
@@ -121,19 +117,23 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
         val packageIdentities = nugetPackages.get().map(::parseNuGetPackageIdentity)
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
-        val availableNuGetIdentities = packageIdentities.filter { identity ->
-            isNuGetPackageAvailable(identity, nugetRoots)
-        }
-        val missingNuGetIdentities = packageIdentities - availableNuGetIdentities.toSet()
-        val restoredPackageDirectories = if (restoreNuGetPackages.get()) {
-            restoreNuGetPackages(missingNuGetIdentities)
+        val restoredPackageDirectories = if (restoreNuGetPackages.get() && packageIdentities.isNotEmpty()) {
+            restoreNuGetPackages(packageIdentities)
         } else {
             emptyList()
         }
-        require(missingNuGetIdentities.isEmpty() || restoredPackageDirectories.isNotEmpty()) {
-            "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingNuGetIdentities.joinToString()}"
+        val packageIdentitiesFromRoots = if (restoreNuGetPackages.get()) {
+            emptyList()
+        } else {
+            val missingNuGetIdentities = packageIdentities.filterNot { identity ->
+                isNuGetPackageAvailable(identity, nugetRoots)
+            }
+            require(missingNuGetIdentities.isEmpty()) {
+                "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingNuGetIdentities.joinToString()}"
+            }
+            packageIdentities
         }
-        val resolvedNuGetSources = availableNuGetIdentities.map { identity ->
+        val resolvedNuGetSources = packageIdentitiesFromRoots.map { identity ->
             WinRtMetadataSource.nugetPackage(
                 packageId = identity.normalizedPackageId,
                 version = identity.normalizedVersion,
@@ -175,7 +175,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         identity: WinRtNuGetPackageIdentity,
         installRoot: Path,
     ) {
-        runNuGetCommand(
+        nuGetCli().run(
             arguments = listOf(
                 "install",
                 identity.normalizedPackageId,
@@ -214,7 +214,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             return emptyList()
         }
         return runCatching {
-            val invocation = runNuGetCommand(
+            val invocation = nuGetCli().run(
                 arguments = listOf("locals", "global-packages", "-list"),
                 description = "locate global-packages",
             )
@@ -225,116 +225,10 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }
     }
 
-    private fun runNuGetCommand(
-        arguments: List<String>,
-        workingDirectory: Path? = null,
-        description: String,
-    ): NuGetInvocation {
-        val configuredInvocation = invokeNuGet(nugetExecutable.get(), arguments, workingDirectory)
-        if (configuredInvocation.isSuccess) {
-            return configuredInvocation
-        }
-
-        val cachedCommand = cachedNuGetCommand()
-        if (cachedCommand == nugetExecutable.get()) {
-            throw nugetFailure(description, configuredInvocation, null)
-        }
-
-        logger.info(
-            "Configured Microsoft NuGet CLI '${nugetExecutable.get()}' failed for $description; " +
-                "retrying with cached CLI $cachedCommand.",
-        )
-        val cachedInvocation = invokeNuGet(cachedCommand, arguments, workingDirectory)
-        if (cachedInvocation.isSuccess) {
-            return cachedInvocation
-        }
-
-        throw nugetFailure(description, configuredInvocation, cachedInvocation)
-    }
-
-    private fun invokeNuGet(
-        executable: String,
-        arguments: List<String>,
-        workingDirectory: Path?,
-    ): NuGetInvocation {
-        val command = listOf(executable) + arguments
-        val processBuilder = ProcessBuilder(command)
-            .redirectErrorStream(true)
-        if (workingDirectory != null) {
-            processBuilder.directory(workingDirectory.toFile())
-        }
-        val process = runCatching { processBuilder.start() }.getOrElse { error ->
-            return NuGetInvocation(
-                executable = executable,
-                exitCode = -1,
-                output = error.message.orEmpty(),
-            )
-        }
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        val exitCode = process.waitFor()
-        return NuGetInvocation(
-            executable = executable,
-            exitCode = exitCode,
-            output = output,
-        )
-    }
-
-    private fun nugetFailure(
-        description: String,
-        configuredInvocation: NuGetInvocation,
-        cachedInvocation: NuGetInvocation?,
-    ): GradleException {
-        val configuredMessage =
-            "configured '${configuredInvocation.executable}' exited ${configuredInvocation.exitCode}:$LINE_SEPARATOR${configuredInvocation.output}"
-        val cachedMessage = cachedInvocation?.let {
-            "${LINE_SEPARATOR}cached '${it.executable}' exited ${it.exitCode}:$LINE_SEPARATOR${it.output}"
-        }.orEmpty()
-        return GradleException("Microsoft NuGet CLI failed to $description.$LINE_SEPARATOR$configuredMessage$cachedMessage")
-    }
-
-    private fun cachedNuGetCommand(): String {
-        val cachedExecutable = cachedNuGetExecutable()
-        if (cachedExecutable.notExists()) {
-            downloadNuGetCli(cachedExecutable)
-        }
-        return cachedExecutable.toString()
-    }
-
-    private fun cachedNuGetExecutable(): Path =
-        nugetCliCacheDirectory.get().asFile.toPath()
-            .resolve(nugetCliVersion.get())
-            .resolve("nuget.exe")
-
-    private fun downloadNuGetCli(targetExecutable: Path) {
-        val version = nugetCliVersion.get()
-        val packageUrl = URI(
-            "https://api.nuget.org/v3-flatcontainer/nuget.commandline/$version/nuget.commandline.$version.nupkg",
-        ).toURL()
-        Files.createDirectories(targetExecutable.parent)
-        logger.lifecycle("Downloading Microsoft NuGet CLI $version to $targetExecutable")
-        packageUrl.openStream().use { input ->
-            ZipInputStream(input).use { zip ->
-                generateSequence { zip.nextEntry }
-                    .firstOrNull { entry -> entry.name.equals("tools/nuget.exe", ignoreCase = true) }
-                    ?: throw GradleException("NuGet.CommandLine $version package does not contain tools/nuget.exe.")
-                Files.newOutputStream(targetExecutable).use { output ->
-                    zip.copyTo(output)
-                }
-            }
-        }
-        if (targetExecutable.notExists()) {
-            throw GradleException("Failed to cache Microsoft NuGet CLI at $targetExecutable")
-        }
-    }
+    private fun nuGetCli(): NuGetCliSupport = NuGetCliSupport(
+        executable = nugetExecutable.get(),
+        cliVersion = nugetCliVersion.get(),
+        cliCacheDirectory = nugetCliCacheDirectory.get().asFile.toPath(),
+        logger = logger,
+    )
 }
-
-private data class NuGetInvocation(
-    val executable: String,
-    val exitCode: Int,
-    val output: String,
-) {
-    val isSuccess: Boolean
-        get() = exitCode == 0
-}
-
-private val LINE_SEPARATOR: String = System.lineSeparator()
