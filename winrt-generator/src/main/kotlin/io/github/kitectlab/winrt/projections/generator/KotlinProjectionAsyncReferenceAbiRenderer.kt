@@ -340,7 +340,9 @@ internal fun KotlinProjectionRenderer.referenceInterfaceIdCode(
 internal fun KotlinProjectionRenderer.abiResultAllocationForAsyncOperationResult(
     resultBinding: KotlinProjectionAbiTypeBinding,
     scopeName: String,
-): CodeBlock? = when (resultBinding.kind) {
+): CodeBlock? = when {
+    customObjectAbi(resultBinding) != null -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
+    else -> when (resultBinding.kind) {
     KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
     KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
     KotlinProjectionAbiValueKind.Int8,
@@ -372,6 +374,7 @@ internal fun KotlinProjectionRenderer.abiResultAllocationForAsyncOperationResult
     KotlinProjectionAbiValueKind.Reference,
     KotlinProjectionAbiValueKind.ReferenceArray -> CodeBlock.of("%T.allocatePointerSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
     else -> null
+    }
 }
 
 internal fun KotlinProjectionRenderer.bindingAllocationForAsyncEnum(
@@ -402,7 +405,7 @@ internal fun KotlinProjectionRenderer.abiTypeSignatureForIntegralType(type: WinR
 
 internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
-): CodeBlock? = when (resultBinding.kind) {
+): CodeBlock? = customObjectAsyncOperationResultReadbackExpression(resultBinding) ?: when (resultBinding.kind) {
     KotlinProjectionAbiValueKind.String ->
         CodeBlock.of(
             "run {\nval __operationResultString = %T.fromHandle(%T.readPointer(__operationResultOut), owner = true)\n__operationResultString.use { value -> value.toKString() }\n}",
@@ -485,6 +488,48 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
             )
         }
     else -> null
+}
+
+internal fun KotlinProjectionRenderer.customObjectAsyncOperationResultReadbackExpression(
+    resultBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? {
+    val customAbi = customObjectAbi(resultBinding) ?: return null
+    val projectedType = resolveTypeName(resultBinding.resolvedTypeName)
+    val nullReadback = if (resultBinding.isNullableAbiReturn) {
+        CodeBlock.of("if (%T.isNull(__operationResultPointer)) null else ", PLATFORM_ABI_CLASS_NAME)
+    } else {
+        CodeBlock.of(
+            "if (%T.isNull(__operationResultPointer)) error(%S) else ",
+            PLATFORM_ABI_CLASS_NAME,
+            "Expected non-null ABI object pointer from async result for ${resultBinding.resolvedTypeName}.",
+        )
+    }
+    val readback = if (customAbi.fromAbiFunctionName == "objectFromAbi") {
+        CodeBlock.of(
+            "%T.%L(__operationResultPointer, %T(%S, %T(%S)), %T::class) ?: error(%S)",
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            customAbi.fromAbiFunctionName,
+            WINRT_TYPE_HANDLE_CLASS_NAME,
+            customAbi.typeHandleName,
+            GUID_CLASS_NAME,
+            customAbi.interfaceId.toString(),
+            projectedType,
+            "Expected non-null projected instance from async result for ${resultBinding.resolvedTypeName}.",
+        )
+    } else {
+        CodeBlock.of(
+            "%T.%L(__operationResultPointer) ?: error(%S)",
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            customAbi.fromAbiFunctionName,
+            "Expected non-null projected instance from async result for ${resultBinding.resolvedTypeName}.",
+        )
+    }
+    return CodeBlock.of(
+        "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\n%L%L\n}",
+        PLATFORM_ABI_CLASS_NAME,
+        nullReadback,
+        readback,
+    )
 }
 
 internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpression(

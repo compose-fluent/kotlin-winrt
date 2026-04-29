@@ -210,12 +210,14 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
 ): CodeBlock? {
     val customAbi = customObjectAbi(binding) ?: return null
     val projectedType = resolveTypeName(binding.resolvedTypeName)
+    val nullReadback = abiNullReturnReadback(binding)
     return if (customAbi.fromAbiFunctionName == "objectFromAbi") {
         CodeBlock.of(
-            "return %T.%L(%T.readPointer(__resultOut), %T(%S, %T(%S)), %T::class) ?: error(%S)\n",
+            "val __resultPointer = %T.readPointer(__resultOut)\n%Lreturn %T.%L(__resultPointer, %T(%S, %T(%S)), %T::class) ?: error(%S)\n",
+            PLATFORM_ABI_CLASS_NAME,
+            nullReadback,
             WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
             customAbi.fromAbiFunctionName,
-            PLATFORM_ABI_CLASS_NAME,
             WINRT_TYPE_HANDLE_CLASS_NAME,
             customAbi.typeHandleName,
             GUID_CLASS_NAME,
@@ -225,10 +227,11 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
         )
     } else {
         CodeBlock.of(
-            "return %T.%L(%T.readPointer(__resultOut)) ?: error(%S)\n",
+            "val __resultPointer = %T.readPointer(__resultOut)\n%Lreturn %T.%L(__resultPointer) ?: error(%S)\n",
+            PLATFORM_ABI_CLASS_NAME,
+            nullReadback,
             WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
             customAbi.fromAbiFunctionName,
-            PLATFORM_ABI_CLASS_NAME,
             "Expected non-null projected instance from ABI return for ${binding.resolvedTypeName}.",
         )
     }

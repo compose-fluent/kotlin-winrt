@@ -2036,7 +2036,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(delegateContents.contains("): Boolean"))
         assertTrue(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(delegateContents.contains("as Boolean"))
-        assertTrue(widgetContents.contains("val __result = WidgetHandler.Metadata.fromAbi(PlatformAbi.readPointer(__resultOut))"))
+        assertTrue(widgetContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
+        assertTrue(widgetContents.contains("val __result = WidgetHandler.Metadata.fromAbi(__resultPointer)"))
         assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"WinRT ABI binding is unavailable\")"))
     }
 
@@ -3989,6 +3990,11 @@ class KotlinProjectionGeneratorTest {
                                     methodRowId = 8,
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "tryCommand",
+                                    returnTypeName = "Microsoft.UI.Xaml.Input.ICommand?",
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "setCommand",
                                     returnTypeName = "Unit",
                                     parameters = listOf(WinRtParameterDefinition("command", "Microsoft.UI.Xaml.Input.ICommand")),
@@ -4019,6 +4025,11 @@ class KotlinProjectionGeneratorTest {
                                     methodRowId = 8,
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "tryCommand",
+                                    returnTypeName = "Microsoft.UI.Xaml.Input.ICommand?",
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "setCommand",
                                     returnTypeName = "Unit",
                                     parameters = listOf(WinRtParameterDefinition("command", "Microsoft.UI.Xaml.Input.ICommand")),
@@ -4043,8 +4054,11 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(interfaceContents, interfaceContents.contains("fun sourceUri(): WinRtUri"))
         assertTrue(interfaceContents, interfaceContents.contains("fun command(): WinRtCommand"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.uriFromAbi(PlatformAbi.readPointer(__resultOut))"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(PlatformAbi.readPointer(__resultOut),"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun tryCommand(): WinRtCommand?"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.uriFromAbi(__resultPointer)"))
+        assertTrue(classContents, classContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
+        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(__resultPointer,"))
+        assertTrue(classContents, classContents.contains("if (PlatformAbi.isNull(__resultPointer)) return null"))
         assertTrue(classContents, classContents.contains("WinRtTypeHandle(\"io.github.kitectlab.winrt.runtime.WinRtCommand\""))
         assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), WinRtCommand::class)"))
         assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(sourceUri,"))
@@ -4077,6 +4091,7 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction", methodRowId = 6),
                                 WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>", methodRowId = 7),
                                 WinRtMethodDefinition(name = "fetchStreamAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.IStream>", methodRowId = 8),
+                                WinRtMethodDefinition(name = "fetchCommandAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<Microsoft.UI.Xaml.Input.ICommand>", methodRowId = 11),
                                 WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>", methodRowId = 9),
                                 WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>", methodRowId = 10),
                             ),
@@ -4093,6 +4108,7 @@ class KotlinProjectionGeneratorTest {
                                 WinRtMethodDefinition(name = "refreshAsync", returnTypeName = "Windows.Foundation.IAsyncAction"),
                                 WinRtMethodDefinition(name = "fetchAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<String>"),
                                 WinRtMethodDefinition(name = "fetchStreamAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.IStream>"),
+                                WinRtMethodDefinition(name = "fetchCommandAsync", returnTypeName = "Windows.Foundation.IAsyncOperation<Microsoft.UI.Xaml.Input.ICommand>"),
                                 WinRtMethodDefinition(name = "refreshWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncActionWithProgress<Int>"),
                                 WinRtMethodDefinition(name = "fetchWithProgressAsync", returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String, UInt>"),
                             ),
@@ -4124,6 +4140,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun fetchStreamAsync(): WinRtAsyncOperationReference<IStream>"))
         assertTrue(widgetContents.contains("WinRtTypeSignature.guid(IStream.Metadata.IID)"))
         assertTrue(widgetContents.contains("IStream.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(__operationResultOut))))"))
+        assertTrue(widgetContents.contains("fun fetchCommandAsync(): WinRtAsyncOperationReference<WinRtCommand>"))
+        assertTrue(widgetContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(__operationResultPointer,"))
+        assertTrue(widgetContents.contains("WinRtTypeHandle(\"io.github.kitectlab.winrt.runtime.WinRtCommand\""))
+        assertFalse(widgetContents.contains("WinRtCommand.Metadata.wrap"))
         assertTrue(widgetContents.contains("fun refreshWithProgressAsync(): WinRtAsyncActionWithProgressReference<Int>"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.interfaceId(WinRtTypeSignature.int32())"))
         assertTrue(widgetContents.contains("WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(WinRtTypeSignature.int32())"))

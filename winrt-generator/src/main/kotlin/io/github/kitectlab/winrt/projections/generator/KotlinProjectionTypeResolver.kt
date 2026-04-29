@@ -105,31 +105,35 @@ import kotlin.io.path.extension
 
 internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeName {
     val trimmed = typeName.trim()
-    val genericStart = trimmed.indexOf('<')
-    if (genericStart >= 0 && trimmed.endsWith('>')) {
-        val rawType = trimmed.substring(0, genericStart)
-        val arguments = splitGenericArguments(trimmed.substring(genericStart + 1, trimmed.length - 1))
+    if (trimmed == "Any?") {
+        return ANY.copy(nullable = true)
+    }
+    val nullable = trimmed.endsWith("?")
+    val effectiveTypeName = trimmed.removeSuffix("?")
+    val genericStart = effectiveTypeName.indexOf('<')
+    if (genericStart >= 0 && effectiveTypeName.endsWith('>')) {
+        val rawType = effectiveTypeName.substring(0, genericStart)
+        val arguments = splitGenericArguments(effectiveTypeName.substring(genericStart + 1, effectiveTypeName.length - 1))
             .map(::resolveTypeName)
         if (rawType == "Array") {
-            return Array::class.asClassName().parameterizedBy(arguments)
+            return Array::class.asClassName().parameterizedBy(arguments).withOuterNullability(nullable)
         }
         mappedTypeByAbiName(rawType)?.let { mappedType ->
-            return mappedType.projectedTypeResolver(arguments)
+            return mappedType.projectedTypeResolver(arguments).withOuterNullability(nullable)
         }
         val rawClassName = if ('.' in rawType) projectionClassName(rawType) else ClassName.bestGuess(rawType)
-        return rawClassName.parameterizedBy(arguments)
+        return rawClassName.parameterizedBy(arguments).withOuterNullability(nullable)
     }
 
-    mappedTypeByAbiName(trimmed)?.let { mappedType ->
-        return mappedType.projectedTypeResolver(emptyList())
+    mappedTypeByAbiName(effectiveTypeName)?.let { mappedType ->
+        return mappedType.projectedTypeResolver(emptyList()).withOuterNullability(nullable)
     }
-    if ((trimmed.startsWith("T") || trimmed.startsWith("M")) && trimmed.drop(1).toIntOrNull() != null) {
-        return TypeVariableName(trimmed)
+    if ((effectiveTypeName.startsWith("T") || effectiveTypeName.startsWith("M")) && effectiveTypeName.drop(1).toIntOrNull() != null) {
+        return TypeVariableName(effectiveTypeName).withOuterNullability(nullable)
     }
 
-    return when (trimmed) {
+    return when (effectiveTypeName) {
         "Unit" -> UNIT
-        "Any?" -> ANY.copy(nullable = true)
         "Any",
         "System.Object" -> IINSPECTABLE_REFERENCE_CLASS_NAME
         "String" -> String::class.asClassName()
@@ -160,9 +164,12 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         "io.github.kitectlab.winrt.runtime.IInspectableReference" -> IINSPECTABLE_REFERENCE_CLASS_NAME
         IWINRT_OBJECT_CLASS_NAME.simpleName,
         "io.github.kitectlab.winrt.runtime.IWinRTObject" -> IWINRT_OBJECT_CLASS_NAME
-        else -> if ('.' in trimmed) projectionClassName(trimmed) else ClassName.bestGuess(trimmed)
-    }
+        else -> if ('.' in effectiveTypeName) projectionClassName(effectiveTypeName) else ClassName.bestGuess(effectiveTypeName)
+    }.withOuterNullability(nullable)
 }
+
+private fun TypeName.withOuterNullability(nullable: Boolean): TypeName =
+    if (nullable) copy(nullable = true) else this
 
 internal fun KotlinProjectionRenderer.resolveIntegralTypeName(type: WinRtIntegralType): TypeName =
     integralAbiDescriptor(type).kotlinTypeName
