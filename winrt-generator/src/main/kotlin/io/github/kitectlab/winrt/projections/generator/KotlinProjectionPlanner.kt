@@ -1639,6 +1639,7 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateBinding(
     KotlinProjectionAbiValueKind.Char16,
     KotlinProjectionAbiValueKind.GuidValue,
     KotlinProjectionAbiValueKind.Struct,
+    KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.MappedAsyncAction,

@@ -405,7 +405,7 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
 ): CodeBlock? = when (resultBinding.kind) {
     KotlinProjectionAbiValueKind.String ->
         CodeBlock.of(
-            "%T.fromHandle(%T.readPointer(__operationResultOut), owner = true).use { it.toKString() }",
+            "run {\nval __operationResultString = %T.fromHandle(%T.readPointer(__operationResultOut), owner = true)\n__operationResultString.use { value -> value.toKString() }\n}",
             HSTRING_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
         )
@@ -599,6 +599,7 @@ internal fun KotlinProjectionRenderer.bindableCollectionParameterMarshaler(
     }
     val parameterName = parameterBinding.name
     val abiLocalName = "__${parameterName}Abi"
+    val marshalerLocalName = "__${parameterName}Marshaler"
     return KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
@@ -606,7 +607,15 @@ internal fun KotlinProjectionRenderer.bindableCollectionParameterMarshaler(
         abiArgumentExpression = CodeBlock.of("%L.abi", abiLocalName),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
-            CodeBlock.of("%T.createMarshaler(%L)!!.use { %L ->", projectionClass, parameterName, abiLocalName),
+            CodeBlock.of(
+                "val %L = %T.createMarshaler(%L) ?: error(%S)\n%L.use { %L ->",
+                marshalerLocalName,
+                projectionClass,
+                parameterName,
+                "Unable to marshal WinRT bindable collection parameter $parameterName.",
+                marshalerLocalName,
+                abiLocalName,
+            ),
         ),
     )
 }
@@ -616,6 +625,7 @@ internal fun KotlinProjectionRenderer.mappedCollectionParameterMarshaler(
 ): KotlinProjectionAbiMarshalerPlan? {
     val parameterName = parameterBinding.name
     val abiLocalName = "__${parameterName}Abi"
+    val marshalerLocalName = "__${parameterName}Marshaler"
     val projectionClass = when (parameterBinding.typeBinding.kind) {
         KotlinProjectionAbiValueKind.MappedIterable -> WINRT_ITERABLE_PROJECTION_CLASS_NAME
         KotlinProjectionAbiValueKind.MappedVector -> WINRT_LIST_PROJECTION_CLASS_NAME
@@ -646,9 +656,10 @@ internal fun KotlinProjectionRenderer.mappedCollectionParameterMarshaler(
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.builder()
-                .add("%T.createMarshaler(%L", projectionClass, parameterName)
+                .add("val %L = %T.createMarshaler(%L", marshalerLocalName, projectionClass, parameterName)
                 .apply { adapterArguments.forEach { add(", %L", it) } }
-                .add(")!!.use { %L ->", abiLocalName)
+                .add(") ?: error(%S)\n", "Unable to marshal WinRT collection parameter $parameterName.")
+                .add("%L.use { %L ->", marshalerLocalName, abiLocalName)
                 .build(),
         ),
     )
@@ -669,6 +680,17 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         val keyAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[0]) ?: return null
         val valueAdapter = collectionReferenceAdapterCode(typeBinding.typeArguments[1]) ?: return null
         return CodeBlock.of("%M(%L, %L)", WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME, keyAdapter, valueAdapter)
+    }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.Struct) {
+        val projectedType = nativeStructClassName(typeBinding) ?: return null
+        val typeSignature = abiTypeSignature(typeBinding) ?: return null
+        return CodeBlock.of(
+            "%T.valueType(%T::class, %S, %L)",
+            WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
+            projectedType,
+            typeBinding.resolvedTypeName,
+            typeSignature,
+        )
     }
     when (typeBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,

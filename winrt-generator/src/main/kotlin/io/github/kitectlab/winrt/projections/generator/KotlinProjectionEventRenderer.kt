@@ -664,7 +664,7 @@ internal fun KotlinProjectionRenderer.renderFactoryConstructors(plan: KotlinType
                 .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
                 .callThisConstructor(
                     CodeBlock.of(
-                        "ActivationFactory.%L(%L)",
+                        "ActivationFactory.%L(%L), kotlin.Unit",
                         factoryCreateFunctionName(method),
                         method.parameters.joinToString(", ") { parameter -> parameter.name },
                     ),
@@ -683,7 +683,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                 .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
                 .callThisConstructor(
                     CodeBlock.of(
-                        "ComposableFactory.%L(%L)",
+                        "ComposableFactory.%L(%L), kotlin.Unit",
                         factoryCreateFunctionName(method),
                         userParameters.joinToString(", ") { parameter -> parameter.name },
                     ),
@@ -923,7 +923,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .returns(projectedClassName)
-                .addCode("return %T(instance)\n", projectedClassName)
+                .addCode("return %T(instance, kotlin.Unit)\n", projectedClassName)
                 .build(),
         )
         builder.addFunction(

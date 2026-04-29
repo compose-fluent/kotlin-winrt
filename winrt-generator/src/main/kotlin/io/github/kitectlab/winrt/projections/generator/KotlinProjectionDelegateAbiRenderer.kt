@@ -218,7 +218,8 @@ internal fun KotlinProjectionRenderer.enumReturnReadback(
     val enumType = returnType ?: return null
     return CodeBlock.builder()
         .addStatement("val __enumValue = %L", abiIntegralReadbackExpression(integralType))
-        .addStatement("return %T.Metadata.fromAbi(__enumValue)", enumType)
+        .addStatement("val __enumResult = %T.Metadata.fromAbi(__enumValue)", enumType)
+        .addStatement("return __enumResult")
         .build()
 }
 
@@ -408,6 +409,7 @@ internal fun KotlinProjectionRenderer.delegateInvokeArgumentCode(
     KotlinProjectionAbiValueKind.Double,
     KotlinProjectionAbiValueKind.GuidValue,
     KotlinProjectionAbiValueKind.Struct,
+    KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference,
     KotlinProjectionAbiValueKind.MappedAsyncAction,
@@ -470,6 +472,8 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
     }
     KotlinProjectionAbiValueKind.UnknownReference ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Object ->
+        CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncAction ->

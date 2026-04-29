@@ -829,8 +829,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
-        assertTrue(widgetContents.contains("internal fun wrap(instance: IInspectableReference): Widget = Widget(instance)"))
-        assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance())"))
+        assertTrue(widgetContents.contains("internal fun wrap(instance: IInspectableReference): Widget = Widget(instance, kotlin.Unit)"))
+        assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
         assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
         assertTrue(widgetContents.contains("internal const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
@@ -1406,7 +1406,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(baseContents.contains("public open class WidgetBase internal constructor("))
         assertTrue(baseContents.contains("open override val nativeObject: ComObjectReference"))
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
-        assertTrue(widgetContents.contains(") : WidgetBase(_inner),"))
+        assertTrue(widgetContents.contains(") : WidgetBase(_inner, kotlin.Unit),"))
         assertTrue(widgetContents.contains("IWidget"))
         assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
     }
@@ -4117,8 +4117,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtAsyncOperationReference.completedHandlerInterfaceId(WinRtTypeSignature.string())"))
         assertTrue(widgetContents.contains("ComVtableInvoker.invokeArgs(__operation.pointer,"))
         assertTrue(widgetContents.contains("WinRtAsyncOperationVftblSlots.GetResults, __operationResultOut)"))
-        assertTrue(widgetContents.contains("HString.fromHandle(PlatformAbi.readPointer(__operationResultOut), owner = true).use"))
-        assertTrue(widgetContents.contains("it.toKString()"))
+        assertTrue(widgetContents.contains("val __operationResultString ="))
+        assertTrue(widgetContents.contains("fromHandle("))
+        assertTrue(widgetContents.contains("PlatformAbi.readPointer(__operationResultOut), owner = true"))
+        assertTrue(widgetContents.contains("__operationResultString.use { value -> value.toKString() }"))
         assertTrue(widgetContents.contains("fun fetchStreamAsync(): WinRtAsyncOperationReference<IStream>"))
         assertTrue(widgetContents.contains("WinRtTypeSignature.guid(IStream.Metadata.IID)"))
         assertTrue(widgetContents.contains("IStream.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(__operationResultOut))))"))
@@ -5280,7 +5282,10 @@ class KotlinProjectionGeneratorTest {
             .getValue("StringSink.kt")
             .contents
 
-        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(names, WinRtReferenceValueAdapters.string)"))
+        assertTrue(contents, contents.contains("val __namesMarshaler ="))
+        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(names"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.string"))
+        assertTrue(contents, contents.contains("__namesMarshaler.use { __namesAbi ->"))
         assertFalse(contents, contents.contains("createMarshaler(names, null)"))
     }
 
@@ -5349,7 +5354,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("fun snapshot(): List<Any?>"))
         assertTrue(contents, contents.contains("WinRtBindableVectorViewProjection.fromAbi"))
         assertTrue(contents, contents.contains("fun setItems(items: MutableList<Any?>)"))
-        assertTrue(contents, contents.contains("WinRtBindableVectorProjection.createMarshaler(items)!!.use"))
+        assertTrue(contents, contents.contains("val __itemsMarshaler = WinRtBindableVectorProjection.createMarshaler(items)"))
+        assertTrue(contents, contents.contains("__itemsMarshaler.use { __itemsAbi ->"))
     }
 
     @Test

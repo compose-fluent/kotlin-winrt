@@ -149,7 +149,7 @@ class KotlinProjectionRenderer {
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
         plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { builder.addFunction(renderInterfaceMethod(it)) }
-        plan.type.properties.filterNot { it.isStatic }.forEach { builder.addProperty(renderInterfaceProperty(it)) }
+        plan.type.properties.filterNot { it.isStatic }.filter { it.getterMethodName != null }.forEach { builder.addProperty(renderInterfaceProperty(it)) }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
             builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
@@ -190,6 +190,18 @@ class KotlinProjectionRenderer {
         repeat(plan.type.genericParameterCount) { index ->
             builder.addTypeVariable(TypeVariableName("T$index"))
         }
+        plan.mutableCollectionBindings.forEach { binding ->
+            builder.addProperty(renderMutableCollectionDelegateProperty(binding))
+            addMutableCollectionForwardMembers(builder, binding)
+        }
+        plan.readOnlyCollectionBindings
+            .filterNot { readOnlyBinding ->
+                plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
+            }
+            .forEach { binding ->
+                builder.addProperty(renderReadOnlyCollectionDelegateProperty(binding))
+                addReadOnlyCollectionForwardMembers(builder, binding)
+            }
         if (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) {
             builder.addFunction(
                 FunSpec.builder("close")
@@ -206,7 +218,7 @@ class KotlinProjectionRenderer {
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 builder.addFunction(renderInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName))
             }
-            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).forEach { property ->
+            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.getterMethodName != null }.forEach { property ->
                 builder.addProperty(renderInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName))
             }
             interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
@@ -496,9 +508,11 @@ class KotlinProjectionRenderer {
         val constructorBuilder = FunSpec.constructorBuilder()
             .addModifiers(KModifier.INTERNAL)
             .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+            .addParameter("__winrtWrapper", UNIT)
         plan.runtimeClassBaseTypeName?.let { baseTypeName ->
             builder.superclass(resolveTypeName(baseTypeName))
             builder.addSuperclassConstructorParameter("_inner")
+            builder.addSuperclassConstructorParameter("kotlin.Unit")
         }
         builder.primaryConstructor(constructorBuilder.build())
         builder.addProperty(
@@ -649,62 +663,7 @@ class KotlinProjectionRenderer {
         readOnlyCollectionBindings.forEach { binding ->
             builder.addProperty(renderReadOnlyCollectionDelegateProperty(binding))
             builder.addSuperinterface(readOnlyCollectionProjectedType(binding))
-            when (binding.kind) {
-                KotlinProjectionReadOnlyCollectionKind.Iterable -> {
-                    val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
-                    builder.addFunction(
-                        FunSpec.builder("iterator")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .returns(Iterator::class.asClassName().parameterizedBy(elementType))
-                            .addCode("return %L.iterator()\n", binding.delegatePropertyName)
-                            .build(),
-                    )
-                }
-                KotlinProjectionReadOnlyCollectionKind.VectorView -> {
-                    val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
-                    builder.addProperty(
-                        PropertySpec.builder("size", Int::class)
-                            .addModifiers(KModifier.OVERRIDE)
-                            .getter(FunSpec.getterBuilder().addCode("return %L.size\n", binding.delegatePropertyName).build())
-                            .build(),
-                    )
-                    builder.addFunction(
-                        FunSpec.builder("get")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addParameter("index", Int::class)
-                            .returns(elementType)
-                            .addCode("return %L[index]\n", binding.delegatePropertyName)
-                            .build(),
-                    )
-                }
-                KotlinProjectionReadOnlyCollectionKind.MapView -> {
-                    val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
-                    val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
-                    val entryType = Map.Entry::class.asClassName().parameterizedBy(keyType, valueType)
-                    builder.addProperty(
-                        PropertySpec.builder("entries", Set::class.asClassName().parameterizedBy(entryType))
-                            .addModifiers(KModifier.OVERRIDE)
-                            .getter(FunSpec.getterBuilder().addCode("return %L.entries\n", binding.delegatePropertyName).build())
-                            .build(),
-                    )
-                    builder.addFunction(
-                        FunSpec.builder("containsKey")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addParameter("key", keyType)
-                            .returns(Boolean::class)
-                            .addCode("return %L.containsKey(key)\n", binding.delegatePropertyName)
-                            .build(),
-                    )
-                    builder.addFunction(
-                        FunSpec.builder("get")
-                            .addModifiers(KModifier.OVERRIDE)
-                            .addParameter("key", keyType)
-                            .returns(valueType.copy(nullable = true))
-                            .addCode("return %L[key]\n", binding.delegatePropertyName)
-                            .build(),
-                    )
-                }
-            }
+            addReadOnlyCollectionForwardMembers(builder, binding)
         }
         if (plan.usesMappedDataErrorInfoAugmentation && !plan.hasDirectMappedDataErrorInfoSuperinterface) {
             builder.addSuperinterface(WINRT_DATA_ERROR_INFO_CLASS_NAME)
@@ -730,7 +689,7 @@ class KotlinProjectionRenderer {
         if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
             builder.addFunction(
                 FunSpec.constructorBuilder()
-                    .callThisConstructor(CodeBlock.of("%T.activateInstance(Metadata.TYPE_NAME)", ACTIVATION_FACTORY_CLASS_NAME))
+                    .callThisConstructor(CodeBlock.of("%T.activateInstance(Metadata.TYPE_NAME), kotlin.Unit", ACTIVATION_FACTORY_CLASS_NAME))
                     .build(),
             )
             renderFactoryConstructors(plan).forEach(builder::addFunction)
@@ -745,6 +704,7 @@ class KotlinProjectionRenderer {
             .forEach { builder.addFunction(renderRuntimeMethod(plan, it)) }
         plan.type.properties
             .filterNot { it.isStatic }
+            .filter { it.getterMethodName != null }
             .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
             .forEach { builder.addProperty(renderRuntimeProperty(plan, it)) }
@@ -857,6 +817,56 @@ class KotlinProjectionRenderer {
             readOnlyBinding.kind in setOf(KotlinProjectionReadOnlyCollectionKind.Iterable, KotlinProjectionReadOnlyCollectionKind.VectorView)
         KotlinProjectionMutableCollectionKind.Map ->
             readOnlyBinding.kind == KotlinProjectionReadOnlyCollectionKind.MapView
+    }
+
+    private fun addReadOnlyCollectionForwardMembers(
+        builder: TypeSpec.Builder,
+        binding: KotlinProjectionReadOnlyCollectionBinding,
+    ) {
+        when (binding.kind) {
+            KotlinProjectionReadOnlyCollectionKind.Iterable -> {
+                val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
+                builder.addFunction(
+                    FunSpec.builder("iterator")
+                        .addModifiers(KModifier.OVERRIDE)
+                        .returns(Iterator::class.asClassName().parameterizedBy(elementType))
+                        .addCode("return %L.iterator()\n", binding.delegatePropertyName)
+                        .build(),
+                )
+            }
+            KotlinProjectionReadOnlyCollectionKind.VectorView -> {
+                val elementType = resolveTypeName(requireNotNull(binding.elementBinding).typeName)
+                builder.addProperty(
+                    PropertySpec.builder("size", Int::class)
+                        .addModifiers(KModifier.OVERRIDE)
+                        .getter(FunSpec.getterBuilder().addCode("return %L.size\n", binding.delegatePropertyName).build())
+                        .build(),
+                )
+                builder.addFunction(FunSpec.builder("isEmpty").addModifiers(KModifier.OVERRIDE).returns(Boolean::class).addCode("return %L.isEmpty()\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("contains").addModifiers(KModifier.OVERRIDE).addParameter("element", elementType).returns(Boolean::class).addCode("return %L.contains(element)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("containsAll").addModifiers(KModifier.OVERRIDE).addParameter("elements", Collection::class.asClassName().parameterizedBy(elementType)).returns(Boolean::class).addCode("return %L.containsAll(elements)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("iterator").addModifiers(KModifier.OVERRIDE).returns(Iterator::class.asClassName().parameterizedBy(elementType)).addCode("return %L.iterator()\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("listIterator").addModifiers(KModifier.OVERRIDE).returns(ListIterator::class.asClassName().parameterizedBy(elementType)).addCode("return %L.listIterator()\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("listIterator").addModifiers(KModifier.OVERRIDE).addParameter("index", Int::class).returns(ListIterator::class.asClassName().parameterizedBy(elementType)).addCode("return %L.listIterator(index)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("subList").addModifiers(KModifier.OVERRIDE).addParameter("fromIndex", Int::class).addParameter("toIndex", Int::class).returns(List::class.asClassName().parameterizedBy(elementType)).addCode("return %L.subList(fromIndex, toIndex)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("get").addModifiers(KModifier.OVERRIDE).addParameter("index", Int::class).returns(elementType).addCode("return %L[index]\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("indexOf").addModifiers(KModifier.OVERRIDE).addParameter("element", elementType).returns(Int::class).addCode("return %L.indexOf(element)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("lastIndexOf").addModifiers(KModifier.OVERRIDE).addParameter("element", elementType).returns(Int::class).addCode("return %L.lastIndexOf(element)\n", binding.delegatePropertyName).build())
+            }
+            KotlinProjectionReadOnlyCollectionKind.MapView -> {
+                val keyType = resolveTypeName(requireNotNull(binding.keyBinding).typeName)
+                val valueType = resolveTypeName(requireNotNull(binding.valueBinding).typeName)
+                val entryType = Map.Entry::class.asClassName().parameterizedBy(keyType, valueType)
+                builder.addProperty(PropertySpec.builder("size", Int::class).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.size\n", binding.delegatePropertyName).build()).build())
+                builder.addProperty(PropertySpec.builder("entries", Set::class.asClassName().parameterizedBy(entryType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.entries\n", binding.delegatePropertyName).build()).build())
+                builder.addProperty(PropertySpec.builder("keys", Set::class.asClassName().parameterizedBy(keyType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.keys\n", binding.delegatePropertyName).build()).build())
+                builder.addProperty(PropertySpec.builder("values", Collection::class.asClassName().parameterizedBy(valueType)).addModifiers(KModifier.OVERRIDE).getter(FunSpec.getterBuilder().addCode("return %L.values\n", binding.delegatePropertyName).build()).build())
+                builder.addFunction(FunSpec.builder("containsKey").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).returns(Boolean::class).addCode("return %L.containsKey(key)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("containsValue").addModifiers(KModifier.OVERRIDE).addParameter("value", valueType).returns(Boolean::class).addCode("return %L.containsValue(value)\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("get").addModifiers(KModifier.OVERRIDE).addParameter("key", keyType).returns(valueType.copy(nullable = true)).addCode("return %L[key]\n", binding.delegatePropertyName).build())
+                builder.addFunction(FunSpec.builder("isEmpty").addModifiers(KModifier.OVERRIDE).returns(Boolean::class).addCode("return %L.isEmpty()\n", binding.delegatePropertyName).build())
+            }
+        }
     }
 
     private fun addMutableListForwardMembers(
@@ -1615,6 +1625,7 @@ class KotlinProjectionRenderer {
         visiting: Set<String>,
     ): String? =
         when (typeName) {
+            "Boolean" -> "b1"
             "Byte",
             "Int8",
             "SByte" -> "i1"
@@ -1714,6 +1725,7 @@ class KotlinProjectionRenderer {
     }
 
     internal fun nativeStructScalarKind(typeName: String): String? = when (typeName) {
+        "Boolean" -> "INT8"
             "Byte",
             "SByte",
             "Int8",
@@ -1767,6 +1779,7 @@ class KotlinProjectionRenderer {
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
         return when (field.typeName) {
+            "Boolean" -> CodeBlock.of("%T.readInt8(%L).toInt() != 0", PLATFORM_ABI_CLASS_NAME, slice)
             "Byte",
             "Int8" -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
             "SByte" -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
@@ -1805,6 +1818,7 @@ class KotlinProjectionRenderer {
         val value = CodeBlock.of("%L.%L", valueName, fieldName)
         val slice = CodeBlock.of("layout.slice(%L, %S)", destinationName, fieldName)
         return when (field.typeName) {
+            "Boolean" -> CodeBlock.of("%T.writeInt8(%L, if (%L) 1 else 0)", PLATFORM_ABI_CLASS_NAME, slice, value)
             "Byte",
             "Int8",
             "SByte" -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)

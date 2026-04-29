@@ -4,6 +4,7 @@ import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.collections.AbstractMutableList
 import kotlin.collections.AbstractMutableMap
+import kotlin.reflect.KClass
 
 /**
  * Runtime projection helper layer corresponding to `.cswinrt/src/WinRT.Runtime/Projections/IEnumerable*`,
@@ -50,6 +51,45 @@ object WinRtReferenceValueAdapters {
                 reference?.asInspectable() ?: IInspectableReference(PlatformAbi.nullComPtr, IID.IInspectable)
             },
             marshaller = { value -> IInspectableReference(value.getRefPointer(), IID.IInspectable) },
+        )
+
+    fun <T : Any> valueType(
+        projectedType: KClass<T>,
+        projectedTypeName: String,
+        typeSignature: WinRtTypeSignature,
+    ): WinRtReferenceValueAdapter<T> =
+        valueType(
+            projectedType = projectedType,
+            projectedTypeName = projectedTypeName,
+            typeSignature = typeSignature,
+            nullableInterfaceId = ParameterizedInterfaceId.createFromParameterizedInterface(
+                "61C17706-2D65-11E0-9AE8-D48564015472",
+                typeSignature,
+            ),
+        )
+
+    fun <T : Any> valueType(
+        projectedType: KClass<T>,
+        projectedTypeName: String,
+        typeSignature: WinRtTypeSignature,
+        nullableInterfaceId: Guid,
+    ): WinRtReferenceValueAdapter<T> =
+        WinRtReferenceValueAdapter(
+            projectedTypeName = projectedTypeName,
+            typeSignature = typeSignature,
+            projector = { reference ->
+                val inspectable = reference?.asInspectable()
+                    ?: throw WinRtInvalidCastException(
+                        "Expected non-null IReference<$projectedTypeName> value.",
+                        HResult(TYPE_E_TYPEMISMATCH),
+                    )
+                WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType) as? T
+                    ?: throw WinRtInvalidCastException(
+                        "Unable to project IReference<$projectedTypeName> value.",
+                        HResult(TYPE_E_TYPEMISMATCH),
+                    )
+            },
+            marshaller = { value -> ComWrappersSupport.createCCWForObject(value, nullableInterfaceId) },
         )
 }
 
