@@ -2552,6 +2552,68 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun object_reference_descriptor_skips_mapped_helper_interfaces() {
+        val defaultInterface = WinRtTypeDefinition(
+            namespace = "Sample.Xaml",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+        )
+        val propertyChanged = WinRtTypeDefinition(
+            namespace = "Microsoft.UI.Xaml.Data",
+            name = "INotifyPropertyChanged",
+            kind = WinRtTypeKind.Interface,
+        )
+        val bindableVector = WinRtTypeDefinition(
+            namespace = "Windows.UI.Xaml.Interop",
+            name = "IBindableVector",
+            kind = WinRtTypeKind.Interface,
+        )
+        val widget = WinRtTypeDefinition(
+            namespace = "Sample.Xaml",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+            defaultInterfaceName = "Sample.Xaml.IWidget",
+            implementedInterfaces = listOf(
+                WinRtInterfaceImplementationDefinition("Sample.Xaml.IWidget", isDefault = true),
+                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyPropertyChanged"),
+                WinRtInterfaceImplementationDefinition("Windows.UI.Xaml.Interop.IBindableVector"),
+            ),
+        )
+        val helpers = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(defaultInterface, widget),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Data",
+                    types = listOf(propertyChanged),
+                ),
+                WinRtNamespace(
+                    name = "Windows.UI.Xaml.Interop",
+                    types = listOf(bindableVector),
+                ),
+            ),
+        ).semanticHelpers()
+
+        val descriptor = helpers.objectReferenceSurfaceDescriptor(widget)
+
+        assertEquals(listOf("Sample_Xaml_IWidgetCache"), descriptor.objectReferenceNames)
+        assertEquals(
+            listOf("Sample.Xaml.Widget", "Sample.Xaml.IWidget"),
+            descriptor.exposedTypeMetadataNames,
+        )
+        assertEquals(
+            "runtime-owned-mapped",
+            descriptor.objectReferencePlans.single { it.interfaceName == "Microsoft.UI.Xaml.Data.INotifyPropertyChanged" }.skippedReason,
+        )
+        assertEquals(
+            "runtime-owned-mapped",
+            descriptor.objectReferencePlans.single { it.interfaceName == "Windows.UI.Xaml.Interop.IBindableVector" }.skippedReason,
+        )
+    }
+
+    @Test
     fun required_interface_mapped_helpers_carry_cswinrt_call_mode_and_removal_rules() {
         val iterable = WinRtTypeDefinition(
             namespace = "Windows.Foundation.Collections",

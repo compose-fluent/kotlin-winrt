@@ -1716,6 +1716,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         val objectReferencePlans = instanceInterfaces.map { descriptor ->
             val interfaceType = descriptor.definitionType
             val manuallyGenerated = interfaceType?.let { isManuallyGeneratedInterface(it).manuallyGenerated } ?: false
+            val mappedSkipReason = interfaceType?.let(::mappedObjectReferenceSkipReason)
             val fastAbiNonDefaultExclusive = type.isFastAbi && descriptor.isExclusiveTo && !descriptor.isDefault
             val usesInner = replaceDefaultByInner && descriptor.isDefault && (interfaceType?.genericParameterCount ?: 0) == 0
             val usesDefaultInterfaceObjRef =
@@ -1726,6 +1727,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 isDefaultInterface = descriptor.isDefault,
                 skippedReason = when {
                     manuallyGenerated -> "manual-bindable"
+                    mappedSkipReason != null -> mappedSkipReason
                     fastAbiNonDefaultExclusive -> "fast-abi-non-default-exclusive"
                     else -> null
                 },
@@ -1749,10 +1751,42 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 .map(WinRtObjectReferencePlanDescriptor::cacheName),
             objectReferencePlans = objectReferencePlans,
             baseConstructorDispatchTargets = listOfNotNull(type.baseTypeName),
-            exposedTypeMetadataNames = listOf(type.qualifiedName) + interfaces,
+            exposedTypeMetadataNames = listOf(type.qualifiedName) +
+                objectReferencePlans
+                    .filter { plan -> plan.skippedReason == null }
+                    .map(WinRtObjectReferencePlanDescriptor::interfaceName),
             hasRcwFactory = type.kind == WinRtTypeKind.RuntimeClass,
             hasUnwrappableNativeObject = type.kind in setOf(WinRtTypeKind.RuntimeClass, WinRtTypeKind.Delegate),
         )
+    }
+
+    private fun mappedObjectReferenceSkipReason(type: WinRtTypeDefinition): String? {
+        val mapping = getMappedType(type.namespace, type.name) ?: return null
+        if (mapping.mappedQualifiedName == null) {
+            return "mapped-helper-only"
+        }
+        if (
+            mapping.mappedNamespace == "System.Collections.Generic" ||
+            mapping.abiQualifiedName in setOf(
+                "Windows.Foundation.Collections.IIterable",
+                "Windows.Foundation.Collections.IIterator",
+                "Windows.Foundation.Collections.IVectorView",
+                "Windows.Foundation.Collections.IVector",
+                "Windows.Foundation.Collections.IMapView",
+                "Windows.Foundation.Collections.IMap",
+                "Windows.Foundation.Collections.IKeyValuePair",
+            )
+        ) {
+            return null
+        }
+        return when (mapping.mappedNamespace) {
+            "System",
+            "System.ComponentModel",
+            "System.Windows.Input",
+            "System.Collections",
+            "System.Collections.Specialized" -> "runtime-owned-mapped"
+            else -> null
+        }
     }
 
     fun managedAbiInvokeDescriptor(memberName: String, method: WinRtMethodDefinition, invokeKind: String): WinRtManagedAbiInvokeDescriptor {
