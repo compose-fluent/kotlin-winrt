@@ -58,7 +58,7 @@ class WinRtTypeSemanticsResolver(private val model: WinRtMetadataModel) {
             }
 
             WinRtTypeRefKind.MethodTypeParameter ->
-                throw IllegalArgumentException("Generic methods not supported")
+                WinRtTypeSemantics.GenericTypeIndex(normalized.genericParameterIndex ?: 0)
 
             WinRtTypeRefKind.Array ->
                 throw IllegalArgumentException("Array type semantics must be handled by parameter or ABI shape descriptors: ${normalized.typeName}")

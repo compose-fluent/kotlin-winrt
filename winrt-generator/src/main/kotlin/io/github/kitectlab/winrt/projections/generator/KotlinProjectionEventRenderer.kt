@@ -424,6 +424,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     val invocation = renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.name)
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
+        .addMethodGenericParameters(method)
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)

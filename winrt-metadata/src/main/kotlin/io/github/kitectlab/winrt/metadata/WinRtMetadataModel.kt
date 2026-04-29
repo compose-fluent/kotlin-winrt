@@ -410,6 +410,8 @@ data class WinRtMethodDefinition(
     val name: String,
     val returnTypeName: String,
     val parameters: List<WinRtParameterDefinition> = emptyList(),
+    val genericParameterCount: Int = 0,
+    val genericParameters: List<WinRtGenericParameterDefinition> = emptyList(),
     val isStatic: Boolean = false,
     val visibility: WinRtMethodVisibility = WinRtMethodVisibility.Unknown,
     val isSpecialName: Boolean = false,
@@ -436,6 +438,13 @@ data class WinRtMethodDefinition(
             returnTypeName = normalizedReturnType.typeName,
             returnTypeSignature = normalizedReturnType,
             overloadName = overloadName?.trim()?.takeIf(String::isNotEmpty),
+            genericParameterCount = maxOf(genericParameterCount, genericParameters.size),
+            genericParameters = genericParameters
+                .map(WinRtGenericParameterDefinition::normalized)
+                .groupBy(WinRtGenericParameterDefinition::index)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
+                .sortedBy(WinRtGenericParameterDefinition::index),
             returnParameterAttributes = returnParameterAttributes.map(WinRtCustomAttributeDefinition::normalized),
             returnTypeIsByRef = normalizedReturnType.isByRef,
             parameters = parameters.map(WinRtParameterDefinition::normalized),
@@ -466,6 +475,12 @@ data class WinRtMethodDefinition(
             returnTypeName = left.returnTypeName,
             returnTypeSignature = left.returnTypeSignature,
             parameters = left.parameters,
+            genericParameterCount = maxOf(left.genericParameterCount, right.genericParameterCount),
+            genericParameters = (left.genericParameters + right.genericParameters)
+                .groupBy(WinRtGenericParameterDefinition::index)
+                .values
+                .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
+                .sortedBy(WinRtGenericParameterDefinition::index),
             isStatic = left.isStatic,
             visibility = left.visibility,
             isSpecialName = left.isSpecialName || right.isSpecialName,

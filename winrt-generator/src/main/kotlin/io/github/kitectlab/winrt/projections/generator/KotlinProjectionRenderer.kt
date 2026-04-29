@@ -280,6 +280,7 @@ class KotlinProjectionRenderer {
         val objectShape = closableMethodShape(slotInterfaceType, method) ?: runtimeObjectMethodShape(method)
         return FunSpec.builder(objectShape?.name ?: method.name)
             .addModifiers(KModifier.OVERRIDE)
+            .addMethodGenericParameters(method, objectShape)
             .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
             .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
             .addCode("%L\n", invocation)
@@ -516,14 +517,18 @@ class KotlinProjectionRenderer {
             "io.github.kitectlab.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
             "Any",
             "System.Object" -> KotlinProjectionAbiValueKind.Object
-            else -> mappedType?.abiValueKind ?: when (resolvedType?.kind) {
-                WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
-                WinRtTypeKind.RuntimeClass -> KotlinProjectionAbiValueKind.ProjectedRuntimeClass
-                WinRtTypeKind.Enum -> KotlinProjectionAbiValueKind.Enum
-                WinRtTypeKind.Struct -> KotlinProjectionAbiValueKind.Struct
-                WinRtTypeKind.Delegate -> KotlinProjectionAbiValueKind.Delegate
-                WinRtTypeKind.Unknown,
-                null -> KotlinProjectionAbiValueKind.Unsupported
+            else -> when {
+                rawTypeName.isMethodGenericParameterName() -> KotlinProjectionAbiValueKind.GenericParameter
+                mappedType?.abiValueKind != null -> mappedType.abiValueKind
+                else -> when (resolvedType?.kind) {
+                    WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
+                    WinRtTypeKind.RuntimeClass -> KotlinProjectionAbiValueKind.ProjectedRuntimeClass
+                    WinRtTypeKind.Enum -> KotlinProjectionAbiValueKind.Enum
+                    WinRtTypeKind.Struct -> KotlinProjectionAbiValueKind.Struct
+                    WinRtTypeKind.Delegate -> KotlinProjectionAbiValueKind.Delegate
+                    WinRtTypeKind.Unknown,
+                    null -> KotlinProjectionAbiValueKind.Unsupported
+                }
             }
         }
         return KotlinProjectionAbiTypeBinding(
@@ -536,6 +541,9 @@ class KotlinProjectionRenderer {
             typeArguments = typeArguments,
         )
     }
+
+    private fun String.isMethodGenericParameterName(): Boolean =
+        startsWith("M") && drop(1).toIntOrNull() != null
 
     private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
         when (kind) {

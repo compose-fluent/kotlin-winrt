@@ -229,6 +229,7 @@ internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodD
     val objectShape = runtimeObjectMethodShape(method)
     return FunSpec.builder(objectShape?.name ?: method.name)
         .addModifiers(KModifier.ABSTRACT)
+        .addMethodGenericParameters(method, objectShape)
         .apply {
             if (objectShape != null) {
                 addModifiers(KModifier.OVERRIDE)
@@ -242,6 +243,7 @@ internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodD
 internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefinition, override: Boolean = false): FunSpec {
     val objectShape = runtimeObjectMethodShape(method)
     val builder = FunSpec.builder(objectShape?.name ?: method.name)
+        .addMethodGenericParameters(method, objectShape)
         .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
         .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
@@ -249,6 +251,23 @@ internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefini
         builder.addModifiers(KModifier.OVERRIDE)
     }
     return builder.build()
+}
+
+internal fun FunSpec.Builder.addMethodGenericParameters(
+    method: WinRtMethodDefinition,
+    objectShape: RuntimeObjectMethodShape? = null,
+): FunSpec.Builder = apply {
+    if (objectShape != null) {
+        return@apply
+    }
+    val parameters = method.genericParameters.ifEmpty {
+        (0 until method.genericParameterCount).map { index ->
+            io.github.kitectlab.winrt.metadata.WinRtGenericParameterDefinition("M$index", index)
+        }
+    }
+    parameters.forEach { parameter ->
+        addTypeVariable(TypeVariableName("M${parameter.index}"))
+    }
 }
 
 internal fun KotlinProjectionRenderer.renderRuntimeMethod(
@@ -306,6 +325,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     }
     return FunSpec.builder(objectShape?.name ?: method.name)
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
+        .addMethodGenericParameters(method, objectShape)
         .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
         .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
         .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
@@ -685,6 +705,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute)
     return FunSpec.builder(objectShape?.name ?: method.name)
         .addProjectedAttributeAnnotations(projectedAttributes)
+        .addMethodGenericParameters(method, objectShape)
         .addModifiers(KModifier.OVERRIDE)
         .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
         .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })

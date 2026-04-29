@@ -650,7 +650,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun genericSignatureUsage(type: WinRtTypeRef): WinRtGenericSignatureUsageDescriptor {
         var contains = false
         fun visit(current: WinRtTypeRef) {
-            if (current.kind == WinRtTypeRefKind.GenericTypeParameter) {
+            if (current.kind == WinRtTypeRefKind.GenericTypeParameter || current.kind == WinRtTypeRefKind.MethodTypeParameter) {
                 contains = true
             }
             current.elementType?.let(::visit)

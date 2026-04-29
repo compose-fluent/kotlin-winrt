@@ -645,7 +645,6 @@ class WinRtMetadataModelTest {
 
         assertTrue(report.hasErrors)
         assertTrue(WinRtMetadataDiagnosticCode.MissingInterfaceIid in codes)
-        assertTrue(WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape in codes)
         assertTrue(WinRtMetadataDiagnosticCode.UnresolvedTypeReference in codes)
         assertTrue(WinRtMetadataDiagnosticCode.InvalidPropertyAccessors in codes)
         assertTrue(WinRtMetadataDiagnosticCode.InvalidEventAccessors in codes)
@@ -2860,7 +2859,15 @@ class WinRtMetadataModelTest {
                             namespace = "Sample.Foundation",
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
-                            methods = listOf(WinRtMethodDefinition("Transform", "M0", methodRowId = 12)),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    "Transform",
+                                    "M0",
+                                    genericParameterCount = 1,
+                                    genericParameters = listOf(WinRtGenericParameterDefinition("M0", 0)),
+                                    methodRowId = 12,
+                                ),
+                            ),
                         ),
                     ),
                 ),
@@ -2870,13 +2877,10 @@ class WinRtMetadataModelTest {
             WinRtMetadataValidationOptions(kotlinSpecificGaps = listOf("NuGet resource integration is planned in the Gradle plugin slice.")),
         )
         val codes = report.diagnostics.map(WinRtMetadataDiagnostic::code).toSet()
-        assertEquals(true, WinRtMetadataDiagnosticCode.UnsupportedSemanticShape in codes)
-        assertEquals(true, WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape in codes)
+        assertEquals(false, WinRtMetadataDiagnosticCode.UnsupportedSemanticShape in codes)
+        assertEquals(false, WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape in codes)
         assertEquals(true, WinRtMetadataDiagnosticCode.IntentionalKotlinGap in codes)
         assertEquals(1, report.warnings.count { it.code == WinRtMetadataDiagnosticCode.IntentionalKotlinGap })
-        assertEquals(
-            true,
-            report.format().contains("Sample.Foundation.IWidget.Transform metadata row 12"),
-        )
+        assertEquals(false, report.format().contains("Sample.Foundation.IWidget.Transform metadata row 12"))
     }
 }

@@ -8,6 +8,7 @@ import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeNamedArgument
 import io.github.kitectlab.winrt.metadata.WinRtCustomAttributeValue
 import io.github.kitectlab.winrt.metadata.WinRtEnumMemberDefinition
 import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
+import io.github.kitectlab.winrt.metadata.WinRtGenericParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
@@ -30,6 +31,45 @@ import java.nio.file.Files
 import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    @Test
+    fun generator_projects_method_generic_parameters_like_cswinrt_method_generic_signature_branch() {
+        // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_signature MethodDef.GenericParam() handling.
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Transform",
+                                    returnTypeName = "M0",
+                                    genericParameterCount = 1,
+                                    genericParameters = listOf(WinRtGenericParameterDefinition("M0", 0)),
+                                    parameters = listOf(WinRtParameterDefinition("value", "M0")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        val contents = filesByName.getValue("IWidget.kt").contents
+        assertTrue(contents, contents.contains("fun <M0> Transform(`value`: M0): M0"))
+        assertTrue(contents, contents.contains("WinRtGenericParameterProjection.createReference(value)"))
+        assertTrue(contents, contents.contains("WinRtGenericParameterProjection.fromAbi<M0>(__resultPointer)"))
+        assertFalse(contents, contents.contains("import M0"))
+    }
+
     @Test
     fun generate_to_skips_unchanged_files_and_removes_stale_outputs() {
         val outputRoot = Files.createTempDirectory("kotlin-winrt-generator-incremental-")

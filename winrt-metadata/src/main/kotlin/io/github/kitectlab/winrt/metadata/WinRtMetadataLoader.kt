@@ -270,7 +270,7 @@ private class MetadataTables private constructor(
                 val typeAttributes = customAttributes[OwnerKey(TABLE_TYPE_DEF, rowId)].orEmpty()
                 val implementedInterfaces = interfaceImplsByOwner[rowId].orEmpty()
                 val defaultInterfaceName = implementedInterfaces.firstOrNull { it.isDefault }?.interfaceName
-                val genericParameters = genericParametersByOwner[rowId].orEmpty()
+                val genericParameters = genericParametersByOwner.typeParametersByType[rowId].orEmpty()
                 val kind = raw.classify(typeDefNames, typeRefNames, typeSpecTypes)
                 val fields = readFieldDefinitions(
                     typeIndex = index,
@@ -338,6 +338,7 @@ private class MetadataTables private constructor(
                         semanticMethodRowIds = methodSemantics.semanticMethodRowIds,
                         customAttributes = customAttributes,
                         parameterConstants = parameterConstants,
+                        genericParametersByMethod = genericParametersByOwner.typeParametersByMethod,
                     ),
                     properties = propertyRowIdsByOwner[rowId].orEmpty().mapNotNull { propertyRowId ->
                         buildPropertyDefinition(
@@ -628,6 +629,7 @@ private class MetadataTables private constructor(
         semanticMethodRowIds: Set<Int>,
         customAttributes: Map<OwnerKey, List<DecodedCustomAttribute>>,
         parameterConstants: Map<Int, DecodedFieldConstant>,
+        genericParametersByMethod: Map<Int, List<WinRtGenericParameterDefinition>>,
     ): List<WinRtMethodDefinition> {
         if (rawMethods.isEmpty()) {
             return emptyList()
@@ -650,11 +652,14 @@ private class MetadataTables private constructor(
                 val signature = readMethodSignature(rawMethod.signatureBlobIndex, typeDefNames, typeRefNames, typeSpecTypes)
                 val methodAttributes = customAttributes[OwnerKey(TABLE_METHOD_DEF, methodRowId)].orEmpty()
                 val returnParameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == 0 }
+                val genericParameters = genericParametersByMethod[methodRowId].orEmpty()
                 WinRtMethodDefinition(
                     name = rawMethod.name,
                     returnTypeName = signature.returnType.typeName,
                     returnTypeIsByRef = signature.returnType.isByRef,
                     returnTypeSignature = signature.returnType.type,
+                    genericParameterCount = genericParameters.size,
+                    genericParameters = genericParameters,
                     parameters = signature.parameters.mapIndexed { parameterIndex, parameterType ->
                         val parameterRow = parameterRowsByMethod[methodRowId].orEmpty().firstOrNull { it.sequence == parameterIndex + 1 }
                         val parameterConstant = parameterRow?.let { parameterConstants[it.rowId] }
@@ -971,42 +976,58 @@ private class MetadataTables private constructor(
         }
     }
 
+    private data class GenericParametersByOwner(
+        val typeParametersByType: Map<Int, List<WinRtGenericParameterDefinition>>,
+        val typeParametersByMethod: Map<Int, List<WinRtGenericParameterDefinition>>,
+    )
+
     private fun readGenericParameters(
         typeDefNames: Array<String>,
         typeRefNames: Array<String>,
         typeSpecTypes: Array<WinRtTypeRef>,
-    ): Map<Int, List<WinRtGenericParameterDefinition>> {
+    ): GenericParametersByOwner {
         val rowCount = rowCounts[TABLE_GENERIC_PARAM]
         if (rowCount == 0) {
-            return emptyMap()
+            return GenericParametersByOwner(emptyMap(), emptyMap())
         }
         val constraintsByParameter = readGenericParameterConstraints(typeDefNames, typeRefNames, typeSpecTypes)
         var cursor = tableOffsets[TABLE_GENERIC_PARAM]
-        return buildList<Pair<Int, WinRtGenericParameterDefinition>>(rowCount) {
-            repeat(rowCount) { rowIndex ->
-                val number = buffer.shortAt(cursor).toInt() and 0xFFFF
-                cursor += 2
-                val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
-                cursor += 2
-                val ownerToken = readIndex(cursor, codedIndexSize(CODED_TYPE_OR_METHOD_DEF))
-                cursor += codedIndexSize(CODED_TYPE_OR_METHOD_DEF)
-                val name = readStringAt(cursor)
-                cursor += stringIndexSize
+        val typeParameters = mutableListOf<Pair<Int, WinRtGenericParameterDefinition>>()
+        val methodParameters = mutableListOf<Pair<Int, WinRtGenericParameterDefinition>>()
+        repeat(rowCount) { rowIndex ->
+            val number = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val flags = buffer.shortAt(cursor).toInt() and 0xFFFF
+            cursor += 2
+            val ownerToken = readIndex(cursor, codedIndexSize(CODED_TYPE_OR_METHOD_DEF))
+            cursor += codedIndexSize(CODED_TYPE_OR_METHOD_DEF)
+            val name = readStringAt(cursor)
+            cursor += stringIndexSize
 
-                val ownerTag = ownerToken and CODED_TYPE_OR_METHOD_DEF_TAG_MASK
-                val ownerRowId = ownerToken ushr CODED_TYPE_OR_METHOD_DEF_TAG_BITS
-                if (ownerTag == CODED_TYPE_OR_METHOD_DEF_TYPE_DEF && ownerRowId > 0) {
-                    add(
-                        ownerRowId to WinRtGenericParameterDefinition(
-                            name = name,
-                            index = number,
-                            flags = flags,
-                            constraints = constraintsByParameter[rowIndex + 1].orEmpty(),
-                        ),
-                    )
-                }
+            val ownerTag = ownerToken and CODED_TYPE_OR_METHOD_DEF_TAG_MASK
+            val ownerRowId = ownerToken ushr CODED_TYPE_OR_METHOD_DEF_TAG_BITS
+            if (ownerRowId <= 0) {
+                return@repeat
             }
-        }.groupBy({ it.first }, { it.second })
+            val parameter = WinRtGenericParameterDefinition(
+                name = name,
+                index = number,
+                flags = flags,
+                constraints = constraintsByParameter[rowIndex + 1].orEmpty(),
+            )
+            when (ownerTag) {
+                CODED_TYPE_OR_METHOD_DEF_TYPE_DEF -> typeParameters += ownerRowId to parameter
+                CODED_TYPE_OR_METHOD_DEF_METHOD_DEF -> methodParameters += ownerRowId to parameter
+            }
+        }
+        return GenericParametersByOwner(
+            typeParametersByType = typeParameters.toGenericParameterMap(),
+            typeParametersByMethod = methodParameters.toGenericParameterMap(),
+        )
+    }
+
+    private fun List<Pair<Int, WinRtGenericParameterDefinition>>.toGenericParameterMap(): Map<Int, List<WinRtGenericParameterDefinition>> =
+        groupBy({ it.first }, { it.second })
             .mapValues { (_, parameters) ->
                 parameters
                     .groupBy(WinRtGenericParameterDefinition::index)
@@ -1014,7 +1035,6 @@ private class MetadataTables private constructor(
                     .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
                     .sortedBy(WinRtGenericParameterDefinition::index)
             }
-    }
 
     private fun readGenericParameterConstraints(
         typeDefNames: Array<String>,
@@ -2084,6 +2104,7 @@ private class MetadataTables private constructor(
         private const val CODED_TYPE_DEF_OR_REF_TAG_MASK = (1 shl CODED_TYPE_DEF_OR_REF_TAG_BITS) - 1
 
         private const val CODED_TYPE_OR_METHOD_DEF_TYPE_DEF = 0
+        private const val CODED_TYPE_OR_METHOD_DEF_METHOD_DEF = 1
         private const val CODED_TYPE_OR_METHOD_DEF_TAG_BITS = 1
         private const val CODED_TYPE_OR_METHOD_DEF_TAG_MASK = (1 shl CODED_TYPE_OR_METHOD_DEF_TAG_BITS) - 1
 

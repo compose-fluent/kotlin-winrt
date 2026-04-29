@@ -295,22 +295,7 @@ class WinRtMetadataValidator private constructor(
     ) {
         val normalizedType = type.normalized()
         when (normalizedType.kind) {
-            WinRtTypeRefKind.MethodTypeParameter -> {
-                diagnostics += error(
-                    code = WinRtMetadataDiagnosticCode.UnsupportedGenericMethodShape,
-                    typeName = ownerTypeName,
-                    memberName = memberName,
-                    rowId = rowId,
-                    message = "$role uses method generic parameter ${normalizedType.typeName}; generic methods are not a supported projection input yet.",
-                )
-                diagnostics += error(
-                    code = WinRtMetadataDiagnosticCode.UnsupportedSemanticShape,
-                    typeName = ownerTypeName,
-                    memberName = memberName,
-                    rowId = rowId,
-                    message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: generic methods are not supported.",
-                )
-            }
+            WinRtTypeRefKind.MethodTypeParameter -> Unit
 
             WinRtTypeRefKind.Unknown -> {
                 diagnostics += error(
