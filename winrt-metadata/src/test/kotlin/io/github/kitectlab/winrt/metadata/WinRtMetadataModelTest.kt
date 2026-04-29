@@ -2636,7 +2636,19 @@ class WinRtMetadataModelTest {
             kind = WinRtTypeKind.Interface,
             implementedInterfaces = listOf(
                 WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<String>"),
+                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo"),
+                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyPropertyChanged"),
             ),
+        )
+        val dataErrorInfo = WinRtTypeDefinition(
+            namespace = "Microsoft.UI.Xaml.Data",
+            name = "INotifyDataErrorInfo",
+            kind = WinRtTypeKind.Interface,
+        )
+        val propertyChanged = WinRtTypeDefinition(
+            namespace = "Microsoft.UI.Xaml.Data",
+            name = "INotifyPropertyChanged",
+            kind = WinRtTypeKind.Interface,
         )
         val owner = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
@@ -2649,6 +2661,7 @@ class WinRtMetadataModelTest {
         val helpers = WinRtMetadataModel(
             listOf(
                 WinRtNamespace("Windows.Foundation.Collections", listOf(iterable, vector)),
+                WinRtNamespace("Microsoft.UI.Xaml.Data", listOf(dataErrorInfo, propertyChanged)),
                 WinRtNamespace("Sample.Foundation", listOf(ownerInterface, owner)),
             ),
         ).semanticHelpers()
@@ -2667,6 +2680,18 @@ class WinRtMetadataModelTest {
         val iterablePlan = descriptor.mappedHelperPlans.single { it.memberFamily == "IEnumerable" }
         assertEquals("Windows.Foundation.Collections.IIterable<String>", iterablePlan.interfaceName)
         assertEquals("_iterableToEnumerable", iterablePlan.adapterFieldName)
+
+        val dataErrorPlan = descriptor.mappedHelperPlans.single { it.memberFamily == "INotifyDataErrorInfo" }
+        assertEquals("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo", dataErrorPlan.interfaceName)
+        assertEquals("System.ComponentModel.INotifyDataErrorInfo", dataErrorPlan.mappedTypeName)
+        assertEquals(null, dataErrorPlan.helperWrapperName)
+        assertEquals(null, dataErrorPlan.adapterFieldName)
+
+        val propertyChangedPlan = descriptor.mappedHelperPlans.single { it.memberFamily == "INotifyPropertyChanged" }
+        assertEquals("Microsoft.UI.Xaml.Data.INotifyPropertyChanged", propertyChangedPlan.interfaceName)
+        assertEquals("System.ComponentModel.INotifyPropertyChanged", propertyChangedPlan.mappedTypeName)
+        assertEquals(null, propertyChangedPlan.helperWrapperName)
+        assertEquals(null, propertyChangedPlan.adapterFieldName)
     }
 
     @Test

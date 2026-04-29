@@ -5499,16 +5499,24 @@ class KotlinProjectionGeneratorTest {
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IValidatedObject", isDefault = true),
                             ),
                         ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "DirectValidatedObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Data.INotifyDataErrorInfo",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyDataErrorInfo", isDefault = true),
+                            ),
+                        ),
                     ),
                 ),
             ),
         )
 
-        val contents = KotlinProjectionGenerator()
+        val files = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("ValidatedObject.kt")
-            .contents
+        val contents = files.getValue("ValidatedObject.kt").contents
 
         assertTrue(contents, contents.contains("WinRtDataErrorInfo,"))
         assertTrue(contents, contents.contains("WinRtDataErrorInfoProjection.fromAbi(_inner)"))
@@ -5517,6 +5525,65 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("override fun addErrorsChanged(handler: WinRtDataErrorsChangedHandler)"))
         assertTrue(contents, contents.contains("override fun removeErrorsChanged(handler: WinRtDataErrorsChangedHandler)"))
         assertFalse(contents, contents.contains("INotifyDataErrorInfo.Metadata.IID"))
+
+        val directContents = files.getValue("DirectValidatedObject.kt").contents
+        assertTrue(directContents, directContents.contains("WinRtDataErrorInfo,"))
+        assertTrue(directContents, directContents.contains("override val hasErrors: Boolean"))
+        assertFalse(directContents, directContents.contains("INotifyDataErrorInfo.Metadata.IID"))
+    }
+
+    @Test
+    fun generator_projects_required_notify_property_changed_helper_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Data",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Data",
+                            name = "INotifyPropertyChanged",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("90b17601-b065-586e-83d9-9adc3a695284"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INotifyWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555564"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyPropertyChanged"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NotifyWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INotifyWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.INotifyWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("NotifyWidget.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtPropertyChangedNotifier,"))
+        assertTrue(contents, contents.contains("WinRtPropertyChangedNotifierProjection.fromAbi(_inner)"))
+        assertTrue(contents, contents.contains("override fun addPropertyChanged(handler: WinRtPropertyChangedHandler)"))
+        assertTrue(contents, contents.contains("override fun removePropertyChanged(handler: WinRtPropertyChangedHandler)"))
+        assertFalse(contents, contents.contains("INotifyPropertyChanged.Metadata.IID"))
     }
 
     @Test

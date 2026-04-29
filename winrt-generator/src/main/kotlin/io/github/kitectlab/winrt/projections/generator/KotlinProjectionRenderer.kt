@@ -600,9 +600,12 @@ class KotlinProjectionRenderer {
         val defaultObjectReferencePlan = plan.defaultInterfaceName
             ?.substringBefore('<')
             ?.let(objectReferencePlansByInterface::get)
-        if (plan.defaultInterfaceIid != null ||
-            defaultObjectReferencePlan != null ||
-            isMappedCollectionInterfaceName(plan.defaultInterfaceName.orEmpty())
+        val defaultInterfaceIsRuntimeOwnedMapped = plan.defaultInterfaceName
+            ?.let(::isRuntimeOwnedMappedTypeName) == true
+        if (!defaultInterfaceIsRuntimeOwnedMapped &&
+            (plan.defaultInterfaceIid != null ||
+                (defaultObjectReferencePlan != null && defaultObjectReferencePlan.skippedReason == null) ||
+                isMappedCollectionInterfaceName(plan.defaultInterfaceName.orEmpty()))
         ) {
             val defaultCacheType = if (
                 plan.runtimeClassBaseTypeName != null ||
@@ -724,7 +727,7 @@ class KotlinProjectionRenderer {
             builder.addSuperinterface(readOnlyCollectionProjectedType(binding))
             addReadOnlyCollectionForwardMembers(builder, binding)
         }
-        if (plan.usesMappedDataErrorInfoAugmentation && !plan.hasDirectMappedDataErrorInfoSuperinterface) {
+        if (plan.usesMappedDataErrorInfoAugmentation) {
             builder.addSuperinterface(WINRT_DATA_ERROR_INFO_CLASS_NAME)
         }
         if (plan.usesMappedDataErrorInfoAugmentation) {
@@ -1042,14 +1045,6 @@ class KotlinProjectionRenderer {
 
     private val KotlinTypeProjectionPlan.usesMappedPropertyChangedAugmentation: Boolean
         get() = requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyPropertyChanged")
-
-    private val KotlinTypeProjectionPlan.hasDirectMappedDataErrorInfoSuperinterface: Boolean
-        get() = sequenceOf(defaultInterfaceName)
-            .plus(type.implementedInterfaces.map { it.interfaceName })
-            .filterNotNull()
-            .map { it.substringBefore('<').removeSuffix("?") }
-            .mapNotNull(::mappedTypeByAbiName)
-            .any { it.descriptionName == "INotifyDataErrorInfo" }
 
     private fun addMappedDataErrorInfoForwardMembers(
         builder: TypeSpec.Builder,

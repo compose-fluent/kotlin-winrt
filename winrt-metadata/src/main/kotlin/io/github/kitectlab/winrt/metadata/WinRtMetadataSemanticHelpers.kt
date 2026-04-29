@@ -1944,6 +1944,13 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 removesNonGenericEnumerable = false,
                 removesGenericEnumerableName = null,
             )
+            mapping.mappedName == "INotifyPropertyChanged" -> RequiredMappedHelperPlan(
+                memberFamily = "INotifyPropertyChanged",
+                helperWrapperName = null,
+                adapterFieldName = null,
+                removesNonGenericEnumerable = false,
+                removesGenericEnumerableName = null,
+            )
             else -> return null
         }
         return WinRtRequiredMappedHelperPlanDescriptor(
