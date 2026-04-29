@@ -130,7 +130,7 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
         name = parameterBinding.name,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%L.pointer", abiReferenceName),
+        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, abiReferenceName),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
         scopeOpeners = listOf(
             CodeBlock.of(

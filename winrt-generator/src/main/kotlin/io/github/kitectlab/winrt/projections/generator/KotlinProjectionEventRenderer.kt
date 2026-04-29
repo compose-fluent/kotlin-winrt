@@ -1027,7 +1027,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         builder.addProperty(
             PropertySpec.builder(binding.bindingName, Int::class)
                 .addModifiers(KModifier.INTERNAL)
-                .initializer("%T.Metadata.%L", resolveTypeName(binding.slotInterfaceQualifiedName), binding.slotConstantName)
+                .initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
                 .build(),
         )
     }
@@ -1053,7 +1053,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         builder.addProperty(
             PropertySpec.builder(binding.bindingName, Int::class)
                 .addModifiers(KModifier.INTERNAL)
-                .initializer("%T.Metadata.%L", resolveTypeName(binding.slotInterfaceQualifiedName), binding.slotConstantName)
+                .initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
                 .build(),
         )
     }

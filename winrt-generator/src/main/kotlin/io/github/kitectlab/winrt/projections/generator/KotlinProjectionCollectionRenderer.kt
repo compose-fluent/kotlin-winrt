@@ -449,7 +449,7 @@ internal fun KotlinProjectionRenderer.renderMapCollectionDelegateInitializer(
                 KotlinProjectionAbiParameterBinding("key", keyBinding),
                 KotlinProjectionAbiParameterBinding("value", valueBinding),
             ),
-        ).toString(),
+        ).withoutInlineReturn().toString(),
         keyType,
         valueType,
         renderCollectionInvocation(
@@ -482,6 +482,9 @@ internal fun KotlinProjectionRenderer.renderMapCollectionDelegateInitializer(
         ).toString(),
     )
 }
+
+private fun CodeBlock.withoutInlineReturn(): CodeBlock =
+    CodeBlock.of("%L", toString().replace(Regex("""(?m)^(\s*)return\s+"""), "\$1"))
 
 internal fun KotlinProjectionRenderer.renderReadOnlyCollectionDelegateProperty(
     binding: KotlinProjectionReadOnlyCollectionBinding,

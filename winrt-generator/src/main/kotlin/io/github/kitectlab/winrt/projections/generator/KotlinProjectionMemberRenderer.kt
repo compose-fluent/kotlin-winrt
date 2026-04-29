@@ -688,11 +688,16 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
 internal fun KotlinProjectionRenderer.metadataSlotExpression(
     slotInterfaceType: WinRtTypeDefinition,
     slotConstantName: String,
+): CodeBlock = metadataSlotExpression(slotInterfaceType.qualifiedName, slotConstantName)
+
+internal fun KotlinProjectionRenderer.metadataSlotExpression(
+    slotInterfaceQualifiedName: String,
+    slotConstantName: String,
 ): CodeBlock =
-    if (slotInterfaceType.qualifiedName == "Windows.Foundation.IClosable" && slotConstantName == "CLOSE_SLOT") {
+    if (slotInterfaceQualifiedName == "Windows.Foundation.IClosable" && slotConstantName == "CLOSE_SLOT") {
         CodeBlock.of("6")
     } else {
-        CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), slotConstantName)
+        CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceQualifiedName), slotConstantName)
     }
 
 private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
