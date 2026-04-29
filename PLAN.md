@@ -32,6 +32,7 @@
 - [x] 24.12: mapped runtime-owned helper closure now routes `INotifyDataErrorInfo`/`INotifyPropertyChanged` required helpers through runtime projections, records both helper families in metadata descriptors, and suppresses generated `Metadata.IID` cache acquisition for runtime-owned mapped defaults.
 - [x] 24.13: namespace additions/runtime support now records `.cswinrt/src/cswinrt/strings` source additions plus `ComInteropHelpers.cs` adapter namespaces, including Storage source handoff and DataTransfer interop handoff; JSON `IStringable.ToString`, chunked support tables, WindowsAppSDK sample run, and unsigned Kotlin type cleanup are closed for the current JVM boundary. The local `.cswinrt` tree has no Direct3D helper/interop source to mirror, so no Kotlin Direct3D rule is introduced.
 - [ ] 24.14: keep `write_wrapper_class`, `write_abi_class`, `write_factory_class`, `write_module_activation_factory`, CCW/server activation, and WinRT-exposed authoring output frozen under `winrt-authoring` until `mingwX64` prerequisites close.
+- [ ] 24.15: post-24 audit: non-authoring app-consumption generator writers are closed except method-generic metadata input support; `.cswinrt` has `MethodDef.GenericParam()` ABI-signature branches, while Kotlin currently diagnoses method type parameters as unsupported. Keep this low-priority unless real Windows/WindowsAppSDK metadata needs it.
 
 ## Generator Audit Matrix
 
@@ -46,6 +47,7 @@
 - [x] `write_delegate`, `write_abi_delegate`, `add_generic_type_references_in_type`, `write_generic_type_instantiations`: delegate projection, delegate ABI descriptors, generic fixed-point discovery, RCW/vtable/property/delegate initialization, event delegate dependencies, and fallback runtime bindings are closed.
 - [x] Event helper generation: event source subclass descriptors, shared `EventHandler<T>` factories, generated event source table, runtime-class/interface/static event routing, and `WinRtEvent<T>` surface are closed.
 - [x] Namespace additions/helper outputs: `.cswinrt/src/cswinrt/strings` namespace additions, support handoff files, base-type mapping, generic instantiation support, ABI delegate initialization, event helpers, and plugin identity handoff are modeled; C# addition files are not treated as Kotlin inputs.
+- [ ] Method-generic inputs: `.cswinrt/src/cswinrt/code_writers.h` contains method `GenericParam()` ABI-signature handling; Kotlin metadata/generator currently rejects method type parameters before projection. This is the only non-authoring, non-Kotlin-syntax generator parity gap found in the post-24 scan.
 - [ ] Authoring-gated writers: `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, `write_winrt_exposed_type_class`, CCW/server activation/user-subclassing remain frozen until `winrt-authoring` and `mingwX64` prerequisites are ready.
 
 ## Completed Summary
