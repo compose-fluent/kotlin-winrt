@@ -23,6 +23,7 @@ object ComWrappersSupport {
     private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRtCcwDefinition>()
     private val rcwCache = WeakValueCache<Long, Any>()
     private val runtimeClassNameLookups = SnapshotList<(KClass<*>) -> String?>()
+    private val authoringMetadataTypeLookups = SnapshotList<(String) -> String?>()
 
     init {
         platformEnsureInspectableProjectionInteropRegistered()
@@ -72,6 +73,27 @@ object ComWrappersSupport {
     ) {
         runtimeClassNameLookups.add(lookup)
     }
+
+    fun registerAuthoringMetadataTypeLookup(
+        lookup: (String) -> String?,
+    ) {
+        authoringMetadataTypeLookups.add(lookup)
+    }
+
+    fun registerAuthoringMetadataTypeMappings(
+        mappings: Map<String, String>,
+    ) {
+        if (mappings.isEmpty()) {
+            return
+        }
+        val stableMappings = mappings.toMap()
+        registerAuthoringMetadataTypeLookup { typeName -> stableMappings[typeName] }
+    }
+
+    fun getAuthoringMetadataTypeName(projectedTypeName: String): String? =
+        authoringMetadataTypeLookups.firstNotNullOfOrNull { lookup ->
+            lookup(projectedTypeName)?.takeIf { it.isNotBlank() }
+        }
 
     fun getInspectableInfo(pointer: RawAddress): WinRtInspectableInfo? =
         WinRtInspectableComObject.findInspectableInfo(pointer)?.let {
@@ -241,6 +263,7 @@ object ComWrappersSupport {
         ccwFactories.clear()
         rcwCache.clear()
         runtimeClassNameLookups.clear()
+        authoringMetadataTypeLookups.clear()
         FreeThreadedMarshalerSupport.clearForTests()
         Projections.clearRegistriesForTests()
         TypeNameSupport.clearRegistriesForTests()

@@ -8,6 +8,20 @@ import org.junit.Test
 
 class ComWrappersSupportTest {
     @Test
+    fun authoring_metadata_type_lookup_returns_registered_mapping() {
+        ComWrappersSupport.clearRegistriesForTests()
+        ComWrappersSupport.registerAuthoringMetadataTypeMappings(
+            mapOf("Sample.Foundation.Widget" to "ABI.Sample.Foundation.Widget"),
+        )
+
+        assertEquals(
+            "ABI.Sample.Foundation.Widget",
+            ComWrappersSupport.getAuthoringMetadataTypeName("Sample.Foundation.Widget"),
+        )
+        assertEquals(null, ComWrappersSupport.getAuthoringMetadataTypeName("Sample.Foundation.Missing"))
+    }
+
+    @Test
     fun create_rcw_uses_runtime_class_factory_and_caches_wrapper_identity() {
         ComWrappersSupport.clearRegistriesForTests()
         val created = mutableListOf<TestRuntimeClassWrapper>()

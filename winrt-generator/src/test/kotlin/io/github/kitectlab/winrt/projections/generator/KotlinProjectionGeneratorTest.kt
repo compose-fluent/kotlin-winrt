@@ -12,6 +12,7 @@ import io.github.kitectlab.winrt.metadata.WinRtGenericParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
+import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
@@ -4838,7 +4839,10 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
 
@@ -4895,6 +4899,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(typeShapeWriterPlan.contains("fun deferredAuthoringFactoryEntries(): List<Pair<String, String>>"))
         assertFalse(typeShapeWriterPlan.contains("installModuleActivationFactories"))
         assertFalse(typeShapeWriterPlan.contains("moduleActivationEntries"))
+        val authoringMetadataMappingHelper = filesByName.getValue("AuthoringMetadataTypeMappingHelper.kt").contents
+        assertTrue(authoringMetadataMappingHelper.contains("object AuthoringMetadataTypeMappingHelper"))
+        assertTrue(authoringMetadataMappingHelper.contains("Sample.Foundation.Widget->ABI.Sample.Foundation.Widget"))
+        assertTrue(authoringMetadataMappingHelper.contains("fun initialize()"))
+        assertTrue(authoringMetadataMappingHelper.contains("ComWrappersSupport.registerAuthoringMetadataTypeMappings"))
+        assertTrue(authoringMetadataMappingHelper.contains("fun getMetadataTypeMapping(projectedTypeName: String): String?"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("Windows.Foundation"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("SourceAddition"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("fun installNamespaceAdditions"))

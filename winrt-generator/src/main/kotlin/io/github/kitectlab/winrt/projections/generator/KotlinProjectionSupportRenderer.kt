@@ -122,6 +122,7 @@ class KotlinProjectionSupportRenderer {
             renderEventProjectionHelpers(model, plans, inventory),
             renderAbiImplementationPlan(plans),
             renderTypeShapeWriterPlan(inventory, plans),
+            renderAuthoringMetadataTypeMappingHelper(inventory),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -631,6 +632,40 @@ class KotlinProjectionSupportRenderer {
             appendLine("}")
         }
         return supportFile("WinRTTypeShapeWriterPlan.kt", contents)
+    }
+
+    private fun renderAuthoringMetadataTypeMappingHelper(
+        inventory: WinRtMetadataProjectionInventory,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("AuthoringMetadataTypeMappingHelper")
+            appendLine("import io.github.kitectlab.winrt.runtime.ComWrappersSupport")
+            appendLine()
+            appendLine("internal object AuthoringMetadataTypeMappingHelper {")
+            appendStringList("AUTHORING_METADATA_MAPPINGS", inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" })
+            appendLine("    private val AUTHORING_METADATA_MAPPING_TABLE: Map<String, String> =")
+            appendLine("        AUTHORING_METADATA_MAPPINGS.toArrowMap()")
+            appendLine()
+            appendLine("    fun initialize() {")
+            appendLine("        if (AUTHORING_METADATA_MAPPING_TABLE.isNotEmpty()) {")
+            appendLine("            ComWrappersSupport.registerAuthoringMetadataTypeMappings(AUTHORING_METADATA_MAPPING_TABLE)")
+            appendLine("        }")
+            appendLine("    }")
+            appendLine()
+            appendLine("    fun getMetadataTypeMapping(projectedTypeName: String): String? =")
+            appendLine("        AUTHORING_METADATA_MAPPING_TABLE[projectedTypeName]")
+            appendLine()
+            appendLine("    private fun List<String>.toArrowMap(): Map<String, String> =")
+            appendLine("        mapNotNull { entry ->")
+            appendLine("            val separator = entry.indexOf(\"->\")")
+            appendLine("            if (separator < 0) null else entry.substring(0, separator) to entry.substring(separator + 2)")
+            appendLine("        }.toMap()")
+            appendLine("}")
+        }
+        return supportFile("AuthoringMetadataTypeMappingHelper.kt", contents)
     }
 
     private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
