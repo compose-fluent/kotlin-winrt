@@ -6,6 +6,7 @@ import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.Guid
+import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
@@ -16,6 +17,40 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class WinRtAuthoringTest {
+    @Test
+    fun authored_activation_factory_creates_default_instance_through_activation_factory() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("aaaaaaaa-1111-2222-3333-444444444444")
+        WinRtAuthoring.registerType<ActivatableComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.ActivatableComponent",
+                defaultInterfaceId = interfaceId,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = interfaceId,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory<ActivatableComponent>(
+            runtimeClassName = "Sample.Authoring.ActivatableComponent",
+            createInstance = ::ActivatableComponent,
+        )
+
+        ActivationFactory.get("Sample.Authoring.ActivatableComponent").use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        ActivatableComponent::class,
+                    ),
+                )
+            }
+        }
+    }
+
     @Test
     fun composable_object_forwards_outer_query_interface_to_inner_after_factory_composition() {
         ComWrappersSupport.clearRegistriesForTests()
@@ -189,4 +224,6 @@ class WinRtAuthoringTest {
     private object InnerComponent
 
     private object TrackedInnerComponent
+
+    private class ActivatableComponent
 }

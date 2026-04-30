@@ -1,14 +1,20 @@
 package io.github.kitectlab.winrt.authoring
 
+import io.github.kitectlab.winrt.runtime.ComAbiValueKind
 import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.ComMethodSignature
+import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.Guid
+import io.github.kitectlab.winrt.runtime.IID
+import io.github.kitectlab.winrt.runtime.KnownHResults
+import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtCcwDefinition
 import io.github.kitectlab.winrt.runtime.WinRtComInterfaceBaseKind
 import io.github.kitectlab.winrt.runtime.WinRtComposableObjectReference
 import io.github.kitectlab.winrt.runtime.WinRtInspectableInterfaceDefinition
 import io.github.kitectlab.winrt.runtime.WinRtInspectableMethodDefinition
+import io.github.kitectlab.winrt.runtime.WinRtUnsupportedOperationException
 import kotlin.reflect.KClass
 
 data class WinRtAuthoredTypeDefinition<T : Any>(
@@ -56,7 +62,72 @@ data class WinRtAuthoredMethodDefinition<T : Any>(
         WinRtInspectableMethodDefinition(signature) { args -> value.handler(args) }
 }
 
+data class WinRtAuthoredActivationFactoryDefinition<T : Any>(
+    val runtimeClassName: String,
+    val implementationType: KClass<T>,
+    val createInstance: (() -> T)? = null,
+    val factoryInterfaces: List<WinRtAuthoredInterfaceDefinition<WinRtAuthoredActivationFactoryDefinition<T>>> = emptyList(),
+) {
+    init {
+        require(runtimeClassName.isNotBlank()) { "Authored runtime class name must not be blank." }
+    }
+
+    internal fun createReference(): ComObjectReference {
+        val interfaces = buildList {
+            add(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = IID.IActivationFactory,
+                    baseKind = WinRtComInterfaceBaseKind.IInspectable,
+                    methods = listOf(
+                        WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                            activateInstance(args.single() as RawAddress)
+                        },
+                    ),
+                ),
+            )
+            addAll(factoryInterfaces.map { it.toRuntimeDefinition(this@WinRtAuthoredActivationFactoryDefinition) })
+        }
+        return ComWrappersSupport.createCCWForObject(
+            AuthoredActivationFactoryInstance(runtimeClassName, interfaces),
+            IID.IActivationFactory,
+        )
+    }
+
+    private fun activateInstance(instanceOut: RawAddress): Int {
+        val create = createInstance
+            ?: throw WinRtUnsupportedOperationException(
+                "Authored runtime class '$runtimeClassName' does not provide a default activation constructor.",
+                KnownHResults.E_NOTIMPL,
+            )
+        val instance = create()
+        ComWrappersSupport.createCCWForObject(instance).use { reference ->
+            PlatformAbi.writePointer(instanceOut, PlatformAbi.fromRawComPtr(reference.getRefPointer()))
+        }
+        return KnownHResults.S_OK.value
+    }
+}
+
+private data class AuthoredActivationFactoryInstance(
+    val runtimeClassName: String,
+    val interfaces: List<WinRtInspectableInterfaceDefinition>,
+)
+
 object WinRtAuthoring {
+    init {
+        ensureActivationFactoryHolderRegistered()
+    }
+
+    private fun ensureActivationFactoryHolderRegistered() {
+        ComWrappersSupport.registerCcwFactory(AuthoredActivationFactoryInstance::class) { value ->
+            val factory = value as AuthoredActivationFactoryInstance
+            WinRtCcwDefinition(
+                interfaceDefinitions = factory.interfaces,
+                defaultInterfaceId = IID.IActivationFactory,
+                runtimeClassName = factory.runtimeClassName,
+            )
+        }
+    }
+
     fun registerType(
         implementationType: KClass<*>,
         definition: WinRtAuthoredTypeDefinition<Any>,
@@ -80,5 +151,29 @@ object WinRtAuthoring {
             value = value,
             outerInterfaceId = outerInterfaceId,
             createInstance = createInstance,
+        )
+
+    fun <T : Any> registerActivationFactory(
+        definition: WinRtAuthoredActivationFactoryDefinition<T>,
+    ): Boolean {
+        ensureActivationFactoryHolderRegistered()
+        return ComWrappersSupport.registerAuthoringActivationFactory(definition.runtimeClassName) {
+            definition.createReference()
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    inline fun <reified T : Any> registerActivationFactory(
+        runtimeClassName: String,
+        noinline createInstance: (() -> T)? = null,
+        factoryInterfaces: List<WinRtAuthoredInterfaceDefinition<WinRtAuthoredActivationFactoryDefinition<T>>> = emptyList(),
+    ): Boolean =
+        registerActivationFactory(
+            WinRtAuthoredActivationFactoryDefinition(
+                runtimeClassName = runtimeClassName,
+                implementationType = T::class,
+                createInstance = createInstance,
+                factoryInterfaces = factoryInterfaces,
+            ),
         )
 }

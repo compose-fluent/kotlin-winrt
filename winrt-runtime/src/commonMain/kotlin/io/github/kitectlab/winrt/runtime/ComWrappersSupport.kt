@@ -19,6 +19,7 @@ class SingleInterfaceOptimizedObject(
 object ComWrappersSupport {
     private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
+    private val authoringActivationFactories = ConcurrentCacheMap<String, () -> ComObjectReference>()
     private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
     private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRtCcwDefinition>()
     private val rcwCache = WeakValueCache<Long, Any>()
@@ -38,6 +39,34 @@ object ComWrappersSupport {
         runtimeClassName: String,
         factory: (IInspectableReference) -> Any,
     ): Boolean = runtimeClassFactories.putIfAbsent(runtimeClassName, factory) == null
+
+    fun registerAuthoringActivationFactory(
+        runtimeClassName: String,
+        factory: () -> ComObjectReference,
+    ): Boolean {
+        require(runtimeClassName.isNotBlank()) { "Authored runtime class name must not be blank." }
+        return authoringActivationFactories.putIfAbsent(runtimeClassName, factory) == null
+    }
+
+    internal fun tryGetAuthoringActivationFactory(
+        runtimeClassName: String,
+        interfaceId: Guid,
+    ): ActivationResult {
+        val createFactory = authoringActivationFactories[runtimeClassName]
+            ?: return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
+        val factory = createFactory()
+        val requestedFactory = try {
+            if (factory.interfaceId == interfaceId || interfaceId == IID.IUnknown) {
+                factory.addRef()
+                factory
+            } else {
+                factory.queryInterface(interfaceId).getOrThrow()
+            }
+        } finally {
+            factory.close()
+        }
+        return ActivationResult(KnownHResults.S_OK, PlatformAbi.fromRawComPtr(requestedFactory.pointer))
+    }
 
     fun registerHelperType(
         projectedType: WinRtTypeHandle,
@@ -259,6 +288,7 @@ object ComWrappersSupport {
     fun clearRegistriesForTests() {
         typedRcwFactories.clear()
         runtimeClassFactories.clear()
+        authoringActivationFactories.clear()
         helperTypeRegistry.clear()
         ccwFactories.clear()
         rcwCache.clear()

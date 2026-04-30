@@ -5,6 +5,11 @@ internal object RawActivationFactoryLookup {
         runtimeClassName: String,
         interfaceId: Guid = IID.IActivationFactory,
     ): ActivationResult {
+        val authoringFactory = ComWrappersSupport.tryGetAuthoringActivationFactory(runtimeClassName, interfaceId)
+        if (authoringFactory.isSuccess || authoringFactory.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+            return authoringFactory
+        }
+
         if (!PlatformRuntime.isWindows) {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
