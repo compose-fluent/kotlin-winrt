@@ -706,40 +706,44 @@ class KotlinProjectionSupportRenderer {
         if (entries.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTAuthoringWrapperPlan")
-            appendLine("internal data class AuthoringWrapperEntry(")
-            appendLine("    val projectedTypeName: String,")
-            appendLine("    val metadataTypeName: String,")
-            appendLine("    val kind: String,")
-            appendLine("    val defaultInterfaceName: String?,")
-            appendLine("    val implementedInterfaceNames: List<String>,")
-            appendLine("    val factoryMemberNames: List<String>,")
-            appendLine("    val composableBaseTypeName: String?,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTAuthoringWrapperPlan {")
-            appendLine("    val WRAPPERS: List<AuthoringWrapperEntry> = listOf(")
-            entries.sortedBy { it.first.type.qualifiedName }.forEach { (plan, mapping) ->
-                appendLine("        AuthoringWrapperEntry(")
-                appendLine("            projectedTypeName = ${mapping.projectedTypeName.kotlinString()},")
-                appendLine("            metadataTypeName = ${mapping.metadataTypeName.kotlinString()},")
-                appendLine("            kind = ${plan.type.kind.name.kotlinString()},")
-                appendLine("            defaultInterfaceName = ${plan.type.defaultInterfaceName.kotlinNullableString()},")
-                appendLine("            implementedInterfaceNames = ${plan.type.implementedInterfaces.map { it.interfaceName }.kotlinListLiteral()},")
-                appendLine("            factoryMemberNames = ${plan.moduleActivationAndAuthoringDescriptor?.factoryMemberNames.orEmpty().kotlinListLiteral()},")
-                appendLine("            composableBaseTypeName = ${plan.type.baseTypeName.kotlinNullableString()},")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val WRAPPERS_BY_PROJECTED_TYPE: Map<String, AuthoringWrapperEntry> =")
-            appendLine("        WRAPPERS.associateBy { it.projectedTypeName }")
-            appendLine()
-            appendLine("    fun wrapperForProjectedType(projectedTypeName: String): AuthoringWrapperEntry? =")
-            appendLine("        WRAPPERS_BY_PROJECTED_TYPE[projectedTypeName]")
-            appendLine("}")
-        }
-        return supportFile("WinRTAuthoringWrapperPlan.kt", contents)
+        val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringWrapperEntry")
+        val objectBuilder = TypeSpec.objectBuilder("WinRTAuthoringWrapperPlan")
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(
+                PropertySpec.builder("WRAPPERS", List::class.asClassName().parameterizedBy(entryClass))
+                    .initializer(authoringWrapperEntriesCode(entries, entryClass))
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("WRAPPERS_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                    .initializer("WRAPPERS.associateBy { it.projectedTypeName }")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("wrapperForProjectedType")
+                    .addParameter("projectedTypeName", String::class)
+                    .returns(entryClass.copy(nullable = true))
+                    .addStatement("return WRAPPERS_BY_PROJECTED_TYPE[projectedTypeName]")
+                    .build(),
+            )
+        val fileSpec = supportFileSpec("WinRTAuthoringWrapperPlan")
+            .addType(
+                dataClass(
+                    className = "AuthoringWrapperEntry",
+                    fields = listOf(
+                        "projectedTypeName" to stringTypeName(),
+                        "metadataTypeName" to stringTypeName(),
+                        "kind" to stringTypeName(),
+                        "defaultInterfaceName" to stringTypeName().copy(nullable = true),
+                        "implementedInterfaceNames" to stringListTypeName(),
+                        "factoryMemberNames" to stringListTypeName(),
+                        "composableBaseTypeName" to stringTypeName().copy(nullable = true),
+                    ),
+                ),
+            )
+            .addType(objectBuilder.build())
+            .build()
+        return supportFile("WinRTAuthoringWrapperPlan.kt", fileSpec)
     }
 
     private fun renderAuthoringAbiClassPlan(
@@ -756,43 +760,51 @@ class KotlinProjectionSupportRenderer {
         if (entries.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTAuthoringAbiClassPlan")
-            appendLine("internal data class AuthoringAbiClassEntry(")
-            appendLine("    val projectedTypeName: String,")
-            appendLine("    val abiTypeName: String,")
-            appendLine("    val ccwTypeName: String,")
-            appendLine("    val defaultInterfaceName: String?,")
-            appendLine("    val defaultInterfaceIsExclusiveTo: Boolean,")
-            appendLine("    val marshalerFamily: String,")
-            appendLine("    val operations: List<String>,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTAuthoringAbiClassPlan {")
-            appendStringList("ABI_OPERATIONS", AUTHORING_ABI_OPERATIONS)
-            appendLine("    val CLASSES: List<AuthoringAbiClassEntry> = listOf(")
-            entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
-                val defaultInterface = plan.type.defaultInterfaceName?.let { semanticHelpers.resolveType(WinRtTypeRef.fromDisplayName(it), plan.type.namespace) }
-                val defaultInterfaceIsExclusiveTo = defaultInterface?.isExclusiveTo == true
-                appendLine("        AuthoringAbiClassEntry(")
-                appendLine("            projectedTypeName = ${plan.type.qualifiedName.kotlinString()},")
-                appendLine("            abiTypeName = ${("ABI." + plan.type.qualifiedName).kotlinString()},")
-                appendLine("            ccwTypeName = ${("ABI." + plan.type.qualifiedName).kotlinString()},")
-                appendLine("            defaultInterfaceName = ${plan.type.defaultInterfaceName.kotlinNullableString()},")
-                appendLine("            defaultInterfaceIsExclusiveTo = $defaultInterfaceIsExclusiveTo,")
-                appendLine("            marshalerFamily = ${(if (defaultInterfaceIsExclusiveTo) "MarshalInspectable" else "MarshalInterface").kotlinString()},")
-                appendLine("            operations = ABI_OPERATIONS,")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val CLASSES_BY_PROJECTED_TYPE: Map<String, AuthoringAbiClassEntry> =")
-            appendLine("        CLASSES.associateBy { it.projectedTypeName }")
-            appendLine()
-            appendLine("    fun abiClassForProjectedType(projectedTypeName: String): AuthoringAbiClassEntry? =")
-            appendLine("        CLASSES_BY_PROJECTED_TYPE[projectedTypeName]")
-            appendLine("}")
-        }
-        return supportFile("WinRTAuthoringAbiClassPlan.kt", contents)
+        val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringAbiClassEntry")
+        val fileSpec = supportFileSpec("WinRTAuthoringAbiClassPlan")
+            .addType(
+                dataClass(
+                    className = "AuthoringAbiClassEntry",
+                    fields = listOf(
+                        "projectedTypeName" to stringTypeName(),
+                        "abiTypeName" to stringTypeName(),
+                        "ccwTypeName" to stringTypeName(),
+                        "defaultInterfaceName" to stringTypeName().copy(nullable = true),
+                        "defaultInterfaceIsExclusiveTo" to Boolean::class.asClassName(),
+                        "marshalerFamily" to stringTypeName(),
+                        "operations" to stringListTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTAuthoringAbiClassPlan")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        PropertySpec.builder("ABI_OPERATIONS", stringListTypeName())
+                            .initializer(stringListCode(AUTHORING_ABI_OPERATIONS))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("CLASSES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(authoringAbiClassEntriesCode(entries, semanticHelpers, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("CLASSES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("CLASSES.associateBy { it.projectedTypeName }")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("abiClassForProjectedType")
+                            .addParameter("projectedTypeName", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return CLASSES_BY_PROJECTED_TYPE[projectedTypeName]")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTAuthoringAbiClassPlan.kt", fileSpec)
     }
 
     private fun renderAuthoringCustomQueryInterfacePlan(
@@ -810,42 +822,51 @@ class KotlinProjectionSupportRenderer {
         if (entries.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTAuthoringCustomQueryInterfacePlan")
-            appendLine("internal data class AuthoringCustomQueryInterfaceEntry(")
-            appendLine("    val projectedTypeName: String,")
-            appendLine("    val visibility: String,")
-            appendLine("    val overridableModifier: String,")
-            appendLine("    val overridableInterfaceNames: List<String>,")
-            appendLine("    val delegatesToBase: Boolean,")
-            appendLine("    val notHandledInterfaceNames: List<String>,")
-            appendLine("    val forwardTarget: String,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTAuthoringCustomQueryInterfacePlan {")
-            appendStringList("NOT_HANDLED_INTERFACE_NAMES", AUTHORING_CUSTOM_QI_NOT_HANDLED_INTERFACES)
-            appendLine("    val ENTRIES: List<AuthoringCustomQueryInterfaceEntry> = listOf(")
-            entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
-                val descriptor = semanticHelpers.customQueryInterfaceDescriptor(plan.type)
-                appendLine("        AuthoringCustomQueryInterfaceEntry(")
-                appendLine("            projectedTypeName = ${descriptor.classTypeName.kotlinString()},")
-                appendLine("            visibility = ${descriptor.visibility.kotlinString()},")
-                appendLine("            overridableModifier = ${descriptor.overridableModifier.kotlinString()},")
-                appendLine("            overridableInterfaceNames = ${descriptor.overridableInterfaceNames.kotlinListLiteral()},")
-                appendLine("            delegatesToBase = ${descriptor.delegatesToBase},")
-                appendLine("            notHandledInterfaceNames = NOT_HANDLED_INTERFACE_NAMES,")
-                appendLine("            forwardTarget = ${"NativeObject.TryAs".kotlinString()},")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val ENTRIES_BY_PROJECTED_TYPE: Map<String, AuthoringCustomQueryInterfaceEntry> =")
-            appendLine("        ENTRIES.associateBy { it.projectedTypeName }")
-            appendLine()
-            appendLine("    fun customQueryInterfaceForProjectedType(projectedTypeName: String): AuthoringCustomQueryInterfaceEntry? =")
-            appendLine("        ENTRIES_BY_PROJECTED_TYPE[projectedTypeName]")
-            appendLine("}")
-        }
-        return supportFile("WinRTAuthoringCustomQueryInterfacePlan.kt", contents)
+        val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringCustomQueryInterfaceEntry")
+        val fileSpec = supportFileSpec("WinRTAuthoringCustomQueryInterfacePlan")
+            .addType(
+                dataClass(
+                    className = "AuthoringCustomQueryInterfaceEntry",
+                    fields = listOf(
+                        "projectedTypeName" to stringTypeName(),
+                        "visibility" to stringTypeName(),
+                        "overridableModifier" to stringTypeName(),
+                        "overridableInterfaceNames" to stringListTypeName(),
+                        "delegatesToBase" to Boolean::class.asClassName(),
+                        "notHandledInterfaceNames" to stringListTypeName(),
+                        "forwardTarget" to stringTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTAuthoringCustomQueryInterfacePlan")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        PropertySpec.builder("NOT_HANDLED_INTERFACE_NAMES", stringListTypeName())
+                            .initializer(stringListCode(AUTHORING_CUSTOM_QI_NOT_HANDLED_INTERFACES))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(authoringCustomQiEntriesCode(entries, semanticHelpers, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("ENTRIES.associateBy { it.projectedTypeName }")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("customQueryInterfaceForProjectedType")
+                            .addParameter("projectedTypeName", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return ENTRIES_BY_PROJECTED_TYPE[projectedTypeName]")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTAuthoringCustomQueryInterfacePlan.kt", fileSpec)
     }
 
     private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
@@ -983,6 +1004,133 @@ class KotlinProjectionSupportRenderer {
             packageName = SUPPORT_PACKAGE,
             contents = contents,
         )
+
+    private fun supportFile(fileName: String, fileSpec: FileSpec): KotlinProjectionFile =
+        supportFile(fileName, fileSpec.toString())
+
+    private fun supportFileSpec(fileName: String): FileSpec.Builder =
+        FileSpec.builder(SUPPORT_PACKAGE, fileName)
+            .addFileComment("Deterministic generator handoff for .cswinrt %L writer parity.", fileName)
+
+    private fun dataClass(
+        className: String,
+        fields: List<Pair<String, TypeName>>,
+    ): TypeSpec {
+        val constructor = FunSpec.constructorBuilder()
+        val type = TypeSpec.classBuilder(className)
+            .addModifiers(KModifier.INTERNAL, KModifier.DATA)
+        fields.forEach { (name, typeName) ->
+            constructor.addParameter(name, typeName)
+            type.addProperty(
+                PropertySpec.builder(name, typeName)
+                    .initializer(name)
+                    .build(),
+            )
+        }
+        return type.primaryConstructor(constructor.build()).build()
+    }
+
+    private fun authoringWrapperEntriesCode(
+        entries: List<Pair<KotlinTypeProjectionPlan, io.github.kitectlab.winrt.metadata.WinRtAuthoredMetadataTypeMapping>>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        entries.sortedBy { it.first.type.qualifiedName }.forEach { (plan, mapping) ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("projectedTypeName = %S,\n", mapping.projectedTypeName)
+            code.add("metadataTypeName = %S,\n", mapping.metadataTypeName)
+            code.add("kind = %S,\n", plan.type.kind.name)
+            code.add("defaultInterfaceName = %L,\n", nullableStringCode(plan.type.defaultInterfaceName))
+            code.add("implementedInterfaceNames = %L,\n", stringListCode(plan.type.implementedInterfaces.map { it.interfaceName }))
+            code.add("factoryMemberNames = %L,\n", stringListCode(plan.moduleActivationAndAuthoringDescriptor?.factoryMemberNames.orEmpty()))
+            code.add("composableBaseTypeName = %L,\n", nullableStringCode(plan.type.baseTypeName))
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun authoringAbiClassEntriesCode(
+        entries: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            val defaultInterface = plan.type.defaultInterfaceName?.let { semanticHelpers.resolveType(WinRtTypeRef.fromDisplayName(it), plan.type.namespace) }
+            val defaultInterfaceIsExclusiveTo = defaultInterface?.isExclusiveTo == true
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("projectedTypeName = %S,\n", plan.type.qualifiedName)
+            code.add("abiTypeName = %S,\n", "ABI.${plan.type.qualifiedName}")
+            code.add("ccwTypeName = %S,\n", "ABI.${plan.type.qualifiedName}")
+            code.add("defaultInterfaceName = %L,\n", nullableStringCode(plan.type.defaultInterfaceName))
+            code.add("defaultInterfaceIsExclusiveTo = %L,\n", defaultInterfaceIsExclusiveTo)
+            code.add("marshalerFamily = %S,\n", if (defaultInterfaceIsExclusiveTo) "MarshalInspectable" else "MarshalInterface")
+            code.add("operations = ABI_OPERATIONS,\n")
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun authoringCustomQiEntriesCode(
+        entries: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            val descriptor = semanticHelpers.customQueryInterfaceDescriptor(plan.type)
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("projectedTypeName = %S,\n", descriptor.classTypeName)
+            code.add("visibility = %S,\n", descriptor.visibility)
+            code.add("overridableModifier = %S,\n", descriptor.overridableModifier)
+            code.add("overridableInterfaceNames = %L,\n", stringListCode(descriptor.overridableInterfaceNames))
+            code.add("delegatesToBase = %L,\n", descriptor.delegatesToBase)
+            code.add("notHandledInterfaceNames = NOT_HANDLED_INTERFACE_NAMES,\n")
+            code.add("forwardTarget = %S,\n", "NativeObject.TryAs")
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun nullableStringCode(value: String?): CodeBlock =
+        value?.let { CodeBlock.of("%S", it) } ?: CodeBlock.of("null")
+
+    private fun stringListCode(values: List<String>): CodeBlock {
+        if (values.isEmpty()) {
+            return CodeBlock.of("emptyList()")
+        }
+        val code = CodeBlock.builder()
+        code.add("listOf(")
+        values.forEachIndexed { index, value ->
+            if (index > 0) code.add(", ")
+            code.add("%S", value)
+        }
+        code.add(")")
+        return code.build()
+    }
+
+    private fun stringTypeName(): TypeName = String::class.asClassName()
+
+    private fun stringListTypeName(): TypeName =
+        List::class.asClassName().parameterizedBy(stringTypeName())
 
     private fun StringBuilder.appendHeader(fileName: String) {
         appendLine("package $SUPPORT_PACKAGE")
