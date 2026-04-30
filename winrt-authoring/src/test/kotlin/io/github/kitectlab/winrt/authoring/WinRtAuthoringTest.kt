@@ -13,9 +13,11 @@ import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtComInterfaceBaseKind
+import io.github.kitectlab.winrt.runtime.WinRtNotImplementedException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.fail
 import org.junit.Test
 
 class WinRtAuthoringTest {
@@ -94,6 +96,37 @@ class WinRtAuthoringTest {
                 val result = PlatformAbi.allocateInt32Slot(scope)
                 assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(factory.pointer, 6, result))
                 assertEquals(7, PlatformAbi.readInt32(result))
+            }
+        }
+    }
+
+    @Test
+    fun authored_activation_factory_without_default_constructor_reports_not_implemented() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("eeeeeeee-1111-2222-3333-444444444444")
+        WinRtAuthoring.registerType<FactoryOnlyComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.FactoryOnlyComponent",
+                defaultInterfaceId = interfaceId,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = interfaceId,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory<FactoryOnlyComponent>(
+            runtimeClassName = "Sample.Authoring.FactoryOnlyComponent",
+        )
+
+        ActivationFactory.get("Sample.Authoring.FactoryOnlyComponent").use { factory ->
+            try {
+                factory.activateInstance().close()
+                fail("Expected ActivateInstance to report E_NOTIMPL.")
+            } catch (failure: WinRtNotImplementedException) {
+                assertEquals(KnownHResults.E_NOTIMPL, failure.hResult)
             }
         }
     }
@@ -361,6 +394,8 @@ class WinRtAuthoringTest {
     private class ActivatableComponent
 
     private class FactoryBackedComponent
+
+    private class FactoryOnlyComponent
 
     private class ModuleActivatedComponent
 
