@@ -109,34 +109,6 @@ data class WinRtAuthoredActivationFactoryDefinition<T : Any>(
     }
 }
 
-data class WinRtComposableOverrideDefinition<T : Any>(
-    val runtimeClassName: String,
-    val composableBaseClassName: String,
-    val overrideInterfaceId: Guid,
-    val methods: List<WinRtAuthoredMethodDefinition<T>>,
-) {
-    init {
-        require(runtimeClassName.isNotBlank()) { "Authored runtime class name must not be blank." }
-        require(composableBaseClassName.isNotBlank()) { "Composable base class name must not be blank." }
-        require(methods.isNotEmpty()) { "Composable override type must expose at least one method." }
-    }
-
-    internal fun toTypeDefinition(): WinRtAuthoredTypeDefinition<T> =
-        WinRtAuthoredTypeDefinition(
-            runtimeClassName = runtimeClassName,
-            defaultInterfaceId = overrideInterfaceId,
-            composableBaseClassName = composableBaseClassName,
-            interfaces = listOf(
-                WinRtAuthoredInterfaceDefinition(
-                    interfaceId = overrideInterfaceId,
-                    methods = methods,
-                    isDefault = true,
-                    isOverridable = true,
-                ),
-            ),
-        )
-}
-
 private data class AuthoredActivationFactoryInstance(
     val runtimeClassName: String,
     val interfaces: List<WinRtInspectableInterfaceDefinition>,
@@ -173,18 +145,6 @@ object WinRtAuthoring {
         definition: WinRtAuthoredTypeDefinition<T>,
     ): Boolean =
         registerType(T::class, definition as WinRtAuthoredTypeDefinition<Any>)
-
-    fun registerComposableOverrideType(
-        implementationType: KClass<*>,
-        definition: WinRtComposableOverrideDefinition<Any>,
-    ): Boolean =
-        registerType(implementationType, definition.toTypeDefinition())
-
-    @Suppress("UNCHECKED_CAST")
-    inline fun <reified T : Any> registerComposableOverrideType(
-        definition: WinRtComposableOverrideDefinition<T>,
-    ): Boolean =
-        registerComposableOverrideType(T::class, definition as WinRtComposableOverrideDefinition<Any>)
 
     fun createComposableObject(
         value: Any,

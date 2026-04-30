@@ -1,7 +1,8 @@
 package io.github.kitectlab.winrt.samples
 
+import io.github.kitectlab.winrt.authoring.WinRtAuthoredInterfaceDefinition
 import io.github.kitectlab.winrt.authoring.WinRtAuthoredMethodDefinition
-import io.github.kitectlab.winrt.authoring.WinRtComposableOverrideDefinition
+import io.github.kitectlab.winrt.authoring.WinRtAuthoredTypeDefinition
 import io.github.kitectlab.winrt.authoring.WinRtAuthoring
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Application
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.DependencyProperty
@@ -77,19 +78,26 @@ object WinUiDesktopSample {
         }
 
     private fun registerApplicationType() {
-        WinRtAuthoring.registerComposableOverrideType<WinUiDesktopApp>(
-            WinRtComposableOverrideDefinition(
+        WinRtAuthoring.registerType<WinUiDesktopApp>(
+            WinRtAuthoredTypeDefinition(
                 runtimeClassName = "kotlin-winrt.samples.WinUiDesktopApp",
+                defaultInterfaceId = IApplicationOverrides.Metadata.IID,
                 composableBaseClassName = "Microsoft.UI.Xaml.Application",
-                overrideInterfaceId = IApplicationOverrides.Metadata.IID,
-                methods = listOf(
-                    WinRtAuthoredMethodDefinition(
-                        signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                    ) {
-                        onLaunched()
-                        println("winui: window activated")
-                        KnownHResults.S_OK.value
-                    },
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = IApplicationOverrides.Metadata.IID,
+                        methods = listOf(
+                            WinRtAuthoredMethodDefinition(
+                                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                            ) {
+                                onLaunched()
+                                println("winui: window activated")
+                                KnownHResults.S_OK.value
+                            },
+                        ),
+                        isDefault = true,
+                        isOverridable = true,
+                    ),
                 ),
             ),
         )
