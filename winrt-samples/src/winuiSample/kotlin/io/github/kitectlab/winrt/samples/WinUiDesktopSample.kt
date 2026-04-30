@@ -28,9 +28,7 @@ import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
 import io.github.kitectlab.winrt.runtime.ComAbiValueKind
 import io.github.kitectlab.winrt.runtime.ComMethodSignature
-import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
-import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RuntimeScope
@@ -106,21 +104,13 @@ object WinUiDesktopSample {
     }
 
     private fun createComposableApplication(app: WinUiDesktopApp): WinRtComposableObjectReference =
-        WinRtAuthoring.createComposableObject(
-            value = app,
-            outerInterfaceId = IApplicationOverrides.Metadata.IID,
-        ) { baseInterface, innerOut, instanceOut ->
-            Application.ComposableFactory.acquire().use { factory ->
-                val hResult = ComVtableInvoker.invokeArgs(
-                    instance = factory.pointer,
-                    slot = IApplicationFactory.Metadata.CREATEINSTANCE_SLOT,
-                    arg0 = baseInterface,
-                    arg1 = innerOut,
-                    arg2 = instanceOut,
-                )
-                HResult(hResult).requireSuccess()
-                hResult
-            }
+        Application.ComposableFactory.acquire().use { factory ->
+            WinRtAuthoring.createComposableObjectWithFactory(
+                value = app,
+                outerInterfaceId = IApplicationOverrides.Metadata.IID,
+                composableFactory = factory,
+                createInstanceSlot = IApplicationFactory.Metadata.CREATEINSTANCE_SLOT,
+            )
         }
 }
 

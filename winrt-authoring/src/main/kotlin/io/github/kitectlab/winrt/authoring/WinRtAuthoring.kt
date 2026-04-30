@@ -1,10 +1,12 @@
 package io.github.kitectlab.winrt.authoring
 
 import io.github.kitectlab.winrt.runtime.ComAbiValueKind
-import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.ComMethodSignature
 import io.github.kitectlab.winrt.runtime.ComObjectReference
+import io.github.kitectlab.winrt.runtime.ComVtableInvoker
+import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.Guid
+import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
@@ -154,6 +156,27 @@ object WinRtAuthoring {
             outerInterfaceId = outerInterfaceId,
             createInstance = createInstance,
         )
+
+    fun createComposableObjectWithFactory(
+        value: Any,
+        outerInterfaceId: Guid? = null,
+        composableFactory: ComObjectReference,
+        createInstanceSlot: Int,
+    ): WinRtComposableObjectReference =
+        createComposableObject(
+            value = value,
+            outerInterfaceId = outerInterfaceId,
+        ) { baseInterface, innerOut, instanceOut ->
+            val hResult = ComVtableInvoker.invokeArgs(
+                instance = composableFactory.pointer,
+                slot = createInstanceSlot,
+                arg0 = baseInterface,
+                arg1 = innerOut,
+                arg2 = instanceOut,
+            )
+            HResult(hResult).requireSuccess()
+            hResult
+        }
 
     fun <T : Any> registerActivationFactory(
         definition: WinRtAuthoredActivationFactoryDefinition<T>,

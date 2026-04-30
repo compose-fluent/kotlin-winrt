@@ -276,16 +276,16 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_CLASS_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy { it.className }")
+                            .initializer("ENTRIES.associateBy({ it.className })")
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_SOURCE_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy { it.sourceType }")
+                            .initializer("ENTRIES.associateBy({ it.sourceType })")
                             .build(),
                     )
                     .addProperty(
-                        PropertySpec.builder("INITIALIZED_CLASS_NAMES", MutableSet::class.asClassName().parameterizedBy(stringTypeName()))
+                        PropertySpec.builder("INITIALIZED_CLASS_NAMES", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
                             .addModifiers(KModifier.PRIVATE)
                             .initializer("linkedSetOf()")
                             .build(),
@@ -1212,7 +1212,7 @@ class KotlinProjectionSupportRenderer {
             FunSpec.builder("initializeWithDependencies")
                 .addModifiers(KModifier.PRIVATE)
                 .addParameter("entry", entryClass)
-                .addParameter("visited", MutableSet::class.asClassName().parameterizedBy(stringTypeName()))
+                .addParameter("visited", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
                 .addParameter("initialize", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
                 .addCode(
                     "if (!visited.add(entry.className)) return\n" +
@@ -1224,7 +1224,7 @@ class KotlinProjectionSupportRenderer {
             FunSpec.builder("initializeWithDependencies")
                 .addModifiers(KModifier.PRIVATE)
                 .addParameter("entry", entryClass)
-                .addParameter("visited", MutableSet::class.asClassName().parameterizedBy(stringTypeName()))
+                .addParameter("visited", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
                 .addCode(
                     "if (!visited.add(entry.className)) return\n" +
                         "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
