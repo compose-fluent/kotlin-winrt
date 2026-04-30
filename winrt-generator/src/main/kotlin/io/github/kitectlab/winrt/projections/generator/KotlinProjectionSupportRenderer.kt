@@ -149,6 +149,7 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
             renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
             renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
+            renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -864,6 +865,81 @@ class KotlinProjectionSupportRenderer {
             )
             .build()
         return supportFile("WinRTNamespaceAdditions.kt", fileSpec)
+    }
+
+    private fun renderAuthoringModuleActivationFactoryPlan(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringModuleActivationFactoryEntry")
+        val fileSpec = supportFileSpec("WinRTAuthoringModuleActivationFactoryPlan")
+            .addType(
+                dataClass(
+                    className = "AuthoringModuleActivationFactoryEntry",
+                    fields = listOf(
+                        "runtimeClassName" to stringTypeName(),
+                        "serverFactoryTypeName" to stringTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTAuthoringModuleActivationFactoryPlan")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(authoringModuleActivationFactoryEntriesCode(entries, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES_BY_RUNTIME_CLASS_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("ENTRIES.associateBy { it.runtimeClassName }")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("entryForRuntimeClassName")
+                            .addParameter("runtimeClassName", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return ENTRIES_BY_RUNTIME_CLASS_NAME[runtimeClassName]")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("getActivationFactory")
+                            .addParameter("runtimeClassName", String::class)
+                            .addParameter("interfaceId", GUID_CLASS_NAME)
+                            .addParameter("factory", Function2::class.asClassName().parameterizedBy(entryClass, GUID_CLASS_NAME, RAW_ADDRESS_CLASS_NAME))
+                            .addParameter("fallback", Function2::class.asClassName().parameterizedBy(stringTypeName(), GUID_CLASS_NAME, RAW_ADDRESS_CLASS_NAME))
+                            .returns(RAW_ADDRESS_CLASS_NAME)
+                            .addCode(
+                                "val entry = entryForRuntimeClassName(runtimeClassName)\n" +
+                                    "return if (entry != null) {\n" +
+                                    "    factory(entry, interfaceId)\n" +
+                                    "} else {\n" +
+                                    "    fallback(runtimeClassName, interfaceId)\n" +
+                                    "}\n",
+                            )
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("installModuleActivationFactories")
+                            .addParameter("install", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                            .addStatement("ENTRIES.forEach(install)")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTAuthoringModuleActivationFactoryPlan.kt", fileSpec)
     }
 
     private fun delegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
@@ -1706,6 +1782,26 @@ class KotlinProjectionSupportRenderer {
             }
             .distinct()
             .sorted()
+
+    private fun authoringModuleActivationFactoryEntriesCode(
+        entries: List<KotlinTypeProjectionPlan>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("runtimeClassName = %S,\n", plan.type.qualifiedName)
+            code.add("serverFactoryTypeName = %S,\n", "ABI.${plan.type.qualifiedName}ServerActivationFactory")
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
 
     private fun nullableStringCode(value: String?): CodeBlock =
         value?.let { CodeBlock.of("%S", it) } ?: CodeBlock.of("null")
