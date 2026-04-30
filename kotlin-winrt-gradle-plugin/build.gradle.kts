@@ -16,8 +16,11 @@ java {
 
 dependencies {
     implementation(gradleApi())
+    implementation(projects.winrtRuntime)
     implementation(projects.winrtMetadata)
     implementation(projects.winrtGenerator)
+    implementation("org.jetbrains.kotlin:kotlin-compiler-embeddable:${libs.versions.kotlin.get()}")
+    implementation(libs.kotlinpoet)
     testImplementation(libs.junit)
     testImplementation(gradleTestKit())
 }

@@ -38,6 +38,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val metadataInputFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceRoots: ConfigurableFileCollection
+
     @get:Input
     abstract val includeNamespaces: ListProperty<String>
 
@@ -99,6 +104,14 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                 additionExclude = additionExcludeNamespaces.get().toSet(),
             ),
         ).generateTo(model, outputDirectory.get().asFile.toPath())
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = KotlinWinRtAuthoringSourceScanner.scan(
+                sourceRoots = sourceRoots.files.map { it.toPath() },
+                metadataModel = model,
+            ),
+            metadataModel = model,
+            outputDirectory = outputDirectory.get().asFile.toPath(),
+        )
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {

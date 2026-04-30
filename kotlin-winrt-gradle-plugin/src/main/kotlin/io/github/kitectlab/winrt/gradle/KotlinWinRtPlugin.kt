@@ -249,6 +249,13 @@ private fun configureWinRtGeneration(
                     }
                 },
             )
+            task.sourceRoots.from(
+                project.provider {
+                    kotlinMainSourceDirs(project).filterNot { sourceDir ->
+                        sourceDir.toPath().startsWith(generatedSources.get().asFile.toPath())
+                    }
+                },
+            )
         },
     )
 
@@ -284,6 +291,14 @@ private fun addGeneratedSourcesToKotlinMain(
     val mainSourceSet = sourceSets.getByName("main")
     val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return
     kotlinSourceDirectorySet.callOneArg("srcDir", generatedSources)
+}
+
+private fun kotlinMainSourceDirs(project: Project): List<File> {
+    val kotlinExtension = project.extensions.findByName("kotlin") ?: return emptyList()
+    val sourceSets = kotlinExtension.callNoArg("getSourceSets") as? org.gradle.api.NamedDomainObjectContainer<*> ?: return emptyList()
+    val mainSourceSet = sourceSets.getByName("main")
+    val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return emptyList()
+    return (kotlinSourceDirectorySet.callNoArg("getSrcDirs") as? Set<File>).orEmpty().toList()
 }
 
 private fun Any.callNoArg(name: String): Any? =
