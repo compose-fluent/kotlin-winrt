@@ -1,5 +1,7 @@
 package io.github.kitectlab.winrt.compiler
 
+import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
+import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
@@ -7,6 +9,7 @@ import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.CompilerConfigurationKey
+import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 
 @OptIn(ExperimentalCompilerApi::class)
 class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
@@ -43,8 +46,26 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
     override val supportsK2: Boolean = true
 
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
-        // Reserved for the IR authoring bridge. Source generation is currently done by
-        // KotlinWinRtAuthoringScannerCli before compile so generated type details are compiled
-        // in the same Gradle task graph.
+        IrGenerationExtension.registerExtension(
+            KotlinWinRtIrGenerationExtension(
+                metadataIndexPath = configuration.get(KotlinWinRtCommandLineProcessor.METADATA_INDEX_KEY),
+            ),
+        )
+    }
+}
+
+class KotlinWinRtIrGenerationExtension(
+    private val metadataIndexPath: String?,
+) : IrGenerationExtension {
+    override fun generate(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+    ) {
+        if (metadataIndexPath.isNullOrBlank()) {
+            return
+        }
+        // The compiler plugin is now the owner for post-analysis authoring transforms.
+        // Source generation still runs before compile so generated type details are compiled
+        // by the normal Kotlin task; this extension is the stable IR hook for the next slice.
     }
 }
