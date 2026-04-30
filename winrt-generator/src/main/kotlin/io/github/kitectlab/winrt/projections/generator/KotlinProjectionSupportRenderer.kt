@@ -123,6 +123,10 @@ class KotlinProjectionSupportRenderer {
         "DisposeAbi",
         "DisposeAbiArray",
     )
+    private val AUTHORING_CUSTOM_QI_NOT_HANDLED_INTERFACES = listOf(
+        "IInspectable",
+        "IWeakReferenceSource",
+    )
 
     fun render(
         model: WinRtMetadataModel,
@@ -141,6 +145,7 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
+            renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -788,6 +793,59 @@ class KotlinProjectionSupportRenderer {
             appendLine("}")
         }
         return supportFile("WinRTAuthoringAbiClassPlan.kt", contents)
+    }
+
+    private fun renderAuthoringCustomQueryInterfacePlan(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTAuthoringCustomQueryInterfacePlan")
+            appendLine("internal data class AuthoringCustomQueryInterfaceEntry(")
+            appendLine("    val projectedTypeName: String,")
+            appendLine("    val visibility: String,")
+            appendLine("    val overridableModifier: String,")
+            appendLine("    val overridableInterfaceNames: List<String>,")
+            appendLine("    val delegatesToBase: Boolean,")
+            appendLine("    val notHandledInterfaceNames: List<String>,")
+            appendLine("    val forwardTarget: String,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTAuthoringCustomQueryInterfacePlan {")
+            appendStringList("NOT_HANDLED_INTERFACE_NAMES", AUTHORING_CUSTOM_QI_NOT_HANDLED_INTERFACES)
+            appendLine("    val ENTRIES: List<AuthoringCustomQueryInterfaceEntry> = listOf(")
+            entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+                val descriptor = semanticHelpers.customQueryInterfaceDescriptor(plan.type)
+                appendLine("        AuthoringCustomQueryInterfaceEntry(")
+                appendLine("            projectedTypeName = ${descriptor.classTypeName.kotlinString()},")
+                appendLine("            visibility = ${descriptor.visibility.kotlinString()},")
+                appendLine("            overridableModifier = ${descriptor.overridableModifier.kotlinString()},")
+                appendLine("            overridableInterfaceNames = ${descriptor.overridableInterfaceNames.kotlinListLiteral()},")
+                appendLine("            delegatesToBase = ${descriptor.delegatesToBase},")
+                appendLine("            notHandledInterfaceNames = NOT_HANDLED_INTERFACE_NAMES,")
+                appendLine("            forwardTarget = ${"NativeObject.TryAs".kotlinString()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("    val ENTRIES_BY_PROJECTED_TYPE: Map<String, AuthoringCustomQueryInterfaceEntry> =")
+            appendLine("        ENTRIES.associateBy { it.projectedTypeName }")
+            appendLine()
+            appendLine("    fun customQueryInterfaceForProjectedType(projectedTypeName: String): AuthoringCustomQueryInterfaceEntry? =")
+            appendLine("        ENTRIES_BY_PROJECTED_TYPE[projectedTypeName]")
+            appendLine("}")
+        }
+        return supportFile("WinRTAuthoringCustomQueryInterfacePlan.kt", contents)
     }
 
     private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {

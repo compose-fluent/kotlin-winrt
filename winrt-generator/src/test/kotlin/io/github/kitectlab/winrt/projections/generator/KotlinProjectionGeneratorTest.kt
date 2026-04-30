@@ -1481,6 +1481,7 @@ class KotlinProjectionGeneratorTest {
                                     "Sample.Foundation.IWidget",
                                     isDefault = true,
                                     isOverridable = true,
+                                    isOverridable = true,
                                 ),
                             ),
                             methods = listOf(
@@ -4923,6 +4924,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringAbiClassPlan.contains("\"CreateMarshaler2\""))
         assertTrue(authoringAbiClassPlan.contains("\"FromManagedArray\""))
         assertTrue(authoringAbiClassPlan.contains("fun abiClassForProjectedType(projectedTypeName: String): AuthoringAbiClassEntry?"))
+        val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
+        assertTrue(customQiPlan.contains("data class AuthoringCustomQueryInterfaceEntry"))
+        assertTrue(customQiPlan.contains("projectedTypeName = \"Sample.Foundation.Widget\""))
+        assertTrue(customQiPlan.contains("overridableInterfaceNames = listOf(\"Sample.Foundation.IWidget\")"))
+        assertTrue(customQiPlan.contains("notHandledInterfaceNames = NOT_HANDLED_INTERFACE_NAMES"))
+        assertTrue(customQiPlan.contains("IInspectable"))
+        assertTrue(customQiPlan.contains("IWeakReferenceSource"))
+        assertTrue(customQiPlan.contains("forwardTarget = \"NativeObject.TryAs\""))
+        assertTrue(customQiPlan.contains("fun customQueryInterfaceForProjectedType(projectedTypeName: String): AuthoringCustomQueryInterfaceEntry?"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("Windows.Foundation"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("SourceAddition"))
         assertTrue(filesByName.getValue("WinRTNamespaceAdditions.kt").contents.contains("fun installNamespaceAdditions"))
