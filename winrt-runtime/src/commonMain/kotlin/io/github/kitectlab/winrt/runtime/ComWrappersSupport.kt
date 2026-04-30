@@ -48,7 +48,7 @@ object ComWrappersSupport {
         return authoringActivationFactories.putIfAbsent(runtimeClassName, factory) == null
     }
 
-    internal fun tryGetAuthoringActivationFactory(
+    fun tryGetAuthoringActivationFactory(
         runtimeClassName: String,
         interfaceId: Guid,
     ): ActivationResult {

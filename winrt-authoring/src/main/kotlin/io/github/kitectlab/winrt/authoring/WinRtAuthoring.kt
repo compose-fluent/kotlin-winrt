@@ -176,4 +176,15 @@ object WinRtAuthoring {
                 factoryInterfaces = factoryInterfaces,
             ),
         )
+
+    fun getActivationFactory(runtimeClassName: String): RawAddress =
+        getActivationFactory(runtimeClassName, IID.IActivationFactory)
+
+    fun getActivationFactory(
+        runtimeClassName: String,
+        interfaceId: Guid,
+    ): RawAddress {
+        val result = ComWrappersSupport.tryGetAuthoringActivationFactory(runtimeClassName, interfaceId)
+        return if (result.isSuccess) result.pointer else PlatformAbi.nullPointer
+    }
 }

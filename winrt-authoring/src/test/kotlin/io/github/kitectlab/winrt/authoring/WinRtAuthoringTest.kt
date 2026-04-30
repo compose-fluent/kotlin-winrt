@@ -7,12 +7,14 @@ import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.ActivationFactory
+import io.github.kitectlab.winrt.runtime.ActivationFactoryReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtComInterfaceBaseKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 
@@ -92,6 +94,44 @@ class WinRtAuthoringTest {
                 val result = PlatformAbi.allocateInt32Slot(scope)
                 assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(factory.pointer, 6, result))
                 assertEquals(7, PlatformAbi.readInt32(result))
+            }
+        }
+    }
+
+    @Test
+    fun authored_module_activation_factory_returns_registered_factory_only() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("cccccccc-1111-2222-3333-444444444444")
+        WinRtAuthoring.registerType<ModuleActivatedComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.ModuleActivatedComponent",
+                defaultInterfaceId = interfaceId,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = interfaceId,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory<ModuleActivatedComponent>(
+            runtimeClassName = "Sample.Authoring.ModuleActivatedComponent",
+            createInstance = ::ModuleActivatedComponent,
+        )
+
+        val missing = WinRtAuthoring.getActivationFactory("Sample.Authoring.MissingComponent")
+        assertTrue(PlatformAbi.isNull(missing))
+        val pointer = WinRtAuthoring.getActivationFactory("Sample.Authoring.ModuleActivatedComponent")
+        assertTrue(!PlatformAbi.isNull(pointer))
+        ActivationFactoryReference(PlatformAbi.toRawComPtr(pointer)).use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        ModuleActivatedComponent::class,
+                    ),
+                )
             }
         }
     }
@@ -273,4 +313,6 @@ class WinRtAuthoringTest {
     private class ActivatableComponent
 
     private class FactoryBackedComponent
+
+    private class ModuleActivatedComponent
 }
