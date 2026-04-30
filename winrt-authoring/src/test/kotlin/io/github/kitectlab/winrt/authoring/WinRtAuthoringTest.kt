@@ -101,6 +101,7 @@ class WinRtAuthoringTest {
     @Test
     fun authored_module_activation_factory_returns_registered_factory_only() {
         ComWrappersSupport.clearRegistriesForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
         val interfaceId = Guid("cccccccc-1111-2222-3333-444444444444")
         WinRtAuthoring.registerType<ModuleActivatedComponent>(
             WinRtAuthoredTypeDefinition(
@@ -130,6 +131,53 @@ class WinRtAuthoringTest {
                     ComWrappersSupport.findObject(
                         PlatformAbi.fromRawComPtr(instance.pointer),
                         ModuleActivatedComponent::class,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun authored_module_activation_factory_uses_partial_fallback_on_miss() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+        val interfaceId = Guid("dddddddd-1111-2222-3333-444444444444")
+        WinRtAuthoring.registerType<FallbackActivatedComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.FallbackActivatedComponent",
+                defaultInterfaceId = interfaceId,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = interfaceId,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory<FallbackActivatedComponent>(
+            runtimeClassName = "Sample.Authoring.FallbackActivatedComponent",
+            createInstance = ::FallbackActivatedComponent,
+        )
+        WinRtAuthoring.registerActivationFactoryFallback { runtimeClassName, requestedInterface ->
+            if (runtimeClassName == "Sample.Authoring.ForwardedComponent") {
+                ComWrappersSupport.tryGetAuthoringActivationFactory(
+                    "Sample.Authoring.FallbackActivatedComponent",
+                    requestedInterface,
+                ).pointer
+            } else {
+                PlatformAbi.nullPointer
+            }
+        }
+
+        val pointer = WinRtAuthoring.getActivationFactory("Sample.Authoring.ForwardedComponent")
+        assertTrue(!PlatformAbi.isNull(pointer))
+        ActivationFactoryReference(PlatformAbi.toRawComPtr(pointer)).use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        FallbackActivatedComponent::class,
                     ),
                 )
             }
@@ -315,4 +363,6 @@ class WinRtAuthoringTest {
     private class FactoryBackedComponent
 
     private class ModuleActivatedComponent
+
+    private class FallbackActivatedComponent
 }

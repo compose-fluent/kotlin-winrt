@@ -113,6 +113,8 @@ private data class AuthoredActivationFactoryInstance(
 )
 
 object WinRtAuthoring {
+    private val activationFactoryFallbacks = mutableListOf<(String, Guid) -> RawAddress>()
+
     init {
         ensureActivationFactoryHolderRegistered()
     }
@@ -185,6 +187,21 @@ object WinRtAuthoring {
         interfaceId: Guid,
     ): RawAddress {
         val result = ComWrappersSupport.tryGetAuthoringActivationFactory(runtimeClassName, interfaceId)
-        return if (result.isSuccess) result.pointer else PlatformAbi.nullPointer
+        if (result.isSuccess) {
+            return result.pointer
+        }
+        return activationFactoryFallbacks.firstNotNullOfOrNull { fallback ->
+            fallback(runtimeClassName, interfaceId).takeUnless(PlatformAbi::isNull)
+        } ?: PlatformAbi.nullPointer
+    }
+
+    fun registerActivationFactoryFallback(
+        lookup: (runtimeClassName: String, interfaceId: Guid) -> RawAddress,
+    ) {
+        activationFactoryFallbacks.add(lookup)
+    }
+
+    fun clearActivationFactoryFallbacksForTests() {
+        activationFactoryFallbacks.clear()
     }
 }
