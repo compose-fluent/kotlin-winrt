@@ -22,6 +22,35 @@ import org.junit.Test
 
 class WinRtAuthoringTest {
     @Test
+    fun composable_override_type_registration_builds_default_overridable_interface() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val overrideIid = Guid("12121212-3434-5656-7878-909090909090")
+        var invoked = 0
+
+        WinRtAuthoring.registerComposableOverrideType<OuterComponent>(
+            WinRtComposableOverrideDefinition(
+                runtimeClassName = "Sample.Authoring.ComposableOverrideComponent",
+                composableBaseClassName = "Sample.Authoring.ComposableBase",
+                overrideInterfaceId = overrideIid,
+                methods = listOf(
+                    WinRtAuthoredMethodDefinition(ComMethodSignature()) {
+                        invoked += 1
+                        KnownHResults.S_OK.value
+                    },
+                ),
+            ),
+        )
+
+        ComWrappersSupport.createCCWForObject(OuterComponent, overrideIid).use { reference ->
+            reference.queryInterface(overrideIid).getOrThrow().use { overrideInterface ->
+                assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invoke(overrideInterface.pointer, 6))
+            }
+        }
+
+        assertEquals(1, invoked)
+    }
+
+    @Test
     fun authored_activation_factory_creates_default_instance_through_activation_factory() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceId = Guid("aaaaaaaa-1111-2222-3333-444444444444")
