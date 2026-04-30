@@ -1,6 +1,6 @@
 package io.github.kitectlab.winrt.runtime
 
-internal sealed class ComAbiValueKind {
+sealed class ComAbiValueKind {
     data object Pointer : ComAbiValueKind()
     data object Int8 : ComAbiValueKind()
     data object Int16 : ComAbiValueKind()
@@ -11,7 +11,7 @@ internal sealed class ComAbiValueKind {
     data class Struct(val layout: NativeAbiLayout) : ComAbiValueKind()
 }
 
-internal data class ComMethodSignature(
+data class ComMethodSignature(
     val explicitParameterKinds: List<ComAbiValueKind> = emptyList(),
     val resultKind: ComAbiValueKind = ComAbiValueKind.Int32,
 ) {

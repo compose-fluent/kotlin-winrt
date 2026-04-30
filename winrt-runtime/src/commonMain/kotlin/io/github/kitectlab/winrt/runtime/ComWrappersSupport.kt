@@ -2,7 +2,7 @@ package io.github.kitectlab.winrt.runtime
 
 import kotlin.reflect.KClass
 
-internal data class WinRtCcwDefinition(
+data class WinRtCcwDefinition(
     val interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
     val defaultInterfaceId: Guid,
     val runtimeClassName: String? = null,
@@ -43,7 +43,7 @@ object ComWrappersSupport {
         helperType: WinRtTypeHandle,
     ): Boolean = helperTypeRegistry.putIfAbsent(projectedType, helperType) == null
 
-    internal fun registerCcwFactory(
+    fun registerCcwFactory(
         implementationType: KClass<*>,
         factory: (Any) -> WinRtCcwDefinition,
     ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
@@ -113,7 +113,7 @@ object ComWrappersSupport {
             return null
         }
 
-        val pointerKey = PlatformAbi.pointerKey(pointer)
+        val pointerKey = rcwCacheKey(pointer)
         if (tryUseCache) {
             rcwCache[pointerKey]?.let { cached ->
                 val cachedWinRt = cached as? IWinRTObject
@@ -133,6 +133,10 @@ object ComWrappersSupport {
         val rcw = createRcwCore(pointer, staticallyDeterminedType)
         if (tryUseCache && rcw != null) {
             rcwCache[pointerKey] = rcw
+            val directPointerKey = PlatformAbi.pointerKey(pointer)
+            if (directPointerKey != pointerKey) {
+                rcwCache[directPointerKey] = rcw
+            }
         }
         return rcw
     }
@@ -160,6 +164,74 @@ object ComWrappersSupport {
         )
         val requestedInterface = interfaceId ?: definition.defaultInterfaceId
         return ownedReference(host, requestedInterface)
+    }
+
+    fun createComposableCCWForObject(
+        value: Any,
+        outerInterfaceId: Guid? = null,
+        createInstance: (baseInterface: RawAddress, innerOut: RawAddress, instanceOut: RawAddress) -> Int,
+    ): WinRtComposableObjectReference {
+        platformEnsureInspectableProjectionInteropRegistered()
+        val definition = createCcwDefinition(value)
+        var innerReference: IInspectableReference? = null
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = definition.interfaceDefinitions,
+            runtimeClassName = definition.runtimeClassName,
+            managedValue = value,
+            queryInterfaceFallback = { requestedInterfaceId ->
+                innerReference
+                    ?.tryQueryInterface(requestedInterfaceId)
+                    ?.use { queried -> PlatformAbi.fromRawComPtr(queried.getRefPointer()) }
+            },
+        )
+        val requestedInterface = outerInterfaceId ?: definition.defaultInterfaceId
+        val outerReference = host.createReference(requestedInterface)
+        return try {
+            PlatformAbi.confinedScope().use { scope ->
+                val innerOut = PlatformAbi.allocatePointerSlot(scope)
+                val instanceOut = PlatformAbi.allocatePointerSlot(scope)
+                val hResult = createInstance(
+                    PlatformAbi.fromRawComPtr(outerReference.pointer),
+                    innerOut,
+                    instanceOut,
+                )
+                HResult(hResult).requireSuccess()
+                val innerPointer = PlatformAbi.readPointer(innerOut)
+                if (!PlatformAbi.isNull(innerPointer)) {
+                    innerReference = IInspectableReference(PlatformAbi.toRawComPtr(innerPointer), IID.IInspectable)
+                    host.registerExternalPointerAlias(innerPointer)
+                }
+                val instancePointer = PlatformAbi.readPointer(instanceOut)
+                if (PlatformAbi.isNull(instancePointer)) {
+                    throw WinRtUnsupportedOperationException(
+                        "Composable factory returned a null instance pointer.",
+                        KnownHResults.E_POINTER,
+                    )
+                }
+                host.registerExternalPointerAlias(instancePointer)
+                val isAggregatedReferenceTrackerObject =
+                    !PlatformAbi.isNull(innerPointer) && hasReferenceTracker(innerPointer)
+                val instanceReference = IInspectableReference(
+                    PlatformAbi.toRawComPtr(instancePointer),
+                    IID.IInspectable,
+                    preventReleaseOnDispose = isAggregatedReferenceTrackerObject,
+                )
+                WinRtComposableObjectReference(
+                    instance = instanceReference,
+                    inner = innerReference,
+                    outer = outerReference,
+                    isAggregatedReferenceTrackerObject = isAggregatedReferenceTrackerObject,
+                    cleanup = host::releaseManagedReference,
+                )
+            }
+        } catch (failure: Throwable) {
+            try {
+                outerReference.close()
+            } finally {
+                host.releaseManagedReference()
+            }
+            throw failure
+        }
     }
 
     fun clearRegistriesForTests() {
@@ -237,6 +309,31 @@ object ComWrappersSupport {
             runtimeClassFactories[runtimeClassName]?.let { return it }
         }
         return null
+    }
+
+    private fun hasReferenceTracker(pointer: RawAddress): Boolean {
+        val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTracker)
+        val trackerPointer = result.pointer
+        if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(trackerPointer)) {
+            return false
+        }
+        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        WinRtPlatformApi.releaseRaw(trackerPointer)
+        return true
+    }
+
+    private fun rcwCacheKey(pointer: RawAddress): Long {
+        val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IUnknown)
+        val unknownPointer = result.pointer
+        if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(unknownPointer)) {
+            return PlatformAbi.pointerKey(pointer)
+        }
+        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        return try {
+            PlatformAbi.pointerKey(unknownPointer)
+        } finally {
+            WinRtPlatformApi.releaseRaw(unknownPointer)
+        }
     }
 
     private fun wrapInspectable(pointer: RawAddress): IInspectableReference? {

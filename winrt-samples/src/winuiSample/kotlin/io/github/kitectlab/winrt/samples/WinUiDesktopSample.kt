@@ -1,9 +1,15 @@
 package io.github.kitectlab.winrt.samples
 
+import io.github.kitectlab.winrt.authoring.WinRtAuthoredInterfaceDefinition
+import io.github.kitectlab.winrt.authoring.WinRtAuthoredMethodDefinition
+import io.github.kitectlab.winrt.authoring.WinRtAuthoredTypeDefinition
+import io.github.kitectlab.winrt.authoring.WinRtAuthoring
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Application
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.DependencyProperty
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.FrameworkElement
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.HorizontalAlignment
+import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.IApplicationFactory
+import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.IApplicationOverrides
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.RoutedEventArgs
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.RoutedEventHandler
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.UIElement
@@ -20,12 +26,20 @@ import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
+import io.github.kitectlab.winrt.runtime.ComAbiValueKind
+import io.github.kitectlab.winrt.runtime.ComMethodSignature
+import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
+import io.github.kitectlab.winrt.runtime.HResult
+import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RuntimeScope
+import io.github.kitectlab.winrt.runtime.WinRtComposableObjectReference
 import io.github.kitectlab.winrt.runtime.WinRtDelegateBridge
 import io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
 import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
+import io.github.kitectlab.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.kitectlab.winrt.runtime.WinRtWindowsMessageLoop
 
 data class WinUiDesktopSampleResult(
     val dependencyPropertyUnsetValueAvailable: Boolean,
@@ -34,45 +48,118 @@ data class WinUiDesktopSampleResult(
 )
 
 object WinUiDesktopSample {
+    private var activeDesktopApplication: WinUiDesktopApp? = null
+    private var activeComposableApplication: WinRtComposableObjectReference? = null
+
     fun start() {
-        RuntimeScope.initializeSingleThreaded().use {
-            Application.Start {
-                Application()
-                WinUiDesktopApplication().onLaunched()
+        WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
+            println("winui: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
+            RuntimeScope.initializeSingleThreaded().use {
+                registerApplicationType()
+                var launched = false
+                Application.Start {
+                    println("winui: application callback invoked")
+                    val desktopApplication = WinUiDesktopApp()
+                    activeDesktopApplication = desktopApplication
+                    activeComposableApplication?.close()
+                    activeComposableApplication = createComposableApplication(desktopApplication)
+                    launched = true
+                    println("winui: application composed")
+                }
+                println("winui: Application.Start returned launched=$launched")
+                if (launched) {
+                    WinRtWindowsMessageLoop.run()
+                }
             }
         }
     }
 
     fun launchForSmoke(): WinUiDesktopSampleResult =
         RuntimeScope.initializeSingleThreaded().use {
-            WinUiDesktopApplication().onLaunched()
+            WinUiDesktopApp().onLaunched()
+        }
+
+    private fun registerApplicationType() {
+        WinRtAuthoring.registerType<WinUiDesktopApp>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "kotlin-winrt.samples.WinUiDesktopApp",
+                defaultInterfaceId = IApplicationOverrides.Metadata.IID,
+                composableBaseClassName = "Microsoft.UI.Xaml.Application",
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = IApplicationOverrides.Metadata.IID,
+                        methods = listOf(
+                            WinRtAuthoredMethodDefinition(
+                                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
+                            ) {
+                                onLaunched()
+                                println("winui: window activated")
+                                KnownHResults.S_OK.value
+                            },
+                        ),
+                        isDefault = true,
+                        isOverridable = true,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun createComposableApplication(app: WinUiDesktopApp): WinRtComposableObjectReference =
+        WinRtAuthoring.createComposableObject(
+            value = app,
+            outerInterfaceId = IApplicationOverrides.Metadata.IID,
+        ) { baseInterface, innerOut, instanceOut ->
+            Application.ComposableFactory.acquire().use { factory ->
+                val hResult = ComVtableInvoker.invokeArgs(
+                    instance = factory.pointer,
+                    slot = IApplicationFactory.Metadata.CREATEINSTANCE_SLOT,
+                    arg0 = baseInterface,
+                    arg1 = innerOut,
+                    arg2 = instanceOut,
+                )
+                HResult(hResult).requireSuccess()
+                hResult
+            }
         }
 }
 
-private class WinUiDesktopApplication {
+private class WinUiDesktopApp {
     private var myWindow: Window? = null
 
     fun onLaunched(): WinUiDesktopSampleResult {
+        println("winui: launch begin")
         val unsetValue = DependencyProperty.unsetValue
+        println("winui: dependency property unset value acquired")
         val button = Button()
+        println("winui: button created")
         val buttonContent = ContentControl.Metadata.wrap(button.inspectable())
+        println("winui: button content projected")
         val buttonElement = FrameworkElement.Metadata.wrap(button.inspectable())
+        println("winui: button framework element projected")
         val buttonBase = ButtonBase.Metadata.wrap(button.inspectable())
+        println("winui: button base projected")
 
         buttonContent.content = boxString("Click me to load MainPage")
+        println("winui: button content set")
         buttonElement.horizontalAlignment = HorizontalAlignment.Center
         buttonElement.verticalAlignment = VerticalAlignment.Center
+        println("winui: button alignment set")
         val clickToken = buttonBase.click.add(RoutedEventHandler { sender, args -> buttonClick(sender, args) })
+        println("winui: click handler registered")
 
         val window = Window()
+        println("winui: window created")
         window.content = UIElement.Metadata.wrap(button.inspectable())
+        println("winui: window content set")
         window.Activate()
+        println("winui: window activated native")
         myWindow = window
 
         return WinUiDesktopSampleResult(
             dependencyPropertyUnsetValueAvailable = !unsetValue.isDisposed,
             clickToken = clickToken,
-            tappedHandlerRegistered = WinUiDesktopMainPage.create().tappedHandlerRegistered,
+            tappedHandlerRegistered = false,
         )
     }
 

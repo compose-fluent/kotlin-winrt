@@ -150,7 +150,19 @@ class InspectableReference internal constructor(
     constructor(
         pointer: RawComPtr,
         interfaceId: Guid = IID.IInspectable,
-    ) : this(ComPtr.create(pointer, interfaceId))
+        preventReleaseOnDispose: Boolean = false,
+    ) : this(
+        ComPtr.create(
+            raw = pointer,
+            interfaceId = interfaceId,
+            ownershipMode =
+                if (preventReleaseOnDispose) {
+                    ComOwnershipMode.Borrowed
+                } else {
+                    ComOwnershipMode.Owned
+                },
+        ),
+    )
 
     internal override val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.Inspectable

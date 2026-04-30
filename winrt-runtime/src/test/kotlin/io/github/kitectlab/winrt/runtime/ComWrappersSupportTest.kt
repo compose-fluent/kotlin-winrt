@@ -31,6 +31,36 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun create_rcw_cache_uses_com_identity_across_interface_pointers() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val defaultInterfaceId = Guid("66666666-6666-6666-6666-666666666666")
+        val secondaryInterfaceId = Guid("77777777-7777-7777-7777-777777777777")
+        val created = mutableListOf<TestRuntimeClassWrapper>()
+        ComWrappersSupport.registerRuntimeClassFactory("test.RuntimeClass") { inspectable ->
+            TestRuntimeClassWrapper(inspectable).also(created::add)
+        }
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
+                WinRtInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
+            ),
+            runtimeClassName = "test.RuntimeClass",
+        )
+        val defaultPointer = host.detachReference(defaultInterfaceId)
+        val secondaryPointer = IUnknownReference(defaultPointer.asRawComPtr(), defaultInterfaceId, preventReleaseOnDispose = true)
+            .queryInterface(secondaryInterfaceId)
+            .getOrThrow()
+
+        val first = ComWrappersSupport.createRcwForComObject(defaultPointer) as TestRuntimeClassWrapper
+        val second = ComWrappersSupport.createRcwForComObject(PlatformAbi.fromRawComPtr(secondaryPointer.pointer)) as TestRuntimeClassWrapper
+
+        assertSame(first, second)
+        assertEquals(1, created.size)
+        secondaryPointer.close()
+        first.nativeObject.close()
+    }
+
+    @Test
     fun create_rcw_uses_static_type_and_helper_type_registration() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceType = WinRtTypeHandle("test.IFoo", Guid("11111111-1111-1111-1111-111111111111"))

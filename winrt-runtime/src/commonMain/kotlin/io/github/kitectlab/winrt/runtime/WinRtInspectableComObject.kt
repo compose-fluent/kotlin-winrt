@@ -1,16 +1,16 @@
 package io.github.kitectlab.winrt.runtime
 
-internal data class WinRtInspectableMethodDefinition(
+data class WinRtInspectableMethodDefinition(
     val signature: ComMethodSignature,
     val handler: (List<Any?>) -> Int,
 )
 
-internal enum class WinRtComInterfaceBaseKind {
+enum class WinRtComInterfaceBaseKind {
     IUnknown,
     IInspectable,
 }
 
-internal data class WinRtInspectableInterfaceDefinition(
+data class WinRtInspectableInterfaceDefinition(
     val interfaceId: Guid,
     val methods: List<WinRtInspectableMethodDefinition>,
     val baseKind: WinRtComInterfaceBaseKind = WinRtComInterfaceBaseKind.IInspectable,
@@ -26,6 +26,7 @@ internal class WinRtInspectableComObject(
     private val runtimeClassName: String? = null,
     private val trustLevel: Int = 0,
     private val managedValue: Any? = null,
+    private val queryInterfaceFallback: ((Guid) -> RawAddress?)? = null,
 ) : ManagedReferenceHost, AutoCloseable {
     private val scope = PlatformAbi.sharedScope()
     private val state = ManagedComHostState(::cleanup)
@@ -34,6 +35,7 @@ internal class WinRtInspectableComObject(
         definition.interfaceId to createInterfaceEntry(definition)
     }
     private val interfaceIdsMemory = allocateInterfaceIds(interfaceDefinitions)
+    private val externalPointerAliases = mutableListOf<Long>()
     private val primaryInspectableInterfaceId = interfaceDefinitions.firstOrNull {
         it.baseKind == WinRtComInterfaceBaseKind.IInspectable
     }?.interfaceId
@@ -56,6 +58,15 @@ internal class WinRtInspectableComObject(
     }
 
     fun createPrimaryReference(): ComObjectReference = createReference(primaryInterfaceId)
+
+    fun registerExternalPointerAlias(pointer: RawAddress) {
+        if (PlatformAbi.isNull(pointer)) {
+            return
+        }
+        val key = PlatformAbi.pointerKey(pointer)
+        registry[key] = this
+        externalPointerAliases.add(key)
+    }
 
     fun detachReference(interfaceId: Guid = primaryInterfaceId): RawAddress =
         ManagedReferenceHostSupport.detachReference(
@@ -152,6 +163,14 @@ internal class WinRtInspectableComObject(
             IID.IInspectable -> primaryInspectableInterfaceId?.let(::interfacePointer)
             else -> interfaceEntries[requestedInterfaceId]?.objectMemory
         }
+        if (targetPointer == null) {
+            val fallbackPointer = queryInterfaceFallback?.invoke(requestedInterfaceId)
+            if (fallbackPointer != null && !PlatformAbi.isNull(fallbackPointer)) {
+                registerExternalPointerAlias(fallbackPointer)
+                PlatformAbi.writePointer(resultPointer, fallbackPointer)
+                return KnownHResults.S_OK.value
+            }
+        }
         val queryResult = state.queryInterface(requestedInterfaceId) { _ -> targetPointer }
         PlatformAbi.writePointer(
             resultPointer,
@@ -199,6 +218,11 @@ internal class WinRtInspectableComObject(
     }
 
     private fun cleanup() {
+        externalPointerAliases.forEach { key ->
+            if (registry[key] === this) {
+                registry.remove(key)
+            }
+        }
         interfaceEntries.values.forEach { entry ->
             registry.remove(PlatformAbi.pointerKey(entry.objectMemory))
             entry.callbacks.forEach(NativeCallbackHandle::close)

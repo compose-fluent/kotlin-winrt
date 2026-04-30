@@ -20,6 +20,7 @@ kotlin {
 
 dependencies {
     implementation(projects.winrtRuntime)
+    implementation(projects.winrtAuthoring)
     implementation(projects.winrtProjections)
     testImplementation(libs.junit)
 }
@@ -54,6 +55,22 @@ winRt {
 
 application {
     mainClass = "io.github.kitectlab.winrt.samples.MainKt"
+}
+
+tasks.named<JavaExec>("run") {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    systemProperty(
+        "kotlin.winrt.samples.runNativeSmoke",
+        providers.systemProperty("kotlin.winrt.samples.runNativeSmoke").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.runComponentSmoke",
+        providers.systemProperty("kotlin.winrt.samples.runComponentSmoke").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.runWinUiSmoke",
+        providers.systemProperty("kotlin.winrt.samples.runWinUiSmoke").orElse("false").get(),
+    )
 }
 
 val verifyWinRtSampleIdentity by tasks.registering {
