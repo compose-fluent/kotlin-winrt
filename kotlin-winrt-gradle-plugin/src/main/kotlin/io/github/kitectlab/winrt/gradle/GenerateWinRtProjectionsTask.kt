@@ -12,6 +12,8 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.process.ExecOperations
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -22,6 +24,8 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.inject.Inject
+import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 import kotlin.streams.asSequence
@@ -86,6 +90,12 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:Classpath
+    abstract val authoringScannerClasspath: ConfigurableFileCollection
+
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
     @TaskAction
     fun generate() {
         val sources = metadataSources()
@@ -104,14 +114,28 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                 additionExclude = additionExcludeNamespaces.get().toSet(),
             ),
         ).generateTo(model, outputDirectory.get().asFile.toPath())
-        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-            candidates = KotlinWinRtAuthoringSourceScanner.scan(
-                sourceRoots = sourceRoots.files.map { it.toPath() },
+        val generatedRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val authoringSourceRoots = sourceRoots.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
+            .filter(::containsKotlinSource)
+        if (authoringSourceRoots.isNotEmpty()) {
+            val scannerWorkDirectory = temporaryDir.toPath().resolve("authoring-scanner")
+            Files.createDirectories(scannerWorkDirectory)
+            val metadataIndex = scannerWorkDirectory.resolve("metadata-index.tsv")
+            val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
+            writeAuthoringMetadataIndex(model, metadataIndex)
+            runAuthoringScanner(
+                sourceRoots = authoringSourceRoots,
+                metadataIndex = metadataIndex,
+                candidatesFile = candidatesFile,
+            )
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = KotlinWinRtAuthoringCandidateFile.read(candidatesFile),
                 metadataModel = model,
-            ),
-            metadataModel = model,
-            outputDirectory = outputDirectory.get().asFile.toPath(),
-        )
+                outputDirectory = outputDirectory.get().asFile.toPath(),
+            )
+        }
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {
@@ -235,6 +259,63 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }.getOrElse { error ->
             logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
             emptyList()
+        }
+    }
+
+    private fun containsKotlinSource(root: Path): Boolean {
+        if (Files.isRegularFile(root)) {
+            return root.extension == "kt"
+        }
+        if (!Files.isDirectory(root)) {
+            return false
+        }
+        return Files.walk(root).use { stream ->
+            stream.asSequence().any { path -> Files.isRegularFile(path) && path.extension == "kt" }
+        }
+    }
+
+    private fun writeAuthoringMetadataIndex(
+        model: io.github.kitectlab.winrt.metadata.WinRtMetadataModel,
+        output: Path,
+    ) {
+        val lines = model.namespaces
+            .flatMap { namespace -> namespace.types }
+            .sortedBy { type -> type.qualifiedName }
+            .map { type ->
+                listOf(
+                    type.qualifiedName,
+                    type.kind.name,
+                    type.implementedInterfaces
+                        .filter { implementation -> implementation.isOverridable }
+                        .map { implementation -> implementation.interfaceName }
+                        .distinct()
+                        .sorted()
+                        .joinToString(";"),
+                ).joinToString("\t")
+            }
+        Files.write(output, lines)
+    }
+
+    private fun runAuthoringScanner(
+        sourceRoots: List<Path>,
+        metadataIndex: Path,
+        candidatesFile: Path,
+    ) {
+        execOperations.javaexec { spec ->
+            spec.classpath = authoringScannerClasspath
+            spec.mainClass.set("io.github.kitectlab.winrt.compiler.KotlinWinRtAuthoringScannerCli")
+            spec.args(
+                buildList {
+                    add("--metadata-index")
+                    add(metadataIndex.toString())
+                    add("--output")
+                    add(candidatesFile.toString())
+                    sourceRoots.forEach { root ->
+                        add("--source-root")
+                        add(root.toString())
+                    }
+                },
+            )
         }
     }
 

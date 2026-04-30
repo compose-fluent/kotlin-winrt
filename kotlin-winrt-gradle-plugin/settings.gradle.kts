@@ -24,8 +24,10 @@ include(
     ":winrt-runtime",
     ":winrt-metadata",
     ":winrt-generator",
+    ":kotlin-winrt-compiler-plugin",
 )
 
 project(":winrt-runtime").projectDir = file("../winrt-runtime")
 project(":winrt-metadata").projectDir = file("../winrt-metadata")
 project(":winrt-generator").projectDir = file("../winrt-generator")
+project(":kotlin-winrt-compiler-plugin").projectDir = file("../kotlin-winrt-compiler-plugin")

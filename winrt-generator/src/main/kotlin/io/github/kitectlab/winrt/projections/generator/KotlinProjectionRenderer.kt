@@ -824,12 +824,16 @@ class KotlinProjectionRenderer {
     }
 
     private val KotlinTypeProjectionPlan.hasRuntimeClassDerivedTypes: Boolean
-        get() = typesByQualifiedName.values.any { candidate ->
-            candidate.kind == WinRtTypeKind.RuntimeClass &&
-                candidate.baseTypeName?.let { baseName ->
-                    baseName == type.qualifiedName || baseName == type.name
-                } == true
-        }
+        get() =
+            classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor ->
+                descriptor.isOverridableInterface
+            } == true ||
+                typesByQualifiedName.values.any { candidate ->
+                    candidate.kind == WinRtTypeKind.RuntimeClass &&
+                        candidate.baseTypeName?.let { baseName ->
+                            baseName == type.qualifiedName || baseName == type.name
+                        } == true
+                }
 
     private fun addRuntimeClassIdentityMembers(
         builder: TypeSpec.Builder,

@@ -8,9 +8,11 @@ import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.asClassName
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
+import io.github.kitectlab.winrt.metadata.WinRtParameterDirection
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
 import java.nio.file.Path
@@ -20,7 +22,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val comAbiValueKindType = ClassName("io.github.kitectlab.winrt.runtime", "ComAbiValueKind")
     private val comMethodSignatureType = ClassName("io.github.kitectlab.winrt.runtime", "ComMethodSignature")
     private val guidType = ClassName("io.github.kitectlab.winrt.runtime", "Guid")
+    private val hStringType = ClassName("io.github.kitectlab.winrt.runtime", "HString")
+    private val iInspectableReferenceType = ClassName("io.github.kitectlab.winrt.runtime", "IInspectableReference")
+    private val iidType = ClassName("io.github.kitectlab.winrt.runtime", "IID")
     private val knownHResultsType = ClassName("io.github.kitectlab.winrt.runtime", "KnownHResults")
+    private val platformAbiType = ClassName("io.github.kitectlab.winrt.runtime", "PlatformAbi")
+    private val rawAddressType = ClassName("io.github.kitectlab.winrt.runtime", "RawAddress")
     private val winRtCcwDefinitionType = ClassName("io.github.kitectlab.winrt.runtime", "WinRtCcwDefinition")
     private val winRtInspectableInterfaceDefinitionType =
         ClassName("io.github.kitectlab.winrt.runtime", "WinRtInspectableInterfaceDefinition")
@@ -113,18 +120,108 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderMethod(
         method: WinRtMethodDefinition,
     ): CodeBlock {
-        val sourceMethodName = method.name.replaceFirstChar(Char::lowercaseChar)
+        val sourceMethodName = method.name
         return CodeBlock.builder()
-            .add("%T(%L) {\n", winRtInspectableMethodDefinitionType, renderSignature(method))
+            .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method))
             .indent()
-            .addStatement("val method = value.javaClass.getDeclaredMethod(%S)", sourceMethodName)
+            .apply {
+                method.parameters.forEachIndexed { index, parameter ->
+                    addStatement("val __arg%L = %L", index, renderParameterProjection(index, parameter))
+                }
+            }
+            .add(
+                "val method = generateSequence(value.javaClass) { type -> type.superclass }\n" +
+                    ".mapNotNull { type -> runCatching { type.getDeclaredMethod(%S%L) }.getOrNull() }\n" +
+                    ".first()\n",
+                sourceMethodName,
+                renderReflectionParameterTypes(method),
+            )
             .addStatement("method.isAccessible = true")
-            .addStatement("method.invoke(value)")
+            .addStatement("method.invoke(value%L)", renderInvokeArguments(method))
             .addStatement("%T.S_OK.value", knownHResultsType)
             .unindent()
             .add("}")
             .build()
     }
+
+    private fun renderReflectionParameterTypes(method: WinRtMethodDefinition): CodeBlock =
+        CodeBlock.builder()
+            .apply {
+                method.parameters.forEach { parameter ->
+                    add(", %T::class.java", projectedParameterType(parameter))
+                }
+            }
+            .build()
+
+    private fun renderInvokeArguments(method: WinRtMethodDefinition): CodeBlock =
+        CodeBlock.builder()
+            .apply {
+                method.parameters.indices.forEach { index ->
+                    add(", __arg%L", index)
+                }
+            }
+            .build()
+
+    private fun renderParameterProjection(
+        index: Int,
+        parameter: WinRtParameterDefinition,
+    ): CodeBlock {
+        val rawArg = CodeBlock.of("rawArgs[%L]", index)
+        return when (parameter.typeName) {
+            "Boolean" -> CodeBlock.of("(%L as %T) != 0", rawArg, Int::class.asClassName())
+            "Int8", "SByte" -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
+            "UInt8", "Byte" -> CodeBlock.of("(%L as %T).toUByte()", rawArg, Byte::class.asClassName())
+            "Int16" -> CodeBlock.of("%L as %T", rawArg, Short::class.asClassName())
+            "UInt16" -> CodeBlock.of("(%L as %T).toUShort()", rawArg, Short::class.asClassName())
+            "Int32" -> CodeBlock.of("%L as %T", rawArg, Int::class.asClassName())
+            "UInt32" -> CodeBlock.of("(%L as %T).toUInt()", rawArg, Int::class.asClassName())
+            "Int64" -> CodeBlock.of("%L as %T", rawArg, Long::class.asClassName())
+            "UInt64" -> CodeBlock.of("(%L as %T).toULong()", rawArg, Long::class.asClassName())
+            "Single", "Float" -> CodeBlock.of("%L as %T", rawArg, Float::class.asClassName())
+            "Double" -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
+            "String" -> CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
+            else -> renderObjectParameterProjection(rawArg, parameter)
+        }
+    }
+
+    private fun renderObjectParameterProjection(
+        rawArg: CodeBlock,
+        parameter: WinRtParameterDefinition,
+    ): CodeBlock =
+        if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
+            CodeBlock.of("%L as %T", rawArg, rawAddressType)
+        } else {
+            CodeBlock.of(
+                "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
+                projectionClassName(parameter.typeName),
+                iInspectableReferenceType,
+                platformAbiType,
+                rawArg,
+                rawAddressType,
+                iidType,
+            )
+        }
+
+    private fun projectedParameterType(parameter: WinRtParameterDefinition) =
+        when (parameter.typeName) {
+            "Boolean" -> Boolean::class.asClassName()
+            "Int8", "SByte" -> Byte::class.asClassName()
+            "UInt8", "Byte" -> UByte::class.asClassName()
+            "Int16" -> Short::class.asClassName()
+            "UInt16" -> UShort::class.asClassName()
+            "Int32" -> Int::class.asClassName()
+            "UInt32" -> UInt::class.asClassName()
+            "Int64" -> Long::class.asClassName()
+            "UInt64" -> ULong::class.asClassName()
+            "Single", "Float" -> Float::class.asClassName()
+            "Double" -> Double::class.asClassName()
+            "String" -> String::class.asClassName()
+            else -> if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
+                rawAddressType
+            } else {
+                projectionClassName(parameter.typeName)
+            }
+        }
 
     private fun renderSignature(method: WinRtMethodDefinition): CodeBlock =
         if (method.parameters.isEmpty()) {
@@ -157,4 +254,17 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"
+
+    private fun projectionClassName(qualifiedName: String): ClassName {
+        val lastDot = qualifiedName.lastIndexOf('.')
+        if (lastDot < 0) {
+            return ClassName("", qualifiedName)
+        }
+        val namespace = qualifiedName.substring(0, lastDot)
+        val simpleName = qualifiedName.substring(lastDot + 1)
+        val packageName = (listOf("io", "github", "kitectlab", "winrt", "projections") +
+            namespace.split('.').filter(String::isNotBlank).map(String::lowercase))
+            .joinToString(".")
+        return ClassName(packageName, simpleName)
+    }
 }

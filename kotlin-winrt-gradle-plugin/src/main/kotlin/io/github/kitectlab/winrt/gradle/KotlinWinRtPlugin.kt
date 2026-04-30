@@ -24,6 +24,7 @@ class KotlinWinRtPlugin : Plugin<Project> {
 
 const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRtIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIdentityElements"
+const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRtCompilerPlugin"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
 
@@ -210,6 +211,7 @@ private fun configureWinRtGeneration(
     extension: BaseWinRtExtension,
 ) {
     val generatedSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
     val generateTask = project.tasks.register(
         "generateWinRtProjections",
         GenerateWinRtProjectionsTask::class.java,
@@ -249,10 +251,12 @@ private fun configureWinRtGeneration(
                     }
                 },
             )
+            task.authoringScannerClasspath.from(compilerPluginClasspath)
             task.sourceRoots.from(
                 project.provider {
+                    val generatedSourcesPath = generatedSources.get().asFile.toPath().toAbsolutePath().normalize()
                     kotlinMainSourceDirs(project).filterNot { sourceDir ->
-                        sourceDir.toPath().startsWith(generatedSources.get().asFile.toPath())
+                        sourceDir.toPath().toAbsolutePath().normalize().startsWith(generatedSourcesPath)
                     }
                 },
             )
@@ -260,6 +264,9 @@ private fun configureWinRtGeneration(
     )
 
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
+        project.configurations.findByName("kotlinCompilerPluginClasspath")?.let { compilerPluginConfiguration ->
+            project.dependencies.add(compilerPluginConfiguration.name, kotlinWinRtCompilerPluginDependency(project))
+        }
         addGeneratedSourcesToKotlinMain(project, generatedSources)
         project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
@@ -270,6 +277,23 @@ private fun configureWinRtGeneration(
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> {
             it.getByName("main").java.srcDir(generatedSources)
         })
+    }
+}
+
+private fun kotlinWinRtCompilerPluginClasspath(project: Project) =
+    project.configurations.findByName(KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION)
+        ?: project.configurations.create(KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION).also { configuration ->
+            configuration.isCanBeConsumed = false
+            configuration.isCanBeResolved = true
+            project.dependencies.add(configuration.name, kotlinWinRtCompilerPluginDependency(project))
+        }
+
+private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
+    val localCompilerPlugin = project.rootProject.findProject(":kotlin-winrt-compiler-plugin")
+    return if (localCompilerPlugin != null) {
+        project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
+    } else {
+        "io.github.kitectlab.winrt:kotlin-winrt-compiler-plugin:${project.version}"
     }
 }
 

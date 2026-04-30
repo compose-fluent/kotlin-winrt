@@ -7,54 +7,12 @@ import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.io.path.readText
 
 class KotlinWinRtAuthoringSourceScannerTest {
-    @Test
-    fun scans_runtime_class_and_interface_authored_types_without_application_special_case() {
-        val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-")
-        root.resolve("Sample.kt").toFile().writeText(
-            """
-            package sample
-
-            import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Application
-            import io.github.kitectlab.winrt.projections.windows.foundation.IStringable
-
-            internal class App : Application()
-
-            internal class StringableThing : IStringable
-            """.trimIndent(),
-        )
-
-        val candidates = KotlinWinRtAuthoringSourceScanner.scan(listOf(root), model())
-
-        assertEquals(
-            listOf(
-                KotlinWinRtAuthoredTypeCandidate(
-                    packageName = "sample",
-                    className = "App",
-                    sourceTypeName = "sample.App",
-                    winRtBaseClassName = "Microsoft.UI.Xaml.Application",
-                    winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
-                    overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
-                ),
-                KotlinWinRtAuthoredTypeCandidate(
-                    packageName = "sample",
-                    className = "StringableThing",
-                    sourceTypeName = "sample.StringableThing",
-                    winRtBaseClassName = null,
-                    winRtInterfaceNames = listOf("Windows.Foundation.IStringable"),
-                    overridableInterfaceNames = emptyList(),
-                ),
-            ),
-            candidates,
-        )
-    }
-
     @Test
     fun renders_generated_type_details_for_scanned_authored_type() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-details-")
@@ -78,7 +36,12 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated, generated.contains("createCcwDefinition"))
         assertTrue(generated.contains("interfaceId = Guid(\"aaaaaaaa-1111-2222-3333-444444444444\")"))
         assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer))"))
-        assertTrue(generated.contains("value.javaClass.getDeclaredMethod(\"onLaunched\")"))
+        assertTrue(generated.contains("rawArgs"))
+        assertTrue(generated.contains("LaunchActivatedEventArgs.Metadata.wrap"))
+        assertTrue(generated.contains("type.getDeclaredMethod("))
+        assertTrue(generated.contains("\"OnLaunched\""))
+        assertTrue(generated.contains("LaunchActivatedEventArgs::class.java"))
+        assertTrue(generated.contains("method.invoke(value, __arg0)"))
     }
 
     private fun model(): WinRtMetadataModel =

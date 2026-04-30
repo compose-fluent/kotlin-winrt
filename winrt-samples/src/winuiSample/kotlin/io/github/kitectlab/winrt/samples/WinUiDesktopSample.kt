@@ -1,8 +1,5 @@
 package io.github.kitectlab.winrt.samples
 
-import io.github.kitectlab.winrt.authoring.WinRtAuthoredInterfaceDefinition
-import io.github.kitectlab.winrt.authoring.WinRtAuthoredMethodDefinition
-import io.github.kitectlab.winrt.authoring.WinRtAuthoredTypeDefinition
 import io.github.kitectlab.winrt.authoring.WinRtAuthoring
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Application
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.DependencyProperty
@@ -10,6 +7,7 @@ import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.FrameworkElement
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.HorizontalAlignment
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.IApplicationFactory
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.IApplicationOverrides
+import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.LaunchActivatedEventArgs
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.RoutedEventArgs
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.RoutedEventHandler
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.UIElement
@@ -26,10 +24,7 @@ import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.IInspectableReference
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
-import io.github.kitectlab.winrt.runtime.ComAbiValueKind
-import io.github.kitectlab.winrt.runtime.ComMethodSignature
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
-import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RuntimeScope
 import io.github.kitectlab.winrt.runtime.WinRtComposableObjectReference
@@ -53,7 +48,6 @@ object WinUiDesktopSample {
         WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
             println("winui: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
             RuntimeScope.initializeSingleThreaded().use {
-                registerApplicationType()
                 var launched = false
                 Application.Start {
                     println("winui: application callback invoked")
@@ -74,34 +68,8 @@ object WinUiDesktopSample {
 
     fun launchForSmoke(): WinUiDesktopSampleResult =
         RuntimeScope.initializeSingleThreaded().use {
-            WinUiDesktopApp().onLaunched()
+            WinUiDesktopApp().launchCore()
         }
-
-    private fun registerApplicationType() {
-        WinRtAuthoring.registerType<WinUiDesktopApp>(
-            WinRtAuthoredTypeDefinition(
-                runtimeClassName = "kotlin-winrt.samples.WinUiDesktopApp",
-                defaultInterfaceId = IApplicationOverrides.Metadata.IID,
-                composableBaseClassName = "Microsoft.UI.Xaml.Application",
-                interfaces = listOf(
-                    WinRtAuthoredInterfaceDefinition(
-                        interfaceId = IApplicationOverrides.Metadata.IID,
-                        methods = listOf(
-                            WinRtAuthoredMethodDefinition(
-                                signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
-                            ) {
-                                onLaunched()
-                                println("winui: window activated")
-                                KnownHResults.S_OK.value
-                            },
-                        ),
-                        isDefault = true,
-                        isOverridable = true,
-                    ),
-                ),
-            ),
-        )
-    }
 
     private fun createComposableApplication(app: WinUiDesktopApp): WinRtComposableObjectReference =
         Application.ComposableFactory.acquire().use { factory ->
@@ -114,10 +82,15 @@ object WinUiDesktopSample {
         }
 }
 
-private class WinUiDesktopApp {
+private class WinUiDesktopApp : Application() {
     private var myWindow: Window? = null
 
-    fun onLaunched(): WinUiDesktopSampleResult {
+    override fun OnLaunched(args: LaunchActivatedEventArgs) {
+        launchCore()
+        println("winui: window activated")
+    }
+
+    fun launchCore(): WinUiDesktopSampleResult {
         println("winui: launch begin")
         val unsetValue = DependencyProperty.unsetValue
         println("winui: dependency property unset value acquired")

@@ -26,6 +26,7 @@ include(
     ":winrt-metadata",
     ":winrt-generator",
     ":winrt-authoring",
+    ":kotlin-winrt-compiler-plugin",
     ":winrt-projections",
     ":winrt-samples",
 )
