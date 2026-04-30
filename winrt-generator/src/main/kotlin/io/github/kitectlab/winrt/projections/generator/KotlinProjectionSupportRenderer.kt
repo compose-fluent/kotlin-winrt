@@ -107,6 +107,22 @@ import kotlin.io.path.extension
 class KotlinProjectionSupportRenderer {
     private val typeRenderer = KotlinProjectionRenderer()
     private val planner = KotlinProjectionPlanner()
+    private val AUTHORING_ABI_OPERATIONS = listOf(
+        "GetAbi",
+        "FromAbi",
+        "FromManaged",
+        "CreateMarshaler",
+        "CreateMarshaler2",
+        "CreateMarshalerArray",
+        "GetAbiArray",
+        "FromAbiArray",
+        "CopyAbiArray",
+        "FromManagedArray",
+        "DisposeMarshaler",
+        "DisposeMarshalerArray",
+        "DisposeAbi",
+        "DisposeAbiArray",
+    )
 
     fun render(
         model: WinRtMetadataModel,
@@ -124,6 +140,7 @@ class KotlinProjectionSupportRenderer {
             renderTypeShapeWriterPlan(inventory, plans),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
+            renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -718,6 +735,59 @@ class KotlinProjectionSupportRenderer {
             appendLine("}")
         }
         return supportFile("WinRTAuthoringWrapperPlan.kt", contents)
+    }
+
+    private fun renderAuthoringAbiClassPlan(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && !semanticHelpers.isStatic(it.type) }
+            .filter { plan -> inventory.authoredMetadataTypeMappings.any { it.projectedTypeName == plan.type.qualifiedName } }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTAuthoringAbiClassPlan")
+            appendLine("internal data class AuthoringAbiClassEntry(")
+            appendLine("    val projectedTypeName: String,")
+            appendLine("    val abiTypeName: String,")
+            appendLine("    val ccwTypeName: String,")
+            appendLine("    val defaultInterfaceName: String?,")
+            appendLine("    val defaultInterfaceIsExclusiveTo: Boolean,")
+            appendLine("    val marshalerFamily: String,")
+            appendLine("    val operations: List<String>,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTAuthoringAbiClassPlan {")
+            appendStringList("ABI_OPERATIONS", AUTHORING_ABI_OPERATIONS)
+            appendLine("    val CLASSES: List<AuthoringAbiClassEntry> = listOf(")
+            entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+                val defaultInterface = plan.type.defaultInterfaceName?.let { semanticHelpers.resolveType(WinRtTypeRef.fromDisplayName(it), plan.type.namespace) }
+                val defaultInterfaceIsExclusiveTo = defaultInterface?.isExclusiveTo == true
+                appendLine("        AuthoringAbiClassEntry(")
+                appendLine("            projectedTypeName = ${plan.type.qualifiedName.kotlinString()},")
+                appendLine("            abiTypeName = ${("ABI." + plan.type.qualifiedName).kotlinString()},")
+                appendLine("            ccwTypeName = ${("ABI." + plan.type.qualifiedName).kotlinString()},")
+                appendLine("            defaultInterfaceName = ${plan.type.defaultInterfaceName.kotlinNullableString()},")
+                appendLine("            defaultInterfaceIsExclusiveTo = $defaultInterfaceIsExclusiveTo,")
+                appendLine("            marshalerFamily = ${(if (defaultInterfaceIsExclusiveTo) "MarshalInspectable" else "MarshalInterface").kotlinString()},")
+                appendLine("            operations = ABI_OPERATIONS,")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("    val CLASSES_BY_PROJECTED_TYPE: Map<String, AuthoringAbiClassEntry> =")
+            appendLine("        CLASSES.associateBy { it.projectedTypeName }")
+            appendLine()
+            appendLine("    fun abiClassForProjectedType(projectedTypeName: String): AuthoringAbiClassEntry? =")
+            appendLine("        CLASSES_BY_PROJECTED_TYPE[projectedTypeName]")
+            appendLine("}")
+        }
+        return supportFile("WinRTAuthoringAbiClassPlan.kt", contents)
     }
 
     private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
