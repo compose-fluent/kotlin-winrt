@@ -184,7 +184,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("DELEGATES_BY_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("GENERIC_ABI_DELEGATES.associateBy { it.name }")
+                            .initializer("GENERIC_ABI_DELEGATES.associateBy({ it.name })")
                             .build(),
                     )
                     .addProperty(
@@ -192,7 +192,7 @@ class KotlinProjectionSupportRenderer {
                             "DELEGATES_BY_SOURCE_TYPE",
                             Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
                         )
-                            .initializer("GENERIC_ABI_DELEGATES.groupBy { it.sourceGenericType }")
+                            .initializer("GENERIC_ABI_DELEGATES.groupBy({ it.sourceGenericType })")
                             .build(),
                     )
                     .addProperty(
@@ -335,7 +335,7 @@ class KotlinProjectionSupportRenderer {
                     "EVENT_SOURCES_BY_EVENT_TYPE",
                     Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
                 )
-                    .initializer("EVENT_SOURCES.groupBy { it.eventType }")
+                    .initializer("EVENT_SOURCES.groupBy({ it.eventType })")
                     .build(),
             )
             .addProperty(
@@ -343,7 +343,7 @@ class KotlinProjectionSupportRenderer {
                     "EVENT_SOURCES_BY_OWNER_TYPE",
                     Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
                 )
-                    .initializer("EVENT_SOURCES.groupBy { it.ownerType }")
+                    .initializer("EVENT_SOURCES.groupBy({ it.ownerType })")
                     .build(),
             )
             .addFunctions(eventProjectionHelperFunctions(entryClass, subclassDescriptors, plansByType, typesByQualifiedName))
@@ -399,7 +399,7 @@ class KotlinProjectionSupportRenderer {
             )
             .addProperty(
                 PropertySpec.builder("ENTRIES_BY_TYPE_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                    .initializer("ENTRIES.associateBy { it.typeName }")
+                    .initializer("ENTRIES.associateBy({ it.typeName })")
                     .build(),
             )
             .addFunction(
@@ -495,7 +495,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("TYPES_BY_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("TYPES.associateBy { it.typeName }")
+                            .initializer("TYPES.associateBy({ it.typeName })")
                             .build(),
                     )
                     .addProperty(
@@ -586,7 +586,7 @@ class KotlinProjectionSupportRenderer {
             )
             .addProperty(
                 PropertySpec.builder("WRAPPERS_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                    .initializer("WRAPPERS.associateBy { it.projectedTypeName }")
+                    .initializer("WRAPPERS.associateBy({ it.projectedTypeName })")
                     .build(),
             )
             .addFunction(
@@ -661,7 +661,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("CLASSES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("CLASSES.associateBy { it.projectedTypeName }")
+                            .initializer("CLASSES.associateBy({ it.projectedTypeName })")
                             .build(),
                     )
                     .addFunction(
@@ -723,7 +723,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy { it.projectedTypeName }")
+                            .initializer("ENTRIES.associateBy({ it.projectedTypeName })")
                             .build(),
                     )
                     .addFunction(
@@ -786,12 +786,12 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("FACTORIES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("FACTORIES.associateBy { it.projectedTypeName }")
+                            .initializer("FACTORIES.associateBy({ it.projectedTypeName })")
                             .build(),
                     )
                     .addProperty(
                         PropertySpec.builder("FACTORIES_BY_SERVER_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("FACTORIES.associateBy { it.serverFactoryTypeName }")
+                            .initializer("FACTORIES.associateBy({ it.serverFactoryTypeName })")
                             .build(),
                     )
                     .addFunction(
@@ -845,7 +845,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_NAMESPACE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy { it.namespace }")
+                            .initializer("ENTRIES.associateBy({ it.namespace })")
                             .build(),
                     )
                     .addFunction(
@@ -903,7 +903,7 @@ class KotlinProjectionSupportRenderer {
                     )
                     .addProperty(
                         PropertySpec.builder("ENTRIES_BY_RUNTIME_CLASS_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy { it.runtimeClassName }")
+                            .initializer("ENTRIES.associateBy({ it.runtimeClassName })")
                             .build(),
                     )
                     .addFunction(
