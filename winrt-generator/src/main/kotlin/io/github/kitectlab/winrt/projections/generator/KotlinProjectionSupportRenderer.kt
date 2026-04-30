@@ -10,6 +10,7 @@ import io.github.kitectlab.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtFieldDefinition
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
+import io.github.kitectlab.winrt.metadata.WinRtGenericAbiDelegateDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGenericAbiInventory
 import io.github.kitectlab.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtGuidSignatureDescriptor
@@ -90,6 +91,7 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.STAR
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
@@ -154,51 +156,86 @@ class KotlinProjectionSupportRenderer {
         if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTGenericAbiRegistry")
-            appendLine("internal data class GenericAbiDelegateEntry(")
-            appendLine("    val name: String,")
-            appendLine("    val sourceGenericType: String,")
-            appendLine("    val operation: String,")
-            appendLine("    val declaration: String,")
-            appendLine("    val abiParameterTypes: List<String>,")
-            appendLine("    val typeArrayShape: List<String>,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTGenericAbiRegistry {")
-            appendStringList("DERIVED_GENERIC_INTERFACES", inventory.derivedGenericInterfaces)
-            appendLine("    val GENERIC_ABI_DELEGATES: List<GenericAbiDelegateEntry> = listOf(")
-            inventory.genericAbiDelegates.forEach { delegate ->
-                appendLine("        GenericAbiDelegateEntry(")
-                appendLine("            name = ${delegate.abiDelegateName.kotlinString()},")
-                appendLine("            sourceGenericType = ${delegate.sourceGenericType.typeName.kotlinString()},")
-                appendLine("            operation = ${delegate.operationName.kotlinString()},")
-                appendLine("            declaration = ${delegate.declaration.kotlinString()},")
-                appendLine("            abiParameterTypes = ${delegate.abiParameterTypeNames.kotlinListLiteral()},")
-                appendLine("            typeArrayShape = ${delegate.typeArrayShape.kotlinListLiteral()},")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val DELEGATES_BY_NAME: Map<String, GenericAbiDelegateEntry> = GENERIC_ABI_DELEGATES.associateBy { it.name }")
-            appendLine("    val DELEGATES_BY_SOURCE_TYPE: Map<String, List<GenericAbiDelegateEntry>> = GENERIC_ABI_DELEGATES.groupBy { it.sourceGenericType }")
-            appendLine("    val DERIVED_GENERIC_INTERFACE_SET: Set<String> = DERIVED_GENERIC_INTERFACES.toSet()")
-            appendLine()
-            appendLine("    fun delegateNamed(name: String): GenericAbiDelegateEntry? = DELEGATES_BY_NAME[name]")
-            appendLine()
-            appendLine("    fun delegatesForSourceType(sourceGenericType: String): List<GenericAbiDelegateEntry> =")
-            appendLine("        DELEGATES_BY_SOURCE_TYPE[sourceGenericType].orEmpty()")
-            appendLine()
-            appendLine("    fun isDerivedGenericInterface(typeName: String): Boolean =")
-            appendLine("        typeName in DERIVED_GENERIC_INTERFACE_SET")
-            appendLine()
-            appendLine("    fun registerAbiDelegates(register: (typeArrayShape: List<String>, delegateName: String) -> Unit) {")
-            appendLine("        GENERIC_ABI_DELEGATES.forEach { entry ->")
-            appendLine("            register(entry.typeArrayShape, entry.name)")
-            appendLine("        }")
-            appendLine("    }")
-            appendLine("}")
-        }
-        return supportFile("WinRTGenericAbiRegistry.kt", contents)
+        val entryClass = ClassName(SUPPORT_PACKAGE, "GenericAbiDelegateEntry")
+        val fileSpec = supportFileSpec("WinRTGenericAbiRegistry")
+            .addType(
+                dataClass(
+                    className = "GenericAbiDelegateEntry",
+                    fields = listOf(
+                        "name" to stringTypeName(),
+                        "sourceGenericType" to stringTypeName(),
+                        "operation" to stringTypeName(),
+                        "declaration" to stringTypeName(),
+                        "abiParameterTypes" to stringListTypeName(),
+                        "typeArrayShape" to stringListTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTGenericAbiRegistry")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(stringListProperty("DERIVED_GENERIC_INTERFACES", inventory.derivedGenericInterfaces))
+                    .addProperty(
+                        PropertySpec.builder("GENERIC_ABI_DELEGATES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(genericAbiDelegateEntriesCode(inventory.genericAbiDelegates, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("DELEGATES_BY_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("GENERIC_ABI_DELEGATES.associateBy { it.name }")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder(
+                            "DELEGATES_BY_SOURCE_TYPE",
+                            Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
+                        )
+                            .initializer("GENERIC_ABI_DELEGATES.groupBy { it.sourceGenericType }")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("DERIVED_GENERIC_INTERFACE_SET", Set::class.asClassName().parameterizedBy(stringTypeName()))
+                            .initializer("DERIVED_GENERIC_INTERFACES.toSet()")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("delegateNamed")
+                            .addParameter("name", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return DELEGATES_BY_NAME[name]")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("delegatesForSourceType")
+                            .addParameter("sourceGenericType", String::class)
+                            .returns(List::class.asClassName().parameterizedBy(entryClass))
+                            .addStatement("return DELEGATES_BY_SOURCE_TYPE[sourceGenericType].orEmpty()")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("isDerivedGenericInterface")
+                            .addParameter("typeName", String::class)
+                            .returns(Boolean::class)
+                            .addStatement("return typeName in DERIVED_GENERIC_INTERFACE_SET")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("registerAbiDelegates")
+                            .addParameter(
+                                "register",
+                                Function2::class.asClassName().parameterizedBy(stringListTypeName(), stringTypeName(), UNIT),
+                            )
+                            .addCode(
+                                CodeBlock.of(
+                                    "GENERIC_ABI_DELEGATES.forEach { entry ->\n⇥register(entry.typeArrayShape, entry.name)\n⇤}\n",
+                                ),
+                            )
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTGenericAbiRegistry.kt", fileSpec)
     }
 
     private fun renderGenericTypeInstantiations(
@@ -207,184 +244,62 @@ class KotlinProjectionSupportRenderer {
         if (descriptors.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTGenericTypeInstantiations")
-            appendLine("internal data class GenericTypeInstantiationEntry(")
-            appendLine("    val className: String,")
-            appendLine("    val sourceType: String,")
-            appendLine("    val isDelegate: Boolean,")
-            appendLine("    val rcwFunctions: List<String>,")
-            appendLine("    val vtableFunctions: List<String>,")
-            appendLine("    val propertyAccessors: List<String>,")
-            appendLine("    val genericReturnOnlyRcwFunctions: List<String>,")
-            appendLine("    val projectedGenericFallbacks: List<String>,")
-            appendLine("    val dependencies: List<String>,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal data class GenericTypeInstantiationRuntimeBinding(")
-            appendLine("    val initRcwHelpers: (entry: GenericTypeInstantiationEntry, functions: List<String>) -> Unit = { _, _ -> },")
-            appendLine("    val initVtableFunctions: (entry: GenericTypeInstantiationEntry, functions: List<String>) -> Unit = { _, _ -> },")
-            appendLine("    val initPropertyAccessors: (entry: GenericTypeInstantiationEntry, accessors: List<String>) -> Unit = { _, _ -> },")
-            appendLine("    val initDelegateCcwInvoke: (entry: GenericTypeInstantiationEntry) -> Unit = {},")
-            appendLine("    val initGenericReturnOnlyRcwHelpers: (entry: GenericTypeInstantiationEntry, functions: List<String>) -> Unit = { _, _ -> },")
-            appendLine("    val initProjectedGenericFallbacks: (entry: GenericTypeInstantiationEntry, functions: List<String>) -> Unit = { _, _ -> },")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTGenericTypeInstantiations {")
-            appendLine("    val ENTRIES: List<GenericTypeInstantiationEntry> = listOf(")
-            descriptors.forEach { descriptor ->
-                appendLine("        GenericTypeInstantiationEntry(")
-                appendLine("            className = ${descriptor.instantiationClassName.kotlinString()},")
-                appendLine("            sourceType = ${descriptor.sourceTypeName.kotlinString()},")
-                appendLine("            isDelegate = ${descriptor.isDelegateInstantiation},")
-                appendLine("            rcwFunctions = ${descriptor.rcwFunctionNames.kotlinListLiteral()},")
-                appendLine("            vtableFunctions = ${descriptor.vtableFunctionNames.kotlinListLiteral()},")
-                appendLine("            propertyAccessors = ${descriptor.propertyAccessorFunctionNames.kotlinListLiteral()},")
-                appendLine("            genericReturnOnlyRcwFunctions = ${descriptor.genericReturnOnlyRcwFunctionNames.kotlinListLiteral()},")
-                appendLine("            projectedGenericFallbacks = ${descriptor.projectedGenericFallbackFunctionNames.kotlinListLiteral()},")
-                appendLine("            dependencies = ${descriptor.initializationDependencies.kotlinListLiteral()},")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val ENTRIES_BY_CLASS_NAME: Map<String, GenericTypeInstantiationEntry> = ENTRIES.associateBy { it.className }")
-            appendLine("    val ENTRIES_BY_SOURCE_TYPE: Map<String, GenericTypeInstantiationEntry> = ENTRIES.associateBy { it.sourceType }")
-            appendLine("    private val INITIALIZED_CLASS_NAMES: MutableSet<String> = linkedSetOf()")
-            appendLine("    private var runtimeBinding: GenericTypeInstantiationRuntimeBinding = GenericTypeInstantiationRuntimeBinding(")
-            appendLine("        initRcwHelpers = { entry, functions ->")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindRcwHelpers(")
-            appendLine("                className = entry.className,")
-            appendLine("                sourceType = entry.sourceType,")
-            appendLine("                isDelegate = entry.isDelegate,")
-            appendLine("                functions = functions,")
-            appendLine("            )")
-            appendLine("        },")
-            appendLine("        initVtableFunctions = { entry, functions ->")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindVtableFunctions(")
-            appendLine("                className = entry.className,")
-            appendLine("                sourceType = entry.sourceType,")
-            appendLine("                isDelegate = entry.isDelegate,")
-            appendLine("                functions = functions,")
-            appendLine("            )")
-            appendLine("        },")
-            appendLine("        initPropertyAccessors = { entry, accessors ->")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindPropertyAccessors(")
-            appendLine("                className = entry.className,")
-            appendLine("                sourceType = entry.sourceType,")
-            appendLine("                isDelegate = entry.isDelegate,")
-            appendLine("                functions = accessors,")
-            appendLine("            )")
-            appendLine("        },")
-            appendLine("        initDelegateCcwInvoke = { entry ->")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindDelegateCcwInvoke(")
-            appendLine("                className = entry.className,")
-            appendLine("                sourceType = entry.sourceType,")
-            appendLine("                isDelegate = entry.isDelegate,")
-            appendLine("            )")
-            appendLine("        },")
-            appendLine("        initGenericReturnOnlyRcwHelpers = { entry, functions ->")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindGenericReturnOnlyRcwHelpers(")
-            appendLine("                className = entry.className,")
-            appendLine("                sourceType = entry.sourceType,")
-            appendLine("                isDelegate = entry.isDelegate,")
-            appendLine("                functions = functions,")
-            appendLine("            )")
-            appendLine("        },")
-            appendLine("        initProjectedGenericFallbacks = { entry, functions ->")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindProjectedGenericFallbacks(")
-            appendLine("                className = entry.className,")
-            appendLine("                sourceType = entry.sourceType,")
-            appendLine("                isDelegate = entry.isDelegate,")
-            appendLine("                functions = functions,")
-            appendLine("            )")
-            appendLine("        },")
-            appendLine("    )")
-            appendLine()
-            appendLine("    fun entryForClassName(className: String): GenericTypeInstantiationEntry? =")
-            appendLine("        ENTRIES_BY_CLASS_NAME[className]")
-            appendLine()
-            appendLine("    fun entryForSourceType(sourceType: String): GenericTypeInstantiationEntry? =")
-            appendLine("        ENTRIES_BY_SOURCE_TYPE[sourceType]")
-            appendLine()
-            appendLine("    fun installRuntimeBinding(binding: GenericTypeInstantiationRuntimeBinding) {")
-            appendLine("        runtimeBinding = binding")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun isInitialized(entry: GenericTypeInstantiationEntry): Boolean =")
-            appendLine("        entry.className in INITIALIZED_CLASS_NAMES")
-            appendLine()
-            appendLine("    fun initializeAll() {")
-            appendLine("        val visited = linkedSetOf<String>()")
-            appendLine("        ENTRIES.forEach { initializeWithDependencies(it, visited) }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun initializeBySourceType(sourceType: String) {")
-            appendLine("        entryForSourceType(sourceType)?.let(::initializeEntry)")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun initializeEntry(entry: GenericTypeInstantiationEntry) {")
-            appendLine("        initializeWithDependencies(entry, linkedSetOf())")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun initializeDependencies(")
-            appendLine("        entry: GenericTypeInstantiationEntry,")
-            appendLine("        initialize: (GenericTypeInstantiationEntry) -> Unit,")
-            appendLine("    ) {")
-            appendLine("        val visited = linkedSetOf(entry.className)")
-            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)")
-            appendLine("            .forEach { initializeWithDependencies(it, visited, initialize) }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun initializeDependencies(entry: GenericTypeInstantiationEntry) {")
-            appendLine("        val visited = linkedSetOf(entry.className)")
-            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)")
-            appendLine("            .forEach { initializeWithDependencies(it, visited) }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    private fun initializeWithDependencies(")
-            appendLine("        entry: GenericTypeInstantiationEntry,")
-            appendLine("        visited: MutableSet<String>,")
-            appendLine("        initialize: (GenericTypeInstantiationEntry) -> Unit,")
-            appendLine("    ) {")
-            appendLine("        if (!visited.add(entry.className)) return")
-            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)")
-            appendLine("            .forEach { initializeWithDependencies(it, visited, initialize) }")
-            appendLine("        initialize(entry)")
-            appendLine("    }")
-            appendLine()
-            appendLine("    private fun initializeWithDependencies(")
-            appendLine("        entry: GenericTypeInstantiationEntry,")
-            appendLine("        visited: MutableSet<String>,")
-            appendLine("    ) {")
-            appendLine("        if (!visited.add(entry.className)) return")
-            appendLine("        entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)")
-            appendLine("            .forEach { initializeWithDependencies(it, visited) }")
-            appendLine("        registerGenericInstantiation(entry)")
-            appendLine("    }")
-            appendLine()
-            appendLine("    private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry) {")
-            appendLine("        if (!INITIALIZED_CLASS_NAMES.add(entry.className)) return")
-            appendLine("        if (entry.rcwFunctions.isNotEmpty() || !entry.isDelegate) {")
-            appendLine("            runtimeBinding.initRcwHelpers(entry, entry.rcwFunctions)")
-            appendLine("        }")
-            appendLine("        if (entry.vtableFunctions.isNotEmpty()) {")
-            appendLine("            runtimeBinding.initVtableFunctions(entry, entry.vtableFunctions)")
-            appendLine("        }")
-            appendLine("        if (entry.propertyAccessors.isNotEmpty()) {")
-            appendLine("            runtimeBinding.initPropertyAccessors(entry, entry.propertyAccessors)")
-            appendLine("        }")
-            appendLine("        if (entry.genericReturnOnlyRcwFunctions.isNotEmpty()) {")
-            appendLine("            runtimeBinding.initGenericReturnOnlyRcwHelpers(entry, entry.genericReturnOnlyRcwFunctions)")
-            appendLine("        }")
-            appendLine("        if (entry.projectedGenericFallbacks.isNotEmpty()) {")
-            appendLine("            runtimeBinding.initProjectedGenericFallbacks(entry, entry.projectedGenericFallbacks)")
-            appendLine("        }")
-            appendLine("        if (entry.isDelegate) {")
-            appendLine("            runtimeBinding.initDelegateCcwInvoke(entry)")
-            appendLine("        }")
-            appendLine("    }")
-            appendLine("}")
-        }
-        return supportFile("WinRTGenericTypeInstantiations.kt", contents)
+        val entryClass = ClassName(SUPPORT_PACKAGE, "GenericTypeInstantiationEntry")
+        val bindingClass = ClassName(SUPPORT_PACKAGE, "GenericTypeInstantiationRuntimeBinding")
+        val fileSpec = supportFileSpec("WinRTGenericTypeInstantiations")
+            .addType(
+                dataClass(
+                    className = "GenericTypeInstantiationEntry",
+                    fields = listOf(
+                        "className" to stringTypeName(),
+                        "sourceType" to stringTypeName(),
+                        "isDelegate" to Boolean::class.asClassName(),
+                        "rcwFunctions" to stringListTypeName(),
+                        "vtableFunctions" to stringListTypeName(),
+                        "propertyAccessors" to stringListTypeName(),
+                        "genericReturnOnlyRcwFunctions" to stringListTypeName(),
+                        "projectedGenericFallbacks" to stringListTypeName(),
+                        "dependencies" to stringListTypeName(),
+                    ),
+                ),
+            )
+            .addType(genericTypeInstantiationRuntimeBindingType(entryClass))
+            .addType(
+                TypeSpec.objectBuilder("WinRTGenericTypeInstantiations")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(genericTypeInstantiationEntriesCode(descriptors, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES_BY_CLASS_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("ENTRIES.associateBy { it.className }")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES_BY_SOURCE_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("ENTRIES.associateBy { it.sourceType }")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("INITIALIZED_CLASS_NAMES", MutableSet::class.asClassName().parameterizedBy(stringTypeName()))
+                            .addModifiers(KModifier.PRIVATE)
+                            .initializer("linkedSetOf()")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("runtimeBinding", bindingClass)
+                            .addModifiers(KModifier.PRIVATE)
+                            .mutable()
+                            .initializer(defaultGenericTypeRuntimeBindingCode(bindingClass))
+                            .build(),
+                    )
+                    .addFunctions(genericTypeInstantiationFunctions(entryClass, bindingClass))
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTGenericTypeInstantiations.kt", fileSpec)
     }
 
     private fun renderEventProjectionHelpers(
@@ -404,119 +319,60 @@ class KotlinProjectionSupportRenderer {
         if (inventory.eventSourceMappings.isEmpty() && subclassDescriptors.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTEventProjectionHelpers")
-            appendLine("internal data class EventSourceEntry(")
-            appendLine("    val eventType: String,")
-            appendLine("    val ownerType: String,")
-            appendLine("    val sourceClass: String,")
-            appendLine("    val abiEventType: String,")
-            appendLine("    val genericArguments: List<String>,")
-            appendLine("    val usesSharedEventHandlerSource: Boolean,")
-            appendLine(")")
-            appendLine()
-            subclassDescriptors
-                .filterNot { it.usesSharedEventHandlerSource }
-                .forEach { descriptor ->
-                    val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
-                    val delegatePlan = plansByType[rawEventType] ?: return@forEach
-                    val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
-                    if (!invokeShape.isSupportedProjectedDelegateShape()) {
-                        return@forEach
-                    }
-                    appendEventSourceSubclass(descriptor, delegatePlan, invokeShape)
-                    appendLine()
+        val entryClass = ClassName(SUPPORT_PACKAGE, "EventSourceEntry")
+        val objectBuilder = TypeSpec.objectBuilder("WinRTEventProjectionHelpers")
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(
+                PropertySpec.builder("EVENT_SOURCES", List::class.asClassName().parameterizedBy(entryClass))
+                    .initializer(eventSourceEntriesCode(subclassDescriptors, entryClass))
+                    .build(),
+            )
+            .addProperty(stringListProperty("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" }))
+            .addProperty(
+                PropertySpec.builder(
+                    "EVENT_SOURCES_BY_EVENT_TYPE",
+                    Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
+                )
+                    .initializer("EVENT_SOURCES.groupBy { it.eventType }")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder(
+                    "EVENT_SOURCES_BY_OWNER_TYPE",
+                    Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
+                )
+                    .initializer("EVENT_SOURCES.groupBy { it.ownerType }")
+                    .build(),
+            )
+            .addFunctions(eventProjectionHelperFunctions(entryClass, subclassDescriptors, plansByType, typesByQualifiedName))
+        val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
+            .addType(
+                dataClass(
+                    className = "EventSourceEntry",
+                    fields = listOf(
+                        "eventType" to stringTypeName(),
+                        "ownerType" to stringTypeName(),
+                        "sourceClass" to stringTypeName(),
+                        "abiEventType" to stringTypeName(),
+                        "genericArguments" to stringListTypeName(),
+                        "usesSharedEventHandlerSource" to Boolean::class.asClassName(),
+                    ),
+                ),
+            )
+        subclassDescriptors
+            .filterNot { it.usesSharedEventHandlerSource }
+            .forEach { descriptor ->
+                val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
+                val delegatePlan = plansByType[rawEventType] ?: return@forEach
+                val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
+                if (invokeShape.isSupportedProjectedDelegateShape()) {
+                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
                 }
-            appendLine("internal object WinRTEventProjectionHelpers {")
-            appendLine("    val EVENT_SOURCES: List<EventSourceEntry> = listOf(")
-            subclassDescriptors.forEach { descriptor ->
-                appendLine("        EventSourceEntry(")
-                appendLine("            eventType = ${descriptor.eventTypeName.kotlinString()},")
-                appendLine("            ownerType = ${descriptor.ownerTypeName.kotlinString()},")
-                appendLine("            sourceClass = ${descriptor.sourceClassName.kotlinString()},")
-                appendLine("            abiEventType = ${descriptor.abiEventTypeName.kotlinString()},")
-                appendLine("            genericArguments = ${descriptor.genericArgumentTypeNames.kotlinListLiteral()},")
-                appendLine("            usesSharedEventHandlerSource = ${descriptor.usesSharedEventHandlerSource},")
-                appendLine("        ),")
             }
-            appendLine("    )")
-            appendStringList("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" })
-            appendLine("    val EVENT_SOURCES_BY_EVENT_TYPE: Map<String, List<EventSourceEntry>> = EVENT_SOURCES.groupBy { it.eventType }")
-            appendLine("    val EVENT_SOURCES_BY_OWNER_TYPE: Map<String, List<EventSourceEntry>> = EVENT_SOURCES.groupBy { it.ownerType }")
-            appendLine()
-            appendLine("    fun sourcesForEventType(eventType: String): List<EventSourceEntry> =")
-            appendLine("        EVENT_SOURCES_BY_EVENT_TYPE[eventType].orEmpty()")
-            appendLine()
-            appendLine("    fun sourcesForOwnerType(ownerType: String): List<EventSourceEntry> =")
-            appendLine("        EVENT_SOURCES_BY_OWNER_TYPE[ownerType].orEmpty()")
-            appendLine()
-            appendLine("    fun installEventSources() {")
-            appendLine("        EVENT_SOURCES.forEach { entry ->")
-            appendLine("            WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)")
-            appendLine("            io.github.kitectlab.winrt.runtime.WinRtEventSourceRuntime.registerEventSource(")
-            appendLine("                io.github.kitectlab.winrt.runtime.WinRtEventSourceDescriptor(")
-            appendLine("                    eventType = entry.eventType,")
-            appendLine("                    ownerType = entry.ownerType,")
-            appendLine("                    sourceClass = entry.sourceClass,")
-            appendLine("                    abiEventType = entry.abiEventType,")
-            appendLine("                    genericArguments = entry.genericArguments,")
-            appendLine("                    usesSharedEventHandlerSource = entry.usesSharedEventHandlerSource,")
-            appendLine("                    eventSourceFactory = eventSourceFactoryFor(entry),")
-            appendLine("                ),")
-            appendLine("            )")
-            appendLine("        }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun createEventSource(")
-            appendLine("        eventType: String,")
-            appendLine("        ownerType: String,")
-            appendLine("        objectReference: io.github.kitectlab.winrt.runtime.ComObjectReference,")
-            appendLine("        vtableIndexForAddHandler: Int,")
-            appendLine("    ): io.github.kitectlab.winrt.runtime.EventSource<*>? {")
-            appendLine("        installEventSources()")
-            appendLine("        return io.github.kitectlab.winrt.runtime.WinRtEventSourceRuntime.createEventSource(")
-            appendLine("            eventType = eventType,")
-            appendLine("            ownerType = ownerType,")
-            appendLine("            objectReference = objectReference,")
-            appendLine("            vtableIndexForAddHandler = vtableIndexForAddHandler,")
-            appendLine("        )")
-            appendLine("    }")
-            appendLine()
-            appendLine("    private fun eventSourceFactoryFor(entry: EventSourceEntry): io.github.kitectlab.winrt.runtime.WinRtEventSourceFactory? =")
-            appendLine("        when (entry.sourceClass) {")
-            if (subclassDescriptors.any { it.usesSharedEventHandlerSource }) {
-                appendLine("            ${"EventHandlerEventSource".kotlinString()} -> eventHandlerEventSourceFactoryFor(entry)")
-            }
-            subclassDescriptors
-                .filterNot { it.usesSharedEventHandlerSource }
-                .forEach { descriptor ->
-                    val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
-                    val delegatePlan = plansByType[rawEventType] ?: return@forEach
-                    val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
-                    if (!invokeShape.isSupportedProjectedDelegateShape()) {
-                        return@forEach
-                    }
-                    appendLine("            ${descriptor.sourceClassName.kotlinString()} -> { obj, index -> ${descriptor.sourceClassName}(obj, index) }")
-                }
-            appendLine("            else -> null")
-            appendLine("        }")
-            appendLine()
-            appendLine("    private fun eventHandlerEventSourceFactoryFor(entry: EventSourceEntry): io.github.kitectlab.winrt.runtime.WinRtEventSourceFactory? =")
-            appendLine("        when (entry.eventType) {")
-            subclassDescriptors
-                .filter { it.usesSharedEventHandlerSource }
-                .forEach { descriptor ->
-                    appendSharedEventHandlerFactory(descriptor, typesByQualifiedName)
-                }
-            appendLine("            else -> null")
-            appendLine("        }")
-            appendLine()
-            appendLine("    fun installEventSources(install: (EventSourceEntry) -> Unit) {")
-            appendLine("        EVENT_SOURCES.forEach(install)")
-            appendLine("    }")
-            appendLine("}")
-        }
-        return supportFile("WinRTEventProjectionHelpers.kt", contents)
+        val fileSpec = fileBuilder
+            .addType(objectBuilder.build())
+            .build()
+        return supportFile("WinRTEventProjectionHelpers.kt", fileSpec)
     }
 
     private fun renderAbiImplementationPlan(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
@@ -529,61 +385,75 @@ class KotlinProjectionSupportRenderer {
         if (abiPlans.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTAbiImplementationPlan")
-            appendLine("internal data class AbiImplementationEntry(")
-            appendLine("    val typeName: String,")
-            appendLine("    val writesAbi: Boolean,")
-            appendLine("    val writesImplementationClass: Boolean,")
-            appendLine("    val vtableSlots: List<String>,")
-            appendLine("    val genericInvokeSlots: List<String>,")
-            appendLine("    val requiredInterfaces: List<String>,")
-            appendLine("    val explicitForwards: List<String>,")
-            appendLine("    val requiredMappedHelpers: List<String>,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTAbiImplementationPlan {")
-            val sortedAbiPlans = abiPlans.sortedBy { it.type.qualifiedName }
-            val chunkedAbiPlans = sortedAbiPlans.chunked(96)
-            appendLine("    val ENTRIES: List<AbiImplementationEntry> = buildList {")
-            chunkedAbiPlans.indices.forEach { index ->
-                appendLine("        addAll(entriesChunk$index())")
-            }
-            appendLine("    }")
-            appendLine("    val ENTRIES_BY_TYPE_NAME: Map<String, AbiImplementationEntry> = ENTRIES.associateBy { it.typeName }")
-            appendLine()
-            appendLine("    fun entryForType(typeName: String): AbiImplementationEntry? =")
-            appendLine("        ENTRIES_BY_TYPE_NAME[typeName]")
-            appendLine()
-            appendLine("    fun requiresAbi(typeName: String): Boolean =")
-            appendLine("        entryForType(typeName)?.writesAbi == true")
-            appendLine()
-            appendLine("    fun installAbiImplementations(install: (AbiImplementationEntry) -> Unit) {")
-            appendLine("        ENTRIES.forEach(install)")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun requiredInterfaceNames(): Set<String> =")
-            appendLine("        ENTRIES.flatMap { it.requiredInterfaces }.toSet()")
-            chunkedAbiPlans.forEachIndexed { index, chunk ->
-                appendLine()
-                appendLine("    private fun entriesChunk$index(): List<AbiImplementationEntry> = listOf(")
-                chunk.forEach { plan ->
-                    appendLine("        AbiImplementationEntry(")
-                    appendLine("            typeName = ${plan.type.qualifiedName.kotlinString()},")
-                    appendLine("            writesAbi = ${plan.typeDeclarationDescriptor.writesAbiDeclaration},")
-                    appendLine("            writesImplementationClass = ${plan.typeDeclarationDescriptor.writesImplementationClass},")
-                    appendLine("            vtableSlots = ${plan.abiSlotBindings.map { it.constantName }.kotlinListLiteral()},")
-                    appendLine("            genericInvokeSlots = ${plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty().kotlinListLiteral()},")
-                    appendLine("            requiredInterfaces = ${plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty().kotlinListLiteral()},")
-                    appendLine("            explicitForwards = ${plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty().kotlinListLiteral()},")
-                    appendLine("            requiredMappedHelpers = ${plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().map { it.toSupportPlanString() }.kotlinListLiteral()},")
-                    appendLine("        ),")
-                }
-                appendLine("    )")
-            }
-            appendLine("}")
+        val entryClass = ClassName(SUPPORT_PACKAGE, "AbiImplementationEntry")
+        val sortedAbiPlans = abiPlans.sortedBy { it.type.qualifiedName }
+        val chunkedAbiPlans = sortedAbiPlans.chunked(96)
+        val objectBuilder = TypeSpec.objectBuilder("WinRTAbiImplementationPlan")
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(
+                PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                    .initializer(abiEntriesBuildListCode(chunkedAbiPlans.indices))
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("ENTRIES_BY_TYPE_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                    .initializer("ENTRIES.associateBy { it.typeName }")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("entryForType")
+                    .addParameter("typeName", String::class)
+                    .returns(entryClass.copy(nullable = true))
+                    .addStatement("return ENTRIES_BY_TYPE_NAME[typeName]")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("requiresAbi")
+                    .addParameter("typeName", String::class)
+                    .returns(Boolean::class)
+                    .addStatement("return entryForType(typeName)?.writesAbi == true")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("installAbiImplementations")
+                    .addParameter("install", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                    .addStatement("ENTRIES.forEach(install)")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("requiredInterfaceNames")
+                    .returns(Set::class.asClassName().parameterizedBy(stringTypeName()))
+                    .addStatement("return ENTRIES.flatMap { it.requiredInterfaces }.toSet()")
+                    .build(),
+            )
+        chunkedAbiPlans.forEachIndexed { index, chunk ->
+            objectBuilder.addFunction(
+                FunSpec.builder("entriesChunk$index")
+                    .addModifiers(KModifier.PRIVATE)
+                    .returns(List::class.asClassName().parameterizedBy(entryClass))
+                    .addStatement("return %L", abiImplementationEntriesCode(chunk, entryClass))
+                    .build(),
+            )
         }
-        return supportFile("WinRTAbiImplementationPlan.kt", contents)
+        val fileSpec = supportFileSpec("WinRTAbiImplementationPlan")
+            .addType(
+                dataClass(
+                    className = "AbiImplementationEntry",
+                    fields = listOf(
+                        "typeName" to stringTypeName(),
+                        "writesAbi" to Boolean::class.asClassName(),
+                        "writesImplementationClass" to Boolean::class.asClassName(),
+                        "vtableSlots" to stringListTypeName(),
+                        "genericInvokeSlots" to stringListTypeName(),
+                        "requiredInterfaces" to stringListTypeName(),
+                        "explicitForwards" to stringListTypeName(),
+                        "requiredMappedHelpers" to stringListTypeName(),
+                    ),
+                ),
+            )
+            .addType(objectBuilder.build())
+            .build()
+        return supportFile("WinRTAbiImplementationPlan.kt", fileSpec)
     }
 
     private fun renderTypeShapeWriterPlan(
@@ -593,68 +463,54 @@ class KotlinProjectionSupportRenderer {
         if (plans.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTTypeShapeWriterPlan")
-            appendLine("internal data class TypeShapeEntry(")
-            appendLine("    val typeName: String,")
-            appendLine("    val kind: String,")
-            appendLine("    val mappedMembers: List<String>,")
-            appendLine("    val mappedCallMode: String,")
-            appendLine("    val mappedExplicit: Boolean,")
-            appendLine("    val mappedPrivate: Boolean,")
-            appendLine("    val deferredAuthoringFactoryMembers: List<String>,")
-            appendLine("    val deferredModuleActivationEntries: List<String>,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTTypeShapeWriterPlan {")
-            appendStringList("HELPER_OUTPUTS", inventory.helperOutputs.requiredHelperFileNames)
-            appendStringList("BASE_TYPE_MAPPINGS", inventory.baseTypeMappings.map { "${it.typeName}->${it.baseTypeName}" })
-            appendStringList("AUTHORING_METADATA_MAPPINGS", inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" })
-            appendLine("    val TYPES: List<TypeShapeEntry> = listOf(")
-            plans.sortedBy { it.type.qualifiedName }.forEach { plan ->
-                appendLine("        TypeShapeEntry(")
-                appendLine("            typeName = ${plan.type.qualifiedName.kotlinString()},")
-                appendLine("            kind = ${plan.type.kind.name.kotlinString()},")
-                appendLine("            mappedMembers = ${plan.customMappedMemberOutputDescriptor?.memberPlans.orEmpty().kotlinListLiteral()},")
-                appendLine("            mappedCallMode = ${(plan.customMappedMemberOutputDescriptor?.callMode ?: "").kotlinString()},")
-                appendLine("            mappedExplicit = ${plan.customMappedMemberOutputDescriptor?.emitsExplicitMembers ?: false},")
-                appendLine("            mappedPrivate = ${plan.customMappedMemberOutputDescriptor?.emitsPrivateMembers ?: false},")
-                appendLine("            deferredAuthoringFactoryMembers = ${plan.moduleActivationAndAuthoringDescriptor?.factoryMemberNames.orEmpty().kotlinListLiteral()},")
-                appendLine("            deferredModuleActivationEntries = ${plan.moduleActivationAndAuthoringDescriptor?.moduleActivationFactoryEntries.orEmpty().kotlinListLiteral()},")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val TYPES_BY_NAME: Map<String, TypeShapeEntry> = TYPES.associateBy { it.typeName }")
-            appendLine("    val BASE_TYPE_MAPPING_TABLE: Map<String, String> = BASE_TYPE_MAPPINGS.toArrowMap()")
-            appendLine("    val AUTHORING_METADATA_MAPPING_TABLE: Map<String, String> = AUTHORING_METADATA_MAPPINGS.toArrowMap()")
-            appendLine()
-            appendLine("    fun typeShape(typeName: String): TypeShapeEntry? = TYPES_BY_NAME[typeName]")
-            appendLine()
-            appendLine("    fun registerBaseTypeMappings(register: (Map<String, String>) -> Unit) {")
-            appendLine("        if (BASE_TYPE_MAPPING_TABLE.isNotEmpty()) {")
-            appendLine("            register(BASE_TYPE_MAPPING_TABLE)")
-            appendLine("        }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun registerAuthoringMetadataMappings(register: (Map<String, String>) -> Unit) {")
-            appendLine("        if (AUTHORING_METADATA_MAPPING_TABLE.isNotEmpty()) {")
-            appendLine("            register(AUTHORING_METADATA_MAPPING_TABLE)")
-            appendLine("        }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun deferredAuthoringFactoryEntries(): List<Pair<String, String>> =")
-            appendLine("        TYPES.flatMap { type ->")
-            appendLine("            type.deferredModuleActivationEntries.map { factoryMember -> type.typeName to factoryMember }")
-            appendLine("        }")
-            appendLine()
-            appendLine("    private fun List<String>.toArrowMap(): Map<String, String> =")
-            appendLine("        mapNotNull { entry ->")
-            appendLine("            val separator = entry.indexOf(\"->\")")
-            appendLine("            if (separator < 0) null else entry.substring(0, separator) to entry.substring(separator + 2)")
-            appendLine("        }.toMap()")
-            appendLine("}")
-        }
-        return supportFile("WinRTTypeShapeWriterPlan.kt", contents)
+        val entryClass = ClassName(SUPPORT_PACKAGE, "TypeShapeEntry")
+        val fileSpec = supportFileSpec("WinRTTypeShapeWriterPlan")
+            .addType(
+                dataClass(
+                    className = "TypeShapeEntry",
+                    fields = listOf(
+                        "typeName" to stringTypeName(),
+                        "kind" to stringTypeName(),
+                        "mappedMembers" to stringListTypeName(),
+                        "mappedCallMode" to stringTypeName(),
+                        "mappedExplicit" to Boolean::class.asClassName(),
+                        "mappedPrivate" to Boolean::class.asClassName(),
+                        "deferredAuthoringFactoryMembers" to stringListTypeName(),
+                        "deferredModuleActivationEntries" to stringListTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTTypeShapeWriterPlan")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(stringListProperty("HELPER_OUTPUTS", inventory.helperOutputs.requiredHelperFileNames))
+                    .addProperty(stringListProperty("BASE_TYPE_MAPPINGS", inventory.baseTypeMappings.map { "${it.typeName}->${it.baseTypeName}" }))
+                    .addProperty(stringListProperty("AUTHORING_METADATA_MAPPINGS", inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" }))
+                    .addProperty(
+                        PropertySpec.builder("TYPES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(typeShapeEntriesCode(plans.sortedBy { it.type.qualifiedName }, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("TYPES_BY_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("TYPES.associateBy { it.typeName }")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("BASE_TYPE_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+                            .initializer("BASE_TYPE_MAPPINGS.toArrowMap()")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("AUTHORING_METADATA_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+                            .initializer("AUTHORING_METADATA_MAPPINGS.toArrowMap()")
+                            .build(),
+                    )
+                    .addFunctions(typeShapePlanFunctions(entryClass))
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTTypeShapeWriterPlan.kt", fileSpec)
     }
 
     private fun renderAuthoringMetadataTypeMappingHelper(
@@ -663,32 +519,44 @@ class KotlinProjectionSupportRenderer {
         if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
             return null
         }
-        val contents = buildString {
-            appendHeader("AuthoringMetadataTypeMappingHelper")
-            appendLine("import io.github.kitectlab.winrt.runtime.ComWrappersSupport")
-            appendLine()
-            appendLine("internal object AuthoringMetadataTypeMappingHelper {")
-            appendStringList("AUTHORING_METADATA_MAPPINGS", inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" })
-            appendLine("    private val AUTHORING_METADATA_MAPPING_TABLE: Map<String, String> =")
-            appendLine("        AUTHORING_METADATA_MAPPINGS.toArrowMap()")
-            appendLine()
-            appendLine("    fun initialize() {")
-            appendLine("        if (AUTHORING_METADATA_MAPPING_TABLE.isNotEmpty()) {")
-            appendLine("            ComWrappersSupport.registerAuthoringMetadataTypeMappings(AUTHORING_METADATA_MAPPING_TABLE)")
-            appendLine("        }")
-            appendLine("    }")
-            appendLine()
-            appendLine("    fun getMetadataTypeMapping(projectedTypeName: String): String? =")
-            appendLine("        AUTHORING_METADATA_MAPPING_TABLE[projectedTypeName]")
-            appendLine()
-            appendLine("    private fun List<String>.toArrowMap(): Map<String, String> =")
-            appendLine("        mapNotNull { entry ->")
-            appendLine("            val separator = entry.indexOf(\"->\")")
-            appendLine("            if (separator < 0) null else entry.substring(0, separator) to entry.substring(separator + 2)")
-            appendLine("        }.toMap()")
-            appendLine("}")
-        }
-        return supportFile("AuthoringMetadataTypeMappingHelper.kt", contents)
+        val fileSpec = supportFileSpec("AuthoringMetadataTypeMappingHelper")
+            .addImport("io.github.kitectlab.winrt.runtime", "ComWrappersSupport")
+            .addType(
+                TypeSpec.objectBuilder("AuthoringMetadataTypeMappingHelper")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        stringListProperty(
+                            "AUTHORING_METADATA_MAPPINGS",
+                            inventory.authoredMetadataTypeMappings.map { "${it.projectedTypeName}->${it.metadataTypeName}" },
+                        ),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("AUTHORING_METADATA_MAPPING_TABLE", Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+                            .addModifiers(KModifier.PRIVATE)
+                            .initializer("AUTHORING_METADATA_MAPPINGS.toArrowMap()")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("initialize")
+                            .addCode(
+                                CodeBlock.of(
+                                    "if (AUTHORING_METADATA_MAPPING_TABLE.isNotEmpty()) {\n⇥ComWrappersSupport.registerAuthoringMetadataTypeMappings(AUTHORING_METADATA_MAPPING_TABLE)\n⇤}\n",
+                                ),
+                            )
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("getMetadataTypeMapping")
+                            .addParameter("projectedTypeName", String::class)
+                            .returns(String::class.asClassName().copy(nullable = true))
+                            .addStatement("return AUTHORING_METADATA_MAPPING_TABLE[projectedTypeName]")
+                            .build(),
+                    )
+                    .addFunction(toArrowMapFunction())
+                    .build(),
+            )
+            .build()
+        return supportFile("AuthoringMetadataTypeMappingHelper.kt", fileSpec)
     }
 
     private fun renderAuthoringWrapperPlan(
@@ -873,104 +741,47 @@ class KotlinProjectionSupportRenderer {
         if (inventory.namespaceAdditions.isEmpty()) {
             return null
         }
-        val contents = buildString {
-            appendHeader("WinRTNamespaceAdditions")
-            appendLine("internal data class NamespaceAdditionEntry(")
-            appendLine("    val namespace: String,")
-            appendLine("    val kind: String,")
-            appendLine(")")
-            appendLine()
-            appendLine("internal object WinRTNamespaceAdditions {")
-            appendLine("    val ENTRIES: List<NamespaceAdditionEntry> = listOf(")
-            inventory.namespaceAdditions.forEach { addition ->
-                appendLine("        NamespaceAdditionEntry(")
-                appendLine("            namespace = ${addition.namespace.kotlinString()},")
-                appendLine("            kind = ${addition.kind.name.kotlinString()},")
-                appendLine("        ),")
-            }
-            appendLine("    )")
-            appendLine("    val ENTRIES_BY_NAMESPACE: Map<String, NamespaceAdditionEntry> = ENTRIES.associateBy { it.namespace }")
-            appendLine()
-            appendLine("    fun entryForNamespace(namespace: String): NamespaceAdditionEntry? =")
-            appendLine("        ENTRIES_BY_NAMESPACE[namespace]")
-            appendLine()
-            appendLine("    fun installNamespaceAdditions(install: (NamespaceAdditionEntry) -> Unit) {")
-            appendLine("        ENTRIES.forEach(install)")
-            appendLine("    }")
-            appendLine("}")
-        }
-        return supportFile("WinRTNamespaceAdditions.kt", contents)
-    }
-
-    private fun StringBuilder.appendEventSourceSubclass(
-        descriptor: WinRtEventHelperSubclassDescriptor,
-        delegatePlan: KotlinTypeProjectionPlan,
-        invokeShape: KotlinProjectionDelegateInvokeShape,
-    ) {
-        val delegateType = typeRenderer.resolveTypeName(delegatePlan.type.qualifiedName).toString()
-        val parameterList = invokeShape.parameterBindings.joinToString(", ") { binding ->
-            "${binding.name}: ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
-        }
-        val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
-            "__args[$index] as ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
-        }
-        val invokeArguments = invokeShape.parameterBindings.joinToString(", ") { it.name }
-        appendLine("internal class ${descriptor.sourceClassName}(")
-        appendLine("    objectReference: io.github.kitectlab.winrt.runtime.ComObjectReference,")
-        appendLine("    vtableIndexForAddHandler: Int,")
-        appendLine(") : io.github.kitectlab.winrt.runtime.EventSource<$delegateType>(objectReference, vtableIndexForAddHandler) {")
-        appendLine("    override fun createMarshaler(handler: $delegateType): io.github.kitectlab.winrt.runtime.WinRtDelegateHandle =")
-        appendLine("        io.github.kitectlab.winrt.runtime.WinRtDelegateBridge.createDelegate(")
-        appendLine("            iid = io.github.kitectlab.winrt.runtime.Guid(${invokeShape.interfaceId.toString().kotlinString()}),")
-        appendLine("            parameterKinds = ${delegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding })},")
-        appendLine("            returnKind = ${delegateValueKindName(invokeShape.returnBinding)},")
-        appendLine("        ) { __args ->")
-        appendLine("            handler.invoke(${callbackArguments.joinToString(", ")})")
-        appendLine("        }")
-        appendLine()
-        appendLine("    override fun createEventSourceState(): io.github.kitectlab.winrt.runtime.EventSourceState<$delegateType> =")
-        appendLine("        object : io.github.kitectlab.winrt.runtime.EventSourceState<$delegateType>(io.github.kitectlab.winrt.runtime.RawAddress(nativeObjectReference.pointer.value), eventIndex) {")
-        appendLine("            override fun createEventInvoke(): $delegateType =")
-        if (delegateType.startsWith("kotlin.Function") || mappedTypeByAbiName(delegatePlan.type.qualifiedName) != null) {
-            val inferredParameterList = invokeShape.parameterBindings.joinToString(", ") { it.name }
-            appendLine("                { $inferredParameterList ->")
-        } else {
-            appendLine("                $delegateType { $parameterList ->")
-        }
-        if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
-            appendLine("                    snapshotHandlers().forEach { handler -> handler.invoke($invokeArguments) }")
-        } else {
-            appendLine("                    var __result = ${defaultValueExpression(invokeShape.returnBinding)}")
-            appendLine("                    snapshotHandlers().forEach { handler -> __result = handler.invoke($invokeArguments) }")
-            appendLine("                    __result")
-        }
-        appendLine("                }")
-        appendLine("        }")
-        appendLine("}")
-    }
-
-    private fun StringBuilder.appendSharedEventHandlerFactory(
-        descriptor: WinRtEventHelperSubclassDescriptor,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ) {
-        val typeBinding = planner.classifyAbiTypeBinding(
-            typeName = descriptor.eventTypeName,
-            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
-            typesByQualifiedName = typesByQualifiedName,
-        )
-        val invokeShape = typeBinding.delegateInvokeShape ?: return
-        val argumentBinding = typeBinding.typeArguments.singleOrNull() ?: return
-        val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return
-        val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
-        val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
-        appendLine("            ${descriptor.eventTypeName.kotlinString()} -> { obj, index ->")
-        appendLine("                io.github.kitectlab.winrt.runtime.EventHandlerEventSource<$argumentType>(")
-        appendLine("                    objectReference = obj,")
-        appendLine("                    interfaceId = $interfaceId,")
-        appendLine("                    argsKind = $argumentKind,")
-        appendLine("                    vtableIndexForAddHandler = index,")
-        appendLine("                )")
-        appendLine("            }")
+        val entryClass = ClassName(SUPPORT_PACKAGE, "NamespaceAdditionEntry")
+        val fileSpec = supportFileSpec("WinRTNamespaceAdditions")
+            .addType(
+                dataClass(
+                    className = "NamespaceAdditionEntry",
+                    fields = listOf(
+                        "namespace" to stringTypeName(),
+                        "kind" to stringTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTNamespaceAdditions")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(namespaceAdditionEntriesCode(inventory, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("ENTRIES_BY_NAMESPACE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("ENTRIES.associateBy { it.namespace }")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("entryForNamespace")
+                            .addParameter("namespace", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return ENTRIES_BY_NAMESPACE[namespace]")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("installNamespaceAdditions")
+                            .addParameter("install", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                            .addStatement("ENTRIES.forEach(install)")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTNamespaceAdditions.kt", fileSpec)
     }
 
     private fun delegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
@@ -1028,6 +839,657 @@ class KotlinProjectionSupportRenderer {
             )
         }
         return type.primaryConstructor(constructor.build()).build()
+    }
+
+    private fun stringListProperty(name: String, values: List<String>): PropertySpec =
+        PropertySpec.builder(name, stringListTypeName())
+            .initializer(stringListCode(values))
+            .build()
+
+    private fun genericAbiDelegateEntriesCode(
+        entries: List<WinRtGenericAbiDelegateDescriptor>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        entries.forEach { delegate ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("name = %S,\n", delegate.abiDelegateName)
+            code.add("sourceGenericType = %S,\n", delegate.sourceGenericType.typeName)
+            code.add("operation = %S,\n", delegate.operationName)
+            code.add("declaration = %S,\n", delegate.declaration)
+            code.add("abiParameterTypes = %L,\n", stringListCode(delegate.abiParameterTypeNames))
+            code.add("typeArrayShape = %L,\n", stringListCode(delegate.typeArrayShape))
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun genericTypeInstantiationRuntimeBindingType(entryClass: ClassName): TypeSpec {
+        val entryStringListFunction = Function2::class.asClassName().parameterizedBy(entryClass, stringListTypeName(), UNIT)
+        val entryFunction = Function1::class.asClassName().parameterizedBy(entryClass, UNIT)
+        val constructor = FunSpec.constructorBuilder()
+            .addParameter(
+                ParameterSpec.builder("initRcwHelpers", entryStringListFunction)
+                    .defaultValue("{ _, _ -> }")
+                    .build(),
+            )
+            .addParameter(
+                ParameterSpec.builder("initVtableFunctions", entryStringListFunction)
+                    .defaultValue("{ _, _ -> }")
+                    .build(),
+            )
+            .addParameter(
+                ParameterSpec.builder("initPropertyAccessors", entryStringListFunction)
+                    .defaultValue("{ _, _ -> }")
+                    .build(),
+            )
+            .addParameter(
+                ParameterSpec.builder("initDelegateCcwInvoke", entryFunction)
+                    .defaultValue("{}")
+                    .build(),
+            )
+            .addParameter(
+                ParameterSpec.builder("initGenericReturnOnlyRcwHelpers", entryStringListFunction)
+                    .defaultValue("{ _, _ -> }")
+                    .build(),
+            )
+            .addParameter(
+                ParameterSpec.builder("initProjectedGenericFallbacks", entryStringListFunction)
+                    .defaultValue("{ _, _ -> }")
+                    .build(),
+            )
+        return TypeSpec.classBuilder("GenericTypeInstantiationRuntimeBinding")
+            .addModifiers(KModifier.INTERNAL, KModifier.DATA)
+            .primaryConstructor(constructor.build())
+            .addProperty(PropertySpec.builder("initRcwHelpers", entryStringListFunction).initializer("initRcwHelpers").build())
+            .addProperty(PropertySpec.builder("initVtableFunctions", entryStringListFunction).initializer("initVtableFunctions").build())
+            .addProperty(PropertySpec.builder("initPropertyAccessors", entryStringListFunction).initializer("initPropertyAccessors").build())
+            .addProperty(PropertySpec.builder("initDelegateCcwInvoke", entryFunction).initializer("initDelegateCcwInvoke").build())
+            .addProperty(PropertySpec.builder("initGenericReturnOnlyRcwHelpers", entryStringListFunction).initializer("initGenericReturnOnlyRcwHelpers").build())
+            .addProperty(PropertySpec.builder("initProjectedGenericFallbacks", entryStringListFunction).initializer("initProjectedGenericFallbacks").build())
+            .build()
+    }
+
+    private fun genericTypeInstantiationEntriesCode(
+        descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        descriptors.forEach { descriptor ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("className = %S,\n", descriptor.instantiationClassName)
+            code.add("sourceType = %S,\n", descriptor.sourceTypeName)
+            code.add("isDelegate = %L,\n", descriptor.isDelegateInstantiation)
+            code.add("rcwFunctions = %L,\n", stringListCode(descriptor.rcwFunctionNames))
+            code.add("vtableFunctions = %L,\n", stringListCode(descriptor.vtableFunctionNames))
+            code.add("propertyAccessors = %L,\n", stringListCode(descriptor.propertyAccessorFunctionNames))
+            code.add("genericReturnOnlyRcwFunctions = %L,\n", stringListCode(descriptor.genericReturnOnlyRcwFunctionNames))
+            code.add("projectedGenericFallbacks = %L,\n", stringListCode(descriptor.projectedGenericFallbackFunctionNames))
+            code.add("dependencies = %L,\n", stringListCode(descriptor.initializationDependencies))
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun defaultGenericTypeRuntimeBindingCode(bindingClass: ClassName): CodeBlock =
+        CodeBlock.of(
+            """
+            %T(
+                initRcwHelpers = { entry, functions ->
+                    io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindRcwHelpers(
+                        className = entry.className,
+                        sourceType = entry.sourceType,
+                        isDelegate = entry.isDelegate,
+                        functions = functions,
+                    )
+                },
+                initVtableFunctions = { entry, functions ->
+                    io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindVtableFunctions(
+                        className = entry.className,
+                        sourceType = entry.sourceType,
+                        isDelegate = entry.isDelegate,
+                        functions = functions,
+                    )
+                },
+                initPropertyAccessors = { entry, accessors ->
+                    io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindPropertyAccessors(
+                        className = entry.className,
+                        sourceType = entry.sourceType,
+                        isDelegate = entry.isDelegate,
+                        functions = accessors,
+                    )
+                },
+                initDelegateCcwInvoke = { entry ->
+                    io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindDelegateCcwInvoke(
+                        className = entry.className,
+                        sourceType = entry.sourceType,
+                        isDelegate = entry.isDelegate,
+                    )
+                },
+                initGenericReturnOnlyRcwHelpers = { entry, functions ->
+                    io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindGenericReturnOnlyRcwHelpers(
+                        className = entry.className,
+                        sourceType = entry.sourceType,
+                        isDelegate = entry.isDelegate,
+                        functions = functions,
+                    )
+                },
+                initProjectedGenericFallbacks = { entry, functions ->
+                    io.github.kitectlab.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindProjectedGenericFallbacks(
+                        className = entry.className,
+                        sourceType = entry.sourceType,
+                        isDelegate = entry.isDelegate,
+                        functions = functions,
+                    )
+                },
+            )
+            """.trimIndent(),
+            bindingClass,
+        )
+
+    private fun genericTypeInstantiationFunctions(
+        entryClass: ClassName,
+        bindingClass: ClassName,
+    ): List<FunSpec> =
+        listOf(
+            FunSpec.builder("entryForClassName")
+                .addParameter("className", String::class)
+                .returns(entryClass.copy(nullable = true))
+                .addStatement("return ENTRIES_BY_CLASS_NAME[className]")
+                .build(),
+            FunSpec.builder("entryForSourceType")
+                .addParameter("sourceType", String::class)
+                .returns(entryClass.copy(nullable = true))
+                .addStatement("return ENTRIES_BY_SOURCE_TYPE[sourceType]")
+                .build(),
+            FunSpec.builder("installRuntimeBinding")
+                .addParameter("binding", bindingClass)
+                .addStatement("runtimeBinding = binding")
+                .build(),
+            FunSpec.builder("isInitialized")
+                .addParameter("entry", entryClass)
+                .returns(Boolean::class)
+                .addStatement("return entry.className in INITIALIZED_CLASS_NAMES")
+                .build(),
+            FunSpec.builder("initializeAll")
+                .addCode("val visited = linkedSetOf<String>()\nENTRIES.forEach { initializeWithDependencies(it, visited) }\n")
+                .build(),
+            FunSpec.builder("initializeBySourceType")
+                .addParameter("sourceType", String::class)
+                .addStatement("entryForSourceType(sourceType)?.let(::initializeEntry)")
+                .build(),
+            FunSpec.builder("initializeEntry")
+                .addParameter("entry", entryClass)
+                .addStatement("initializeWithDependencies(entry, linkedSetOf())")
+                .build(),
+            FunSpec.builder("initializeDependencies")
+                .addParameter("entry", entryClass)
+                .addParameter("initialize", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                .addCode(
+                    "val visited = linkedSetOf(entry.className)\n" +
+                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
+                        "    .forEach { initializeWithDependencies(it, visited, initialize) }\n",
+                )
+                .build(),
+            FunSpec.builder("initializeDependencies")
+                .addParameter("entry", entryClass)
+                .addCode(
+                    "val visited = linkedSetOf(entry.className)\n" +
+                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
+                        "    .forEach { initializeWithDependencies(it, visited) }\n",
+                )
+                .build(),
+            FunSpec.builder("initializeWithDependencies")
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("entry", entryClass)
+                .addParameter("visited", MutableSet::class.asClassName().parameterizedBy(stringTypeName()))
+                .addParameter("initialize", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                .addCode(
+                    "if (!visited.add(entry.className)) return\n" +
+                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
+                        "    .forEach { initializeWithDependencies(it, visited, initialize) }\n" +
+                        "initialize(entry)\n",
+                )
+                .build(),
+            FunSpec.builder("initializeWithDependencies")
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("entry", entryClass)
+                .addParameter("visited", MutableSet::class.asClassName().parameterizedBy(stringTypeName()))
+                .addCode(
+                    "if (!visited.add(entry.className)) return\n" +
+                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
+                        "    .forEach { initializeWithDependencies(it, visited) }\n" +
+                        "registerGenericInstantiation(entry)\n",
+                )
+                .build(),
+            FunSpec.builder("registerGenericInstantiation")
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("entry", entryClass)
+                .addCode(
+                    """
+                    if (!INITIALIZED_CLASS_NAMES.add(entry.className)) return
+                    if (entry.rcwFunctions.isNotEmpty() || !entry.isDelegate) {
+                        runtimeBinding.initRcwHelpers(entry, entry.rcwFunctions)
+                    }
+                    if (entry.vtableFunctions.isNotEmpty()) {
+                        runtimeBinding.initVtableFunctions(entry, entry.vtableFunctions)
+                    }
+                    if (entry.propertyAccessors.isNotEmpty()) {
+                        runtimeBinding.initPropertyAccessors(entry, entry.propertyAccessors)
+                    }
+                    if (entry.genericReturnOnlyRcwFunctions.isNotEmpty()) {
+                        runtimeBinding.initGenericReturnOnlyRcwHelpers(entry, entry.genericReturnOnlyRcwFunctions)
+                    }
+                    if (entry.projectedGenericFallbacks.isNotEmpty()) {
+                        runtimeBinding.initProjectedGenericFallbacks(entry, entry.projectedGenericFallbacks)
+                    }
+                    if (entry.isDelegate) {
+                        runtimeBinding.initDelegateCcwInvoke(entry)
+                    }
+                    """.trimIndent() + "\n",
+                )
+                .build(),
+        )
+
+    private fun eventSourceEntriesCode(
+        descriptors: List<WinRtEventHelperSubclassDescriptor>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        descriptors.forEach { descriptor ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("eventType = %S,\n", descriptor.eventTypeName)
+            code.add("ownerType = %S,\n", descriptor.ownerTypeName)
+            code.add("sourceClass = %S,\n", descriptor.sourceClassName)
+            code.add("abiEventType = %S,\n", descriptor.abiEventTypeName)
+            code.add("genericArguments = %L,\n", stringListCode(descriptor.genericArgumentTypeNames))
+            code.add("usesSharedEventHandlerSource = %L,\n", descriptor.usesSharedEventHandlerSource)
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun eventSourceSubclassType(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        delegatePlan: KotlinTypeProjectionPlan,
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ): TypeSpec {
+        val delegateType = typeRenderer.resolveTypeName(delegatePlan.type.qualifiedName)
+        return TypeSpec.classBuilder(descriptor.sourceClassName)
+            .addModifiers(KModifier.INTERNAL)
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("objectReference", ClassName("io.github.kitectlab.winrt.runtime", "ComObjectReference"))
+                    .addParameter("vtableIndexForAddHandler", Int::class)
+                    .build(),
+            )
+            .superclass(ClassName("io.github.kitectlab.winrt.runtime", "EventSource").parameterizedBy(delegateType))
+            .addSuperclassConstructorParameter("objectReference")
+            .addSuperclassConstructorParameter("vtableIndexForAddHandler")
+            .addFunction(
+                FunSpec.builder("createMarshaler")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .addParameter("handler", delegateType)
+                    .returns(ClassName("io.github.kitectlab.winrt.runtime", "WinRtDelegateHandle"))
+                    .addCode(eventSourceCreateMarshalerCode(invokeShape))
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("createEventSourceState")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(ClassName("io.github.kitectlab.winrt.runtime", "EventSourceState").parameterizedBy(delegateType))
+                    .addCode(eventSourceStateCode(delegatePlan, invokeShape, delegateType))
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun eventSourceCreateMarshalerCode(invokeShape: KotlinProjectionDelegateInvokeShape): CodeBlock {
+        val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
+            "__args[$index] as ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
+        }
+        return CodeBlock.of(
+            """
+            return io.github.kitectlab.winrt.runtime.WinRtDelegateBridge.createDelegate(
+                iid = io.github.kitectlab.winrt.runtime.Guid(%S),
+                parameterKinds = %L,
+                returnKind = %L,
+            ) { __args ->
+                handler.invoke(%L)
+            }
+            """.trimIndent() + "\n",
+            invokeShape.interfaceId.toString(),
+            delegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding }),
+            delegateValueKindName(invokeShape.returnBinding),
+            callbackArguments.joinToString(", "),
+        )
+    }
+
+    private fun eventSourceStateCode(
+        delegatePlan: KotlinTypeProjectionPlan,
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+        delegateType: TypeName,
+    ): CodeBlock {
+        val parameterList = invokeShape.parameterBindings.joinToString(", ") { binding ->
+            "${binding.name}: ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
+        }
+        val invokeArguments = invokeShape.parameterBindings.joinToString(", ") { it.name }
+        val lambdaHead = if (delegateType.toString().startsWith("kotlin.Function") || mappedTypeByAbiName(delegatePlan.type.qualifiedName) != null) {
+            "{ ${invokeShape.parameterBindings.joinToString(", ") { it.name }} ->"
+        } else {
+            "$delegateType { $parameterList ->"
+        }
+        val body = if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            "snapshotHandlers().forEach { handler -> handler.invoke($invokeArguments) }"
+        } else {
+            "var __result = ${defaultValueExpression(invokeShape.returnBinding)}\n" +
+                "                    snapshotHandlers().forEach { handler -> __result = handler.invoke($invokeArguments) }\n" +
+                "                    __result"
+        }
+        return CodeBlock.of(
+            """
+            return object : io.github.kitectlab.winrt.runtime.EventSourceState<%T>(io.github.kitectlab.winrt.runtime.RawAddress(nativeObjectReference.pointer.value), eventIndex) {
+                override fun createEventInvoke(): %T =
+                    %L
+                        %L
+                    }
+            }
+            """.trimIndent() + "\n",
+            delegateType,
+            delegateType,
+            lambdaHead,
+            body,
+        )
+    }
+
+    private fun eventProjectionHelperFunctions(
+        entryClass: ClassName,
+        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): List<FunSpec> =
+        listOf(
+            FunSpec.builder("sourcesForEventType")
+                .addParameter("eventType", String::class)
+                .returns(List::class.asClassName().parameterizedBy(entryClass))
+                .addStatement("return EVENT_SOURCES_BY_EVENT_TYPE[eventType].orEmpty()")
+                .build(),
+            FunSpec.builder("sourcesForOwnerType")
+                .addParameter("ownerType", String::class)
+                .returns(List::class.asClassName().parameterizedBy(entryClass))
+                .addStatement("return EVENT_SOURCES_BY_OWNER_TYPE[ownerType].orEmpty()")
+                .build(),
+            FunSpec.builder("installEventSources")
+                .addCode(
+                    """
+                    EVENT_SOURCES.forEach { entry ->
+                        WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)
+                        io.github.kitectlab.winrt.runtime.WinRtEventSourceRuntime.registerEventSource(
+                            io.github.kitectlab.winrt.runtime.WinRtEventSourceDescriptor(
+                                eventType = entry.eventType,
+                                ownerType = entry.ownerType,
+                                sourceClass = entry.sourceClass,
+                                abiEventType = entry.abiEventType,
+                                genericArguments = entry.genericArguments,
+                                usesSharedEventHandlerSource = entry.usesSharedEventHandlerSource,
+                                eventSourceFactory = eventSourceFactoryFor(entry),
+                            ),
+                        )
+                    }
+                    """.trimIndent() + "\n",
+                )
+                .build(),
+            FunSpec.builder("createEventSource")
+                .addParameter("eventType", String::class)
+                .addParameter("ownerType", String::class)
+                .addParameter("objectReference", ClassName("io.github.kitectlab.winrt.runtime", "ComObjectReference"))
+                .addParameter("vtableIndexForAddHandler", Int::class)
+                .returns(ClassName("io.github.kitectlab.winrt.runtime", "EventSource").parameterizedBy(STAR))
+                .addCode(
+                    """
+                    installEventSources()
+                    return io.github.kitectlab.winrt.runtime.WinRtEventSourceRuntime.createEventSource(
+                        eventType = eventType,
+                        ownerType = ownerType,
+                        objectReference = objectReference,
+                        vtableIndexForAddHandler = vtableIndexForAddHandler,
+                    )
+                    """.trimIndent() + "\n",
+                )
+                .build(),
+            FunSpec.builder("eventSourceFactoryFor")
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("entry", entryClass)
+                .returns(ClassName("io.github.kitectlab.winrt.runtime", "WinRtEventSourceFactory").copy(nullable = true))
+                .addCode(eventSourceFactoryForCode(subclassDescriptors, plansByType))
+                .build(),
+            FunSpec.builder("eventHandlerEventSourceFactoryFor")
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter("entry", entryClass)
+                .returns(ClassName("io.github.kitectlab.winrt.runtime", "WinRtEventSourceFactory").copy(nullable = true))
+                .addCode(eventHandlerEventSourceFactoryForCode(subclassDescriptors, typesByQualifiedName))
+                .build(),
+            FunSpec.builder("installEventSources")
+                .addParameter("install", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                .addStatement("EVENT_SOURCES.forEach(install)")
+                .build(),
+        )
+
+    private fun eventSourceFactoryForCode(
+        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("return when (entry.sourceClass) {\n")
+        code.indent()
+        if (subclassDescriptors.any { it.usesSharedEventHandlerSource }) {
+            code.add("%S -> eventHandlerEventSourceFactoryFor(entry)\n", "EventHandlerEventSource")
+        }
+        subclassDescriptors.filterNot { it.usesSharedEventHandlerSource }.forEach { descriptor ->
+            val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
+            val delegatePlan = plansByType[rawEventType] ?: return@forEach
+            val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
+            if (invokeShape.isSupportedProjectedDelegateShape()) {
+                code.add("%S -> { obj, index -> %L(obj, index) }\n", descriptor.sourceClassName, descriptor.sourceClassName)
+            }
+        }
+        code.add("else -> null\n")
+        code.unindent()
+        code.add("}\n")
+        return code.build()
+    }
+
+    private fun eventHandlerEventSourceFactoryForCode(
+        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("return when (entry.eventType) {\n")
+        code.indent()
+        subclassDescriptors.filter { it.usesSharedEventHandlerSource }.forEach { descriptor ->
+            code.add(sharedEventHandlerFactoryCode(descriptor, typesByQualifiedName))
+        }
+        code.add("else -> null\n")
+        code.unindent()
+        code.add("}\n")
+        return code.build()
+    }
+
+    private fun sharedEventHandlerFactoryCode(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        val typeBinding = planner.classifyAbiTypeBinding(
+            typeName = descriptor.eventTypeName,
+            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        val invokeShape = typeBinding.delegateInvokeShape ?: return CodeBlock.of("")
+        val argumentBinding = typeBinding.typeArguments.singleOrNull() ?: return CodeBlock.of("")
+        val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return CodeBlock.of("")
+        val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
+        val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
+        return CodeBlock.of(
+            """
+            %S -> { obj, index ->
+                io.github.kitectlab.winrt.runtime.EventHandlerEventSource<%T>(
+                    objectReference = obj,
+                    interfaceId = %L,
+                    argsKind = %L,
+                    vtableIndexForAddHandler = index,
+                )
+            }
+            """.trimIndent() + "\n",
+            descriptor.eventTypeName,
+            argumentType,
+            interfaceId,
+            argumentKind,
+        )
+    }
+
+    private fun abiEntriesBuildListCode(indices: IntRange): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("buildList {\n")
+        code.indent()
+        indices.forEach { index -> code.add("addAll(entriesChunk%L())\n", index) }
+        code.unindent()
+        code.add("}")
+        return code.build()
+    }
+
+    private fun abiImplementationEntriesCode(
+        plans: List<KotlinTypeProjectionPlan>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        plans.forEach { plan ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("typeName = %S,\n", plan.type.qualifiedName)
+            code.add("writesAbi = %L,\n", plan.typeDeclarationDescriptor.writesAbiDeclaration)
+            code.add("writesImplementationClass = %L,\n", plan.typeDeclarationDescriptor.writesImplementationClass)
+            code.add("vtableSlots = %L,\n", stringListCode(plan.abiSlotBindings.map { it.constantName }))
+            code.add("genericInvokeSlots = %L,\n", stringListCode(plan.genericAbiClassInitializationDescriptor?.invokeSlotNames.orEmpty()))
+            code.add("requiredInterfaces = %L,\n", stringListCode(plan.requiredInterfaceAugmentationDescriptor?.requiredInterfaceNames.orEmpty()))
+            code.add("explicitForwards = %L,\n", stringListCode(plan.requiredInterfaceAugmentationDescriptor?.explicitForwardMemberNames.orEmpty()))
+            code.add("requiredMappedHelpers = %L,\n", stringListCode(plan.requiredInterfaceAugmentationDescriptor?.mappedHelperPlans.orEmpty().map { it.toSupportPlanString() }))
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun typeShapeEntriesCode(
+        plans: List<KotlinTypeProjectionPlan>,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        plans.forEach { plan ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("typeName = %S,\n", plan.type.qualifiedName)
+            code.add("kind = %S,\n", plan.type.kind.name)
+            code.add("mappedMembers = %L,\n", stringListCode(plan.customMappedMemberOutputDescriptor?.memberPlans.orEmpty()))
+            code.add("mappedCallMode = %S,\n", plan.customMappedMemberOutputDescriptor?.callMode ?: "")
+            code.add("mappedExplicit = %L,\n", plan.customMappedMemberOutputDescriptor?.emitsExplicitMembers ?: false)
+            code.add("mappedPrivate = %L,\n", plan.customMappedMemberOutputDescriptor?.emitsPrivateMembers ?: false)
+            code.add("deferredAuthoringFactoryMembers = %L,\n", stringListCode(plan.moduleActivationAndAuthoringDescriptor?.factoryMemberNames.orEmpty()))
+            code.add("deferredModuleActivationEntries = %L,\n", stringListCode(plan.moduleActivationAndAuthoringDescriptor?.moduleActivationFactoryEntries.orEmpty()))
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun typeShapePlanFunctions(entryClass: ClassName): List<FunSpec> =
+        listOf(
+            FunSpec.builder("typeShape")
+                .addParameter("typeName", String::class)
+                .returns(entryClass.copy(nullable = true))
+                .addStatement("return TYPES_BY_NAME[typeName]")
+                .build(),
+            FunSpec.builder("registerBaseTypeMappings")
+                .addParameter(
+                    "register",
+                    Function1::class.asClassName().parameterizedBy(Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()), UNIT),
+                )
+                .addCode("if (BASE_TYPE_MAPPING_TABLE.isNotEmpty()) {\n    register(BASE_TYPE_MAPPING_TABLE)\n}\n")
+                .build(),
+            FunSpec.builder("registerAuthoringMetadataMappings")
+                .addParameter(
+                    "register",
+                    Function1::class.asClassName().parameterizedBy(Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()), UNIT),
+                )
+                .addCode("if (AUTHORING_METADATA_MAPPING_TABLE.isNotEmpty()) {\n    register(AUTHORING_METADATA_MAPPING_TABLE)\n}\n")
+                .build(),
+            FunSpec.builder("deferredAuthoringFactoryEntries")
+                .returns(List::class.asClassName().parameterizedBy(Pair::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName())))
+                .addCode(
+                    "return TYPES.flatMap { type ->\n" +
+                        "    type.deferredModuleActivationEntries.map { factoryMember -> type.typeName to factoryMember }\n" +
+                        "}\n",
+                )
+                .build(),
+            toArrowMapFunction(),
+        )
+
+    private fun toArrowMapFunction(): FunSpec =
+        FunSpec.builder("toArrowMap")
+            .addModifiers(KModifier.PRIVATE)
+            .receiver(stringListTypeName())
+            .returns(Map::class.asClassName().parameterizedBy(stringTypeName(), stringTypeName()))
+            .addCode(
+                "return mapNotNull { entry ->\n" +
+                    "    val separator = entry.indexOf(\"->\")\n" +
+                    "    if (separator < 0) null else entry.substring(0, separator) to entry.substring(separator + 2)\n" +
+                    "}.toMap()\n",
+            )
+            .build()
+
+    private fun namespaceAdditionEntriesCode(
+        inventory: WinRtMetadataProjectionInventory,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        inventory.namespaceAdditions.forEach { addition ->
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("namespace = %S,\n", addition.namespace)
+            code.add("kind = %S,\n", addition.kind.name)
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
     }
 
     private fun authoringWrapperEntriesCode(
@@ -1131,42 +1593,6 @@ class KotlinProjectionSupportRenderer {
 
     private fun stringListTypeName(): TypeName =
         List::class.asClassName().parameterizedBy(stringTypeName())
-
-    private fun StringBuilder.appendHeader(fileName: String) {
-        appendLine("package $SUPPORT_PACKAGE")
-        appendLine()
-        appendLine("// Deterministic generator handoff for .cswinrt $fileName writer parity.")
-        appendLine()
-    }
-
-    private fun StringBuilder.appendStringList(name: String, values: List<String>) {
-        appendLine("    val $name: List<String> = ${values.kotlinListLiteral()}")
-    }
-
-    private fun String.kotlinString(): String = buildString {
-        append('"')
-        this@kotlinString.forEach { character ->
-            when (character) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> append(character)
-            }
-        }
-        append('"')
-    }
-
-    private fun List<String>.kotlinListLiteral(): String =
-        if (isEmpty()) {
-            "emptyList()"
-        } else {
-            joinToString(prefix = "listOf(", postfix = ")") { it.kotlinString() }
-        }
-
-    private fun String?.kotlinNullableString(): String =
-        this?.kotlinString() ?: "null"
 
     private fun io.github.kitectlab.winrt.metadata.WinRtRequiredMappedHelperPlanDescriptor.toSupportPlanString(): String =
         listOf(
