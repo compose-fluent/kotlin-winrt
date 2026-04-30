@@ -123,6 +123,7 @@ class KotlinProjectionSupportRenderer {
             renderAbiImplementationPlan(plans),
             renderTypeShapeWriterPlan(inventory, plans),
             renderAuthoringMetadataTypeMappingHelper(inventory),
+            renderAuthoringWrapperPlan(inventory, plans),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -668,6 +669,57 @@ class KotlinProjectionSupportRenderer {
         return supportFile("AuthoringMetadataTypeMappingHelper.kt", contents)
     }
 
+    private fun renderAuthoringWrapperPlan(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val mappingsByProjectedName = inventory.authoredMetadataTypeMappings.associateBy { it.projectedTypeName }
+        val entries = plans.mapNotNull { plan ->
+            val mapping = mappingsByProjectedName[plan.type.qualifiedName] ?: return@mapNotNull null
+            plan to mapping
+        }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val contents = buildString {
+            appendHeader("WinRTAuthoringWrapperPlan")
+            appendLine("internal data class AuthoringWrapperEntry(")
+            appendLine("    val projectedTypeName: String,")
+            appendLine("    val metadataTypeName: String,")
+            appendLine("    val kind: String,")
+            appendLine("    val defaultInterfaceName: String?,")
+            appendLine("    val implementedInterfaceNames: List<String>,")
+            appendLine("    val factoryMemberNames: List<String>,")
+            appendLine("    val composableBaseTypeName: String?,")
+            appendLine(")")
+            appendLine()
+            appendLine("internal object WinRTAuthoringWrapperPlan {")
+            appendLine("    val WRAPPERS: List<AuthoringWrapperEntry> = listOf(")
+            entries.sortedBy { it.first.type.qualifiedName }.forEach { (plan, mapping) ->
+                appendLine("        AuthoringWrapperEntry(")
+                appendLine("            projectedTypeName = ${mapping.projectedTypeName.kotlinString()},")
+                appendLine("            metadataTypeName = ${mapping.metadataTypeName.kotlinString()},")
+                appendLine("            kind = ${plan.type.kind.name.kotlinString()},")
+                appendLine("            defaultInterfaceName = ${plan.type.defaultInterfaceName.kotlinNullableString()},")
+                appendLine("            implementedInterfaceNames = ${plan.type.implementedInterfaces.map { it.interfaceName }.kotlinListLiteral()},")
+                appendLine("            factoryMemberNames = ${plan.moduleActivationAndAuthoringDescriptor?.factoryMemberNames.orEmpty().kotlinListLiteral()},")
+                appendLine("            composableBaseTypeName = ${plan.type.baseTypeName.kotlinNullableString()},")
+                appendLine("        ),")
+            }
+            appendLine("    )")
+            appendLine("    val WRAPPERS_BY_PROJECTED_TYPE: Map<String, AuthoringWrapperEntry> =")
+            appendLine("        WRAPPERS.associateBy { it.projectedTypeName }")
+            appendLine()
+            appendLine("    fun wrapperForProjectedType(projectedTypeName: String): AuthoringWrapperEntry? =")
+            appendLine("        WRAPPERS_BY_PROJECTED_TYPE[projectedTypeName]")
+            appendLine("}")
+        }
+        return supportFile("WinRTAuthoringWrapperPlan.kt", contents)
+    }
+
     private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
         if (inventory.namespaceAdditions.isEmpty()) {
             return null
@@ -836,6 +888,9 @@ class KotlinProjectionSupportRenderer {
         } else {
             joinToString(prefix = "listOf(", postfix = ")") { it.kotlinString() }
         }
+
+    private fun String?.kotlinNullableString(): String =
+        this?.kotlinString() ?: "null"
 
     private fun io.github.kitectlab.winrt.metadata.WinRtRequiredMappedHelperPlanDescriptor.toSupportPlanString(): String =
         listOf(
