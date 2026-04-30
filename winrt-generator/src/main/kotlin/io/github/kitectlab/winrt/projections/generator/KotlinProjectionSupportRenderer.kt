@@ -148,6 +148,7 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringWrapperPlan(inventory, plans),
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
             renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
+            renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -735,6 +736,87 @@ class KotlinProjectionSupportRenderer {
             )
             .build()
         return supportFile("WinRTAuthoringCustomQueryInterfacePlan.kt", fileSpec)
+    }
+
+    private fun renderAuthoringActivationFactoryPlan(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val entryClass = ClassName(SUPPORT_PACKAGE, "AuthoringActivationFactoryEntry")
+        val fileSpec = supportFileSpec("WinRTAuthoringActivationFactoryPlan")
+            .addType(
+                dataClass(
+                    className = "AuthoringActivationFactoryEntry",
+                    fields = listOf(
+                        "projectedTypeName" to stringTypeName(),
+                        "serverFactoryTypeName" to stringTypeName(),
+                        "isActivatable" to Boolean::class.asClassName(),
+                        "implementsIActivationFactory" to Boolean::class.asClassName(),
+                        "factoryInterfaceNames" to stringListTypeName(),
+                        "activatableFactoryInterfaceNames" to stringListTypeName(),
+                        "staticFactoryInterfaceNames" to stringListTypeName(),
+                        "activatableFactoryMemberNames" to stringListTypeName(),
+                        "staticFactoryMemberNames" to stringListTypeName(),
+                        "composableFactoryMemberNames" to stringListTypeName(),
+                        "makeMethod" to stringTypeName(),
+                        "activateInstanceBehavior" to stringTypeName(),
+                        "runClassConstructorTypeName" to stringTypeName(),
+                    ),
+                ),
+            )
+            .addType(
+                TypeSpec.objectBuilder("WinRTAuthoringActivationFactoryPlan")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addProperty(
+                        PropertySpec.builder("FACTORIES", List::class.asClassName().parameterizedBy(entryClass))
+                            .initializer(authoringActivationFactoryEntriesCode(entries, semanticHelpers, entryClass))
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("FACTORIES_BY_PROJECTED_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("FACTORIES.associateBy { it.projectedTypeName }")
+                            .build(),
+                    )
+                    .addProperty(
+                        PropertySpec.builder("FACTORIES_BY_SERVER_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
+                            .initializer("FACTORIES.associateBy { it.serverFactoryTypeName }")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("factoryForProjectedType")
+                            .addParameter("projectedTypeName", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return FACTORIES_BY_PROJECTED_TYPE[projectedTypeName]")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("factoryForServerType")
+                            .addParameter("serverFactoryTypeName", String::class)
+                            .returns(entryClass.copy(nullable = true))
+                            .addStatement("return FACTORIES_BY_SERVER_TYPE[serverFactoryTypeName]")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("installActivationFactories")
+                            .addParameter("install", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
+                            .addStatement("FACTORIES.forEach(install)")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTAuthoringActivationFactoryPlan.kt", fileSpec)
     }
 
     private fun renderNamespaceAdditions(inventory: WinRtMetadataProjectionInventory): KotlinProjectionFile? {
@@ -1571,6 +1653,59 @@ class KotlinProjectionSupportRenderer {
         code.add(")")
         return code.build()
     }
+
+    private fun authoringActivationFactoryEntriesCode(
+        entries: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+        entryClass: ClassName,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
+            val isActivatable = !semanticHelpers.isStatic(plan.type) && semanticHelpers.hasDefaultConstructor(plan.type)
+            val activatableInterfaces = factory.constructorFactories
+            val staticInterfaces = factory.staticMemberTargets
+            val composableInterfaces = factory.composableFactories
+            code.add("%T(\n", entryClass)
+            code.indent()
+            code.add("projectedTypeName = %S,\n", plan.type.qualifiedName)
+            code.add("serverFactoryTypeName = %S,\n", "ABI.${plan.type.qualifiedName}ServerActivationFactory")
+            code.add("isActivatable = %L,\n", isActivatable)
+            code.add("implementsIActivationFactory = true,\n")
+            code.add("factoryInterfaceNames = %L,\n", stringListCode((activatableInterfaces + staticInterfaces).distinct()))
+            code.add("activatableFactoryInterfaceNames = %L,\n", stringListCode(activatableInterfaces))
+            code.add("staticFactoryInterfaceNames = %L,\n", stringListCode(staticInterfaces))
+            code.add("activatableFactoryMemberNames = %L,\n", stringListCode(authoringFactoryMemberReferences(plan, activatableInterfaces)))
+            code.add("staticFactoryMemberNames = %L,\n", stringListCode(authoringFactoryMemberReferences(plan, staticInterfaces)))
+            code.add("composableFactoryMemberNames = %L,\n", stringListCode(authoringFactoryMemberReferences(plan, composableInterfaces)))
+            code.add("makeMethod = %S,\n", "MarshalInspectable.CreateMarshaler2(IID.IActivationFactory).Detach")
+            code.add("activateInstanceBehavior = %S,\n", if (isActivatable) "newProjectedInstanceToMarshalInspectable" else "notImplemented")
+            code.add("runClassConstructorTypeName = %S,\n", plan.type.qualifiedName)
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun authoringFactoryMemberReferences(
+        plan: KotlinTypeProjectionPlan,
+        interfaceNames: List<String>,
+    ): List<String> =
+        interfaceNames
+            .flatMap { interfaceName ->
+                val interfaceType = plan.typesByQualifiedName[interfaceName] ?: return@flatMap emptyList()
+                buildList {
+                    interfaceType.methods.forEach { add("$interfaceName.${it.name}") }
+                    interfaceType.properties.forEach { add("$interfaceName.${it.name}") }
+                    interfaceType.events.forEach { add("$interfaceName.${it.name}") }
+                }
+            }
+            .distinct()
+            .sorted()
 
     private fun nullableStringCode(value: String?): CodeBlock =
         value?.let { CodeBlock.of("%S", it) } ?: CodeBlock.of("null")
