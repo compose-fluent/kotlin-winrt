@@ -55,17 +55,18 @@ object ComWrappersSupport {
         val createFactory = authoringActivationFactories[runtimeClassName]
             ?: return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         val factory = createFactory()
-        val requestedFactory = try {
+        val requestedFactoryPointer = try {
             if (factory.interfaceId == interfaceId || interfaceId == IID.IUnknown) {
-                factory.addRef()
-                factory
+                factory.getRefPointer()
             } else {
-                factory.queryInterface(interfaceId).getOrThrow()
+                factory.queryInterface(interfaceId).getOrThrow().use { reference ->
+                    reference.getRefPointer()
+                }
             }
         } finally {
             factory.close()
         }
-        return ActivationResult(KnownHResults.S_OK, PlatformAbi.fromRawComPtr(requestedFactory.pointer))
+        return ActivationResult(KnownHResults.S_OK, PlatformAbi.fromRawComPtr(requestedFactoryPointer))
     }
 
     fun registerHelperType(
