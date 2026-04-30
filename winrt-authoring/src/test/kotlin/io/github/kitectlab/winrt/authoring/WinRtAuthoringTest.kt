@@ -52,6 +52,51 @@ class WinRtAuthoringTest {
     }
 
     @Test
+    fun authored_activation_factory_exposes_factory_interface_members() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val componentInterfaceId = Guid("bbbbbbbb-1111-2222-3333-444444444444")
+        val factoryInterfaceId = Guid("bbbbbbbb-1111-2222-3333-444444444445")
+        WinRtAuthoring.registerType<FactoryBackedComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.FactoryBackedComponent",
+                defaultInterfaceId = componentInterfaceId,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = componentInterfaceId,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory(
+            WinRtAuthoredActivationFactoryDefinition(
+                runtimeClassName = "Sample.Authoring.FactoryBackedComponent",
+                implementationType = FactoryBackedComponent::class,
+                factoryInterfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = factoryInterfaceId,
+                        methods = listOf(
+                            WinRtAuthoredMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                                PlatformAbi.writeInt32(args.single() as RawAddress, 7)
+                                KnownHResults.S_OK.value
+                            },
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        ActivationFactory.get("Sample.Authoring.FactoryBackedComponent", factoryInterfaceId).use { factory ->
+            PlatformAbi.confinedScope().use { scope ->
+                val result = PlatformAbi.allocateInt32Slot(scope)
+                assertEquals(KnownHResults.S_OK.value, ComVtableInvoker.invokeArgs(factory.pointer, 6, result))
+                assertEquals(7, PlatformAbi.readInt32(result))
+            }
+        }
+    }
+
+    @Test
     fun composable_object_forwards_outer_query_interface_to_inner_after_factory_composition() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("11111111-1111-1111-1111-111111111111")
@@ -226,4 +271,6 @@ class WinRtAuthoringTest {
     private object TrackedInnerComponent
 
     private class ActivatableComponent
+
+    private class FactoryBackedComponent
 }
