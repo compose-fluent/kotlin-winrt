@@ -107,31 +107,15 @@ import kotlin.io.path.extension
 
 class KotlinProjectionRenderer {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
-        val renderedContents = FileSpec.builder(plan.packageName, plan.type.name)
+        val contents = FileSpec.builder(plan.packageName, plan.type.name)
             .apply { addType(renderType(plan)) }
             .build()
             .toString()
-        val contents = if (KotlinProjectionSpecializationKind.AttributeClass in plan.specializationKinds) {
-            addValToAnnotationConstructorParameters(renderedContents, attributeConstructorParameters(plan).map { it.name })
-        } else {
-            renderedContents
-        }
         return KotlinProjectionFile(
             relativePath = plan.relativePath,
             packageName = plan.packageName,
             contents = contents,
         )
-    }
-
-    private fun addValToAnnotationConstructorParameters(contents: String, parameterNames: List<String>): String {
-        if (parameterNames.isEmpty()) {
-            return contents
-        }
-        return contents.lines().joinToString("\n") { line ->
-            val parameterName = parameterNames.firstOrNull { name -> line.trimStart().startsWith("$name: ") }
-                ?: return@joinToString line
-            line.replaceFirst("$parameterName: ", "val $parameterName: ")
-        }
     }
 
     internal fun renderType(plan: KotlinTypeProjectionPlan): TypeSpec = when (plan.declarationKind) {
@@ -1391,6 +1375,13 @@ class KotlinProjectionRenderer {
                             .addParameters(constructorParameters)
                             .build(),
                     )
+                    constructorParameters.forEach { parameter ->
+                        addProperty(
+                            PropertySpec.builder(parameter.name, parameter.type)
+                                .initializer(parameter.name)
+                                .build(),
+                        )
+                    }
                 }
                 addKdoc("attribute WinRT class shell\n")
             }
