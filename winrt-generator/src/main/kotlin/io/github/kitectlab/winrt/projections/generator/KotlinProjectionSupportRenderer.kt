@@ -1346,37 +1346,47 @@ class KotlinProjectionSupportRenderer {
         invokeShape: KotlinProjectionDelegateInvokeShape,
         delegateType: TypeName,
     ): CodeBlock {
-        val parameterList = invokeShape.parameterBindings.joinToString(", ") { binding ->
-            "${binding.name}: ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
-        }
-        val invokeArguments = invokeShape.parameterBindings.joinToString(", ") { it.name }
-        val lambdaHead = if (delegateType.toString().startsWith("kotlin.Function") || mappedTypeByAbiName(delegatePlan.type.qualifiedName) != null) {
-            "{ ${invokeShape.parameterBindings.joinToString(", ") { it.name }} ->"
+        val lambdaParameterNames = invokeShape.parameterBindings.joinToString(", ") { it.name }
+        val invokeArguments = lambdaParameterNames
+        val lambdaParameterList = CodeBlock.builder().apply {
+            invokeShape.parameterBindings.forEachIndexed { index, binding ->
+                if (index > 0) add(", ")
+                add("%L: %T", binding.name, typeRenderer.resolveTypeName(binding.typeBinding.typeName))
+            }
+        }.build()
+        val lambdaBody = eventSourceStateLambdaBody(invokeShape, invokeArguments)
+        val lambdaHeader = if (lambdaParameterNames.isBlank()) "" else "$lambdaParameterNames ->\n"
+        val typedLambdaHeader = if (lambdaParameterNames.isBlank()) "" else CodeBlock.of("%L ->\n", lambdaParameterList)
+        val lambdaCode = if (delegateType.toString().startsWith("kotlin.Function") || mappedTypeByAbiName(delegatePlan.type.qualifiedName) != null) {
+            CodeBlock.of("{ %L%L\n}", lambdaHeader, lambdaBody)
         } else {
-            "$delegateType { $parameterList ->"
-        }
-        val body = if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
-            "snapshotHandlers().forEach { handler -> handler.invoke($invokeArguments) }"
-        } else {
-            "var __result = ${defaultValueExpression(invokeShape.returnBinding)}\n" +
-                "                    snapshotHandlers().forEach { handler -> __result = handler.invoke($invokeArguments) }\n" +
-                "                    __result"
+            CodeBlock.of("%T({ %L%L\n})", delegateType, typedLambdaHeader, lambdaBody)
         }
         return CodeBlock.of(
-            """
-            return object : io.github.kitectlab.winrt.runtime.EventSourceState<%T>(io.github.kitectlab.winrt.runtime.RawAddress(nativeObjectReference.pointer.value), eventIndex) {
-                override fun createEventInvoke(): %T =
-                    %L
-                        %L
-                    }
-            }
-            """.trimIndent() + "\n",
+            "return object : %T<%T>(%T(nativeObjectReference.pointer.value), eventIndex) {\n" +
+                "    override fun createEventInvoke(): %T = %L\n" +
+                "}\n",
+            ClassName("io.github.kitectlab.winrt.runtime", "EventSourceState"),
             delegateType,
+            ClassName("io.github.kitectlab.winrt.runtime", "RawAddress"),
             delegateType,
-            lambdaHead,
-            body,
+            lambdaCode,
         )
     }
+
+    private fun eventSourceStateLambdaBody(
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+        invokeArguments: String,
+    ): CodeBlock =
+        if (invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            CodeBlock.of("snapshotHandlers().forEach { handler -> handler.invoke(%L) }", invokeArguments)
+        } else {
+            CodeBlock.of(
+                "var __result = %L\nsnapshotHandlers().forEach { handler -> __result = handler.invoke(%L) }\n__result",
+                defaultValueExpression(invokeShape.returnBinding),
+                invokeArguments,
+            )
+        }
 
     private fun eventProjectionHelperFunctions(
         entryClass: ClassName,
@@ -1429,7 +1439,7 @@ class KotlinProjectionSupportRenderer {
                         ownerType = ownerType,
                         objectReference = objectReference,
                         vtableIndexForAddHandler = vtableIndexForAddHandler,
-                    )
+                    ) ?: error("No WinRT event source registered for ${'$'}eventType on ${'$'}ownerType")
                     """.trimIndent() + "\n",
                 )
                 .build(),
