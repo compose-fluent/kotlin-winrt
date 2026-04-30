@@ -151,6 +151,21 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun create_ccw_uses_generated_type_details_without_manual_registration() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val managed = GeneratedDetailsComponent("payload")
+
+        ComWrappersSupport.createCCWForObject(managed, GENERATED_DETAILS_INTERFACE_ID).use { ccw ->
+            val found = ComWrappersSupport.findObject(ccw.pointer, GeneratedDetailsComponent::class)
+            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
+
+            assertSame(managed, found)
+            assertEquals("test.GeneratedDetailsComponent", info?.runtimeClassName)
+            assertTrue(info?.interfaceIds?.contains(GENERATED_DETAILS_INTERFACE_ID) == true)
+        }
+    }
+
+    @Test
     fun cast_extension_rehydrates_registered_typed_wrapper() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceType = WinRtTypeHandle("test.IFoo", Guid("55555555-5555-5555-5555-555555555555"))
@@ -190,5 +205,26 @@ class ComWrappersSupportTest {
     ) : IWinRTObject {
         override val nativeObject: ComObjectReference
             get() = inspectable
+    }
+}
+
+private val GENERATED_DETAILS_INTERFACE_ID = Guid("12121212-1212-1212-1212-121212121212")
+
+private data class GeneratedDetailsComponent(val name: String)
+
+object WinRT_GeneratedDetailsComponent_TypeDetails {
+    @JvmStatic
+    fun createCcwDefinition(value: Any): WinRtCcwDefinition {
+        require(value is GeneratedDetailsComponent)
+        return WinRtCcwDefinition(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = GENERATED_DETAILS_INTERFACE_ID,
+                    methods = emptyList(),
+                ),
+            ),
+            defaultInterfaceId = GENERATED_DETAILS_INTERFACE_ID,
+            runtimeClassName = "test.GeneratedDetailsComponent",
+        )
     }
 }
