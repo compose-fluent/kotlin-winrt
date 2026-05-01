@@ -262,13 +262,19 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val appDll = project.layout.buildDirectory.file("component/AppComponent.dll").get().asFile.toPath()
         val dependencyDll = project.layout.buildDirectory.file("dependency/DependencyComponent.dll").get().asFile.toPath()
+        val dependencyWinmd = project.layout.buildDirectory.file("dependency/DependencyComponent.winmd").get().asFile.toPath()
         Files.createDirectories(appDll.parent)
         Files.createDirectories(dependencyDll.parent)
+        Files.createDirectories(dependencyWinmd.parent)
         Files.writeString(appDll, "app")
         Files.writeString(dependencyDll, "dependency")
+        Files.writeString(dependencyWinmd, "winmd")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
-        Files.writeString(dependencyIdentity.toPath(), """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"]}""")
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadata":["${dependencyWinmd.toString().replace("\\", "\\\\")}"]}""",
+        )
 
         val task = project.tasks.register(
             "stageLocalComponentAssets",
@@ -291,6 +297,7 @@ class KotlinWinRtPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.dll")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.winmd")))
     }
 
     @Test

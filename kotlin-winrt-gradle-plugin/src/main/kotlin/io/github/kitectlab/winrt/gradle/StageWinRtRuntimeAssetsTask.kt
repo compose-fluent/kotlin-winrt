@@ -69,6 +69,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     copyFile(source, outputRoot.resolve(source.name))
                 }
             }
+        dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata)
+            .map(Path::of)
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isRegularFile()) {
+                    copyFile(source, outputRoot.resolve(source.name))
+                }
+            }
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
@@ -258,6 +266,12 @@ internal fun readNuGetPackages(identityFile: java.io.File): List<String> {
 internal fun readRuntimeAssets(identityFile: java.io.File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     val match = Regex(""""runtimeAssets"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
+    return readJsonStringArray(match.groupValues[1])
+}
+
+internal fun readAuthoredMetadata(identityFile: java.io.File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val match = Regex(""""authoredMetadata"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
     return readJsonStringArray(match.groupValues[1])
 }
 
