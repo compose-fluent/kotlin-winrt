@@ -4957,6 +4957,13 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("11111111-2222-3333-4444-555555555553"),
                             methods = listOf(
                                 WinRtMethodDefinition(
+                                    name = "RoundTripPoint",
+                                    returnTypeName = "Sample.Foundation.WidgetPoint",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("point", "Sample.Foundation.WidgetPoint"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
                                     name = "RoundTripHandler",
                                     returnTypeName = "Sample.Foundation.WidgetHandler",
                                     parameters = listOf(
@@ -4983,6 +4990,15 @@ class KotlinProjectionGeneratorTest {
                                     addMethodName = "add_Typed",
                                     removeMethodName = "remove_Typed",
                                 ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetPoint",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition(name = "X", typeName = "Float"),
+                                WinRtFieldDefinition(name = "Y", typeName = "Float"),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -5231,6 +5247,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("methods = listOf("))
         assertTrue(ccwFactories.contains("WinRtInspectableMethodDefinition"))
         assertTrue(ccwFactories.contains("signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer)"))
+        assertTrue(ccwFactories.contains("ComAbiValueKind.Struct(WidgetPoint.Metadata.layout.abiLayout)"))
+        assertTrue(ccwFactories.contains("WidgetPoint.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories.contains("value.roundTripPoint(point)"))
+        assertTrue(ccwFactories.contains("WidgetPoint.Metadata.copyTo(__result"))
         assertTrue(ccwFactories.contains("WidgetHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("Authored delegate argument Sample.Foundation.WidgetHandler was null."))
         assertTrue(ccwFactories.contains("value.roundTripHandler(handler)"))

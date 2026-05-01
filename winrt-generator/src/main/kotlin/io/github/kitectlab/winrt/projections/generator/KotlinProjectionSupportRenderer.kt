@@ -1578,9 +1578,9 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Struct ->
             if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
-            } else {
-                CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
-            }
+            } else typeRenderer.nativeStructClassName(binding)
+                ?.let { structType -> CodeBlock.of("%T.Struct(%T.Metadata.layout.abiLayout)", COM_ABI_VALUE_KIND_CLASS_NAME, structType) }
+                ?: CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
         else -> CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
     }
 
@@ -1739,7 +1739,9 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Delegate,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> true
-        KotlinProjectionAbiValueKind.Struct -> binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken"
+        KotlinProjectionAbiValueKind.Struct ->
+            binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
+                typeRenderer.nativeStructClassName(binding) != null
         else -> false
     }
 
@@ -1766,7 +1768,17 @@ class KotlinProjectionSupportRenderer {
             typeRenderer.resolveTypeName(binding.resolvedTypeName),
             authoringCcwDecodeEnumRawCode(binding, index),
         )
-        KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T(rawArgs[%L] as Long)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, index)
+        KotlinProjectionAbiValueKind.Struct ->
+            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+                CodeBlock.of("%T(rawArgs[%L] as Long)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, index)
+            } else {
+                val structType = typeRenderer.nativeStructClassName(binding)
+                if (structType == null) {
+                    CodeBlock.of("error(%S)", "Unsupported authored ABI struct argument ${binding.describeAbiKind()}")
+                } else {
+                    CodeBlock.of("%T.Metadata.fromAbi(rawArgs[%L] as %T)", structType, index, RAW_ADDRESS_CLASS_NAME)
+                }
+            }
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
             "%T.Metadata.wrap(%T(rawArgs[%L] as %T).inspectable())",
@@ -1842,7 +1854,17 @@ class KotlinProjectionSupportRenderer {
                 CodeBlock.of("%T.Metadata.toAbi(%L)", typeRenderer.resolveTypeName(binding.resolvedTypeName), valueExpression).toString(),
             ),
         )
-        KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.Metadata.copyTo(%L, %L)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, valueExpression, outExpression)
+        KotlinProjectionAbiValueKind.Struct ->
+            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+                CodeBlock.of("%T.Metadata.copyTo(%L, %L)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, valueExpression, outExpression)
+            } else {
+                val structType = typeRenderer.nativeStructClassName(binding)
+                if (structType == null) {
+                    CodeBlock.of("error(%S)", "Unsupported authored ABI struct return ${binding.describeAbiKind()}")
+                } else {
+                    CodeBlock.of("%T.Metadata.copyTo(%L, %L)", structType, valueExpression, outExpression)
+                }
+            }
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
