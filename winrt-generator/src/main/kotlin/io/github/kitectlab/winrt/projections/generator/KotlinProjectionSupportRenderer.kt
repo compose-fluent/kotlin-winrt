@@ -736,7 +736,6 @@ class KotlinProjectionSupportRenderer {
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
             fileBuilder.addType(authoringAbiClassObject(plan))
         }
-        fileBuilder.addFunction(unsupportedAuthoringAbiArrayOperationFunction())
         fileBuilder.addType(
             TypeSpec.objectBuilder("WinRTAuthoringAbiClasses")
                 .addModifiers(KModifier.INTERNAL)
@@ -1294,15 +1293,111 @@ class KotlinProjectionSupportRenderer {
                     )
                     .build(),
             )
-            .addFunction(authoringAbiArrayUnsupportedFunction("CreateMarshalerArray", projectedType))
-            .addFunction(authoringAbiArrayUnsupportedFunction("GetAbiArray", projectedType))
-            .addFunction(authoringAbiArrayUnsupportedFunction("FromAbiArray", projectedType))
-            .addFunction(authoringAbiArrayUnsupportedFunction("CopyAbiArray", projectedType))
-            .addFunction(authoringAbiArrayUnsupportedFunction("FromManagedArray", projectedType))
-            .addFunction(authoringAbiArrayUnsupportedFunction("DisposeMarshalerArray", projectedType))
-            .addFunction(authoringAbiArrayUnsupportedFunction("DisposeAbiArray", projectedType))
+            .addFunction(authoringAbiClassArrayMarshalerFunction(plan, projectedType, wrapperType))
+            .addFunction(authoringAbiClassCreateMarshalerArrayFunction(projectedType))
+            .addFunction(authoringAbiClassGetAbiArrayFunction())
+            .addFunction(authoringAbiClassFromAbiArrayFunction(projectedType))
+            .addFunction(authoringAbiClassCopyAbiArrayFunction(projectedType))
+            .addFunction(authoringAbiClassFromManagedArrayFunction(projectedType))
+            .addFunction(authoringAbiClassDisposeMarshalerArrayFunction())
+            .addFunction(authoringAbiClassDisposeAbiArrayFunction())
             .build()
     }
+
+    private fun authoringAbiClassArrayMarshalerFunction(
+        plan: KotlinTypeProjectionPlan,
+        projectedType: ClassName,
+        wrapperType: ClassName,
+    ): FunSpec =
+        FunSpec.builder("arrayMarshaler")
+            .addModifiers(KModifier.PRIVATE)
+            .returns(MARSHALER_CLASS_NAME.parameterizedBy(projectedType))
+            .addCode(
+                CodeBlock.of(
+                    """
+                    return %T.interfaceType(
+                        %T(projectedTypeName, defaultInterfaceId),
+                        %T::class,
+                    ) { value ->
+                        when (value) {
+                            is %T -> value
+                            is %T -> %T.fromAbi(%T.fromRawComPtr(value.nativeObject.pointer))
+                                ?: error(%S)
+                            else -> error(%S)
+                        }
+                    }
+                    """.trimIndent() + "\n",
+                    MARSHALER_CLASS_NAME,
+                    WINRT_TYPE_HANDLE_CLASS_NAME,
+                    projectedType,
+                    projectedType,
+                    IWINRT_OBJECT_CLASS_NAME,
+                    wrapperType,
+                    PLATFORM_ABI_CLASS_NAME,
+                    "Could not wrap ABI instance for authored type ${plan.type.qualifiedName}.",
+                    "Could not marshal ABI instance for authored type ${plan.type.qualifiedName}.",
+                ),
+            )
+            .build()
+
+    private fun authoringAbiClassCreateMarshalerArrayFunction(projectedType: ClassName): FunSpec =
+        FunSpec.builder("CreateMarshalerArray")
+            .addParameter("values", Array::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
+            .returns(WINRT_ABI_ARRAY_CLASS_NAME.copy(nullable = true))
+            .addCode("return arrayMarshaler().createMarshalerArray(values)\n")
+            .build()
+
+    private fun authoringAbiClassGetAbiArrayFunction(): FunSpec =
+        FunSpec.builder("GetAbiArray")
+            .addParameter("marshaler", WINRT_ABI_ARRAY_CLASS_NAME.copy(nullable = true))
+            .returns(WINRT_ABI_ARRAY_CLASS_NAME.copy(nullable = true))
+            .addCode("return marshaler\n")
+            .build()
+
+    private fun authoringAbiClassFromAbiArrayFunction(projectedType: ClassName): FunSpec =
+        FunSpec.builder("FromAbiArray")
+            .addParameter("length", Int::class)
+            .addParameter("data", RAW_ADDRESS_CLASS_NAME)
+            .returns(List::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
+            .addCode("return arrayMarshaler().fromAbiArray(length, data)\n")
+            .build()
+
+    private fun authoringAbiClassCopyAbiArrayFunction(projectedType: ClassName): FunSpec =
+        FunSpec.builder("CopyAbiArray")
+            .addParameter("values", Array::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)))
+            .addParameter("marshaler", WINRT_ABI_ARRAY_CLASS_NAME.copy(nullable = true))
+            .addCode(
+                CodeBlock.of(
+                    """
+                    arrayMarshaler().fromAbiArray(marshaler?.length ?: 0, marshaler?.data ?: %T.nullPointer)
+                        ?.forEachIndexed { index, value ->
+                            values[index] = value
+                        }
+                    """.trimIndent() + "\n",
+                    PLATFORM_ABI_CLASS_NAME,
+                ),
+            )
+            .build()
+
+    private fun authoringAbiClassFromManagedArrayFunction(projectedType: ClassName): FunSpec =
+        FunSpec.builder("FromManagedArray")
+            .addParameter("values", Array::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
+            .returns(WINRT_ABI_ARRAY_CLASS_NAME.copy(nullable = true))
+            .addCode("return arrayMarshaler().fromManagedArray(values)\n")
+            .build()
+
+    private fun authoringAbiClassDisposeMarshalerArrayFunction(): FunSpec =
+        FunSpec.builder("DisposeMarshalerArray")
+            .addParameter("marshaler", WINRT_ABI_ARRAY_CLASS_NAME.copy(nullable = true))
+            .addCode("arrayMarshaler().disposeMarshalerArray(marshaler)\n")
+            .build()
+
+    private fun authoringAbiClassDisposeAbiArrayFunction(): FunSpec =
+        FunSpec.builder("DisposeAbiArray")
+            .addParameter("length", Int::class)
+            .addParameter("data", RAW_ADDRESS_CLASS_NAME)
+            .addCode("arrayMarshaler().disposeAbiArray(length, data)\n")
+            .build()
 
     private fun authoringAbiArrayUnsupportedFunction(name: String, projectedType: ClassName): FunSpec {
         val builder = FunSpec.builder(name)

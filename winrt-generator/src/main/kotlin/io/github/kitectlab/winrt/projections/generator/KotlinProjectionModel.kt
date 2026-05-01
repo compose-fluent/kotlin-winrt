@@ -59,6 +59,7 @@ import io.github.kitectlab.winrt.runtime.NativeStringMarshaller
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.ParameterizedInterfaceId
 import io.github.kitectlab.winrt.runtime.RawAddress
+import io.github.kitectlab.winrt.runtime.WinRtAbiArray
 import io.github.kitectlab.winrt.runtime.NativeNestedStructFieldSpec
 import io.github.kitectlab.winrt.runtime.NativeScalarFieldSpec
 import io.github.kitectlab.winrt.runtime.NativeStructAdapter
@@ -158,6 +159,7 @@ internal val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.kitectlab.
 internal val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
 internal val KNOWN_HRESULTS_CLASS_NAME = KnownHResults::class.asClassName()
 internal val MARSHALER_CLASS_NAME = Marshaler::class.asClassName()
+internal val WINRT_ABI_ARRAY_CLASS_NAME = WinRtAbiArray::class.asClassName()
 internal val NATIVE_STRING_MARSHALER_CLASS_NAME = NativeStringMarshaller::class.asClassName()
 internal val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
 internal val PARAMETERIZED_INTERFACE_ID_CLASS_NAME = ParameterizedInterfaceId::class.asClassName()
