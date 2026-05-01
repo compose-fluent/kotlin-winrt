@@ -153,6 +153,7 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderAuthoringServerActivationFactories(inventory, plans, semanticHelpers),
+            renderAuthoringHostExports(inventory, plans, semanticHelpers),
             renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
@@ -1064,6 +1065,52 @@ class KotlinProjectionSupportRenderer {
                 .build(),
         )
         return supportFile("WinRTAuthoringServerActivationFactories.kt", fileBuilder.build())
+    }
+
+    private fun renderAuthoringHostExports(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val hostBridgeClass = ClassName("io.github.kitectlab.winrt.authoring", "WinRtAuthoringHostBridge")
+        val fileSpec = supportFileSpec("WinRTAuthoringHostExports")
+            .addType(
+                TypeSpec.objectBuilder("WinRTAuthoringHostExports")
+                    .addModifiers(KModifier.INTERNAL)
+                    .addFunction(
+                        FunSpec.builder("registerActivationFactories")
+                            .addStatement("%T.register()", ClassName(SUPPORT_PACKAGE, "WinRTAuthoringServerActivationFactories"))
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("dllGetActivationFactory")
+                            .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
+                            .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
+                            .returns(Int::class)
+                            .addStatement("registerActivationFactories()")
+                            .addStatement("return %T.dllGetActivationFactory(activatableClassId, factoryOut)", hostBridgeClass)
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("dllCanUnloadNow")
+                            .returns(Int::class)
+                            .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTAuthoringHostExports.kt", fileSpec)
     }
 
     private fun authoringServerActivationFactoryClass(

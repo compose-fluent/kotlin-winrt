@@ -5285,6 +5285,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(serverActivationFactories.contains("ComWrappersSupport.createCCWForObject"))
         assertTrue(serverActivationFactories.contains("_ServerActivationFactory_Sample_Foundation_Widget()"))
         assertTrue(serverActivationFactories.contains("IID.IActivationFactory"))
+        val hostExports = filesByName.getValue("WinRTAuthoringHostExports.kt").contents
+        assertTrue(hostExports.contains("object WinRTAuthoringHostExports"))
+        assertTrue(hostExports.contains("WinRTAuthoringServerActivationFactories.register()"))
+        assertTrue(hostExports.contains("fun dllGetActivationFactory("))
+        assertTrue(hostExports.contains("registerActivationFactories()"))
+        assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)"))
+        assertTrue(hostExports.contains("fun dllCanUnloadNow(): Int"))
+        assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllCanUnloadNow()"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         assertTrue(ccwFactories.contains("object WinRTAuthoringCcwFactories"))
         assertTrue(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class)"))
