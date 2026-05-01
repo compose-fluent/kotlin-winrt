@@ -40,7 +40,13 @@ private class WinmdBuilder(
         val moduleTypeName = strings.index("<Module>")
         val assemblyNameIndex = strings.index(assemblyName)
         val attributeTypeNames = buildSet {
+            if (runtimeClasses.isNotEmpty()) {
+                add(WINDOWS_FOUNDATION_METADATA_VERSION)
+            }
             runtimeClasses.forEach { descriptor ->
+                if (descriptor.isActivatable) {
+                    add(WINDOWS_FOUNDATION_METADATA_ACTIVATABLE)
+                }
                 if (descriptor.interfaceNames.isNotEmpty()) {
                     add(WINDOWS_FOUNDATION_METADATA_DEFAULT)
                 }
@@ -93,7 +99,8 @@ private class WinmdBuilder(
     ): ByteArray {
         val writer = BinaryWriter()
         val attributeMemberRefs = attributeMemberRefs(typeRefs)
-        val customAttributes = interfaceImplCustomAttributes(attributeMemberRefs)
+        val customAttributes = typeDefCustomAttributes(attributeMemberRefs) +
+            interfaceImplCustomAttributes(attributeMemberRefs)
         val validMask = (1L shl TABLE_MODULE) or
             (if (typeRefs.isEmpty()) 0L else 1L shl TABLE_TYPE_REF) or
             (1L shl TABLE_TYPE_DEF) or
@@ -164,9 +171,9 @@ private class WinmdBuilder(
             writer.index(memberRef.signatureBlobIndex)
         }
         customAttributes.forEach { attribute ->
-            writer.index((attribute.interfaceImplRowId shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) or CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL)
+            writer.index(attribute.parentToken)
             writer.index((attribute.memberRefRowId shl CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_BITS) or CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF)
-            writer.index(0)
+            writer.index(attribute.valueBlobIndex)
         }
         writer.int32(0x00008004)
         writer.int16(1)
@@ -181,34 +188,54 @@ private class WinmdBuilder(
     }
 
     private fun attributeMemberRefs(typeRefs: List<TypeRefRow>): List<AttributeMemberRefRow> =
-        listOf(WINDOWS_FOUNDATION_METADATA_DEFAULT, WINDOWS_FOUNDATION_METADATA_OVERRIDABLE)
+        listOf(
+            WINDOWS_FOUNDATION_METADATA_DEFAULT to emptyList<Int>(),
+            WINDOWS_FOUNDATION_METADATA_OVERRIDABLE to emptyList(),
+            WINDOWS_FOUNDATION_METADATA_ACTIVATABLE to listOf(ELEMENT_TYPE_U4),
+            WINDOWS_FOUNDATION_METADATA_VERSION to listOf(ELEMENT_TYPE_U4),
+        )
             .mapNotNull { typeName ->
-                val typeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == typeName } + 1
+                val typeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == typeName.first } + 1
                 typeRefRowId.takeIf { it > 0 }?.let { rowId ->
                     AttributeMemberRefRow(
-                        attributeTypeName = typeName,
+                        attributeTypeName = typeName.first,
                         typeRefRowId = rowId,
-                        signatureBlobIndex = blobs.index(byteArrayOf(CALL_CONV_HASTHIS.toByte(), 0x00, ELEMENT_TYPE_VOID.toByte())),
+                        signatureBlobIndex = blobs.index(methodSignatureBlob(typeName.second)),
                     )
                 }
             }
 
-    private fun interfaceImplCustomAttributes(memberRefs: List<AttributeMemberRefRow>): List<InterfaceImplCustomAttributeRow> {
+    private fun interfaceImplCustomAttributes(memberRefs: List<AttributeMemberRefRow>): List<CustomAttributeRow> {
         val memberRefRowIds = memberRefs
             .mapIndexed { index, memberRef -> memberRef.attributeTypeName to index + 1 }
             .toMap()
-        val rows = mutableListOf<InterfaceImplCustomAttributeRow>()
+        val rows = mutableListOf<CustomAttributeRow>()
+        val emptyAttributeBlobIndex = blobs.index(emptyCustomAttributeBlob())
         var interfaceImplRowId = 1
         runtimeClasses.forEach { descriptor ->
             descriptor.interfaceNames.forEach { interfaceName ->
                 if (interfaceName == descriptor.interfaceNames.first()) {
                     memberRefRowIds[WINDOWS_FOUNDATION_METADATA_DEFAULT]?.let { memberRefRowId ->
-                        rows += InterfaceImplCustomAttributeRow(interfaceImplRowId, memberRefRowId)
+                        rows += CustomAttributeRow(
+                            parentToken = hasCustomAttributeToken(
+                                rowId = interfaceImplRowId,
+                                tag = CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL,
+                            ),
+                            memberRefRowId = memberRefRowId,
+                            valueBlobIndex = emptyAttributeBlobIndex,
+                        )
                     }
                 }
                 if (interfaceName in descriptor.overridableInterfaceNames) {
                     memberRefRowIds[WINDOWS_FOUNDATION_METADATA_OVERRIDABLE]?.let { memberRefRowId ->
-                        rows += InterfaceImplCustomAttributeRow(interfaceImplRowId, memberRefRowId)
+                        rows += CustomAttributeRow(
+                            parentToken = hasCustomAttributeToken(
+                                rowId = interfaceImplRowId,
+                                tag = CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL,
+                            ),
+                            memberRefRowId = memberRefRowId,
+                            valueBlobIndex = emptyAttributeBlobIndex,
+                        )
                     }
                 }
                 interfaceImplRowId += 1
@@ -216,6 +243,70 @@ private class WinmdBuilder(
         }
         return rows
     }
+
+    private fun typeDefCustomAttributes(memberRefs: List<AttributeMemberRefRow>): List<CustomAttributeRow> {
+        val memberRefRowIds = memberRefs
+            .mapIndexed { index, memberRef -> memberRef.attributeTypeName to index + 1 }
+            .toMap()
+        val rows = mutableListOf<CustomAttributeRow>()
+        runtimeClasses.forEachIndexed { index, descriptor ->
+            val typeDefRowId = index + 2
+            memberRefRowIds[WINDOWS_FOUNDATION_METADATA_VERSION]?.let { memberRefRowId ->
+                rows += CustomAttributeRow(
+                    parentToken = hasCustomAttributeToken(
+                        rowId = typeDefRowId,
+                        tag = CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF,
+                    ),
+                    memberRefRowId = memberRefRowId,
+                    valueBlobIndex = blobs.index(uint32CustomAttributeBlob(DEFAULT_VERSION)),
+                )
+            }
+            if (descriptor.isActivatable) {
+                memberRefRowIds[WINDOWS_FOUNDATION_METADATA_ACTIVATABLE]?.let { memberRefRowId ->
+                    rows += CustomAttributeRow(
+                        parentToken = hasCustomAttributeToken(
+                            rowId = typeDefRowId,
+                            tag = CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF,
+                        ),
+                        memberRefRowId = memberRefRowId,
+                        valueBlobIndex = blobs.index(uint32CustomAttributeBlob(DEFAULT_VERSION)),
+                    )
+                }
+            }
+        }
+        return rows
+    }
+
+    private fun methodSignatureBlob(parameterElementTypes: List<Int>): ByteArray =
+        byteArrayOf(
+            CALL_CONV_HASTHIS.toByte(),
+            parameterElementTypes.size.toByte(),
+            ELEMENT_TYPE_VOID.toByte(),
+            *parameterElementTypes.map(Int::toByte).toByteArray(),
+        )
+
+    private fun hasCustomAttributeToken(rowId: Int, tag: Int): Int =
+        (rowId shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) or tag
+
+    private fun emptyCustomAttributeBlob(): ByteArray =
+        byteArrayOf(
+            0x01,
+            0x00,
+            0x00,
+            0x00,
+        )
+
+    private fun uint32CustomAttributeBlob(value: Int): ByteArray =
+        byteArrayOf(
+            0x01,
+            0x00,
+            (value and 0xFF).toByte(),
+            ((value ushr 8) and 0xFF).toByte(),
+            ((value ushr 16) and 0xFF).toByte(),
+            ((value ushr 24) and 0xFF).toByte(),
+            0x00,
+            0x00,
+        )
 
     private fun metadataRoot(
         tables: ByteArray,
@@ -338,9 +429,10 @@ private class WinmdBuilder(
         val typeRefRowId: Int,
         val signatureBlobIndex: Int,
     )
-    private data class InterfaceImplCustomAttributeRow(
-        val interfaceImplRowId: Int,
+    private data class CustomAttributeRow(
+        val parentToken: Int,
         val memberRefRowId: Int,
+        val valueBlobIndex: Int,
     )
 
     private companion object {
@@ -362,16 +454,21 @@ private class WinmdBuilder(
         const val CODED_MEMBER_REF_PARENT_TAG_BITS = 3
         const val CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF = 3
         const val CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_BITS = 3
+        const val CODED_HAS_CUSTOM_ATTRIBUTE_TYPE_DEF = 3
         const val CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL = 5
         const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS = 5
         const val CALL_CONV_HASTHIS = 0x20
         const val ELEMENT_TYPE_VOID = 0x01
+        const val ELEMENT_TYPE_U4 = 0x09
+        const val DEFAULT_VERSION = 1
         const val TYPE_ATTRIBUTES_PUBLIC = 0x00000001
         const val TYPE_ATTRIBUTES_WINDOWS_RUNTIME = 0x00004000
         const val TYPE_ATTRIBUTES_SEALED = 0x00000100
         const val TYPE_ATTRIBUTES_BEFORE_FIELD_INIT = 0x00100000
         const val WINDOWS_FOUNDATION_METADATA_DEFAULT = "Windows.Foundation.Metadata.DefaultAttribute"
         const val WINDOWS_FOUNDATION_METADATA_OVERRIDABLE = "Windows.Foundation.Metadata.OverridableAttribute"
+        const val WINDOWS_FOUNDATION_METADATA_ACTIVATABLE = "Windows.Foundation.Metadata.ActivatableAttribute"
+        const val WINDOWS_FOUNDATION_METADATA_VERSION = "Windows.Foundation.Metadata.VersionAttribute"
     }
 }
 

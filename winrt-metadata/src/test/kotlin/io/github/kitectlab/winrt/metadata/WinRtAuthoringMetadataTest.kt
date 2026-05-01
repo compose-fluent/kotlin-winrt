@@ -117,6 +117,8 @@ class WinRtAuthoringMetadataTest {
         assertEquals("Sample.Component.IWidget", runtimeClass.implementedInterfaces.single().interfaceName)
         assertTrue(runtimeClass.implementedInterfaces.single().isDefault)
         assertTrue(runtimeClass.implementedInterfaces.single().isOverridable)
+        assertTrue(runtimeClass.activation.isActivatable)
+        assertEquals(1L, runtimeClass.availability.version)
         assertTrue(runtimeClass.isSealedType)
     }
 }
