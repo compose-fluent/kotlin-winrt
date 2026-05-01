@@ -147,6 +147,8 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
+            renderAuthoringWrappers(inventory, plans),
+            renderAuthoringAbiClasses(inventory, plans, semanticHelpers),
             renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
             renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
@@ -688,6 +690,77 @@ class KotlinProjectionSupportRenderer {
         return supportFile("WinRTAuthoringAbiClassPlan.kt", fileSpec)
     }
 
+    private fun renderAuthoringWrappers(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { KotlinProjectionSpecializationKind.StaticClass in it.specializationKinds }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val fileBuilder = supportFileSpec("WinRTAuthoringWrappers")
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            fileBuilder.addType(authoringWrapperObject(plan))
+        }
+        fileBuilder.addType(
+            TypeSpec.objectBuilder("WinRTAuthoringWrappers")
+                .addModifiers(KModifier.INTERNAL)
+                .addFunction(authoringWrapperLookupFunction(entries))
+                .build(),
+        )
+        return supportFile("WinRTAuthoringWrappers.kt", fileBuilder.build())
+    }
+
+    private fun renderAuthoringAbiClasses(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val fileBuilder = supportFileSpec("WinRTAuthoringAbiClasses")
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            fileBuilder.addType(authoringAbiClassObject(plan))
+        }
+        fileBuilder.addFunction(unsupportedAuthoringAbiArrayOperationFunction())
+        fileBuilder.addType(
+            TypeSpec.objectBuilder("WinRTAuthoringAbiClasses")
+                .addModifiers(KModifier.INTERNAL)
+                .addFunction(authoringAbiClassFromAbiLookupFunction(entries))
+                .build(),
+        )
+        return supportFile("WinRTAuthoringAbiClasses.kt", fileBuilder.build())
+    }
+
+    private fun unsupportedAuthoringAbiArrayOperationFunction(): FunSpec =
+        FunSpec.builder("unsupportedAuthoringAbiArrayOperation")
+            .addModifiers(KModifier.PRIVATE)
+            .addParameter("projectedTypeName", String::class)
+            .addParameter("operation", String::class)
+            .addCode(
+                CodeBlock.of(
+                    "throw %T(%S + operation + %S + projectedTypeName)\n",
+                    UnsupportedOperationException::class,
+                    "Authoring ABI array operation is not implemented yet: ",
+                    " for ",
+                ),
+            )
+            .build()
+
     private fun renderAuthoringCustomQueryInterfacePlan(
         inventory: WinRtMetadataProjectionInventory,
         plans: List<KotlinTypeProjectionPlan>,
@@ -1052,6 +1125,257 @@ class KotlinProjectionSupportRenderer {
 
     private fun authoringServerActivationFactoryClassName(plan: KotlinTypeProjectionPlan): String =
         "_ServerActivationFactory_" + plan.type.qualifiedName
+            .replace('.', '_')
+            .replace('`', '_')
+
+    private fun authoringWrapperObject(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+        return TypeSpec.objectBuilder(authoringWrapperClassName(plan))
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(
+                PropertySpec.builder("projectedTypeName", String::class)
+                    .initializer("%S", plan.type.qualifiedName)
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("metadataTypeName", String::class)
+                    .initializer("%S", "ABI.${plan.type.qualifiedName}")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("defaultInterfaceName", String::class.asClassName().copy(nullable = true))
+                    .initializer("%L", nullableStringCode(plan.defaultInterfaceName))
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("wrap")
+                    .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .returns(projectedType)
+                    .addCode("return %T.Metadata.wrap(instance)\n", projectedType)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("fromAbi")
+                    .addParameter("pointer", RAW_ADDRESS_CLASS_NAME)
+                    .returns(projectedType.copy(nullable = true))
+                    .addCode(
+                        CodeBlock.of(
+                            """
+                            if (%T.isNull(pointer)) return null
+                            return wrap(%T(%T.toRawComPtr(pointer)))
+                            """.trimIndent() + "\n",
+                            PLATFORM_ABI_CLASS_NAME,
+                            IINSPECTABLE_REFERENCE_CLASS_NAME,
+                            PLATFORM_ABI_CLASS_NAME,
+                        ),
+                    )
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun authoringWrapperLookupFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
+        val code = CodeBlock.builder()
+        code.add("return when (runtimeClassName) {\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            code.add("%S -> %T.fromAbi(pointer)\n", plan.type.qualifiedName, ClassName(SUPPORT_PACKAGE, authoringWrapperClassName(plan)))
+        }
+        code.add("else -> null\n")
+        code.unindent()
+        code.add("}\n")
+        return FunSpec.builder("fromAbi")
+            .addParameter("runtimeClassName", String::class)
+            .addParameter("pointer", RAW_ADDRESS_CLASS_NAME)
+            .returns(ANY.copy(nullable = true))
+            .addCode(code.build())
+            .build()
+    }
+
+    private fun authoringAbiClassObject(plan: KotlinTypeProjectionPlan): TypeSpec {
+        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+        val wrapperType = ClassName(SUPPORT_PACKAGE, authoringWrapperClassName(plan))
+        val defaultInterfaceCode = plan.defaultInterfaceName
+            ?.substringBefore('<')
+            ?.let { CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(it)) }
+            ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME)
+        return TypeSpec.objectBuilder(authoringAbiClassName(plan))
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(
+                PropertySpec.builder("projectedTypeName", String::class)
+                    .initializer("%S", plan.type.qualifiedName)
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("abiTypeName", String::class)
+                    .initializer("%S", "ABI.${plan.type.qualifiedName}")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("defaultInterfaceId", GUID_CLASS_NAME)
+                    .initializer("%L", defaultInterfaceCode)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("CreateMarshaler")
+                    .addParameter("value", projectedType.copy(nullable = true))
+                    .returns(COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addCode("return CreateMarshaler2(value, defaultInterfaceId)\n")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("CreateMarshaler2")
+                    .addParameter("value", projectedType.copy(nullable = true))
+                    .addParameter("interfaceId", GUID_CLASS_NAME)
+                    .returns(COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addCode("return value?.let { %T.tryUnwrapObject(it) ?: %T.createCCWForObject(it, interfaceId) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME, COM_WRAPPERS_SUPPORT_CLASS_NAME)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("GetAbi")
+                    .addParameter("marshaler", COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .returns(RAW_ADDRESS_CLASS_NAME)
+                    .addCode("return marshaler?.pointer?.asRawAddress() ?: %T.nullPointer\n", PLATFORM_ABI_CLASS_NAME)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("FromAbi")
+                    .addParameter("pointer", RAW_ADDRESS_CLASS_NAME)
+                    .returns(projectedType.copy(nullable = true))
+                    .addCode("return %T.fromAbi(pointer)\n", wrapperType)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("FromManaged")
+                    .addParameter("value", projectedType.copy(nullable = true))
+                    .returns(RAW_ADDRESS_CLASS_NAME)
+                    .addCode(
+                        CodeBlock.of(
+                            """
+                            val marshaler = CreateMarshaler(value) ?: return %T.nullPointer
+                            return try {
+                                marshaler.getRefPointer().asRawAddress()
+                            } finally {
+                                marshaler.close()
+                            }
+                            """.trimIndent() + "\n",
+                            PLATFORM_ABI_CLASS_NAME,
+                        ),
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("CopyAbi")
+                    .addParameter("marshaler", COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addParameter("destination", RAW_ADDRESS_CLASS_NAME)
+                    .addCode("%T.writePointer(destination, GetAbi(marshaler))\n", PLATFORM_ABI_CLASS_NAME)
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("DisposeMarshaler")
+                    .addParameter("marshaler", COM_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addCode("marshaler?.close()\n")
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("DisposeAbi")
+                    .addParameter("pointer", RAW_ADDRESS_CLASS_NAME)
+                    .addCode(
+                        CodeBlock.of(
+                            """
+                            if (!%T.isNull(pointer)) {
+                                %T(%T.toRawComPtr(pointer)).close()
+                            }
+                            """.trimIndent() + "\n",
+                            PLATFORM_ABI_CLASS_NAME,
+                            IUNKNOWN_REFERENCE_CLASS_NAME,
+                            PLATFORM_ABI_CLASS_NAME,
+                        ),
+                    )
+                    .build(),
+            )
+            .addFunction(authoringAbiArrayUnsupportedFunction("CreateMarshalerArray", projectedType))
+            .addFunction(authoringAbiArrayUnsupportedFunction("GetAbiArray", projectedType))
+            .addFunction(authoringAbiArrayUnsupportedFunction("FromAbiArray", projectedType))
+            .addFunction(authoringAbiArrayUnsupportedFunction("CopyAbiArray", projectedType))
+            .addFunction(authoringAbiArrayUnsupportedFunction("FromManagedArray", projectedType))
+            .addFunction(authoringAbiArrayUnsupportedFunction("DisposeMarshalerArray", projectedType))
+            .addFunction(authoringAbiArrayUnsupportedFunction("DisposeAbiArray", projectedType))
+            .build()
+    }
+
+    private fun authoringAbiArrayUnsupportedFunction(name: String, projectedType: ClassName): FunSpec {
+        val builder = FunSpec.builder(name)
+        when (name) {
+            "CreateMarshalerArray", "FromManagedArray" -> {
+                builder.addParameter("values", Array::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
+                builder.returns(ANY.copy(nullable = true))
+            }
+            "GetAbiArray", "DisposeMarshalerArray" -> {
+                builder.addParameter("marshaler", ANY.copy(nullable = true))
+                if (name == "GetAbiArray") {
+                    builder.returns(RAW_ADDRESS_CLASS_NAME)
+                }
+            }
+            "FromAbiArray", "DisposeAbiArray" -> {
+                builder.addParameter("length", Int::class)
+                builder.addParameter("data", RAW_ADDRESS_CLASS_NAME)
+                if (name == "FromAbiArray") {
+                    builder.returns(List::class.asClassName().parameterizedBy(projectedType.copy(nullable = true)).copy(nullable = true))
+                }
+            }
+            "CopyAbiArray" -> {
+                builder.addParameter("marshaler", ANY.copy(nullable = true))
+                builder.addParameter("destination", RAW_ADDRESS_CLASS_NAME)
+            }
+        }
+        val returnStatement = when (name) {
+            "GetAbiArray" -> "return %T.nullPointer\n"
+            "FromAbiArray" -> "return null\n"
+            "CreateMarshalerArray", "FromManagedArray" -> "return null\n"
+            else -> ""
+        }
+        return builder
+            .addCode(
+                CodeBlock.builder()
+                    .add("unsupportedAuthoringAbiArrayOperation(%S, %S)\n", projectedType.canonicalName, name)
+                    .apply {
+                        if (returnStatement == "return %T.nullPointer\n") {
+                            add(returnStatement, PLATFORM_ABI_CLASS_NAME)
+                        } else {
+                            add(returnStatement)
+                        }
+                    }
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun authoringAbiClassFromAbiLookupFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
+        val code = CodeBlock.builder()
+        code.add("return when (runtimeClassName) {\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            code.add("%S -> %T.FromAbi(pointer)\n", plan.type.qualifiedName, ClassName(SUPPORT_PACKAGE, authoringAbiClassName(plan)))
+        }
+        code.add("else -> null\n")
+        code.unindent()
+        code.add("}\n")
+        return FunSpec.builder("FromAbi")
+            .addParameter("runtimeClassName", String::class)
+            .addParameter("pointer", RAW_ADDRESS_CLASS_NAME)
+            .returns(ANY.copy(nullable = true))
+            .addCode(code.build())
+            .build()
+    }
+
+    private fun authoringWrapperClassName(plan: KotlinTypeProjectionPlan): String =
+        "_AuthoringWrapper_" + plan.type.qualifiedName
+            .replace('.', '_')
+            .replace('`', '_')
+
+    private fun authoringAbiClassName(plan: KotlinTypeProjectionPlan): String =
+        "_AuthoringAbiClass_" + plan.type.qualifiedName
             .replace('.', '_')
             .replace('`', '_')
 
