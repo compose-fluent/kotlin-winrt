@@ -47,6 +47,7 @@ object KotlinWinRtAuthoringMetadataModel {
         outputFile: Path,
     ) {
         val runtimeClassNames = runtimeClassDescriptors(candidates).map { it.runtimeClassName }.sorted()
+        val targetArtifactName = "$assemblyName.jar"
         Files.createDirectories(outputFile.parent)
         Files.writeString(
             outputFile,
@@ -56,7 +57,9 @@ object KotlinWinRtAuthoringMetadataModel {
                 appendLine("  \"model\": \"jvm-authoring-host\",")
                 appendLine("  \"assemblyName\": ${assemblyName.toJsonString()},")
                 appendLine("  \"hostExportsClass\": \"io.github.kitectlab.winrt.projections.support.WinRTAuthoringHostExports\",")
-                appendLine("  \"activatableClasses\": ${runtimeClassNames.toJsonArray()}")
+                appendLine("  \"targetArtifact\": ${targetArtifactName.toJsonString()},")
+                appendLine("  \"activatableClasses\": ${runtimeClassNames.toJsonArray()},")
+                appendLine("  \"activatableClassTargets\": ${runtimeClassNames.associateWith { targetArtifactName }.toJsonObject()}")
                 appendLine("}")
             },
         )
@@ -74,4 +77,9 @@ object KotlinWinRtAuthoringMetadataModel {
             interfaceNames = candidate.winRtInterfaceNames,
             overridableInterfaceNames = candidate.overridableInterfaceNames,
         )
+
+    private fun Map<String, String>.toJsonObject(): String =
+        entries.joinToString(prefix = "{", postfix = "}") { (key, value) ->
+            "${key.toJsonString()}: ${value.toJsonString()}"
+        }
 }

@@ -118,7 +118,9 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(json.contains("\"model\": \"jvm-authoring-host\""))
         assertTrue(json.contains("\"assemblyName\": \"SampleComponent\""))
         assertTrue(json.contains("\"hostExportsClass\": \"io.github.kitectlab.winrt.projections.support.WinRTAuthoringHostExports\""))
+        assertTrue(json.contains("\"targetArtifact\": \"SampleComponent.jar\""))
         assertTrue(json.contains("\"activatableClasses\": [\"sample.App\"]"))
+        assertTrue(json.contains("\"activatableClassTargets\": {\"sample.App\": \"SampleComponent.jar\"}"))
     }
 
     private fun model(): WinRtMetadataModel =

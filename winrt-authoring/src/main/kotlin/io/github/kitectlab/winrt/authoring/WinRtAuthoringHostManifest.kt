@@ -20,7 +20,9 @@ import kotlin.io.path.isRegularFile
 data class WinRtAuthoringHostManifest(
     val assemblyName: String,
     val hostExportsClass: String,
+    val targetArtifact: String,
     val activatableClasses: List<String>,
+    val activatableClassTargets: Map<String, String>,
 )
 
 object WinRtAuthoringHostManifestLoader {
@@ -31,7 +33,9 @@ object WinRtAuthoringHostManifestLoader {
         return WinRtAuthoringHostManifest(
             assemblyName = readJsonString(content, "assemblyName").orEmpty(),
             hostExportsClass = readJsonString(content, "hostExportsClass").orEmpty(),
+            targetArtifact = readJsonString(content, "targetArtifact").orEmpty(),
             activatableClasses = readJsonStringArray(content, "activatableClasses"),
+            activatableClassTargets = readJsonStringMap(content, "activatableClassTargets"),
         )
     }
 
@@ -51,9 +55,9 @@ object WinRtAuthoringHostManifestLoader {
 
     fun install(manifests: List<WinRtAuthoringHostManifest>) {
         val entries = manifests
-            .filter { it.hostExportsClass.isNotBlank() && it.activatableClasses.isNotEmpty() }
+            .filter { it.hostExportsClass.isNotBlank() && it.runtimeClassNames().isNotEmpty() }
             .flatMap { manifest ->
-                manifest.activatableClasses.map { runtimeClassName -> runtimeClassName to manifest.hostExportsClass }
+                manifest.runtimeClassNames().map { runtimeClassName -> runtimeClassName to manifest.hostExportsClass }
             }
             .toMap()
         if (entries.isEmpty()) {
@@ -132,6 +136,17 @@ object WinRtAuthoringHostManifestLoader {
             .toList()
     }
 
+    private fun readJsonStringMap(content: String, name: String): Map<String, String> {
+        val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+            .find(content) ?: return emptyMap()
+        return Regex(""""((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"""")
+            .findAll(match.groupValues[1])
+            .associate { it.groupValues[1].decodeJsonString() to it.groupValues[2].decodeJsonString() }
+    }
+
     private fun String.decodeJsonString(): String =
         replace("\\\"", "\"").replace("\\\\", "\\")
+
+    private fun WinRtAuthoringHostManifest.runtimeClassNames(): List<String> =
+        (activatableClasses + activatableClassTargets.keys).distinct()
 }

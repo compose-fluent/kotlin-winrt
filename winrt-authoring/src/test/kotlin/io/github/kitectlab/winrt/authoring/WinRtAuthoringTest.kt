@@ -338,7 +338,10 @@ class WinRtAuthoringTest {
               "model": "jvm-authoring-host",
               "assemblyName": "RuntimeAssetsHostComponent",
               "hostExportsClass": "${RuntimeAssetsHostExports::class.java.name}",
-              "activatableClasses": ["Sample.Authoring.RuntimeAssetsHostComponent"]
+              "targetArtifact": "RuntimeAssetsHostComponent.jar",
+              "activatableClassTargets": {
+                "Sample.Authoring.RuntimeAssetsHostComponent": "RuntimeAssetsHostComponent.jar"
+              }
             }
             """.trimIndent(),
         )
