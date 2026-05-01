@@ -1157,12 +1157,21 @@ class KotlinProjectionPlanner(
         } else {
             null
         }
+        val interfaceId = when (resolvedType?.kind) {
+            WinRtTypeKind.RuntimeClass -> resolvedType.defaultInterfaceName
+                ?.let { defaultInterfaceName ->
+                    typesByQualifiedName[defaultInterfaceName]
+                        ?: typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                }
+                ?.iid
+            else -> resolvedType?.iid
+        } ?: mappedReferenceGenericInterfaceId(kind)
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
             typeName = trimmedTypeName,
             resolvedTypeName = resolvedTypeName,
             sourceTypeKind = resolvedType?.kind,
-            interfaceId = resolvedType?.iid ?: mappedReferenceGenericInterfaceId(kind),
+            interfaceId = interfaceId,
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             delegateInvokeShape = delegateInvokeShape,
             typeArguments = typeArguments,

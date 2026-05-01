@@ -261,6 +261,25 @@ actual object WinRtPlatformApi {
         )
     }
 
+    private val coTaskMemAllocHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoTaskMemAlloc",
+            FunctionDescriptor.of(
+                ValueLayout.ADDRESS,
+                ValueLayout.JAVA_LONG,
+            ),
+        )
+    }
+
+    private val coTaskMemFreeHandle: MethodHandle by lazy {
+        downcall(
+            ole32Lookup,
+            "CoTaskMemFree",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS),
+        )
+    }
+
     private val loadLibraryExWHandle: MethodHandle by lazy {
         downcall(
             kernel32Lookup,
@@ -524,6 +543,16 @@ actual object WinRtPlatformApi {
 
     actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult =
         coCreateFreeThreadedMarshaler(outer.asMemorySegment()).toNativePointerResult()
+
+    actual fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress {
+        ensureWindows()
+        return (coTaskMemAllocHandle.invokeWithArguments(sizeBytes) as MemorySegment).asRawAddress()
+    }
+
+    actual fun coTaskMemFreeRaw(pointer: RawAddress) {
+        ensureWindows()
+        coTaskMemFreeHandle.invokeWithArguments(pointer.asMemorySegment())
+    }
 
     actual fun windowsCreateStringRaw(
         utf16Chars: RawAddress,

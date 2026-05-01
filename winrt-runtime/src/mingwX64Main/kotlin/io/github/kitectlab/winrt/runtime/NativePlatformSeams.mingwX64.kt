@@ -159,6 +159,10 @@ actual object WinRtPlatformApi {
 
     actual fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress): NativePointerResult = TODO()
 
+    actual fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress = TODO()
+
+    actual fun coTaskMemFreeRaw(pointer: RawAddress): Unit = TODO()
+
     actual fun windowsCreateStringRaw(utf16Chars: RawAddress, length: Int, outHandle: RawAddress): Int = TODO()
 
     actual fun windowsCreateStringReferenceRaw(

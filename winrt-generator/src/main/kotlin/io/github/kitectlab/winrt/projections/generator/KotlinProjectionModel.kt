@@ -40,6 +40,7 @@ import io.github.kitectlab.winrt.metadata.requireValidForProjection
 import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.ComObjectReference
+import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
 import io.github.kitectlab.winrt.runtime.EventSource
@@ -90,7 +91,10 @@ import io.github.kitectlab.winrt.runtime.WinRtDelegateDescriptor
 import io.github.kitectlab.winrt.runtime.WinRtDelegateReference
 import io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind
 import io.github.kitectlab.winrt.runtime.WinRtEvent
+import io.github.kitectlab.winrt.runtime.WinRtObjectMarshaller
+import io.github.kitectlab.winrt.runtime.WinRtProjectedDelegate
 import io.github.kitectlab.winrt.runtime.WinRtClosableObject
+import io.github.kitectlab.winrt.runtime.WinRtComposableObjectReference
 import io.github.kitectlab.winrt.runtime.WinRtAttributeUsage
 import io.github.kitectlab.winrt.runtime.WinRtContractVersion
 import io.github.kitectlab.winrt.runtime.WinRtDefaultOverload
@@ -128,6 +132,7 @@ internal val IREFERENCE_ARRAY_GENERIC_INTERFACE_ID = Guid("61C17707-2D65-11E0-9A
 internal val GUID_CLASS_NAME = Guid::class.asClassName()
 internal val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
 internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
+internal val COM_WRAPPERS_SUPPORT_CLASS_NAME = ComWrappersSupport::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.kitectlab.winrt.projections.support", "WinRTGenericTypeInstantiations")
@@ -163,6 +168,8 @@ internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdap
 internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRtGenericParameterProjection::class.asClassName()
 internal val WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME =
     MemberName("io.github.kitectlab.winrt.runtime", "winRtKeyValuePairAdapter")
+internal val WINRT_OBJECT_MARSHALER_FUNCTION_NAME =
+    MemberName("io.github.kitectlab.winrt.runtime", "winRtObjectMarshaler")
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
@@ -173,10 +180,13 @@ internal val WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME = WinRtDelegateDescriptor::cla
 internal val WINRT_DELEGATE_REFERENCE_CLASS_NAME = WinRtDelegateReference::class.asClassName()
 internal val WINRT_DELEGATE_VALUE_KIND_CLASS_NAME = WinRtDelegateValueKind::class.asClassName()
 internal val WINRT_EVENT_CLASS_NAME = WinRtEvent::class.asClassName()
+internal val WINRT_OBJECT_MARSHALLER_CLASS_NAME = WinRtObjectMarshaller::class.asClassName()
+internal val WINRT_PROJECTED_DELEGATE_CLASS_NAME = WinRtProjectedDelegate::class.asClassName()
 internal val WINRT_EVENT_SOURCE_CLASS_NAME = EventSource::class.asClassName()
 internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
     ClassName("io.github.kitectlab.winrt.projections.support", "WinRTEventProjectionHelpers")
 internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRtClosableObject::class.asClassName()
+internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRtComposableObjectReference::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 internal val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 internal val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
@@ -469,7 +479,7 @@ internal data class KotlinProjectionIntegralAbiDescriptor(
  * repeating the same collection/async/custom-type tables across unrelated helpers.
  */
 internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
-    KotlinProjectionMappedType("System.Object", { IINSPECTABLE_REFERENCE_CLASS_NAME }, descriptionName = "Object"),
+    KotlinProjectionMappedType("System.Object", { ANY.copy(nullable = true) }, descriptionName = "Object"),
     KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
     KotlinProjectionMappedType(
         "Windows.Foundation.DateTime",

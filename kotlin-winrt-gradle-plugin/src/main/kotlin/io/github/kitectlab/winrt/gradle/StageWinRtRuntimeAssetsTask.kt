@@ -82,6 +82,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
             if (resolved.identity.isWindowsAppSdkPackage()) {
+                stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
+                stageWindowsAppSdkLiftedRegistrations(resolved.packageRoot, outputRoot)
                 stageWindowsAppSdkFrameworkAssets(
                     resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
                     outputRoot,
@@ -169,8 +171,22 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.walk(nativeRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() }
-                .filter { it.name.endsWith(".pri", ignoreCase = true) || "Microsoft.UI.Xaml" in it.relativeTo(nativeRoot).toString() }
                 .forEach { source -> copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
+        }
+    }
+
+    private fun stageWindowsAppSdkVersionInfo(packageRoot: Path, outputRoot: Path) {
+        val versionInfo = packageRoot.resolve("include").resolve("WindowsAppSDK-VersionInfo.h")
+        if (versionInfo.isRegularFile()) {
+            copyFile(versionInfo, outputRoot.resolve("include").resolve(versionInfo.name))
+        }
+    }
+
+    private fun stageWindowsAppSdkLiftedRegistrations(packageRoot: Path, outputRoot: Path) {
+        Files.walk(packageRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() && it.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
+                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
         }
     }
 

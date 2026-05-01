@@ -119,12 +119,90 @@ internal object XamlSystemProjectionRuntimeHooks {
         if (!FeatureSwitches.enableDefaultCustomTypeMappings) {
             return definition
         }
-        if (definition.interfaceDefinitions.any { it.interfaceId == IID.IStringable }) {
-            return definition
+        val withWinUiMetadataProvider = if (shouldExposeWinUiXamlMetadataProvider(definition)) {
+            definition.copy(
+                interfaceDefinitions = definition.interfaceDefinitions + createWinUiXamlMetadataProviderInterfaceDefinition(),
+            )
+        } else {
+            definition
         }
-        return definition.copy(
-            interfaceDefinitions = definition.interfaceDefinitions + createStringableInterfaceDefinition(value),
+        if (withWinUiMetadataProvider.interfaceDefinitions.any { it.interfaceId == IID.IStringable }) {
+            return withWinUiMetadataProvider
+        }
+        return withWinUiMetadataProvider.copy(
+            interfaceDefinitions = withWinUiMetadataProvider.interfaceDefinitions + createStringableInterfaceDefinition(value),
         )
+    }
+
+    private fun shouldExposeWinUiXamlMetadataProvider(definition: WinRtCcwDefinition): Boolean =
+        XamlProjectionConfiguration.supportsWinUiOnlyTypes &&
+            definition.interfaceDefinitions.any { it.interfaceId == WinUiXamlInterfaceIds.IApplicationOverrides } &&
+            definition.interfaceDefinitions.none { it.interfaceId == WinUiXamlInterfaceIds.IXamlMetadataProvider }
+
+    private fun createWinUiXamlMetadataProviderInterfaceDefinition(): WinRtInspectableInterfaceDefinition =
+        WinRtInspectableInterfaceDefinition(
+            interfaceId = WinUiXamlInterfaceIds.IXamlMetadataProvider,
+            methods = listOf(
+                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { rawArgs ->
+                    forwardWinUiXamlMetadataProviderCall(
+                        slot = WinUiXamlMetadataProviderSlots.GetXamlType,
+                        arg0 = rawArgs[0] as RawAddress,
+                        arg1 = rawArgs[1] as RawAddress,
+                    )
+                },
+                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { rawArgs ->
+                    forwardWinUiXamlMetadataProviderCall(
+                        slot = WinUiXamlMetadataProviderSlots.GetXamlTypeByFullName,
+                        arg0 = rawArgs[0] as RawAddress,
+                        arg1 = rawArgs[1] as RawAddress,
+                    )
+                },
+                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult_Ptr_Ptr) { rawArgs ->
+                    forwardWinUiXamlMetadataProviderCall(
+                        slot = WinUiXamlMetadataProviderSlots.GetXmlnsDefinitions,
+                        arg0 = rawArgs[0] as RawAddress,
+                        arg1 = rawArgs[1] as RawAddress,
+                    )
+                },
+            ),
+        )
+
+    private fun forwardWinUiXamlMetadataProviderCall(
+        slot: Int,
+        arg0: RawAddress,
+        arg1: RawAddress,
+    ): Int {
+        if (FeatureSwitches.traceCcw) {
+            println("winrt-xaml-metadata: forward slot=$slot")
+        }
+        val provider = WinUiXamlMetadataProviderCache.getOrCreate()
+            ?: return KnownHResults.E_NOINTERFACE.value.also {
+                if (FeatureSwitches.traceCcw) {
+                    println("winrt-xaml-metadata: provider unavailable hr=$it")
+                }
+            }
+        val hr = ComVtableInvoker.invokeArgs(
+            instance = provider.pointer,
+            slot = slot,
+            arg0 = arg0,
+            arg1 = arg1,
+        )
+        if (FeatureSwitches.traceCcw) {
+            println("winrt-xaml-metadata: forward slot=$slot hr=$hr")
+        }
+        return hr
+    }
+
+    private object WinUiXamlMetadataProviderCache {
+        private val lock = PlatformLock()
+        private var provider: WinUiXamlMetadataProviderReference? = null
+
+        fun getOrCreate(): WinUiXamlMetadataProviderReference? {
+            provider?.let { return it }
+            return lock.withLock {
+                provider ?: WinUiXamlMetadataProvider.tryCreate()?.also { provider = it }
+            }
+        }
     }
 
     private fun registerRcwFactories() {

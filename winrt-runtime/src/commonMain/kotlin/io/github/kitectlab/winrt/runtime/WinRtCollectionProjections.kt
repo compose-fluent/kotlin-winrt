@@ -53,6 +53,19 @@ object WinRtReferenceValueAdapters {
             marshaller = { value -> IInspectableReference(value.getRefPointer(), IID.IInspectable) },
         )
 
+    val object_: WinRtReferenceValueAdapter<Any?> =
+        WinRtReferenceValueAdapter(
+            projectedTypeName = "Any?",
+            typeSignature = WinRtTypeSignature.object_(),
+            projector = { reference ->
+                WinRtObjectMarshaller.fromAbi(reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer)
+            },
+            marshaller = { value ->
+                check(value != null) { "Null System.Object collection values are not supported by this adapter yet." }
+                ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
+            },
+        )
+
     fun <T : Any> valueType(
         projectedType: KClass<T>,
         projectedTypeName: String,

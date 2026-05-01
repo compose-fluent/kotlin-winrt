@@ -49,6 +49,9 @@ internal object CachedActivationFactoryPointers {
         if (!created.isSuccess) {
             return created
         }
+        if (PlatformAbi.isNull(created.pointer)) {
+            return ActivationResult(KnownHResults.E_POINTER, PlatformAbi.nullPointer)
+        }
 
         val existing = cache.putIfAbsent(key, created.pointer)
         if (existing != null) {

@@ -50,6 +50,7 @@ class WindowsRuntimePlatformTest {
     fun iid_catalog_matches_cswinrt_reference_values() {
         assertEquals(Guid("00000037-0000-0000-C000-000000000046"), IID.IWeakReference)
         assertEquals(Guid("00000038-0000-0000-C000-000000000046"), IID.IWeakReferenceSource)
+        assertEquals(Guid("64BD43F8-BFEE-4EC4-B7EB-2935158DAE21"), IID.IReferenceTrackerTarget)
         assertEquals(Guid("94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90"), IID.IAgileObject)
         assertEquals(Guid("C03F6A43-65A4-9818-987E-E0B810D2A6F2"), IID.IAgileReference)
         assertEquals(Guid("00000003-0000-0000-C000-000000000046"), IID.IMarshal)

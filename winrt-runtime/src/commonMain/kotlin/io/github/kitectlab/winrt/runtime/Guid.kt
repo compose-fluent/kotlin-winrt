@@ -1,15 +1,25 @@
-@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
-
 package io.github.kitectlab.winrt.runtime
 
-import kotlin.uuid.Uuid
+class Guid(value: String) {
+    val value: String = value.uppercase()
 
-data class Guid(val value: Uuid) {
-    constructor(value: String) : this(Uuid.parse(value))
+    init {
+        require(guidRegex.matches(this.value)) { "Invalid GUID: $value" }
+    }
 
-    override fun toString(): String = value.toString().uppercase()
+    override fun toString(): String = value
 
-    fun toNetworkBytes(): ByteArray = value.toByteArray()
+    override fun equals(other: Any?): Boolean =
+        other is Guid && value == other.value
+
+    override fun hashCode(): Int = value.hashCode()
+
+    fun toNetworkBytes(): ByteArray {
+        val hex = value.replace("-", "")
+        return ByteArray(BYTE_SIZE) { index ->
+            hex.substring(index * 2, index * 2 + 2).toInt(16).toByte()
+        }
+    }
 
     fun toLittleEndianBytes(): ByteArray {
         val network = toNetworkBytes()
@@ -38,7 +48,11 @@ data class Guid(val value: Uuid) {
 
         fun fromNetworkBytes(bytes: ByteArray): Guid {
             require(bytes.size == BYTE_SIZE) { "GUID bytes must be exactly $BYTE_SIZE bytes long." }
-            return Guid(Uuid.fromByteArray(bytes.copyOf()))
+            val hex = bytes.joinToString("") { byte -> byte.toUByte().toString(16).padStart(2, '0') }
+            return Guid(
+                "${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-" +
+                    "${hex.substring(16, 20)}-${hex.substring(20, 32)}",
+            )
         }
 
         fun fromLittleEndianBytes(bytes: ByteArray): Guid {
@@ -66,6 +80,8 @@ data class Guid(val value: Uuid) {
         }
     }
 }
+
+private val guidRegex = Regex("""[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}""")
 
 fun guidOf(value: String): Guid = Guid(value)
 

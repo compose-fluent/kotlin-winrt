@@ -268,9 +268,10 @@ internal fun KotlinProjectionRenderer.delegateParameterKindsCode(
 
 internal fun KotlinProjectionRenderer.delegateDescriptorCode(
     invokeShape: KotlinProjectionDelegateInvokeShape,
+    runtimeClassName: String,
 ): CodeBlock =
     CodeBlock.of(
-        "%T(interfaceId = %T(%S), parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L)",
+        "%T(interfaceId = %T(%S), parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, runtimeClassName = %S)",
         WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME,
         GUID_CLASS_NAME,
         invokeShape.interfaceId.toString(),
@@ -278,6 +279,7 @@ internal fun KotlinProjectionRenderer.delegateDescriptorCode(
         delegateInvokeReturnKindCode(invokeShape.returnBinding),
         delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
         delegateReturnStructAdapterCode(invokeShape.returnBinding),
+        runtimeClassName,
     )
 
 internal fun KotlinProjectionRenderer.delegateInvokeParameterKindsCode(
@@ -317,15 +319,15 @@ internal fun KotlinProjectionRenderer.delegateValueKindCode(typeBinding: KotlinP
     KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.GUID", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.STRUCT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
-    KotlinProjectionAbiValueKind.Object,
+    KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedInterface,
-    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.MappedAsyncAction,
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
     KotlinProjectionAbiValueKind.MappedAsyncOperation,
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
-    KotlinProjectionAbiValueKind.UnknownReference,
-    KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
 }
 
@@ -538,10 +540,10 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
         IUNKNOWN_REFERENCE_CLASS_NAME,
     )
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
-        "%T.Metadata.wrap((__args[%L] as %T).asInspectable())",
+        "%T.Metadata.wrap(__args[%L] as %T)",
         resolveTypeName(typeBinding.resolvedTypeName),
         index,
-        IUNKNOWN_REFERENCE_CLASS_NAME,
+        IINSPECTABLE_REFERENCE_CLASS_NAME,
     )
     KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("__args[%L] as %T", index, IUNKNOWN_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncAction -> CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME)
@@ -558,12 +560,12 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
         val progressType = typeBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
         CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
     }
-    KotlinProjectionAbiValueKind.Object,
-    KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of(
+    KotlinProjectionAbiValueKind.Object -> CodeBlock.of(
         "(__args[%L] as %T).asInspectable()",
         index,
         IUNKNOWN_REFERENCE_CLASS_NAME,
     )
+    KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("__args[%L] as %T", index, IINSPECTABLE_REFERENCE_CLASS_NAME)
     else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
 }
 

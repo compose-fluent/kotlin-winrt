@@ -6,6 +6,7 @@ data class WinRtCcwDefinition(
     val interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
     val defaultInterfaceId: Guid,
     val runtimeClassName: String? = null,
+    val hiddenInterfaceDefinitions: List<WinRtInspectableInterfaceDefinition> = emptyList(),
 )
 
 class SingleInterfaceOptimizedObject(
@@ -211,6 +212,8 @@ object ComWrappersSupport {
         val definition = createCcwDefinition(value)
         val host = WinRtInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+            defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = definition.runtimeClassName,
             managedValue = value,
         )
@@ -228,6 +231,8 @@ object ComWrappersSupport {
         var innerReference: IInspectableReference? = null
         val host = WinRtInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+            defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = definition.runtimeClassName,
             managedValue = value,
             queryInterfaceFallback = { requestedInterfaceId ->
@@ -408,20 +413,20 @@ object ComWrappersSupport {
 
     private fun createCcwDefinition(value: Any): WinRtCcwDefinition {
         findCcwFactory(value)?.let { factory ->
-            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
+            return InteropRuntimeHooks.augmentInspectableDefinition(
                 value,
-                InteropRuntimeHooks.augmentInspectableDefinition(value, factory(value)),
+                XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, factory(value)),
             )
         }
         platformCreateSyntheticCcwDefinition(value)?.let {
-            return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
+            return InteropRuntimeHooks.augmentInspectableDefinition(
                 value,
-                InteropRuntimeHooks.augmentInspectableDefinition(value, it),
+                XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(value, it),
             )
         }
-        return XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
+        return InteropRuntimeHooks.augmentInspectableDefinition(
             value,
-            InteropRuntimeHooks.augmentInspectableDefinition(
+            XamlSystemProjectionRuntimeHooks.augmentInspectableDefinition(
                 value,
                 WinRtCcwDefinition(
                     interfaceDefinitions = listOf(

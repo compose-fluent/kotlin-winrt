@@ -335,14 +335,20 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMapView -> mappedCollectionParameterMarshaler(parameterBinding)
         KotlinProjectionAbiValueKind.ProjectedInterface -> projectedInterfaceParameterMarshaler(parameterName, parameterBinding)
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> KotlinProjectionAbiMarshalerPlan(
-            name = parameterName,
-            typeBinding = parameterBinding.typeBinding,
-            isReturn = false,
-            abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
-            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        )
-        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> projectedRuntimeClassParameterMarshaler(parameterName, parameterBinding)
+        KotlinProjectionAbiValueKind.Object -> {
+            val marshalerName = "__${parameterName}Marshaler"
+            KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%L.abi", marshalerName),
+                abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+                scopeOpeners = listOf(
+                    CodeBlock.of("%M(%L).use { %L ->", WINRT_OBJECT_MARSHALER_FUNCTION_NAME, parameterName, marshalerName),
+                ),
+            )
+        }
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> KotlinProjectionAbiMarshalerPlan(
             name = parameterName,
@@ -366,6 +372,44 @@ private fun projectedInterfaceParameterMarshaler(
         abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
+
+private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
+    parameterName: String,
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): KotlinProjectionAbiMarshalerPlan {
+    val interfaceId = parameterBinding.typeBinding.interfaceId
+        ?: return KotlinProjectionAbiMarshalerPlan(
+            name = parameterName,
+            typeBinding = parameterBinding.typeBinding,
+            isReturn = false,
+            abiArgumentExpression = CodeBlock.of(
+                "%T.fromRawComPtr((%L as %T).nativeObject.pointer)",
+                PLATFORM_ABI_CLASS_NAME,
+                parameterName,
+                IWINRT_OBJECT_CLASS_NAME,
+            ),
+            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+        )
+    val referenceName = "__${parameterName}AbiReference"
+    return KotlinProjectionAbiMarshalerPlan(
+        name = parameterName,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, referenceName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+        scopeOpeners = listOf(
+            CodeBlock.of(
+                "val %L = (%L as %T).nativeObject.queryInterface(%T(%S)).getOrThrow()\n%L.use {",
+                referenceName,
+                parameterName,
+                IWINRT_OBJECT_CLASS_NAME,
+                GUID_CLASS_NAME,
+                interfaceId.toString(),
+                referenceName,
+            ),
+        ),
+    )
+}
 
 private fun genericParameterMarshaler(
     parameterName: String,
@@ -551,13 +595,22 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
                 return null
             }
         KotlinProjectionAbiValueKind.Object ->
-            CodeBlock.of(
-                "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __resultRef = %T(%T.toRawComPtr(__resultPointer))\nval __result = __resultRef.use { it.asInspectable() }\nreturn __result\n",
-                PLATFORM_ABI_CLASS_NAME,
-                abiNullReturnReadback(returnBinding),
-                IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
-            )
+            if (resolvedReturnClassName(returnBinding) == IINSPECTABLE_REFERENCE_CLASS_NAME) {
+                CodeBlock.of(
+                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __resultRef = %T(%T.toRawComPtr(__resultPointer))\nval __result = __resultRef.use { it.asInspectable() }\nreturn __result\n",
+                    PLATFORM_ABI_CLASS_NAME,
+                    abiNullReturnReadback(returnBinding),
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                )
+            } else {
+                CodeBlock.of(
+                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __result = %T.fromAbi(__resultPointer)\nreturn __result\n",
+                    PLATFORM_ABI_CLASS_NAME,
+                    abiNullReturnReadback(returnBinding),
+                    WINRT_OBJECT_MARSHALLER_CLASS_NAME,
+                )
+            }
         KotlinProjectionAbiValueKind.UnknownReference ->
             if (resolvedReturnClassName(returnBinding) == IUNKNOWN_REFERENCE_CLASS_NAME) {
                 CodeBlock.of(

@@ -8,7 +8,7 @@ class ParameterizedInterfaceIdTest {
     @Test
     fun creates_winrt_pinterface_guid_from_known_cswinrt_signature() {
         assertEquals(
-            Guid("A4D92B05-F965-5E3C-B9E1-401FF306BA93"),
+            Guid("98B9ACC1-4B56-532E-AC73-03D5291CCA90"),
             ParameterizedInterfaceId.createFromSignature(
                 "pinterface({913337e9-11a1-4345-a3a2-4e7f956e222d};string)",
             ),
@@ -18,7 +18,7 @@ class ParameterizedInterfaceIdTest {
     @Test
     fun creates_winrt_runtime_class_signature_guid_from_known_cswinrt_signature() {
         assertEquals(
-            Guid("D0FAAE99-FB94-5270-97AB-7F78AF83EBF1"),
+            Guid("B9D890EA-0397-53EA-A1AC-96653135C3D4"),
             ParameterizedInterfaceId.createFromSignature(
                 WinRtTypeSignature.runtimeClass(
                     "Microsoft.UI.Xaml.Controls.UIElementCollection",
@@ -101,5 +101,25 @@ class ParameterizedInterfaceIdTest {
             )
 
         assertEquals(fromSignature, fromConvenience)
+    }
+
+    @Test
+    fun creates_i_reference_string_guid_from_known_winrt_signature() {
+        assertEquals(
+            IID.NullableString,
+            ParameterizedInterfaceId.createFromSignature(
+                "pinterface({61c17706-2d65-11e0-9ae8-d48564015472};string)",
+            ),
+        )
+    }
+
+    @Test
+    fun creates_i_reference_delegate_guid_from_known_winui_add_handler_probe() {
+        assertEquals(
+            Guid("DEA1E123-12EA-5CB3-B923-ABE74E426D9E"),
+            ParameterizedInterfaceId.createFromSignature(
+                "pinterface({61c17706-2d65-11e0-9ae8-d48564015472};delegate({b60074f3-125b-534e-8f9c-9769bd3f0f64}))",
+            ),
+        )
     }
 }

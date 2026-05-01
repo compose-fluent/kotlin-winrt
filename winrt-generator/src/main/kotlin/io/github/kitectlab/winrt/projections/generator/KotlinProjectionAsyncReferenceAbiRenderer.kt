@@ -784,9 +784,10 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     if (typeBinding.kind == KotlinProjectionAbiValueKind.String) {
         return CodeBlock.of("%T.string", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME)
     }
-    if (typeBinding.kind == KotlinProjectionAbiValueKind.Object ||
-        typeBinding.kind == KotlinProjectionAbiValueKind.InspectableReference
-    ) {
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.Object) {
+        return CodeBlock.of("%T.object_", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME)
+    }
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.InspectableReference) {
         return CodeBlock.of("%T.inspectable", WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME)
     }
     if (typeBinding.kind == KotlinProjectionAbiValueKind.MappedKeyValuePair && typeBinding.typeArguments.size == 2) {

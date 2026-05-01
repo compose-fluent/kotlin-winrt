@@ -71,6 +71,14 @@ tasks.named<JavaExec>("run") {
         "kotlin.winrt.samples.runWinUiSmoke",
         providers.systemProperty("kotlin.winrt.samples.runWinUiSmoke").orElse("false").get(),
     )
+    systemProperty(
+        "kotlin.winrt.samples.autoNavigateWinUi",
+        providers.systemProperty("kotlin.winrt.samples.autoNavigateWinUi").orElse("false").get(),
+    )
+    systemProperty(
+        "KOTLIN_WINRT_TRACE_CCW",
+        providers.systemProperty("KOTLIN_WINRT_TRACE_CCW").orElse("false").get(),
+    )
 }
 
 val verifyWinRtSampleIdentity by tasks.registering {

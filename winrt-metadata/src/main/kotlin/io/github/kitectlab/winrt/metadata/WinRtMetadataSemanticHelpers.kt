@@ -1543,9 +1543,10 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun methodVtableDescriptor(type: WinRtTypeDefinition, method: WinRtMethodDefinition): WinRtMethodVtableDescriptor {
         val normalizedType = type.normalized()
         val methodOrder = methodOrderByName(normalizedType)
-        val vmethodIndex = method.methodRowId?.let { rowId ->
-            normalizedType.methods.mapNotNull(WinRtMethodDefinition::methodRowId).minOrNull()?.let { base -> rowId - base }
-        } ?: methodOrder[method.name] ?: normalizedType.methods.indexOfFirst { it.signatureKey() == method.signatureKey() }.coerceAtLeast(0)
+        val abiOrder = abiMemberOrderByRowId(normalizedType)
+        val vmethodIndex = method.methodRowId?.let(abiOrder::get)
+            ?: methodOrder[method.name]
+            ?: normalizedType.methods.indexOfFirst { it.signatureKey() == method.signatureKey() }.coerceAtLeast(0)
         return WinRtMethodVtableDescriptor(
             ownerTypeName = normalizedType.qualifiedName,
             methodName = method.name,
@@ -2126,12 +2127,50 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     }
 
     private fun methodOrderByName(type: WinRtTypeDefinition): Map<String, Int> =
-        type.normalized().methods
-            .mapIndexed { index, method -> method.name to method.methodRowId }
-            .let { methods ->
-                val baseRowId = methods.mapNotNull { it.second }.minOrNull()
-                methods.mapIndexed { index, (name, rowId) -> name to (rowId?.let { it - (baseRowId ?: it) } ?: index) }.toMap()
+        type.normalized().let { normalized ->
+            val members = buildList<Pair<String, Int?>> {
+                normalized.properties.forEach { property ->
+                    property.getterMethodName?.let { add(it to normalized.effectiveAccessorRowId(it, property.getterMethodRowId)) }
+                    property.setterMethodName?.let { add(it to normalized.effectiveAccessorRowId(it, property.setterMethodRowId)) }
+                }
+                normalized.events.forEach { event ->
+                    event.addMethodName?.let { add(it to normalized.effectiveAccessorRowId(it, event.addMethodRowId)) }
+                    event.removeMethodName?.let { add(it to normalized.effectiveAccessorRowId(it, event.removeMethodRowId)) }
+                }
+                normalized.methods.forEach { method ->
+                    add(method.name to method.methodRowId)
+                }
             }
+            val rowIndex = members.mapNotNull { it.second }.distinct().sorted().mapIndexed { index, rowId -> rowId to index }.toMap()
+            var fallbackIndex = rowIndex.size
+            buildMap {
+                members.forEach { (name, rowId) ->
+                    if (!containsKey(name)) {
+                        put(name, rowId?.let(rowIndex::get) ?: fallbackIndex++)
+                    }
+                }
+            }
+        }
+
+    private fun abiMemberOrderByRowId(type: WinRtTypeDefinition): Map<Int, Int> {
+        val members = buildList {
+            type.properties.forEach { property ->
+                property.getterMethodName?.let { type.effectiveAccessorRowId(it, property.getterMethodRowId) }?.let(::add)
+                property.setterMethodName?.let { type.effectiveAccessorRowId(it, property.setterMethodRowId) }?.let(::add)
+            }
+            type.events.forEach { event ->
+                event.addMethodName?.let { type.effectiveAccessorRowId(it, event.addMethodRowId) }?.let(::add)
+                event.removeMethodName?.let { type.effectiveAccessorRowId(it, event.removeMethodRowId) }?.let(::add)
+            }
+            type.methods.forEach { method ->
+                method.methodRowId?.let(::add)
+            }
+        }.distinct().sorted()
+        return members.mapIndexed { index, rowId -> rowId to index }.toMap()
+    }
+
+    private fun WinRtTypeDefinition.effectiveAccessorRowId(accessorName: String, declaredRowId: Int?): Int? =
+        methods.firstOrNull { it.name == accessorName }?.methodRowId ?: declaredRowId
 
     private fun projectedSignatureHasGenericParameters(
         returnType: WinRtTypeRef,

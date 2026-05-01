@@ -20,6 +20,7 @@ internal object FeatureSwitches {
     const val UseWindowsUIXamlProjectionsPropertyName: String = "CSWINRT_USE_WINDOWS_UI_XAML_PROJECTIONS"
     const val SuppressCustomPropertyNotSupportedExceptionPropertyName: String =
         "CSWINRT_SUPPRESS_CUSTOM_PROPERTY_NOT_SUPPORTED_EXCEPTION"
+    const val TraceCcwPropertyName: String = "KOTLIN_WINRT_TRACE_CCW"
 
     private val cachedResults = ConcurrentCacheMap<String, Int>()
     private val testOverrides = ConcurrentCacheMap<String, Int>()
@@ -53,6 +54,9 @@ internal object FeatureSwitches {
 
     val suppressCustomPropertyNotSupportedException: Boolean
         get() = getConfigurationValue(SuppressCustomPropertyNotSupportedExceptionPropertyName, defaultValue = false)
+
+    val traceCcw: Boolean
+        get() = getConfigurationValue(TraceCcwPropertyName, defaultValue = false)
 
     internal fun overrideForTests(
         propertyName: String,

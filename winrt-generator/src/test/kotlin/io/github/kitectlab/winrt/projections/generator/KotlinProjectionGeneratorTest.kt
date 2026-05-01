@@ -554,7 +554,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_projects_system_object_as_winrt_reference_not_kotlin_any() {
+    fun generator_projects_system_object_as_kotlin_object_with_winrt_object_marshaling() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -580,8 +580,9 @@ class KotlinProjectionGeneratorTest {
 
         val contents = KotlinProjectionGenerator().generate(model).single().contents
 
-        assertTrue(contents, contents.contains("fun GetObject(input: IInspectableReference): IInspectableReference"))
-        assertFalse(contents, contents.contains("fun GetObject(input: Any): Any"))
+        assertTrue(contents, contents.contains("fun GetObject(input: Any?): Any?"))
+        assertTrue(contents, contents.contains("winRtObjectMarshaler(input).use"))
+        assertFalse(contents, contents.contains("fun GetObject(input: IInspectableReference): IInspectableReference"))
     }
 
     @Test
@@ -922,6 +923,48 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("static WinRT class shell"))
         assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("public enum class WidgetContract"))
         assertTrue(filesByName.getValue("WidgetContract.kt").contents.contains("api contract WinRT declaration shell"))
+    }
+
+    @Test
+    fun generator_orders_interface_slots_across_properties_events_and_methods() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IMixedStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Start",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 101,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Current",
+                                    typeName = "String",
+                                    getterMethodName = "get_Current",
+                                    getterMethodRowId = 100,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .single { it.relativePath.endsWith("IMixedStatics.kt") }
+            .contents
+
+        assertTrue(contents.contains("internal const val CURRENT_GETTER_SLOT: Int = 6"))
+        assertTrue(contents.contains("internal const val START_SLOT: Int = 7"))
     }
 
     @Test
@@ -1289,19 +1332,21 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val widgetContents = KotlinProjectionGenerator()
+        val generated = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("Widget.kt")
-            .contents
+        val widgetContents = generated.getValue("Widget.kt").contents
+        val widgetInterfaceContents = generated.getValue("IWidget.kt").contents
 
         assertTrue(widgetContents.contains("IWidget"))
         assertTrue(widgetContents.contains("IWinRTObject"))
         assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
         assertTrue(widgetContents.contains("fun setValue(`value`: WidgetValue)"))
-        assertTrue(widgetContents.contains("(value as IWinRTObject).nativeObject.pointer"))
+        assertTrue(widgetContents, widgetContents.contains("nativeObject.queryInterface(Guid(\"22222222-2222-2222-2222-222222222222\"))"))
+        assertTrue(widgetContents.contains("__valueAbiReference.use {"))
         assertTrue(widgetContents.contains("fun setNamedValue(name: String, `value`: WidgetValue)"))
         assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
+        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("nativeObject.queryInterface(Guid(\"22222222-2222-2222-2222-222222222222\"))"))
     }
 
     @Test
@@ -1480,7 +1525,6 @@ class KotlinProjectionGeneratorTest {
                                 WinRtInterfaceImplementationDefinition(
                                     "Sample.Foundation.IWidget",
                                     isDefault = true,
-                                    isOverridable = true,
                                     isOverridable = true,
                                 ),
                             ),
@@ -2081,6 +2125,60 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
         assertTrue(widgetContents.contains("val __result = WidgetHandler.Metadata.fromAbi(__resultPointer)"))
         assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"WinRT ABI binding is unavailable\")"))
+    }
+
+    @Test
+    fun generator_decodes_delegate_runtime_class_callback_parameters_as_inspectable_references() {
+        // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_delegate -> write_managed_method_call:
+        // ABI delegate parameters are marshaled according to their signature before invoking the projected delegate.
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "TappedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "System.Object"),
+                                        WinRtParameterDefinition("args", "Sample.Foundation.TappedRoutedEventArgs"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "TappedRoutedEventArgs",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ITappedRoutedEventArgs",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ITappedRoutedEventArgs", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ITappedRoutedEventArgs",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.substringAfterLast('/') == "TappedEventHandler.kt" }
+            .contents
+
+        assertTrue(contents.contains("listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.IINSPECTABLE)"))
+        assertTrue(contents.contains("TappedRoutedEventArgs.Metadata.wrap(__args[1] as IInspectableReference)"))
+        assertFalse(contents.contains("TappedRoutedEventArgs.Metadata.wrap((__args[1] as IUnknownReference).asInspectable())"))
     }
 
     @Test
@@ -4538,8 +4636,8 @@ class KotlinProjectionGeneratorTest {
             .getValue("ObjectMap.kt")
             .contents
 
-        assertTrue(mapContents, mapContents.contains("Map<String, IInspectableReference>,"))
-        assertTrue(mapContents, mapContents.contains("Map.Entry<String, IInspectableReference>"))
+        assertTrue(mapContents, mapContents.contains("Map<String, Any?>,"))
+        assertTrue(mapContents, mapContents.contains("Map.Entry<String, Any?>"))
         assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
         assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
         assertFalse(mapContents, mapContents.contains("T0"))
@@ -4814,6 +4912,7 @@ class KotlinProjectionGeneratorTest {
                                 io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition(
                                     interfaceName = "Sample.Foundation.IWidget",
                                     isDefault = true,
+                                    isOverridable = true,
                                 ),
                             ),
                             methods = listOf(

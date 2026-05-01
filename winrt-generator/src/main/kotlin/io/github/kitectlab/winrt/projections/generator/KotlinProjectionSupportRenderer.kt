@@ -1322,7 +1322,7 @@ class KotlinProjectionSupportRenderer {
 
     private fun eventSourceCreateMarshalerCode(invokeShape: KotlinProjectionDelegateInvokeShape): CodeBlock {
         val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
-            "__args[$index] as ${typeRenderer.resolveTypeName(binding.typeBinding.typeName)}"
+            eventSourceCallbackArgumentCode(index, binding.typeBinding).toString()
         }
         return CodeBlock.of(
             """
@@ -1335,11 +1335,32 @@ class KotlinProjectionSupportRenderer {
             }
             """.trimIndent() + "\n",
             invokeShape.interfaceId.toString(),
-            delegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding }),
+            eventSourceDelegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding }),
             delegateValueKindName(invokeShape.returnBinding),
             callbackArguments.joinToString(", "),
         )
     }
+
+    private fun eventSourceCallbackArgumentCode(
+        index: Int,
+        binding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock =
+        if (mappedTypeByAbiName(binding.typeName) != null) {
+            CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
+        } else {
+            typeRenderer.delegateCallbackArgumentCode(index, binding)
+        }
+
+    private fun eventSourceDelegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
+        bindings.joinToString(prefix = "listOf(", postfix = ")") { eventSourceDelegateValueKindName(it) }
+
+    private fun eventSourceDelegateValueKindName(binding: KotlinProjectionAbiTypeBinding): String =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+            KotlinProjectionAbiValueKind.InspectableReference,
+            -> "io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind.IINSPECTABLE"
+            else -> delegateValueKindName(binding)
+        }
 
     private fun eventSourceStateCode(
         delegatePlan: KotlinTypeProjectionPlan,

@@ -515,12 +515,21 @@ class KotlinProjectionRenderer {
                 }
             }
         }
+        val interfaceId = when (resolvedType?.kind) {
+            WinRtTypeKind.RuntimeClass -> resolvedType.defaultInterfaceName
+                ?.let { defaultInterfaceName ->
+                    typesByQualifiedName[defaultInterfaceName]
+                        ?: typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                }
+                ?.iid
+            else -> resolvedType?.iid
+        } ?: mappedReferenceGenericInterfaceId(kind)
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
             typeName = trimmed,
             resolvedTypeName = rawTypeName,
             sourceTypeKind = resolvedType?.kind,
-            interfaceId = resolvedType?.iid ?: mappedReferenceGenericInterfaceId(kind),
+            interfaceId = interfaceId,
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             typeArguments = typeArguments,
         )
@@ -557,18 +566,51 @@ class KotlinProjectionRenderer {
             .addModifiers(KModifier.INTERNAL)
             .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
             .addParameter("__winrtWrapper", UNIT)
+        val supportsDerivedComposableConstruction = plan.supportsDerivedComposableConstruction()
         plan.runtimeClassBaseTypeName?.let { baseTypeName ->
             builder.superclass(resolveTypeName(baseTypeName))
             builder.addSuperclassConstructorParameter("_inner")
             builder.addSuperclassConstructorParameter("kotlin.Unit")
         }
-        builder.primaryConstructor(constructorBuilder.build())
-        builder.addProperty(
-            PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
-                .addModifiers(KModifier.PRIVATE)
-                .initializer("_inner")
-                .build(),
-        )
+        if (supportsDerivedComposableConstruction) {
+            builder.addProperty(
+                PropertySpec.builder("_innerStorage", IINSPECTABLE_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addModifiers(KModifier.PRIVATE)
+                    .mutable(true)
+                    .initializer("null")
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder("_composableReference", WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addModifiers(KModifier.PRIVATE)
+                    .mutable(true)
+                    .initializer("null")
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addCode("return requireNotNull(_innerStorage) { %S }\n", "WinRT runtime class object reference is not initialized.")
+                            .build(),
+                    )
+                    .build(),
+            )
+            builder.addFunction(
+                constructorBuilder
+                    .addStatement("this._innerStorage = _inner")
+                    .build(),
+            )
+        } else {
+            builder.primaryConstructor(constructorBuilder.build())
+            builder.addProperty(
+                PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .initializer("_inner")
+                    .build(),
+            )
+        }
         builder.addProperty(
             PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
                 .addModifiers(KModifier.OVERRIDE)
@@ -611,13 +653,7 @@ class KotlinProjectionRenderer {
             }
             builder.addProperty(
                 PropertySpec.builder("_defaultInterface", defaultCacheType)
-                    .addModifiers(KModifier.PROTECTED)
-                    .apply {
-                        when {
-                            plan.runtimeClassBaseTypeName != null -> addModifiers(KModifier.OVERRIDE)
-                            plan.hasRuntimeClassDerivedTypes -> addModifiers(KModifier.OPEN)
-                        }
-                    }
+                    .addModifiers(KModifier.PRIVATE)
                     .apply {
                         if (defaultObjectReferencePlan?.usesInner == true) {
                             getter(
@@ -2122,6 +2158,33 @@ class KotlinProjectionRenderer {
         val invokeMethod = requireDelegateInvokeMethod(plan.type)
         val builder = TypeSpec.funInterfaceBuilder(plan.type.name)
         applyCommonTypeShape(builder, plan)
+        val invokeShape = plan.delegateInvokeShape
+        if (invokeShape != null && supportsProjectedDelegateObjectMarshaller(plan, invokeShape)) {
+            builder.addSuperinterface(WINRT_PROJECTED_DELEGATE_CLASS_NAME)
+            builder.addFunction(
+                FunSpec.builder("createWinRtDelegateHandle")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(ClassName("io.github.kitectlab.winrt.runtime", "WinRtDelegateHandle"))
+                    .addCode(
+                        CodeBlock.of(
+                            """
+                            return %T.createDelegate(
+                                iid = Metadata.DESCRIPTOR.interfaceId,
+                                parameterKinds = Metadata.DESCRIPTOR.parameterKinds,
+                                returnKind = Metadata.DESCRIPTOR.returnKind,
+                                parameterStructAdapters = Metadata.DESCRIPTOR.parameterStructAdapters,
+                                returnStructAdapter = Metadata.DESCRIPTOR.returnStructAdapter,
+                            ) { __args ->
+                                this(%L)
+                            }
+                            """.trimIndent() + "\n",
+                            WINRT_DELEGATE_BRIDGE_CLASS_NAME,
+                            delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
+                        ),
+                    )
+                    .build(),
+            )
+        }
         builder.addFunction(
             FunSpec.builder("invoke")
                 .addModifiers(KModifier.ABSTRACT, KModifier.OPERATOR)
@@ -2133,7 +2196,6 @@ class KotlinProjectionRenderer {
                 .returns(resolveTypeName(invokeMethod.returnTypeName))
                 .build(),
         )
-        val invokeShape = plan.delegateInvokeShape
         if (invokeShape != null && invokeShape.isSupportedProjectedDelegateShape()) {
             val projectedType = plan.projectedSelfTypeName()
             builder.addType(
@@ -2141,7 +2203,7 @@ class KotlinProjectionRenderer {
                     .addProperty(
                         PropertySpec.builder("DESCRIPTOR", WINRT_DELEGATE_DESCRIPTOR_CLASS_NAME)
                             .addModifiers(KModifier.INTERNAL)
-                            .initializer("%L", delegateDescriptorCode(invokeShape))
+                            .initializer("%L", delegateDescriptorCode(invokeShape, plan.type.qualifiedName))
                             .build(),
                     )
                     .addFunction(
@@ -2184,3 +2246,50 @@ class KotlinProjectionRenderer {
         return builder.build()
     }
 }
+
+internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
+    classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor -> descriptor.isOverridableInterface } == true &&
+        type.baseTypeName?.takeUnless { it == "System.Object" || it == "Any" } == null &&
+        KotlinProjectionCompanionKind.ComposableFactory in companionKinds
+
+private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshaller(
+    plan: KotlinTypeProjectionPlan,
+    invokeShape: KotlinProjectionDelegateInvokeShape,
+): Boolean =
+    plan.type.genericParameterCount == 0 &&
+        invokeShape.returnBinding.kind == KotlinProjectionAbiValueKind.Unit &&
+        invokeShape.isSupportedOutboundDelegateShape() &&
+        invokeShape.parameterBindings.all { binding -> supportsProjectedDelegateObjectMarshallerArgument(binding.typeBinding) }
+
+private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshallerArgument(
+    typeBinding: KotlinProjectionAbiTypeBinding,
+): Boolean =
+    when (typeBinding.kind) {
+        KotlinProjectionAbiValueKind.String,
+        KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8,
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16,
+        KotlinProjectionAbiValueKind.Char16,
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32,
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64,
+        KotlinProjectionAbiValueKind.Float,
+        KotlinProjectionAbiValueKind.Double,
+        KotlinProjectionAbiValueKind.GuidValue,
+        KotlinProjectionAbiValueKind.Struct,
+        KotlinProjectionAbiValueKind.Enum,
+        KotlinProjectionAbiValueKind.Object,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference,
+        KotlinProjectionAbiValueKind.MappedAsyncAction,
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
+        KotlinProjectionAbiValueKind.MappedAsyncOperation,
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> true
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            resolveTypeName(typeBinding.resolvedTypeName).toString().startsWith(ROOT_PACKAGE_SEGMENTS.joinToString("."))
+        else -> false
+    }

@@ -172,6 +172,10 @@ expect object WinRtPlatformApi {
 
     fun coCreateFreeThreadedMarshalerRaw(outer: RawAddress = PlatformAbi.nullPointer): NativePointerResult
 
+    fun coTaskMemAllocRaw(sizeBytes: Long): RawAddress
+
+    fun coTaskMemFreeRaw(pointer: RawAddress)
+
     fun windowsCreateStringRaw(utf16Chars: RawAddress, length: Int, outHandle: RawAddress): Int
 
     fun windowsCreateStringReferenceRaw(

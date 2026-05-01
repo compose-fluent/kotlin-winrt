@@ -17,7 +17,7 @@ object ParameterizedInterfaceId {
     ): Guid = createFromSignature(WinRtTypeSignature.parameterizedInterface(genericInterface, *arguments))
 
     fun createFromSignature(signature: String): Guid {
-        val hash = Sha1.digest(namespace.toNetworkBytes() + signature.encodeToByteArray())
+        val hash = Sha1.digest(namespace.toLittleEndianBytes() + signature.encodeToByteArray())
         val guidBytes = hash.copyOfRange(0, Guid.BYTE_SIZE)
         guidBytes[6] = ((guidBytes[6].toInt() and 0x0F) or 0x50).toByte()
         guidBytes[8] = ((guidBytes[8].toInt() and 0x3F) or 0x80).toByte()

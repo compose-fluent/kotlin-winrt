@@ -257,6 +257,7 @@ private val DIRECT_VTABLE_INVOKE_OVERLOADS: Set<List<KotlinProjectionComArgument
     listOf(D, D, P),
     listOf(I8, I16, F),
     listOf(P, P, P),
+    listOf(P, P, I8),
     listOf(I32, P, P),
     listOf(P, I32, P),
     listOf(I32, I32, P, P),

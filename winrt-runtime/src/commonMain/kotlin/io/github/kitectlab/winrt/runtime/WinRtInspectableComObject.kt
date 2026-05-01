@@ -23,6 +23,8 @@ internal data class WinRtInspectableInfoSnapshot(
 
 internal class WinRtInspectableComObject(
     interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
+    hiddenInterfaceDefinitions: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+    defaultInterfaceId: Guid? = null,
     private val runtimeClassName: String? = null,
     private val trustLevel: Int = 0,
     private val managedValue: Any? = null,
@@ -31,15 +33,18 @@ internal class WinRtInspectableComObject(
     private val scope = PlatformAbi.sharedScope()
     private val state = ManagedComHostState(::cleanup)
     private val interfaces = interfaceDefinitions.associateBy { it.interfaceId }
-    private val interfaceEntries = interfaceDefinitions.associate { definition ->
+    private val allInterfaces = (interfaceDefinitions + hiddenInterfaceDefinitions).associateBy { it.interfaceId }
+    private val interfaceEntries = (interfaceDefinitions + hiddenInterfaceDefinitions).associate { definition ->
         definition.interfaceId to createInterfaceEntry(definition)
     }
-    private val interfaceIdsMemory = allocateInterfaceIds(interfaceDefinitions)
     private val externalPointerAliases = mutableListOf<Long>()
     private val primaryInspectableInterfaceId = interfaceDefinitions.firstOrNull {
         it.baseKind == WinRtComInterfaceBaseKind.IInspectable
     }?.interfaceId
-    private val primaryInterfaceId = primaryInspectableInterfaceId ?: interfaceDefinitions.firstOrNull()?.interfaceId
+    private val primaryInterfaceId = defaultInterfaceId
+        ?.takeIf { it in interfaces }
+        ?: primaryInspectableInterfaceId
+        ?: interfaceDefinitions.firstOrNull()?.interfaceId
         ?: error("Inspectable COM object must expose at least one interface.")
 
     init {
@@ -84,7 +89,8 @@ internal class WinRtInspectableComObject(
     private fun interfacePointer(interfaceId: Guid): RawAddress =
         when (interfaceId) {
             IID.IUnknown -> interfaceEntries.getValue(primaryInterfaceId).objectMemory
-            IID.IInspectable -> primaryInspectableInterfaceId?.let { interfaceEntries.getValue(it).objectMemory }
+            IID.IInspectable -> interfaceEntries[IID.IInspectable]?.objectMemory
+                ?: primaryInspectableInterfaceId?.let { interfaceEntries.getValue(it).objectMemory }
             else -> interfaceEntries[interfaceId]?.objectMemory
         } ?: throw WinRtUnsupportedOperationException(
             "Managed COM object does not implement interface '$interfaceId'.",
@@ -158,9 +164,10 @@ internal class WinRtInspectableComObject(
         requestedInterfaceId: Guid,
         resultPointer: RawAddress,
     ): Int {
+        trace("QI request=$requestedInterfaceId runtimeClassName=$runtimeClassName primary=$primaryInterfaceId")
         val targetPointer = when (requestedInterfaceId) {
             IID.IUnknown -> interfacePointer(primaryInterfaceId)
-            IID.IInspectable -> primaryInspectableInterfaceId?.let(::interfacePointer)
+            IID.IInspectable -> interfacePointer(IID.IInspectable)
             else -> interfaceEntries[requestedInterfaceId]?.objectMemory
         }
         if (targetPointer == null) {
@@ -168,6 +175,7 @@ internal class WinRtInspectableComObject(
             if (fallbackPointer != null && !PlatformAbi.isNull(fallbackPointer)) {
                 registerExternalPointerAlias(fallbackPointer)
                 PlatformAbi.writePointer(resultPointer, fallbackPointer)
+                trace("QI fallback success request=$requestedInterfaceId pointer=${PlatformAbi.pointerKey(fallbackPointer)}")
                 return KnownHResults.S_OK.value
             }
         }
@@ -176,34 +184,59 @@ internal class WinRtInspectableComObject(
             resultPointer,
             queryResult.target ?: PlatformAbi.nullPointer,
         )
+        trace(
+            "QI result request=$requestedInterfaceId hr=${queryResult.hResult.value} " +
+                "pointer=${queryResult.target?.let(PlatformAbi::pointerKey) ?: 0L}",
+        )
         return queryResult.hResult.value
     }
 
-    private fun addReference(): Int = state.addReference()
+    private fun addReference(): Int =
+        state.addReference().also { count ->
+            trace("AddRef runtimeClassName=$runtimeClassName count=$count")
+        }
 
-    private fun releaseReference(): Int = state.releaseReference()
+    private fun releaseReference(): Int =
+        state.releaseReference().also { count ->
+            trace("Release runtimeClassName=$runtimeClassName count=$count")
+        }
 
     private fun getIids(
         countOut: RawAddress,
         idsOut: RawAddress,
     ): Int {
-        PlatformAbi.writeInt32(countOut, interfaces.size)
-        PlatformAbi.writePointer(idsOut, interfaceIdsMemory)
+        val interfaceIds = interfaces.keys.toList()
+        trace("GetIids count=${interfaceIds.size} ids=${interfaceIds.joinToString()}")
+        val memory = WinRtPlatformApi.coTaskMemAllocRaw(interfaceIds.size.toLong() * Guid.BYTE_SIZE)
+        if (PlatformAbi.isNull(memory)) {
+            PlatformAbi.writeInt32(countOut, 0)
+            PlatformAbi.writePointer(idsOut, PlatformAbi.nullPointer)
+            return KnownHResults.E_OUTOFMEMORY.value
+        }
+        interfaceIds.forEachIndexed { index, interfaceId ->
+            PlatformAbi.writeGuid(memory, index.toLong() * Guid.BYTE_SIZE, interfaceId)
+        }
+        PlatformAbi.writeInt32(countOut, interfaceIds.size)
+        PlatformAbi.writePointer(idsOut, memory)
         return KnownHResults.S_OK.value
     }
 
     private fun getRuntimeClassName(resultOut: RawAddress): Int {
-        if (runtimeClassName == null) {
-            PlatformAbi.writePointer(resultOut, PlatformAbi.nullPointer)
-            return KnownHResults.S_OK.value
-        }
-        PlatformAbi.writePointer(resultOut, HString.create(runtimeClassName).handle)
+        trace("GetRuntimeClassName runtimeClassName=$runtimeClassName")
+        PlatformAbi.writePointer(resultOut, HString.create(runtimeClassName.orEmpty()).handle)
         return KnownHResults.S_OK.value
     }
 
     private fun getTrustLevel(resultOut: RawAddress): Int {
+        trace("GetTrustLevel trustLevel=$trustLevel")
         PlatformAbi.writeInt32(resultOut, trustLevel)
         return KnownHResults.S_OK.value
+    }
+
+    private fun trace(message: String) {
+        if (FeatureSwitches.traceCcw) {
+            println("winrt-ccw: $message")
+        }
     }
 
     private fun invokeMethod(
@@ -211,7 +244,7 @@ internal class WinRtInspectableComObject(
         methodIndex: Int,
         rawArguments: List<Any?>,
     ): Int = runCatching {
-        interfaces.getValue(interfaceId).methods[methodIndex].handler(rawArguments)
+        allInterfaces.getValue(interfaceId).methods[methodIndex].handler(rawArguments)
     }.getOrElse { error ->
         platformSetErrorInfo(error)
         platformHResultFromThrowable(error).value
@@ -228,16 +261,6 @@ internal class WinRtInspectableComObject(
             entry.callbacks.forEach(NativeCallbackHandle::close)
         }
         scope.close()
-    }
-
-    private fun allocateInterfaceIds(
-        definitions: List<WinRtInspectableInterfaceDefinition>,
-    ): RawAddress {
-        val memory = PlatformAbi.allocateBytes(scope, definitions.size.toLong() * Guid.BYTE_SIZE)
-        definitions.forEachIndexed { index, definition ->
-            PlatformAbi.writeGuid(memory, index.toLong() * Guid.BYTE_SIZE, definition.interfaceId)
-        }
-        return memory
     }
 
     private fun callbackOf(
@@ -275,6 +298,7 @@ internal class WinRtInspectableComObject(
                         methods = emptyList(),
                     ),
                 ),
+                defaultInterfaceId = IID.IInspectable,
                 runtimeClassName = runtimeClassName,
                 managedValue = value,
             )

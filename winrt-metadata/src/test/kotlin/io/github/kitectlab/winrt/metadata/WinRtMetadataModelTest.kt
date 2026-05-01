@@ -2427,6 +2427,26 @@ class WinRtMetadataModelTest {
         assertEquals(listOf("GetValue_0"), vtable.methods.map { it.vmethodName })
         assertEquals(true, vtable.usesFunctionPointers)
 
+        val mixedInterface = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IMixedStatics",
+            kind = WinRtTypeKind.Interface,
+            methods = listOf(
+                WinRtMethodDefinition("Start", "Unit", methodRowId = 101),
+            ),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Current",
+                    typeName = "Sample.Foundation.Widget",
+                    getterMethodName = "get_Current",
+                    getterMethodRowId = 100,
+                ),
+            ),
+        )
+        val mixedVtable = helpers.vtableWriterDescriptor(mixedInterface)
+        assertEquals(listOf("Start_1"), mixedVtable.methods.map { it.vmethodName })
+        assertEquals(listOf(7), mixedVtable.methods.map { it.slotIndex })
+
         val declaration = helpers.typeDeclarationDescriptor(widget)
         assertEquals(true, declaration.writesAbiDeclaration)
         assertEquals(true, declaration.writesWrapperDeclaration)

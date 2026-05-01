@@ -135,7 +135,7 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     return when (effectiveTypeName) {
         "Unit" -> UNIT
         "Any",
-        "System.Object" -> IINSPECTABLE_REFERENCE_CLASS_NAME
+        "System.Object" -> ANY.copy(nullable = true)
         "String" -> String::class.asClassName()
         "Int" -> Int::class.asClassName()
         "UInt" -> KOTLIN_UINT_CLASS_NAME

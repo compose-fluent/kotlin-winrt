@@ -223,7 +223,7 @@ internal fun RawAddress.asMemorySegment(): MemorySegment =
     if (value == 0L) {
         MemorySegment.NULL
     } else {
-        MemorySegment.ofAddress(value)
+        MemorySegment.ofAddress(value).reinterpret(Long.MAX_VALUE)
     }
 
 internal const val IUNKNOWN_VFTBL_SIZE_BYTES: Long = 24

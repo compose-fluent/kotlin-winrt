@@ -639,6 +639,7 @@ internal fun KotlinProjectionRenderer.buildCompanionShell(
                     )
                 }
                 renderComposableFactoryCreateFunctions(plan).forEach(::addFunction)
+                renderDerivedComposableFactoryCreateFunctions(plan).forEach(::addFunction)
             }
             .addFunction(
                 FunSpec.builder("acquire")
@@ -680,16 +681,45 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
         .filter(WinRtMethodDefinition::isProjectedCallableMethod)
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
-            FunSpec.constructorBuilder()
+            val constructor = FunSpec.constructorBuilder()
                 .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
-                .callThisConstructor(
-                    CodeBlock.of(
-                        "ComposableFactory.%L(%L), kotlin.Unit",
+            if (plan.supportsDerivedComposableConstruction()) {
+                val projectedClassName = ClassName(plan.packageName, plan.type.name)
+                val overridableInterface = plan.type.implementedInterfaces.firstOrNull { it.isOverridable }?.interfaceName
+                val overridableInterfaceType = overridableInterface?.let(::projectionClassName)
+                if (overridableInterfaceType != null) {
+                    val arguments = userParameters.joinToString(", ") { parameter -> parameter.name }
+                    constructor.addCode(
+                        "if (this::class == %T::class) {\n",
+                        projectedClassName,
+                    )
+                    constructor.addStatement("    _innerStorage = ComposableFactory.%L(%L)", factoryCreateFunctionName(method), arguments)
+                    constructor.addCode("} else {\n")
+                    constructor.addStatement(
+                        "    _composableReference = ComposableFactory.%LForSubclass(this, %T.Metadata.IID%L)",
                         factoryCreateFunctionName(method),
-                        userParameters.joinToString(", ") { parameter -> parameter.name },
-                    ),
-                )
-                .build()
+                        overridableInterfaceType,
+                        if (arguments.isBlank()) "" else ", $arguments",
+                    )
+                    constructor.addStatement("    _innerStorage = requireNotNull(_composableReference).instance")
+                    constructor.addCode("}\n")
+                    constructor.build()
+                } else {
+                    constructor
+                        .callThisConstructor(CodeBlock.of("ComposableFactory.%L(%L), kotlin.Unit", factoryCreateFunctionName(method), userParameters.joinToString(", ") { parameter -> parameter.name }))
+                        .build()
+                }
+            } else {
+                constructor
+                    .callThisConstructor(
+                        CodeBlock.of(
+                            "ComposableFactory.%L(%L), kotlin.Unit",
+                            factoryCreateFunctionName(method),
+                            userParameters.joinToString(", ") { parameter -> parameter.name },
+                        ),
+                    )
+                    .build()
+            }
         }
 }
 
@@ -749,6 +779,106 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
                 )
                 .build()
         }
+}
+
+private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {
+    if (!plan.supportsDerivedComposableConstruction()) {
+        return emptyList()
+    }
+    val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
+    val factoryClassName = resolveTypeName(factoryType.qualifiedName)
+    return factoryType.methods
+        .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .mapNotNull(::composableUserParameters)
+        .map { (method, userParameters) ->
+            FunSpec.builder("${factoryCreateFunctionName(method)}ForSubclass")
+                .addModifiers(KModifier.INTERNAL)
+                .addParameter("value", ANY)
+                .addParameter("outerInterfaceId", GUID_CLASS_NAME)
+                .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
+                .returns(WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME)
+                .addCode(
+                    "%L\n",
+                    renderDerivedComposableFactoryInvocation(plan, factoryType, factoryClassName, method, userParameters),
+                )
+                .build()
+        }
+}
+
+private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
+    plan: KotlinTypeProjectionPlan,
+    factoryType: WinRtTypeDefinition,
+    factoryClassName: TypeName,
+    method: WinRtMethodDefinition,
+    userParameters: List<WinRtParameterDefinition>,
+): CodeBlock {
+    val parameterBindings = userParameters.map { parameter ->
+        KotlinProjectionAbiParameterBinding(
+            parameter.name,
+            KotlinProjectionPlanner().classifyAbiTypeBinding(parameter.typeName, factoryType.namespace, plan.typesByQualifiedName),
+        )
+    }
+    val callPlan = requireAbiCallPlan(
+        bindingName = "${factoryType.qualifiedName}.${method.name}",
+        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+        parameterBindings = parameterBindings,
+        suppressHResultCheck = method.isNoException,
+    )
+    val code = CodeBlock.builder()
+    val scopedParameterOpeners = callPlan.parameterMarshalers.flatMap { it.scopeOpeners }
+    scopedParameterOpeners.forEach { opener ->
+        code.add("%L\n", opener)
+        code.indent()
+    }
+    code.add("val __factory = acquire()\n")
+    code.add("return %T.createComposableCCWForObject(value, outerInterfaceId) { __baseInterface, __innerOut, __resultOut ->\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+    code.indent()
+    val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
+        listOf(KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind)) +
+            marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
+                KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
+            }
+    } + listOf(
+        KotlinProjectionComArgument(CodeBlock.of("__baseInterface"), KotlinProjectionComArgumentKind.Pointer),
+        KotlinProjectionComArgument(CodeBlock.of("__innerOut"), KotlinProjectionComArgumentKind.Pointer),
+        KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer),
+    )
+    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
+    if (finallyStatements.isNotEmpty()) {
+        code.add("try {\n")
+        code.indent()
+    }
+    code.add("val __hr = ")
+    code.add(
+        renderComVtableInvocation(
+            invokeTargetExpression = "__factory",
+            slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+            abiArguments = abiArguments,
+        ),
+    )
+    code.add("\n")
+    if (!callPlan.suppressHResultCheck) {
+        code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+    }
+    callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+        code.add("%L\n", postCallStatement)
+    }
+    code.add("__hr\n")
+    if (finallyStatements.isNotEmpty()) {
+        code.unindent()
+        code.add("} finally {\n")
+        code.indent()
+        finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
+        code.unindent()
+        code.add("}\n")
+    }
+    code.unindent()
+    code.add("}\n")
+    repeat(scopedParameterOpeners.size) {
+        code.unindent()
+        code.add("}\n")
+    }
+    return code.build()
 }
 
 private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
