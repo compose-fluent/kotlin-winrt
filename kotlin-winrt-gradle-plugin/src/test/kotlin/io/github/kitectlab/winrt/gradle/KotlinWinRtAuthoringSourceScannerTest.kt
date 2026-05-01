@@ -41,6 +41,30 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun writes_authored_metadata_descriptor_for_scanned_candidates() {
+        val output = Files.createTempFile("kotlin-winrt-authored-metadata-", ".tsv")
+
+        KotlinWinRtAuthoringMetadataModel.writeDescriptor(
+            candidates = listOf(
+                KotlinWinRtAuthoredTypeCandidate(
+                    packageName = "sample",
+                    className = "App",
+                    sourceTypeName = "sample.App",
+                    winRtBaseClassName = "Microsoft.UI.Xaml.Application",
+                    winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+                    overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+                ),
+            ),
+            outputFile = output,
+        )
+
+        assertEquals(
+            "sample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\ttrue\n",
+            output.readText(),
+        )
+    }
+
+    @Test
     fun renders_generated_type_details_for_scanned_authored_type() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
