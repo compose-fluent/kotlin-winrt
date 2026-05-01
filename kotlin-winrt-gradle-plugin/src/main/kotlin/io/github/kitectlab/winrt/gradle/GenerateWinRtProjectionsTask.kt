@@ -138,6 +138,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             candidates = authoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.winmd"),
         )
+        KotlinWinRtAuthoringMetadataModel.writeHostManifest(
+            assemblyName = authoringAssemblyName.get(),
+            candidates = authoringCandidates,
+            outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.host.json"),
+        )
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(

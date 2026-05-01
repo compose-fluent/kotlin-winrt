@@ -491,6 +491,13 @@ class KotlinWinRtPluginTest {
         )
         assertTrue(Files.isRegularFile(winmd))
         assertTrue(WinRtMetadataLoader.load(winmd).namespaces.isEmpty())
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve(
+                    "build/generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/kotlin-winrt-plugin-test.host.json",
+                ),
+            ),
+        )
         JarFile(projectDir.resolve("build/libs/kotlin-winrt-plugin-test.jar").toFile()).use { jar ->
             assertTrue(
                 jar.getEntry(

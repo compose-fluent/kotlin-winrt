@@ -5,6 +5,7 @@ import io.github.kitectlab.winrt.metadata.WinRtAuthoredRuntimeClassDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtAuthoringMetadata
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtPortableExecutableMetadataWriter
+import java.nio.file.Files
 import java.nio.file.Path
 
 object KotlinWinRtAuthoringMetadataModel {
@@ -37,6 +38,27 @@ object KotlinWinRtAuthoringMetadataModel {
             assemblyName = assemblyName,
             runtimeClasses = runtimeClassDescriptors(candidates),
             outputFile = outputFile,
+        )
+    }
+
+    fun writeHostManifest(
+        assemblyName: String,
+        candidates: List<KotlinWinRtAuthoredTypeCandidate>,
+        outputFile: Path,
+    ) {
+        val runtimeClassNames = runtimeClassDescriptors(candidates).map { it.runtimeClassName }.sorted()
+        Files.createDirectories(outputFile.parent)
+        Files.writeString(
+            outputFile,
+            buildString {
+                appendLine("{")
+                appendLine("  \"schemaVersion\": 1,")
+                appendLine("  \"model\": \"jvm-authoring-host\",")
+                appendLine("  \"assemblyName\": ${assemblyName.toJsonString()},")
+                appendLine("  \"hostExportsClass\": \"io.github.kitectlab.winrt.projections.support.WinRTAuthoringHostExports\",")
+                appendLine("  \"activatableClasses\": ${runtimeClassNames.toJsonArray()}")
+                appendLine("}")
+            },
         )
     }
 

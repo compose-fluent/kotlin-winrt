@@ -95,6 +95,32 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("method.invoke(value, __arg0)"))
     }
 
+    @Test
+    fun writes_authoring_host_manifest_for_scanned_authored_types() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-host-")
+        val manifest = output.resolve("SampleComponent.host.json")
+        KotlinWinRtAuthoringMetadataModel.writeHostManifest(
+            assemblyName = "SampleComponent",
+            candidates = listOf(
+                KotlinWinRtAuthoredTypeCandidate(
+                    packageName = "sample",
+                    className = "App",
+                    sourceTypeName = "sample.App",
+                    winRtBaseClassName = "Microsoft.UI.Xaml.Application",
+                    winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+                    overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+                ),
+            ),
+            outputFile = manifest,
+        )
+
+        val json = manifest.readText()
+        assertTrue(json.contains("\"model\": \"jvm-authoring-host\""))
+        assertTrue(json.contains("\"assemblyName\": \"SampleComponent\""))
+        assertTrue(json.contains("\"hostExportsClass\": \"io.github.kitectlab.winrt.projections.support.WinRTAuthoringHostExports\""))
+        assertTrue(json.contains("\"activatableClasses\": [\"sample.App\"]"))
+    }
+
     private fun model(): WinRtMetadataModel =
         WinRtMetadataModel(
             namespaces = listOf(
