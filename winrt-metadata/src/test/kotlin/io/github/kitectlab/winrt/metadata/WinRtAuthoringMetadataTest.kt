@@ -100,6 +100,7 @@ class WinRtAuthoringMetadataTest {
                     runtimeClassName = "Sample.Component.Widget",
                     baseRuntimeClassName = "Sample.Component.BaseWidget",
                     interfaceNames = listOf("Sample.Component.IWidget"),
+                    overridableInterfaceNames = listOf("Sample.Component.IWidget"),
                 ),
             ),
             outputFile = output,
@@ -114,6 +115,8 @@ class WinRtAuthoringMetadataTest {
         assertEquals(WinRtTypeKind.RuntimeClass, runtimeClass.kind)
         assertEquals("Sample.Component.BaseWidget", runtimeClass.baseTypeName)
         assertEquals("Sample.Component.IWidget", runtimeClass.implementedInterfaces.single().interfaceName)
+        assertTrue(runtimeClass.implementedInterfaces.single().isDefault)
+        assertTrue(runtimeClass.implementedInterfaces.single().isOverridable)
         assertTrue(runtimeClass.isSealedType)
     }
 }

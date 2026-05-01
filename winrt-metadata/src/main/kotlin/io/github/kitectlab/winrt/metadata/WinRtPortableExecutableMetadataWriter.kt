@@ -29,6 +29,7 @@ private class WinmdBuilder(
     private val runtimeClasses: List<WinRtAuthoredRuntimeClassDescriptor>,
 ) {
     private val strings = IndexedStringHeap()
+    private val blobs = IndexedBlobHeap()
     private val guid = byteArrayOf(
         0x10, 0x32, 0x54, 0x76, 0x98.toByte(), 0xba.toByte(), 0xdc.toByte(), 0xfe.toByte(),
         0x10, 0x32, 0x54, 0x76, 0x98.toByte(), 0xba.toByte(), 0xdc.toByte(), 0xfe.toByte(),
@@ -38,17 +39,28 @@ private class WinmdBuilder(
         val moduleName = strings.index("$assemblyName.winmd")
         val moduleTypeName = strings.index("<Module>")
         val assemblyNameIndex = strings.index(assemblyName)
+        val attributeTypeNames = buildSet {
+            runtimeClasses.forEach { descriptor ->
+                if (descriptor.interfaceNames.isNotEmpty()) {
+                    add(WINDOWS_FOUNDATION_METADATA_DEFAULT)
+                }
+                if (descriptor.overridableInterfaceNames.isNotEmpty()) {
+                    add(WINDOWS_FOUNDATION_METADATA_OVERRIDABLE)
+                }
+            }
+        }
         val baseTypeRefs = runtimeClasses
             .flatMap { descriptor ->
                 listOf(descriptor.baseRuntimeClassName ?: "System.Object") + descriptor.interfaceNames
             }
+            .plus(attributeTypeNames)
             .distinct()
             .map { qualifiedName -> TypeRefRow(qualifiedName) }
         val metadataRoot = metadataRoot(
             tables = tablesStream(moduleName, moduleTypeName, assemblyNameIndex, baseTypeRefs),
             strings = strings.bytes(),
             guid = guid,
-            blob = byteArrayOf(0),
+            blob = blobs.bytes(),
         )
         val cliHeaderRva = SECTION_RVA
         val metadataRva = SECTION_RVA + CLI_HEADER_SIZE
@@ -80,10 +92,14 @@ private class WinmdBuilder(
         typeRefs: List<TypeRefRow>,
     ): ByteArray {
         val writer = BinaryWriter()
+        val attributeMemberRefs = attributeMemberRefs(typeRefs)
+        val customAttributes = interfaceImplCustomAttributes(attributeMemberRefs)
         val validMask = (1L shl TABLE_MODULE) or
             (if (typeRefs.isEmpty()) 0L else 1L shl TABLE_TYPE_REF) or
             (1L shl TABLE_TYPE_DEF) or
             (if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) 1L shl TABLE_INTERFACE_IMPL else 0L) or
+            (if (attributeMemberRefs.isEmpty()) 0L else 1L shl TABLE_MEMBER_REF) or
+            (if (customAttributes.isEmpty()) 0L else 1L shl TABLE_CUSTOM_ATTRIBUTE) or
             (1L shl TABLE_ASSEMBLY)
         writer.int32(0)
         writer.int8(2)
@@ -99,6 +115,12 @@ private class WinmdBuilder(
         writer.int32(1 + runtimeClasses.size)
         if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) {
             writer.int32(runtimeClasses.sumOf { it.interfaceNames.size })
+        }
+        if (attributeMemberRefs.isNotEmpty()) {
+            writer.int32(attributeMemberRefs.size)
+        }
+        if (customAttributes.isNotEmpty()) {
+            writer.int32(customAttributes.size)
         }
         writer.int32(1)
         writer.int16(0)
@@ -136,6 +158,16 @@ private class WinmdBuilder(
                 writer.index((interfaceTypeRefRowId shl 2) or CODED_TYPE_DEF_OR_REF_TYPE_REF)
             }
         }
+        attributeMemberRefs.forEach { memberRef ->
+            writer.index((memberRef.typeRefRowId shl CODED_MEMBER_REF_PARENT_TAG_BITS) or CODED_MEMBER_REF_PARENT_TYPE_REF)
+            writer.index(strings.index(".ctor"))
+            writer.index(memberRef.signatureBlobIndex)
+        }
+        customAttributes.forEach { attribute ->
+            writer.index((attribute.interfaceImplRowId shl CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS) or CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL)
+            writer.index((attribute.memberRefRowId shl CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_BITS) or CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF)
+            writer.index(0)
+        }
         writer.int32(0x00008004)
         writer.int16(1)
         writer.int16(0)
@@ -146,6 +178,43 @@ private class WinmdBuilder(
         writer.index(assemblyNameIndex)
         writer.index(0)
         return writer.toByteArray()
+    }
+
+    private fun attributeMemberRefs(typeRefs: List<TypeRefRow>): List<AttributeMemberRefRow> =
+        listOf(WINDOWS_FOUNDATION_METADATA_DEFAULT, WINDOWS_FOUNDATION_METADATA_OVERRIDABLE)
+            .mapNotNull { typeName ->
+                val typeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == typeName } + 1
+                typeRefRowId.takeIf { it > 0 }?.let { rowId ->
+                    AttributeMemberRefRow(
+                        attributeTypeName = typeName,
+                        typeRefRowId = rowId,
+                        signatureBlobIndex = blobs.index(byteArrayOf(CALL_CONV_HASTHIS.toByte(), 0x00, ELEMENT_TYPE_VOID.toByte())),
+                    )
+                }
+            }
+
+    private fun interfaceImplCustomAttributes(memberRefs: List<AttributeMemberRefRow>): List<InterfaceImplCustomAttributeRow> {
+        val memberRefRowIds = memberRefs
+            .mapIndexed { index, memberRef -> memberRef.attributeTypeName to index + 1 }
+            .toMap()
+        val rows = mutableListOf<InterfaceImplCustomAttributeRow>()
+        var interfaceImplRowId = 1
+        runtimeClasses.forEach { descriptor ->
+            descriptor.interfaceNames.forEach { interfaceName ->
+                if (interfaceName == descriptor.interfaceNames.first()) {
+                    memberRefRowIds[WINDOWS_FOUNDATION_METADATA_DEFAULT]?.let { memberRefRowId ->
+                        rows += InterfaceImplCustomAttributeRow(interfaceImplRowId, memberRefRowId)
+                    }
+                }
+                if (interfaceName in descriptor.overridableInterfaceNames) {
+                    memberRefRowIds[WINDOWS_FOUNDATION_METADATA_OVERRIDABLE]?.let { memberRefRowId ->
+                        rows += InterfaceImplCustomAttributeRow(interfaceImplRowId, memberRefRowId)
+                    }
+                }
+                interfaceImplRowId += 1
+            }
+        }
+        return rows
     }
 
     private fun metadataRoot(
@@ -264,6 +333,15 @@ private class WinmdBuilder(
         val namespace: String = qualifiedName.substringBeforeLast('.', missingDelimiterValue = "")
         val name: String = qualifiedName.substringAfterLast('.')
     }
+    private data class AttributeMemberRefRow(
+        val attributeTypeName: String,
+        val typeRefRowId: Int,
+        val signatureBlobIndex: Int,
+    )
+    private data class InterfaceImplCustomAttributeRow(
+        val interfaceImplRowId: Int,
+        val memberRefRowId: Int,
+    )
 
     private companion object {
         const val PE_HEADER_OFFSET = 0x80
@@ -276,12 +354,24 @@ private class WinmdBuilder(
         const val TABLE_TYPE_REF = 1
         const val TABLE_TYPE_DEF = 2
         const val TABLE_INTERFACE_IMPL = 9
+        const val TABLE_MEMBER_REF = 10
+        const val TABLE_CUSTOM_ATTRIBUTE = 12
         const val TABLE_ASSEMBLY = 0x20
         const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1
+        const val CODED_MEMBER_REF_PARENT_TYPE_REF = 1
+        const val CODED_MEMBER_REF_PARENT_TAG_BITS = 3
+        const val CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF = 3
+        const val CODED_CUSTOM_ATTRIBUTE_TYPE_TAG_BITS = 3
+        const val CODED_HAS_CUSTOM_ATTRIBUTE_INTERFACE_IMPL = 5
+        const val CODED_HAS_CUSTOM_ATTRIBUTE_TAG_BITS = 5
+        const val CALL_CONV_HASTHIS = 0x20
+        const val ELEMENT_TYPE_VOID = 0x01
         const val TYPE_ATTRIBUTES_PUBLIC = 0x00000001
         const val TYPE_ATTRIBUTES_WINDOWS_RUNTIME = 0x00004000
         const val TYPE_ATTRIBUTES_SEALED = 0x00000100
         const val TYPE_ATTRIBUTES_BEFORE_FIELD_INIT = 0x00100000
+        const val WINDOWS_FOUNDATION_METADATA_DEFAULT = "Windows.Foundation.Metadata.DefaultAttribute"
+        const val WINDOWS_FOUNDATION_METADATA_OVERRIDABLE = "Windows.Foundation.Metadata.OverridableAttribute"
     }
 }
 
@@ -294,6 +384,22 @@ private class IndexedStringHeap {
             val index = bytes.size()
             bytes.write(value.toByteArray(StandardCharsets.UTF_8))
             bytes.write(0)
+            index
+        }
+
+    fun bytes(): ByteArray = bytes.toByteArray()
+}
+
+private class IndexedBlobHeap {
+    private val bytes = ByteArrayOutputStream().apply { write(0) }
+    private val indexes = linkedMapOf<List<Byte>, Int>()
+
+    fun index(value: ByteArray): Int =
+        indexes.getOrPut(value.toList()) {
+            val index = bytes.size()
+            require(value.size < 0x80) { "Large WinMD blobs are not supported yet." }
+            bytes.write(value.size)
+            bytes.write(value)
             index
         }
 
