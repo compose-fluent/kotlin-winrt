@@ -10,6 +10,11 @@ internal object RawActivationFactoryLookup {
             return authoringFactory
         }
 
+        val authoringFallbackFactory = ComWrappersSupport.tryGetAuthoringActivationFactoryFallback(runtimeClassName, interfaceId)
+        if (authoringFallbackFactory.isSuccess || authoringFallbackFactory.hResult != KnownHResults.REGDB_E_CLASSNOTREG) {
+            return authoringFallbackFactory
+        }
+
         if (!PlatformRuntime.isWindows) {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }

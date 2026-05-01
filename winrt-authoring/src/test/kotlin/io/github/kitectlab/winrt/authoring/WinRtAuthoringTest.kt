@@ -12,14 +12,17 @@ import io.github.kitectlab.winrt.runtime.HString
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
+import io.github.kitectlab.winrt.runtime.PlatformRuntime
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtComInterfaceBaseKind
 import io.github.kitectlab.winrt.runtime.WinRtNotImplementedException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.nio.file.Files
 
 class WinRtAuthoringTest {
     @Test
@@ -283,6 +286,40 @@ class WinRtAuthoringTest {
     }
 
     @Test
+    fun authored_host_manifest_loader_installs_activation_factory_fallback() {
+        assumeTrue(PlatformRuntime.isWindows)
+        ComWrappersSupport.clearRegistriesForTests()
+        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+
+        val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-")
+        Files.writeString(
+            directory.resolve("HostManifestComponent.host.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "model": "jvm-authoring-host",
+              "assemblyName": "HostManifestComponent",
+              "hostExportsClass": "${HostManifestExports::class.java.name}",
+              "activatableClasses": ["Sample.Authoring.HostManifestComponent"]
+            }
+            """.trimIndent(),
+        )
+
+        WinRtAuthoringHostManifestLoader.installFromDirectory(directory)
+        ActivationFactory.get("Sample.Authoring.HostManifestComponent").use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        HostManifestComponent::class,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
     fun composable_object_forwards_outer_query_interface_to_inner_after_factory_composition() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("11111111-1111-1111-1111-111111111111")
@@ -467,4 +504,34 @@ class WinRtAuthoringTest {
     private class FallbackActivatedComponent
 
     private class HostActivatedComponent
+
+    private class HostManifestComponent
+
+    object HostManifestExports {
+        @JvmStatic
+        fun registerActivationFactories() {
+            val interfaceId = Guid("88888888-1111-2222-3333-444444444444")
+            WinRtAuthoring.registerType<HostManifestComponent>(
+                WinRtAuthoredTypeDefinition(
+                    runtimeClassName = "Sample.Authoring.HostManifestComponent",
+                    defaultInterfaceId = interfaceId,
+                    interfaces = listOf(
+                        WinRtAuthoredInterfaceDefinition(
+                            interfaceId = interfaceId,
+                            methods = emptyList(),
+                            isDefault = true,
+                        ),
+                    ),
+                ),
+            )
+            WinRtAuthoring.registerActivationFactory<HostManifestComponent>(
+                runtimeClassName = "Sample.Authoring.HostManifestComponent",
+                createInstance = ::HostManifestComponent,
+            )
+        }
+
+        @JvmStatic
+        fun dllGetActivationFactoryAddress(activatableClassId: Long, factoryOut: Long): Int =
+            WinRtAuthoringHostBridge.dllGetActivationFactory(RawAddress(activatableClassId), RawAddress(factoryOut))
+    }
 }

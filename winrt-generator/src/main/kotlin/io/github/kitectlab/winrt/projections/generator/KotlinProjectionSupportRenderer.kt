@@ -1102,6 +1102,15 @@ class KotlinProjectionSupportRenderer {
                             .build(),
                     )
                     .addFunction(
+                        FunSpec.builder("dllGetActivationFactoryAddress")
+                            .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
+                            .addParameter("activatableClassId", Long::class)
+                            .addParameter("factoryOut", Long::class)
+                            .returns(Int::class)
+                            .addStatement("return dllGetActivationFactory(%T(activatableClassId), %T(factoryOut))", RAW_ADDRESS_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
+                            .build(),
+                    )
+                    .addFunction(
                         FunSpec.builder("dllCanUnloadNow")
                             .returns(Int::class)
                             .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)

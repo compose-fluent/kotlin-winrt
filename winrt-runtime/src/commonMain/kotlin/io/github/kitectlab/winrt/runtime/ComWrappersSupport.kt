@@ -22,6 +22,7 @@ object ComWrappersSupport {
     private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
     private val authoringActivationFactories = ConcurrentCacheMap<String, () -> ComObjectReference>()
+    private val authoringActivationFactoryFallbacks = SnapshotList<(String, Guid) -> ActivationResult>()
     private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
     private val ccwFactories = ConcurrentCacheMap<KClass<*>, (Any) -> WinRtCcwDefinition>()
     private val rcwCache = WeakValueCache<Long, Any>()
@@ -70,6 +71,24 @@ object ComWrappersSupport {
             factory.close()
         }
         return ActivationResult(KnownHResults.S_OK, PlatformAbi.fromRawComPtr(requestedFactoryPointer))
+    }
+
+    fun registerAuthoringActivationFactoryFallback(
+        lookup: (runtimeClassName: String, interfaceId: Guid) -> ActivationResult,
+    ) {
+        authoringActivationFactoryFallbacks.add(lookup)
+    }
+
+    fun tryGetAuthoringActivationFactoryFallback(
+        runtimeClassName: String,
+        interfaceId: Guid,
+    ): ActivationResult =
+        authoringActivationFactoryFallbacks.firstNotNullOfOrNull { fallback ->
+            fallback(runtimeClassName, interfaceId).takeIf { it.hResult != KnownHResults.REGDB_E_CLASSNOTREG }
+        } ?: ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
+
+    fun clearAuthoringActivationFactoryFallbacksForTests() {
+        authoringActivationFactoryFallbacks.clear()
     }
 
     fun registerHelperType(

@@ -5291,6 +5291,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(hostExports.contains("fun dllGetActivationFactory("))
         assertTrue(hostExports.contains("registerActivationFactories()"))
         assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)"))
+        assertTrue(hostExports.contains("@JvmStatic") || hostExports.contains("@kotlin.jvm.JvmStatic"))
+        assertTrue(hostExports.contains("fun dllGetActivationFactoryAddress(activatableClassId: Long, factoryOut: Long): Int"))
+        assertTrue(hostExports.contains("RawAddress(activatableClassId)"))
         assertTrue(hostExports.contains("fun dllCanUnloadNow(): Int"))
         assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllCanUnloadNow()"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
