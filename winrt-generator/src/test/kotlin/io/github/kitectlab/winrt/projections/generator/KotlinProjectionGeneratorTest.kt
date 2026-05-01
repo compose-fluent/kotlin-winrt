@@ -4955,6 +4955,15 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "RoundTripHandler",
+                                    returnTypeName = "Sample.Foundation.WidgetHandler",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler"),
+                                    ),
+                                ),
+                            ),
                             events = listOf(
                                 WinRtEventDefinition(
                                     name = "Changed",
@@ -5222,6 +5231,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("methods = listOf("))
         assertTrue(ccwFactories.contains("WinRtInspectableMethodDefinition"))
         assertTrue(ccwFactories.contains("signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer)"))
+        assertTrue(ccwFactories.contains("WidgetHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories.contains("Authored delegate argument Sample.Foundation.WidgetHandler was null."))
+        assertTrue(ccwFactories.contains("value.roundTripHandler(handler)"))
+        assertTrue(ccwFactories.contains("ComWrappersSupport.createCCWForObject(__result"))
         assertTrue(ccwFactories.contains("EventHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.addChanged(handler)"))
         assertTrue(ccwFactories.contains("EventRegistrationToken.Metadata.copyTo(token, rawArgs[1] as RawAddress)"))

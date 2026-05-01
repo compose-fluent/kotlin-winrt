@@ -1736,6 +1736,7 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Enum,
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.Delegate,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> true
         KotlinProjectionAbiValueKind.Struct -> binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken"
@@ -1773,6 +1774,13 @@ class KotlinProjectionSupportRenderer {
             IUNKNOWN_REFERENCE_CLASS_NAME,
             index,
             RAW_ADDRESS_CLASS_NAME,
+        )
+        KotlinProjectionAbiValueKind.Delegate -> CodeBlock.of(
+            "%T.Metadata.fromAbi(rawArgs[%L] as %T) ?: error(%S)",
+            typeRenderer.resolveTypeName(binding.resolvedTypeName),
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+            "Authored delegate argument ${binding.resolvedTypeName} was null.",
         )
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T(rawArgs[%L] as %T).inspectable()", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
@@ -1837,6 +1845,7 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.Metadata.copyTo(%L, %L)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, valueExpression, outExpression)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.Delegate,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI return ${binding.describeAbiKind()}")
