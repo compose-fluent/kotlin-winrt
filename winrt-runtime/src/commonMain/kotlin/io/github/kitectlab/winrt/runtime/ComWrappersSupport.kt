@@ -7,6 +7,7 @@ data class WinRtCcwDefinition(
     val defaultInterfaceId: Guid,
     val runtimeClassName: String? = null,
     val hiddenInterfaceDefinitions: List<WinRtInspectableInterfaceDefinition> = emptyList(),
+    val queryInterfaceFallback: ((Any, Guid) -> RawAddress?)? = null,
 )
 
 class SingleInterfaceOptimizedObject(
@@ -217,6 +218,9 @@ object ComWrappersSupport {
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = definition.runtimeClassName,
             managedValue = value,
+            queryInterfaceFallback = definition.queryInterfaceFallback?.let { fallback ->
+                { requestedInterfaceId -> fallback(value, requestedInterfaceId) }
+            },
         )
         val requestedInterface = interfaceId ?: definition.defaultInterfaceId
         return ownedReference(host, requestedInterface)
@@ -237,7 +241,10 @@ object ComWrappersSupport {
             runtimeClassName = definition.runtimeClassName,
             managedValue = value,
             queryInterfaceFallback = { requestedInterfaceId ->
-                innerReference
+                definition.queryInterfaceFallback
+                    ?.invoke(value, requestedInterfaceId)
+                    ?.takeUnless(PlatformAbi::isNull)
+                    ?: innerReference
                     ?.tryQueryInterface(requestedInterfaceId)
                     ?.use { queried -> PlatformAbi.fromRawComPtr(queried.getRefPointer()) }
             },

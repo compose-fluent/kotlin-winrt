@@ -1073,6 +1073,7 @@ class KotlinProjectionSupportRenderer {
         val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
         val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            fileBuilder.addFunction(authoringCcwQueryInterfaceFunction(plan))
             fileBuilder.addFunction(authoringCcwDefinitionFunction(plan, plansByQualifiedName))
         }
         fileBuilder.addType(
@@ -1132,9 +1133,44 @@ class KotlinProjectionSupportRenderer {
                 ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME),
         )
         code.add("runtimeClassName = %S,\n", plan.type.qualifiedName)
+        code.add(
+            "queryInterfaceFallback = { obj, requestedInterfaceId -> %L(obj as %T, requestedInterfaceId) },\n",
+            authoringCcwQueryInterfaceFunctionName(plan),
+            projectionClassNameForQualifiedName(plan.type.qualifiedName),
+        )
         code.unindent()
         code.add(")\n")
         return code.build()
+    }
+
+    private fun authoringCcwQueryInterfaceFunction(plan: KotlinTypeProjectionPlan): FunSpec {
+        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+        return FunSpec.builder(authoringCcwQueryInterfaceFunctionName(plan))
+            .addModifiers(KModifier.PRIVATE)
+            .addParameter("value", projectedType)
+            .addParameter("requestedInterfaceId", GUID_CLASS_NAME)
+            .returns(RAW_ADDRESS_CLASS_NAME.copy(nullable = true))
+            .addCode(
+                CodeBlock.of(
+                    """
+                    if (requestedInterfaceId == %T.IUnknown ||
+                        requestedInterfaceId == %T.IInspectable ||
+                        requestedInterfaceId == %T.IWeakReferenceSource) {
+                        return null
+                    }
+                    val winRtObject = value as? %T ?: return null
+                    return winRtObject.nativeObject
+                        .tryQueryInterface(requestedInterfaceId)
+                        ?.use { queried -> %T.fromRawComPtr(queried.getRefPointer()) }
+                    """.trimIndent() + "\n",
+                    IID_CLASS_NAME,
+                    IID_CLASS_NAME,
+                    IID_CLASS_NAME,
+                    IWINRT_OBJECT_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                ),
+            )
+            .build()
     }
 
     private fun authoringCcwInterfaceMethodsCode(interfacePlan: KotlinTypeProjectionPlan?): CodeBlock {
@@ -1527,6 +1563,11 @@ class KotlinProjectionSupportRenderer {
 
     private fun authoringCcwDefinitionFunctionName(plan: KotlinTypeProjectionPlan): String =
         "createCcwDefinitionFor" + plan.type.qualifiedName
+            .replace(".", "_")
+            .replace("`", "_")
+
+    private fun authoringCcwQueryInterfaceFunctionName(plan: KotlinTypeProjectionPlan): String =
+        "queryInterfaceFor" + plan.type.qualifiedName
             .replace(".", "_")
             .replace("`", "_")
 
