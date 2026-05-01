@@ -39,7 +39,9 @@ private class WinmdBuilder(
         val moduleTypeName = strings.index("<Module>")
         val assemblyNameIndex = strings.index(assemblyName)
         val baseTypeRefs = runtimeClasses
-            .map { descriptor -> descriptor.baseRuntimeClassName ?: "System.Object" }
+            .flatMap { descriptor ->
+                listOf(descriptor.baseRuntimeClassName ?: "System.Object") + descriptor.interfaceNames
+            }
             .distinct()
             .map { qualifiedName -> TypeRefRow(qualifiedName) }
         val metadataRoot = metadataRoot(
@@ -81,6 +83,7 @@ private class WinmdBuilder(
         val validMask = (1L shl TABLE_MODULE) or
             (if (typeRefs.isEmpty()) 0L else 1L shl TABLE_TYPE_REF) or
             (1L shl TABLE_TYPE_DEF) or
+            (if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) 1L shl TABLE_INTERFACE_IMPL else 0L) or
             (1L shl TABLE_ASSEMBLY)
         writer.int32(0)
         writer.int8(2)
@@ -94,6 +97,9 @@ private class WinmdBuilder(
             writer.int32(typeRefs.size)
         }
         writer.int32(1 + runtimeClasses.size)
+        if (runtimeClasses.any { it.interfaceNames.isNotEmpty() }) {
+            writer.int32(runtimeClasses.sumOf { it.interfaceNames.size })
+        }
         writer.int32(1)
         writer.int16(0)
         writer.index(moduleName)
@@ -122,6 +128,13 @@ private class WinmdBuilder(
             writer.index((baseTypeRefRowId shl 2) or CODED_TYPE_DEF_OR_REF_TYPE_REF)
             writer.index(1)
             writer.index(1)
+        }
+        runtimeClasses.forEachIndexed { classIndex, descriptor ->
+            descriptor.interfaceNames.forEach { interfaceName ->
+                val interfaceTypeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == interfaceName } + 1
+                writer.index(classIndex + 2)
+                writer.index((interfaceTypeRefRowId shl 2) or CODED_TYPE_DEF_OR_REF_TYPE_REF)
+            }
         }
         writer.int32(0x00008004)
         writer.int16(1)
@@ -262,6 +275,7 @@ private class WinmdBuilder(
         const val TABLE_MODULE = 0
         const val TABLE_TYPE_REF = 1
         const val TABLE_TYPE_DEF = 2
+        const val TABLE_INTERFACE_IMPL = 9
         const val TABLE_ASSEMBLY = 0x20
         const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1
         const val TYPE_ATTRIBUTES_PUBLIC = 0x00000001
