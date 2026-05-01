@@ -39,7 +39,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("rawArgs"))
         assertTrue(generated.contains("LaunchActivatedEventArgs.Metadata.wrap"))
         assertTrue(generated.contains("type.getDeclaredMethod("))
-        assertTrue(generated.contains("\"OnLaunched\""))
+        assertTrue(generated.contains("\"onLaunched\""))
         assertTrue(generated.contains("LaunchActivatedEventArgs::class.java"))
         assertTrue(generated.contains("method.invoke(value, __arg0)"))
     }

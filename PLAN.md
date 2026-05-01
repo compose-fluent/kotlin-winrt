@@ -32,7 +32,9 @@
 - [x] JVM WinUI bootstrap now stages WindowsAppSDK assets, creates an activation context from lifted registrations when available, and falls back to `MddBootstrapInitialize2` when needed.
 - [x] `System.Object` projections now surface as Kotlin `Any?` with runtime object/delegate CCW marshaling instead of leaking `IInspectableReference` into public APIs.
 - [x] WinUI app smoke sample uses generated projections for click/tapped handlers and message-loop bootstrap instead of sample-local delegate/runtime glue.
+- [x] Generated WinRT methods now project as Kotlin lower-camel members (`start`, `activate`, `addHandler`, `onLaunched`) while mapped collection ABI members stay hidden behind Kotlin collection APIs.
 - [x] Interface slot ordering now accounts for properties/events/methods by metadata row order before method-only wrappers, matching cswinrt ABI slot layout.
+- [x] Event-source helper generation now keeps owner mappings separate from reusable source classes, so shared delegate helpers such as `RoutedEventHandler` remain available for `IButtonBase.Click`.
 
 ## Generator Gaps
 
@@ -63,3 +65,4 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 ... :winrt-samples:compileKotlin`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-runtime:jvmTest --tests ValueBoxingTest.reference_projection_hosts_expose_cswinrt_ccw_suffix_interfaces --tests ValueBoxingTest.boxed_ccws_expose_reference_and_property_value_interfaces --tests WinRtDelegateBridgeTest.delegate_reference_supports_nullable_delegate_reference_query_interface`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -DKOTLIN_WINRT_TRACE_CCW=true -Dkotlin.winrt.samples.runWinUiSmoke=true -Dkotlin.winrt.samples.autoNavigateWinUi=true ... :winrt-samples:run` reached the WinUI message loop and survived click validation after delegate callback marshaling fix.
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -DKOTLIN_WINRT_TRACE_CCW=true -Dkotlin.winrt.samples.runWinUiSmoke=true -Dkotlin.winrt.samples.autoNavigateWinUi=true ... :winrt-samples:run` reached `button.click.add`, window activation, page creation, tapped handler registration, and content replacement with the process still alive before manual cleanup.

@@ -262,7 +262,7 @@ class KotlinProjectionRenderer {
             callPlan = callPlan,
         ) ?: error("Generator interface proxy parity failed to emit ${method.name}")
         val objectShape = closableMethodShape(slotInterfaceType, method) ?: runtimeObjectMethodShape(method)
-        return FunSpec.builder(objectShape?.name ?: method.name)
+        return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
             .addModifiers(KModifier.OVERRIDE)
             .addMethodGenericParameters(method, objectShape)
             .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
@@ -819,7 +819,7 @@ class KotlinProjectionRenderer {
                     override = true,
                     modifiers = eventModifiers,
                     eventSourceOwnerTypeName = addBinding?.ownerInterfaceQualifiedName,
-                    eventSourceObjectReference = addBinding?.let { CodeBlock.of("nativeObject") },
+                    eventSourceObjectReference = addBinding?.let { CodeBlock.of(it.ownerCachePropertyName) },
                     eventSourceAddSlot = addBinding?.let {
                         CodeBlock.of("%T.Metadata.%L", resolveTypeName(it.slotInterfaceQualifiedName), it.slotConstantName)
                     },
@@ -1197,9 +1197,13 @@ class KotlinProjectionRenderer {
             return false
         }
         val bindingName = abiSlotConstantName(plan.type.methods)
-        return plan.instanceMemberBindings
-            .firstOrNull { it.bindingName == bindingName }
-            ?.isMappedCollectionOrIteratorBinding == true
+        val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == bindingName }
+        if (binding != null) {
+            return binding.isMappedCollectionOrIteratorBinding
+        }
+        return plan.mutableCollectionBindings.isNotEmpty() ||
+            plan.readOnlyCollectionBindings.isNotEmpty() ||
+            requiredIteratorBinding(plan) != null
     }
 
     private fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(

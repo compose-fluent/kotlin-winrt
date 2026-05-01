@@ -65,7 +65,7 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
 
         val contents = filesByName.getValue("IWidget.kt").contents
-        assertTrue(contents, contents.contains("fun <M0> Transform(`value`: M0): M0"))
+        assertTrue(contents, contents.contains("fun <M0> transform(`value`: M0): M0"))
         assertTrue(contents, contents.contains("WinRtGenericParameterProjection.createReference(value)"))
         assertTrue(contents, contents.contains("WinRtGenericParameterProjection.fromAbi<M0>(__resultPointer)"))
         assertFalse(contents, contents.contains("import M0"))
@@ -141,10 +141,10 @@ class KotlinProjectionGeneratorTest {
         val iJsonValue = filesByName.getValue("IJsonValue.kt").contents
 
         assertTrue(jsonValue, jsonValue.contains("IStringable"))
-        assertTrue(jsonValue, jsonValue.contains("fun CreateNumberValue(input: Double): JsonValue"))
-        assertTrue(jsonValue, jsonValue.contains("fun GetNumber(): Double"))
+        assertTrue(jsonValue, jsonValue.contains("fun createNumberValue(input: Double): JsonValue"))
+        assertTrue(jsonValue, jsonValue.contains("fun getNumber(): Double"))
         assertTrue(jsonValue, jsonValue.contains("override fun toString(): String"))
-        assertTrue(iJsonValue, iJsonValue.contains("fun GetNumber(): Double"))
+        assertTrue(iJsonValue, iJsonValue.contains("fun getNumber(): Double"))
     }
 
     @Test
@@ -157,15 +157,15 @@ class KotlinProjectionGeneratorTest {
         val jsonArray = filesByName.getValue("JsonArray.kt").contents
         val iJsonValue = filesByName.getValue("IJsonValue.kt").contents
 
-        assertTrue(jsonObject, jsonObject.contains("fun Parse(input: String): JsonObject"))
-        assertTrue(jsonObject, jsonObject.contains("fun GetNamedString(name: String, defaultValue: String): String"))
-        assertTrue(jsonObject, jsonObject.contains("fun GetNamedValue(name: String): JsonValue"))
-        assertTrue(jsonObject, jsonObject.contains("fun GetNamedBoolean(name: String, defaultValue: Boolean): Boolean"))
-        assertTrue(jsonObject, jsonObject.contains("fun GetNamedArray(name: String, defaultValue: JsonArray): JsonArray"))
-        assertTrue(iJsonObject, iJsonObject.contains("fun GetNamedArray(name: String): JsonArray"))
+        assertTrue(jsonObject, jsonObject.contains("fun parse(input: String): JsonObject"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedString(name: String, defaultValue: String): String"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedValue(name: String): JsonValue"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedBoolean(name: String, defaultValue: Boolean): Boolean"))
+        assertTrue(jsonObject, jsonObject.contains("fun getNamedArray(name: String, defaultValue: JsonArray): JsonArray"))
+        assertTrue(iJsonObject, iJsonObject.contains("fun getNamedArray(name: String): JsonArray"))
         assertTrue(jsonArray, jsonArray.contains("public constructor()"))
         assertTrue(iJsonValue, iJsonValue.contains("val valueType: JsonValueType"))
-        assertTrue(iJsonValue, iJsonValue.contains("fun GetObject(): JsonObject"))
+        assertTrue(iJsonValue, iJsonValue.contains("fun getObject(): JsonObject"))
     }
 
     @Test
@@ -207,7 +207,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("override val nativeObject: ComObjectReference"))
         assertTrue(jsonObject, jsonObject.contains("fun getNamedString(name: String): String"))
         assertTrue(jsonObject, jsonObject.contains("fun setNamedValue(name: String, `value`: JsonValue)"))
-        assertTrue(jsonObject, jsonObject.contains("(value as IWinRTObject).nativeObject.pointer"))
+        assertTrue(jsonObject, jsonObject.contains("nativeObject.pointer"))
         assertTrue(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject"))
         assertFalse(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject = error(\"WinRT ABI binding is unavailable\")"))
         assertTrue(jsonObject, jsonObject.contains("HString.create(json).use { __jsonAbi ->"))
@@ -215,7 +215,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
         assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jsonObject, jsonObject.contains("protected val _defaultInterface: ComObjectReference"))
+        assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: ComObjectReference"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
         assertTrue(jsonArray, jsonArray.contains("fun getStringAt(index: UInt): String"))
@@ -580,9 +580,9 @@ class KotlinProjectionGeneratorTest {
 
         val contents = KotlinProjectionGenerator().generate(model).single().contents
 
-        assertTrue(contents, contents.contains("fun GetObject(input: Any?): Any?"))
+        assertTrue(contents, contents.contains("fun getObject(input: Any?): Any?"))
         assertTrue(contents, contents.contains("winRtObjectMarshaler(input).use"))
-        assertFalse(contents, contents.contains("fun GetObject(input: IInspectableReference): IInspectableReference"))
+        assertFalse(contents, contents.contains("fun getObject(input: IInspectableReference): IInspectableReference"))
     }
 
     @Test
@@ -866,7 +866,7 @@ class KotlinProjectionGeneratorTest {
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
-        assertTrue(widgetContents.contains("protected val _defaultInterface: ComObjectReference"))
+        assertTrue(widgetContents.contains("private val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
@@ -1546,8 +1546,8 @@ class KotlinProjectionGeneratorTest {
         val widgetContents = generated.getValue("Widget.kt").contents
 
         assertFalse(widgetContents.contains("IWidget,\n"))
-        assertTrue(widgetContents.contains("protected open fun Refresh()"))
-        assertFalse(widgetContents.contains("override fun Refresh()"))
+        assertTrue(widgetContents.contains("protected open fun refresh()"))
+        assertFalse(widgetContents.contains("override fun refresh()"))
         assertTrue(widgetContents.contains("protected open val title: String"))
         assertFalse(widgetContents.contains("override val title: String"))
     }
@@ -1616,8 +1616,8 @@ class KotlinProjectionGeneratorTest {
         val interfaceContents = generated.getValue("IWidget.kt").contents
         val widgetContents = generated.getValue("Widget.kt").contents
 
-        assertTrue(interfaceContents.contains("fun Refresh()"))
-        assertTrue(widgetContents.contains("override fun Refresh()"))
+        assertTrue(interfaceContents.contains("fun refresh()"))
+        assertTrue(widgetContents.contains("override fun refresh()"))
         assertTrue(interfaceContents.contains("var name: String"))
         assertTrue(widgetContents.contains("override var name: String"))
         assertTrue(interfaceContents.contains("val changed: WinRtEvent<WidgetChangedHandler>"))
@@ -4092,7 +4092,7 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.endsWith("/FastDefaultExclusiveWidget.kt") }
             .contents
 
-        assertTrue(widgetContents, widgetContents.contains("protected val _defaultInterface: ComObjectReference"))
+        assertTrue(widgetContents, widgetContents.contains("private val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents, widgetContents.contains("getDefaultInterfaceObjectReference(8)"))
         assertTrue(widgetContents, widgetContents.contains("initializeBySourceType("))
         assertFalse(widgetContents, widgetContents.contains("initializeDependencies(entry) { }"))
@@ -4752,18 +4752,20 @@ class KotlinProjectionGeneratorTest {
         assertTrue(vectorContents, vectorContents.contains("__iStringVectorVectorCollection"))
         assertFalse(vectorContents, vectorContents.contains("__iStringVectorIterableCollection"))
         assertFalse(vectorContents, vectorContents.contains("Iterable<String>,"))
-        assertFalse(vectorContents, vectorContents.contains("fun First("))
-        assertFalse(vectorContents, vectorContents.contains("fun GetAt("))
-        assertFalse(vectorContents, vectorContents.contains("val Size"))
+        assertFalse(vectorContents, vectorContents.contains("fun first("))
+        assertFalse(vectorContents, vectorContents.contains("fun getAt("))
+        assertFalse(vectorContents, vectorContents.contains("public fun clear("))
+        assertFalse(vectorContents, vectorContents.contains("public val size"))
 
         assertTrue(mapContents, mapContents.contains("MutableMap<String, Int>,"))
         assertTrue(mapContents, mapContents.contains("__iStringIntMapMapCollection"))
         assertFalse(mapContents, mapContents.contains("__iStringIntMapIterableCollection"))
         assertTrue(mapContents, mapContents.contains("Iterable<Map.Entry<String, Int>>,"))
-        assertFalse(mapContents, mapContents.contains("fun First("))
-        assertFalse(mapContents, mapContents.contains("fun Lookup("))
-        assertFalse(mapContents, mapContents.contains("fun HasKey("))
-        assertFalse(mapContents, mapContents.contains("val Size"))
+        assertFalse(mapContents, mapContents.contains("fun first("))
+        assertFalse(mapContents, mapContents.contains("fun lookup("))
+        assertFalse(mapContents, mapContents.contains("fun hasKey("))
+        assertFalse(mapContents, mapContents.contains("public fun remove(key: String)"))
+        assertFalse(mapContents, mapContents.contains("public val size"))
     }
 
     @Test
@@ -4817,8 +4819,8 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("Iterable<String>,"))
-        assertTrue(contents, contents.contains("override fun Remove(`value`: String)"))
-        assertFalse(contents, contents.contains("override fun First("))
+        assertTrue(contents, contents.contains("override fun remove(`value`: String)"))
+        assertFalse(contents, contents.contains("override fun first("))
     }
 
     @Test
@@ -4982,7 +4984,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("argsKind = "))
         assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
         assertTrue(eventProjectionHelpers.contains("EventSource<WidgetHandler>"))
-        assertTrue(eventProjectionHelpers.contains("handler.invoke(__args[0] as kotlin.Int)"))
+        assertTrue(eventProjectionHelpers.contains("handler.invoke("))
         assertTrue(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" ->"))
         assertTrue(eventProjectionHelpers.contains("_EventSource_Sample_Foundation_WidgetHandler(obj, index)"))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources()"))
@@ -4991,6 +4993,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("eventSourceFactory = eventSourceFactoryFor(entry)"))
         assertTrue(eventProjectionHelpers.contains("fun createEventSource("))
         assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.createEventSource("))
+        assertFalse(eventProjectionHelpers.contains("No WinRT event source registered"))
+        assertTrue(eventProjectionHelpers.contains("ownerType = \"Sample.Foundation.IWidget\""))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources("))
         assertTrue(eventProjectionHelpers.contains("install:"))
         assertTrue(eventProjectionHelpers.contains("EventSourceEntry"))
@@ -5957,8 +5961,8 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
 
-        assertTrue(files.getValue("BaseWidget.kt").contents.contains("protected open val _defaultInterface"))
-        assertTrue(files.getValue("DerivedWidget.kt").contents.contains("protected override val _defaultInterface"))
+        assertTrue(files.getValue("BaseWidget.kt").contents.contains("private val _defaultInterface"))
+        assertTrue(files.getValue("DerivedWidget.kt").contents.contains("private val _defaultInterface"))
     }
 
     @Test

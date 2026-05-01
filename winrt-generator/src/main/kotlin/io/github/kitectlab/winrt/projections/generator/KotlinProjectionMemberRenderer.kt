@@ -227,7 +227,7 @@ internal fun KotlinProjectionRenderer.renderVisibility(visibility: KotlinProject
 
 internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodDefinition): FunSpec {
     val objectShape = runtimeObjectMethodShape(method)
-    return FunSpec.builder(objectShape?.name ?: method.name)
+    return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addModifiers(KModifier.ABSTRACT)
         .addMethodGenericParameters(method, objectShape)
         .apply {
@@ -242,7 +242,7 @@ internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodD
 
 internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefinition, override: Boolean = false): FunSpec {
     val objectShape = runtimeObjectMethodShape(method)
-    val builder = FunSpec.builder(objectShape?.name ?: method.name)
+    val builder = FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addMethodGenericParameters(method, objectShape)
         .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
@@ -323,7 +323,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     } else {
         renderBoundInvocation(binding)
     }
-    return FunSpec.builder(objectShape?.name ?: method.name)
+    return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
@@ -703,7 +703,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     val objectShape = closableMethodShape(slotInterfaceType, method)
     val projectedAttributes = slotInterfaceType.projectedAttributes()
         .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute)
-    return FunSpec.builder(objectShape?.name ?: method.name)
+    return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addProjectedAttributeAnnotations(projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(KModifier.OVERRIDE)
@@ -785,3 +785,6 @@ internal fun requiredForwardOwnerCache(
     } else {
         "_${ownerInterfaceName.substringBefore('<').substringAfterLast('.').replaceFirstChar(Char::lowercase)}"
     }
+
+internal fun WinRtMethodDefinition.projectedMethodName(): String =
+    name.replaceFirstChar(Char::lowercase)

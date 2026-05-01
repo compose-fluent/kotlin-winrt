@@ -413,7 +413,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds &&
         method.returnTypeName.let { it == plan.type.qualifiedName || it == plan.type.name }
     ) {
-        return FunSpec.builder(method.name)
+        return FunSpec.builder(method.projectedMethodName())
             .returns(resolveTypeName(method.returnTypeName))
             .addCode("return Metadata.wrap(ActivationFactory.activate())\n")
             .build()
@@ -422,7 +422,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         it.bindingName == staticMethodBindingName(plan, method)
     } ?: return null
     val invocation = renderBoundStaticInvocation(binding)
-    return FunSpec.builder(method.name)
+    return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method)
         .returns(resolveTypeName(method.returnTypeName))

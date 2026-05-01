@@ -2,7 +2,6 @@ package io.github.kitectlab.winrt.samples
 
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Application
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.DependencyProperty
-import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.FrameworkElement
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.HorizontalAlignment
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.LaunchActivatedEventArgs
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.RoutedEventArgs
@@ -11,18 +10,11 @@ import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.UIElement
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.VerticalAlignment
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Window
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.controls.Button
-import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.controls.ContentControl
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.controls.Page
-import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.controls.primitives.ButtonBase
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.input.TappedEventHandler
 import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.input.TappedRoutedEventArgs
-import io.github.kitectlab.winrt.runtime.IID
-import io.github.kitectlab.winrt.runtime.IInspectableReference
-import io.github.kitectlab.winrt.runtime.IWinRTObject
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
-import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RuntimeScope
-import io.github.kitectlab.winrt.runtime.WinRtReferenceProjection
 import io.github.kitectlab.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import io.github.kitectlab.winrt.runtime.WinRtWindowsMessageLoop
 
@@ -40,7 +32,7 @@ object WinUiDesktopSample {
             println("winui: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
             RuntimeScope.initializeSingleThreaded().use {
                 var launched = false
-                Application.Start {
+                Application.start {
                     println("winui: application callback invoked")
                     val desktopApplication = WinUiDesktopApp()
                     activeDesktopApplication = desktopApplication
@@ -64,7 +56,7 @@ object WinUiDesktopSample {
 private class WinUiDesktopApp : Application() {
     private var myWindow: Window? = null
 
-    override fun OnLaunched(args: LaunchActivatedEventArgs) {
+    override fun onLaunched(args: LaunchActivatedEventArgs) {
         launchCore()
         println("winui: window activated")
     }
@@ -75,26 +67,19 @@ private class WinUiDesktopApp : Application() {
         println("winui: dependency property unset value acquired")
         val button = Button()
         println("winui: button created")
-        val buttonContent = ContentControl.Metadata.wrap(button.inspectable())
-        println("winui: button content projected")
-        val buttonElement = FrameworkElement.Metadata.wrap(button.inspectable())
-        println("winui: button framework element projected")
-        val buttonBase = ButtonBase.Metadata.wrap(button.inspectable())
-        println("winui: button base projected")
-
-        buttonContent.content = boxString("Click me to load MainPage")
+        button.content = "Click me to load MainPage"
         println("winui: button content set")
-        buttonElement.horizontalAlignment = HorizontalAlignment.Center
-        buttonElement.verticalAlignment = VerticalAlignment.Center
+        button.horizontalAlignment = HorizontalAlignment.Center
+        button.verticalAlignment = VerticalAlignment.Center
         println("winui: button alignment set")
-        val clickToken = buttonBase.addClick(RoutedEventHandler { sender, args -> buttonClick(sender, args) })
+        val clickToken = button.click.add(RoutedEventHandler { sender, args -> buttonClick(sender, args) })
         println("winui: click handler registered")
 
         val window = Window()
         println("winui: window created")
-        window.content = UIElement.Metadata.wrap(button.inspectable())
+        window.content = button
         println("winui: window content set")
-        window.Activate()
+        window.activate()
         println("winui: window activated native")
         myWindow = window
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoNavigateWinUi")) {
@@ -132,10 +117,10 @@ private data class WinUiDesktopMainPage(
             val page = Page()
             println("winui: page created")
             val pageContent = Button()
-            ContentControl.Metadata.wrap(pageContent.inspectable()).content = boxString("Hello from WinUI Desktop!")
+            pageContent.content = "Hello from WinUI Desktop!"
             page.content = pageContent
             println("winui: page content initialized")
-            page.AddHandler(UIElement.tappedEvent, TappedEventHandler { sender, args -> pointerTapped(sender, args) }, true)
+            page.addHandler(UIElement.tappedEvent, TappedEventHandler { sender, args -> pointerTapped(sender, args) }, true)
             println("winui: page tapped handler registered")
             return WinUiDesktopMainPage(page, tappedHandlerRegistered = true)
         }
@@ -144,12 +129,3 @@ private data class WinUiDesktopMainPage(
         }
     }
 }
-
-private fun IWinRTObject.inspectable(): IInspectableReference =
-    nativeObject.asInspectable()
-
-private fun boxString(value: String): IInspectableReference =
-    IInspectableReference(
-        PlatformAbi.toRawComPtr(WinRtReferenceProjection.fromManaged(value, IID.NullableString)),
-        IID.IInspectable,
-    )

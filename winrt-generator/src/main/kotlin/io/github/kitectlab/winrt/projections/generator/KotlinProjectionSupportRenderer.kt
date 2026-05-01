@@ -312,13 +312,24 @@ class KotlinProjectionSupportRenderer {
         val helpers = model.semanticHelpers()
         val plansByType = plans.associateBy { it.type.qualifiedName }
         val typesByQualifiedName = plans.associate { it.type.qualifiedName to it.type }
-        val subclassDescriptors = model.namespaces
+        val eventSourceEntries = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
             .filter { it.usesSharedEventHandlerSource || it.genericArgumentTypeNames.isEmpty() }
-            .distinctBy { it.sourceClassName }
+            .distinctBy { it.eventTypeName to it.ownerTypeName }
             .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
-        if (inventory.eventSourceMappings.isEmpty() && subclassDescriptors.isEmpty()) {
+        val eventSourceFactoryDescriptors = eventSourceEntries
+            .distinctBy {
+                if (it.usesSharedEventHandlerSource) {
+                    it.eventTypeName
+                } else {
+                    it.sourceClassName
+                }
+            }
+        val eventSourceClassDescriptors = eventSourceEntries
+            .filterNot { it.usesSharedEventHandlerSource }
+            .distinctBy { it.sourceClassName }
+        if (inventory.eventSourceMappings.isEmpty() && eventSourceEntries.isEmpty()) {
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "EventSourceEntry")
@@ -326,7 +337,7 @@ class KotlinProjectionSupportRenderer {
             .addModifiers(KModifier.INTERNAL)
             .addProperty(
                 PropertySpec.builder("EVENT_SOURCES", List::class.asClassName().parameterizedBy(entryClass))
-                    .initializer(eventSourceEntriesCode(subclassDescriptors, entryClass))
+                    .initializer(eventSourceEntriesCode(eventSourceEntries, entryClass))
                     .build(),
             )
             .addProperty(stringListProperty("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" }))
@@ -346,7 +357,7 @@ class KotlinProjectionSupportRenderer {
                     .initializer("EVENT_SOURCES.groupBy({ it.ownerType })")
                     .build(),
             )
-            .addFunctions(eventProjectionHelperFunctions(entryClass, subclassDescriptors, plansByType, typesByQualifiedName))
+            .addFunctions(eventProjectionHelperFunctions(entryClass, eventSourceFactoryDescriptors, plansByType, typesByQualifiedName))
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
             .addType(
                 dataClass(
@@ -361,8 +372,7 @@ class KotlinProjectionSupportRenderer {
                     ),
                 ),
             )
-        subclassDescriptors
-            .filterNot { it.usesSharedEventHandlerSource }
+        eventSourceClassDescriptors
             .forEach { descriptor ->
                 val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
                 val delegatePlan = plansByType[rawEventType] ?: return@forEach
@@ -1326,6 +1336,9 @@ class KotlinProjectionSupportRenderer {
         }
         return CodeBlock.of(
             """
+            if (handler is io.github.kitectlab.winrt.runtime.WinRtProjectedDelegate) {
+                return handler.createWinRtDelegateHandle()
+            }
             return io.github.kitectlab.winrt.runtime.WinRtDelegateBridge.createDelegate(
                 iid = io.github.kitectlab.winrt.runtime.Guid(%S),
                 parameterKinds = %L,
@@ -1451,7 +1464,7 @@ class KotlinProjectionSupportRenderer {
                 .addParameter("ownerType", String::class)
                 .addParameter("objectReference", ClassName("io.github.kitectlab.winrt.runtime", "ComObjectReference"))
                 .addParameter("vtableIndexForAddHandler", Int::class)
-                .returns(ClassName("io.github.kitectlab.winrt.runtime", "EventSource").parameterizedBy(STAR))
+                .returns(ClassName("io.github.kitectlab.winrt.runtime", "EventSource").parameterizedBy(STAR).copy(nullable = true))
                 .addCode(
                     """
                     installEventSources()
@@ -1460,7 +1473,7 @@ class KotlinProjectionSupportRenderer {
                         ownerType = ownerType,
                         objectReference = objectReference,
                         vtableIndexForAddHandler = vtableIndexForAddHandler,
-                    ) ?: error("No WinRT event source registered for ${'$'}eventType on ${'$'}ownerType")
+                    )
                     """.trimIndent() + "\n",
                 )
                 .build(),

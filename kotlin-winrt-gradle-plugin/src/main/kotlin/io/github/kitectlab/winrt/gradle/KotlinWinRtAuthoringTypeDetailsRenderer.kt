@@ -120,7 +120,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderMethod(
         method: WinRtMethodDefinition,
     ): CodeBlock {
-        val sourceMethodName = method.name
+        val sourceMethodName = method.name.replaceFirstChar(Char::lowercase)
         return CodeBlock.builder()
             .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method))
             .indent()
