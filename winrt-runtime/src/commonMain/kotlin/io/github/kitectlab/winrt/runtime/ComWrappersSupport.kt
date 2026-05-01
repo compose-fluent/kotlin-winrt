@@ -28,6 +28,7 @@ object ComWrappersSupport {
     private val authoringMetadataTypeLookups = SnapshotList<(String) -> String?>()
 
     init {
+        registerBuiltInCcwFactories()
         platformEnsureInspectableProjectionInteropRegistered()
     }
 
@@ -304,7 +305,14 @@ object ComWrappersSupport {
         Projections.clearRegistriesForTests()
         TypeNameSupport.clearRegistriesForTests()
         TypeExtensions.clearRegistriesForTests()
+        registerBuiltInCcwFactories()
         platformEnsureInspectableProjectionInteropRegistered()
+    }
+
+    private fun registerBuiltInCcwFactories() {
+        ccwFactories[WinRtActivationFactory::class] = { value ->
+            WinRtActivationFactorySupport.createCcwDefinition(value as WinRtActivationFactory)
+        }
     }
 
     internal fun getRuntimeClassNameForNonWinRTTypeFromLookupTable(
