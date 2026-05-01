@@ -4991,6 +4991,15 @@ class KotlinProjectionGeneratorTest {
                                         WinRtParameterDefinition("names", "Array<String>", isInParameter = true),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "RoundTripGeneric",
+                                    returnTypeName = "M0",
+                                    genericParameterCount = 1,
+                                    genericParameters = listOf(WinRtGenericParameterDefinition("M0", 0)),
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "M0"),
+                                    ),
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(
@@ -5307,6 +5316,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("val __returnArray = __returnArrayMarshaler.createMarshalerArray(__result)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[2] as RawAddress, __returnArray?.length ?: 0)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[3] as RawAddress"))
+        assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.fromAbi<M0>(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories.contains("value.roundTripGeneric(value)"))
+        assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.createReference(__result).use"))
+        assertTrue(ccwFactories.contains("__returnReference?.getRefPointer()"))
+        assertTrue(ccwFactories.contains("PlatformAbi.nullPointer"))
         assertTrue(ccwFactories.contains("EventHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.addChanged(handler)"))
         assertTrue(ccwFactories.contains("EventRegistrationToken.Metadata.copyTo(token, rawArgs[1] as RawAddress)"))

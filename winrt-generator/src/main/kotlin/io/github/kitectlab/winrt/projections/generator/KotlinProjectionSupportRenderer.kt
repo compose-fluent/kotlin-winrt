@@ -1878,6 +1878,7 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
+        KotlinProjectionAbiValueKind.GenericParameter,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> true
         KotlinProjectionAbiValueKind.Array -> binding.typeArguments.singleOrNull()?.let(::authoringCcwArrayElementBindingIsSupported) == true
@@ -1962,6 +1963,13 @@ class KotlinProjectionSupportRenderer {
             index,
             RAW_ADDRESS_CLASS_NAME,
             "Authored delegate argument ${binding.resolvedTypeName} was null.",
+        )
+        KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of(
+            "%T.fromAbi<%T>(rawArgs[%L] as %T)",
+            WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
+            typeRenderer.resolveTypeName(binding.typeName),
+            index,
+            RAW_ADDRESS_CLASS_NAME,
         )
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T(rawArgs[%L] as %T).inspectable()", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
@@ -2111,6 +2119,7 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
+        KotlinProjectionAbiValueKind.GenericParameter,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI return ${binding.describeAbiKind()}")
@@ -2165,6 +2174,17 @@ class KotlinProjectionSupportRenderer {
         outExpression: String,
         valueExpression: String,
     ): CodeBlock {
+        if (binding.kind == KotlinProjectionAbiValueKind.GenericParameter) {
+            return CodeBlock.of(
+                "%T.createReference(%L).use { __returnReference -> %T.writePointer(%L, __returnReference?.getRefPointer()?.let(%T::fromRawComPtr) ?: %T.nullPointer) }",
+                WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME,
+                valueExpression,
+                PLATFORM_ABI_CLASS_NAME,
+                outExpression,
+                PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+        }
         val interfaceId = binding.interfaceId?.let { CodeBlock.of("%T(%S)", GUID_CLASS_NAME, it.toString()) }
             ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME)
         return CodeBlock.of(
