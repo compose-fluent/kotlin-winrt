@@ -10,7 +10,7 @@
 ## Current Focus
 
 - [ ] CCW/object marshaling parity 正在做: close remaining cswinrt `GetInterfaceTableEntries` differences for boxed values/delegates and keep WinUI smoke as validation only.
-- [ ] Generator audit closure 正在做: keep non-authoring gaps explicit instead of claiming full parity; authoring writer output is now in scope.
+- [ ] Generator audit closure 正在做: keep non-authoring gaps explicit instead of claiming full parity; authoring writer output is closed and remaining active authoring work is host packaging.
 
 ## Completed Baseline
 
@@ -51,7 +51,7 @@
 - [x] Generator authoring handoff plans exist for wrapper class, ABI class, custom QI, activation factory, module activation factory, exposed type details, and metadata type mapping.
 - [x] Authoring source discovery now mirrors `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs`: light-tree scanning only collects candidates, K2/IR diagnostics validate effective public accessibility, non-generic/non-inner/final class shape, generated projection sources are excluded, and Gradle wires the shared metadata index into the compiler plugin.
 - [x] Authoring WinMD runtime-class shell emission: authored descriptors are owned by `winrt-metadata`, merge into the projection model before source generation, emit deterministic descriptor output, write loadable TypeDef/base TypeRef/InterfaceImpl rows plus Default/Overridable/Activatable/Version attributes, and Gradle now writes the project-named `.winmd` artifact.
-- [ ] Authoring writer output 正在做: generated support now covers metadata mapping, wrapper/ABI facades, custom QI, server factories, module registration, generated host exports, CCW method tables, arrays, and generic-parameter marshaling.
+- [x] Authoring writer output: generated support now covers metadata mapping, wrapper/ABI facades, custom QI, server factories, module registration, generated host exports, CCW method tables, arrays, and generic-parameter marshaling, matching the `.cswinrt/src/Authoring/WinRT.SourceGenerator` writer responsibilities that are viable on JVM.
 - [ ] Server/host activation 正在做: JVM host bridge mirrors `.cswinrt/src/Authoring` `DllGetActivationFactory`/`DllCanUnloadNow` HRESULT semantics, generated support exposes stable host-shim address entrypoints for both exports, library identity/staging handles authored WinMD and cswinrt-style activatable-class target host manifests, staged/plugin-runtime-assets directory or jar manifests install as activation-factory fallbacks, host loading uses manifest target artifacts like cswinrt shim target-assembly loading, and target artifact names follow the real Gradle jar archive; next is actual native DLL export/packaging.
 - [ ] `mingwX64` authoring frozen: keep shared contracts native-viable, but defer native CCW/host implementation until JVM authoring stabilizes.
 
