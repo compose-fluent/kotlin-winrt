@@ -35,6 +35,7 @@
 - [x] Generated WinRT methods now project as Kotlin lower-camel members (`start`, `activate`, `addHandler`, `onLaunched`) while mapped collection ABI members stay hidden behind Kotlin collection APIs.
 - [x] Interface slot ordering now accounts for properties/events/methods by metadata row order before method-only wrappers, matching cswinrt ABI slot layout.
 - [x] Event-source helper generation now keeps owner mappings separate from reusable source classes, so shared delegate helpers such as `RoutedEventHandler` remain available for `IButtonBase.Click`.
+- [x] WinUI desktop sample entry now mirrors `.cswinrt/src/Samples/WinUIDesktopSample` and real WinUI template code: initialize the runtime, call `Application.start { WinUiDesktopApp() }`, and let XAML own the dispatcher loop instead of running a sample-local Win32 message loop.
 
 ## Generator Gaps
 

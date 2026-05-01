@@ -16,7 +16,6 @@ import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.input.TappedRoute
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
 import io.github.kitectlab.winrt.runtime.RuntimeScope
 import io.github.kitectlab.winrt.runtime.WinRtWindowsAppSdkBootstrap
-import io.github.kitectlab.winrt.runtime.WinRtWindowsMessageLoop
 
 data class WinUiDesktopSampleResult(
     val dependencyPropertyUnsetValueAvailable: Boolean,
@@ -31,17 +30,11 @@ object WinUiDesktopSample {
         WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
             println("winui: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
             RuntimeScope.initializeSingleThreaded().use {
-                var launched = false
                 Application.start {
                     println("winui: application callback invoked")
                     val desktopApplication = WinUiDesktopApp()
                     activeDesktopApplication = desktopApplication
-                    launched = true
                     println("winui: application composed")
-                }
-                println("winui: Application.Start returned launched=$launched")
-                if (launched) {
-                    WinRtWindowsMessageLoop.run()
                 }
             }
         }
