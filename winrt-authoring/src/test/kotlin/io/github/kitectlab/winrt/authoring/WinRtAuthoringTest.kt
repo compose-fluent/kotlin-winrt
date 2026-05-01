@@ -22,6 +22,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.net.URLClassLoader
 import java.nio.file.Files
 
 class WinRtAuthoringTest {
@@ -320,6 +321,44 @@ class WinRtAuthoringTest {
     }
 
     @Test
+    fun authored_host_manifest_loader_installs_from_plugin_runtime_assets_directory() {
+        assumeTrue(PlatformRuntime.isWindows)
+        ComWrappersSupport.clearRegistriesForTests()
+        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-")
+        val assets = root.resolve("kotlin-winrt-runtime-assets")
+        Files.createDirectories(assets)
+        Files.writeString(
+            assets.resolve("RuntimeAssetsHostComponent.host.json"),
+            """
+            {
+              "schemaVersion": 1,
+              "model": "jvm-authoring-host",
+              "assemblyName": "RuntimeAssetsHostComponent",
+              "hostExportsClass": "${RuntimeAssetsHostExports::class.java.name}",
+              "activatableClasses": ["Sample.Authoring.RuntimeAssetsHostComponent"]
+            }
+            """.trimIndent(),
+        )
+
+        URLClassLoader(arrayOf(root.toUri().toURL()), javaClass.classLoader).use { classLoader ->
+            WinRtAuthoringHostManifestLoader.installFromRuntimeAssets(classLoader)
+        }
+        ActivationFactory.get("Sample.Authoring.RuntimeAssetsHostComponent").use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        RuntimeAssetsHostComponent::class,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
     fun composable_object_forwards_outer_query_interface_to_inner_after_factory_composition() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("11111111-1111-1111-1111-111111111111")
@@ -507,6 +546,8 @@ class WinRtAuthoringTest {
 
     private class HostManifestComponent
 
+    private class RuntimeAssetsHostComponent
+
     object HostManifestExports {
         @JvmStatic
         fun registerActivationFactories() {
@@ -527,6 +568,34 @@ class WinRtAuthoringTest {
             WinRtAuthoring.registerActivationFactory<HostManifestComponent>(
                 runtimeClassName = "Sample.Authoring.HostManifestComponent",
                 createInstance = ::HostManifestComponent,
+            )
+        }
+
+        @JvmStatic
+        fun dllGetActivationFactoryAddress(activatableClassId: Long, factoryOut: Long): Int =
+            WinRtAuthoringHostBridge.dllGetActivationFactory(RawAddress(activatableClassId), RawAddress(factoryOut))
+    }
+
+    object RuntimeAssetsHostExports {
+        @JvmStatic
+        fun registerActivationFactories() {
+            val interfaceId = Guid("99999999-1111-2222-3333-444444444444")
+            WinRtAuthoring.registerType<RuntimeAssetsHostComponent>(
+                WinRtAuthoredTypeDefinition(
+                    runtimeClassName = "Sample.Authoring.RuntimeAssetsHostComponent",
+                    defaultInterfaceId = interfaceId,
+                    interfaces = listOf(
+                        WinRtAuthoredInterfaceDefinition(
+                            interfaceId = interfaceId,
+                            methods = emptyList(),
+                            isDefault = true,
+                        ),
+                    ),
+                ),
+            )
+            WinRtAuthoring.registerActivationFactory<RuntimeAssetsHostComponent>(
+                runtimeClassName = "Sample.Authoring.RuntimeAssetsHostComponent",
+                createInstance = ::RuntimeAssetsHostComponent,
             )
         }
 

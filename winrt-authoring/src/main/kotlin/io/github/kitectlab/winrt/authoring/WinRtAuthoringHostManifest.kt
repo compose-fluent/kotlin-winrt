@@ -13,6 +13,7 @@ import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 import kotlin.io.path.extension
 import kotlin.io.path.isRegularFile
 
@@ -23,6 +24,8 @@ data class WinRtAuthoringHostManifest(
 )
 
 object WinRtAuthoringHostManifestLoader {
+    private const val RUNTIME_ASSETS_RESOURCE_DIRECTORY = "kotlin-winrt-runtime-assets"
+
     fun read(path: Path): WinRtAuthoringHostManifest {
         val content = Files.readString(path)
         return WinRtAuthoringHostManifest(
@@ -34,6 +37,16 @@ object WinRtAuthoringHostManifestLoader {
 
     fun installFromDirectory(directory: Path) {
         install(readDirectory(directory))
+    }
+
+    fun installFromRuntimeAssets(
+        classLoader: ClassLoader = Thread.currentThread().contextClassLoader ?: WinRtAuthoringHostManifestLoader::class.java.classLoader,
+    ) {
+        val resources = classLoader.getResources(RUNTIME_ASSETS_RESOURCE_DIRECTORY).toList()
+        resources
+            .filter { it.protocol.equals("file", ignoreCase = true) }
+            .map { Paths.get(it.toURI()) }
+            .forEach(::installFromDirectory)
     }
 
     fun install(manifests: List<WinRtAuthoringHostManifest>) {
