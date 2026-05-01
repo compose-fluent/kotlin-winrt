@@ -1116,6 +1116,13 @@ class KotlinProjectionSupportRenderer {
                             .addStatement("return %T.dllCanUnloadNow()", hostBridgeClass)
                             .build(),
                     )
+                    .addFunction(
+                        FunSpec.builder("dllCanUnloadNowAddress")
+                            .addAnnotation(ClassName("kotlin.jvm", "JvmStatic"))
+                            .returns(Int::class)
+                            .addStatement("return dllCanUnloadNow()")
+                            .build(),
+                    )
                     .build(),
             )
             .build()

@@ -5296,6 +5296,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(hostExports.contains("RawAddress(activatableClassId)"))
         assertTrue(hostExports.contains("fun dllCanUnloadNow(): Int"))
         assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllCanUnloadNow()"))
+        assertTrue(hostExports.contains("fun dllCanUnloadNowAddress(): Int"))
         val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
         assertTrue(ccwFactories.contains("object WinRTAuthoringCcwFactories"))
         assertTrue(ccwFactories.contains("ComWrappersSupport.registerCcwFactory(Widget::class)"))
