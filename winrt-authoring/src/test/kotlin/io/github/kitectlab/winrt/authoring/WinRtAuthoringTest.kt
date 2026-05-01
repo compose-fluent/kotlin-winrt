@@ -24,6 +24,8 @@ import org.junit.Assert.fail
 import org.junit.Test
 import java.net.URLClassLoader
 import java.nio.file.Files
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 
 class WinRtAuthoringTest {
     @Test
@@ -379,6 +381,50 @@ class WinRtAuthoringTest {
         )
 
         URLClassLoader(arrayOf(root.toUri().toURL()), javaClass.classLoader).use { classLoader ->
+            WinRtAuthoringHostManifestLoader.installFromRuntimeAssets(classLoader)
+        }
+        ActivationFactory.get("Sample.Authoring.RuntimeAssetsHostComponent").use { factory ->
+            factory.activateInstance().use { instance ->
+                assertNotNull(
+                    ComWrappersSupport.findObject(
+                        PlatformAbi.fromRawComPtr(instance.pointer),
+                        RuntimeAssetsHostComponent::class,
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun authored_host_manifest_loader_installs_from_plugin_runtime_assets_jar() {
+        assumeTrue(PlatformRuntime.isWindows)
+        ComWrappersSupport.clearRegistriesForTests()
+        ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+
+        val jarPath = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-").resolve("runtime-assets.jar")
+        JarOutputStream(Files.newOutputStream(jarPath)).use { jar ->
+            jar.putNextEntry(JarEntry("kotlin-winrt-runtime-assets/"))
+            jar.closeEntry()
+            jar.putNextEntry(JarEntry("kotlin-winrt-runtime-assets/RuntimeAssetsHostComponent.host.json"))
+            jar.write(
+                """
+                {
+                  "schemaVersion": 1,
+                  "model": "jvm-authoring-host",
+                  "assemblyName": "RuntimeAssetsHostComponent",
+                  "hostExportsClass": "${RuntimeAssetsHostExports::class.java.name}",
+                  "targetArtifact": "RuntimeAssetsHostComponent.jar",
+                  "activatableClassTargets": {
+                    "Sample.Authoring.RuntimeAssetsHostComponent": "RuntimeAssetsHostComponent.jar"
+                  }
+                }
+                """.trimIndent().toByteArray(Charsets.UTF_8),
+            )
+            jar.closeEntry()
+        }
+
+        URLClassLoader(arrayOf(jarPath.toUri().toURL()), javaClass.classLoader).use { classLoader ->
             WinRtAuthoringHostManifestLoader.installFromRuntimeAssets(classLoader)
         }
         ActivationFactory.get("Sample.Authoring.RuntimeAssetsHostComponent").use { factory ->

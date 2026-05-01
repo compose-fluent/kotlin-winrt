@@ -11,6 +11,7 @@ import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.PlatformRuntime
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
+import java.net.JarURLConnection
 import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -36,16 +37,21 @@ object WinRtAuthoringHostManifestLoader {
     )
 
     fun read(path: Path): WinRtAuthoringHostManifest {
-        val content = Files.readString(path)
-        return WinRtAuthoringHostManifest(
+        return readContent(Files.readString(path), path.parent)
+    }
+
+    private fun readContent(
+        content: String,
+        sourceDirectory: Path?,
+    ): WinRtAuthoringHostManifest =
+        WinRtAuthoringHostManifest(
             assemblyName = readJsonString(content, "assemblyName").orEmpty(),
             hostExportsClass = readJsonString(content, "hostExportsClass").orEmpty(),
             targetArtifact = readJsonString(content, "targetArtifact").orEmpty(),
             activatableClasses = readJsonStringArray(content, "activatableClasses"),
             activatableClassTargets = readJsonStringMap(content, "activatableClassTargets"),
-            sourceDirectory = path.parent,
+            sourceDirectory = sourceDirectory,
         )
-    }
 
     fun installFromDirectory(directory: Path) {
         install(readDirectory(directory))
@@ -55,10 +61,12 @@ object WinRtAuthoringHostManifestLoader {
         classLoader: ClassLoader = Thread.currentThread().contextClassLoader ?: WinRtAuthoringHostManifestLoader::class.java.classLoader,
     ) {
         val resources = classLoader.getResources(RUNTIME_ASSETS_RESOURCE_DIRECTORY).toList()
-        resources
-            .filter { it.protocol.equals("file", ignoreCase = true) }
-            .map { Paths.get(it.toURI()) }
-            .forEach(::installFromDirectory)
+        resources.forEach { resource ->
+            when {
+                resource.protocol.equals("file", ignoreCase = true) -> installFromDirectory(Paths.get(resource.toURI()))
+                resource.protocol.equals("jar", ignoreCase = true) -> install(readJarDirectory(resource))
+            }
+        }
     }
 
     fun install(manifests: List<WinRtAuthoringHostManifest>) {
@@ -87,6 +95,21 @@ object WinRtAuthoringHostManifestLoader {
             stream
                 .filter { it.isRegularFile() && it.extension.equals("json", ignoreCase = true) && it.fileName.toString().endsWith(".host.json", ignoreCase = true) }
                 .map(::read)
+                .toList()
+        }
+    }
+
+    private fun readJarDirectory(resource: java.net.URL): List<WinRtAuthoringHostManifest> {
+        val connection = resource.openConnection() as? JarURLConnection ?: return emptyList()
+        val prefix = connection.entryName.trimEnd('/') + "/"
+        return connection.jarFile.use { jar ->
+            jar.entries().asSequence()
+                .filter { !it.isDirectory && it.name.startsWith(prefix) && it.name.endsWith(".host.json", ignoreCase = true) }
+                .map { entry ->
+                    jar.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { reader ->
+                        readContent(reader.readText(), sourceDirectory = null)
+                    }
+                }
                 .toList()
         }
     }
