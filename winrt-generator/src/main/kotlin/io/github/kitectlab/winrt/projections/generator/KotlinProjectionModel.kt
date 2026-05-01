@@ -39,10 +39,13 @@ import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.kitectlab.winrt.metadata.requireValidForProjection
 import io.github.kitectlab.winrt.metadata.semanticHelpers
 import io.github.kitectlab.winrt.runtime.ActivationFactory
+import io.github.kitectlab.winrt.runtime.ComAbiValueKind
+import io.github.kitectlab.winrt.runtime.ComMethodSignature
 import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.EventRegistrationToken
+import io.github.kitectlab.winrt.runtime.ExceptionHelpers
 import io.github.kitectlab.winrt.runtime.EventSource
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
@@ -50,6 +53,7 @@ import io.github.kitectlab.winrt.runtime.HString
 import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.IWinRTObject
+import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.Marshaler
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.ParameterizedInterfaceId
@@ -104,6 +108,7 @@ import io.github.kitectlab.winrt.runtime.WinRtExperimental
 import io.github.kitectlab.winrt.runtime.WinRtOverload
 import io.github.kitectlab.winrt.runtime.WinRtSupportedOSPlatform
 import io.github.kitectlab.winrt.runtime.WinRtInspectableInterfaceDefinition
+import io.github.kitectlab.winrt.runtime.WinRtInspectableMethodDefinition
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -134,11 +139,14 @@ internal val IREFERENCE_GENERIC_INTERFACE_ID = Guid("61C17706-2D65-11E0-9AE8-D48
 internal val IREFERENCE_ARRAY_GENERIC_INTERFACE_ID = Guid("61C17707-2D65-11E0-9AE8-D48564015472")
 internal val GUID_CLASS_NAME = Guid::class.asClassName()
 internal val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassName()
+internal val COM_ABI_VALUE_KIND_CLASS_NAME = ComAbiValueKind::class.asClassName()
+internal val COM_METHOD_SIGNATURE_CLASS_NAME = ComMethodSignature::class.asClassName()
 internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
 internal val COM_WRAPPERS_SUPPORT_CLASS_NAME = ComWrappersSupport::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
 internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRtCcwDefinition::class.asClassName()
 internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectableInterfaceDefinition::class.asClassName()
+internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRtInspectableMethodDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.kitectlab.winrt.projections.support", "WinRTGenericTypeInstantiations")
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
@@ -147,6 +155,7 @@ internal val IID_CLASS_NAME = IID::class.asClassName()
 internal val IUNKNOWN_REFERENCE_CLASS_NAME = IUnknownReference::class.asClassName()
 internal val IINSPECTABLE_REFERENCE_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "IInspectableReference")
 internal val IWINRT_OBJECT_CLASS_NAME = IWinRTObject::class.asClassName()
+internal val KNOWN_HRESULTS_CLASS_NAME = KnownHResults::class.asClassName()
 internal val MARSHALER_CLASS_NAME = Marshaler::class.asClassName()
 internal val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
 internal val PARAMETERIZED_INTERFACE_ID_CLASS_NAME = ParameterizedInterfaceId::class.asClassName()
@@ -220,6 +229,7 @@ internal val NATIVE_STRUCT_ADAPTER_CLASS_NAME = NativeStructAdapter::class.asCla
 internal val NATIVE_STRUCT_LAYOUT_CLASS_NAME = NativeStructLayout::class.asClassName()
 internal val NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME = NativeStructScalarKind::class.asClassName()
 internal val EVENT_REGISTRATION_TOKEN_CLASS_NAME = EventRegistrationToken::class.asClassName()
+internal val EXCEPTION_HELPERS_CLASS_NAME = ExceptionHelpers::class.asClassName()
 internal val EXCEPTION_CLASS_NAME = Exception::class.asClassName()
 internal val EVENT_HANDLER_CALLBACK_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "EventHandlerCallback")
 internal val WINRT_COMMAND_CLASS_NAME = ClassName("io.github.kitectlab.winrt.runtime", "WinRtCommand")

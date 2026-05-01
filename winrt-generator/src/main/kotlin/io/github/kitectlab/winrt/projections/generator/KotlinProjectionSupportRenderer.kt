@@ -1071,8 +1071,9 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
+        val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
         entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
-            fileBuilder.addFunction(authoringCcwDefinitionFunction(plan))
+            fileBuilder.addFunction(authoringCcwDefinitionFunction(plan, plansByQualifiedName))
         }
         fileBuilder.addType(
             TypeSpec.objectBuilder("WinRTAuthoringCcwFactories")
@@ -1083,7 +1084,10 @@ class KotlinProjectionSupportRenderer {
         return supportFile("WinRTAuthoringCcwFactories.kt", fileBuilder.build())
     }
 
-    private fun authoringCcwDefinitionFunction(plan: KotlinTypeProjectionPlan): FunSpec {
+    private fun authoringCcwDefinitionFunction(
+        plan: KotlinTypeProjectionPlan,
+        plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
+    ): FunSpec {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
         val functionName = authoringCcwDefinitionFunctionName(plan)
         val defaultInterface = plan.defaultInterfaceName
@@ -1091,13 +1095,14 @@ class KotlinProjectionSupportRenderer {
             .addModifiers(KModifier.PRIVATE)
             .addParameter("value", projectedType)
             .returns(WINRT_CCW_DEFINITION_CLASS_NAME)
-            .addCode(authoringCcwDefinitionCode(plan, defaultInterface))
+            .addCode(authoringCcwDefinitionCode(plan, defaultInterface, plansByQualifiedName))
             .build()
     }
 
     private fun authoringCcwDefinitionCode(
         plan: KotlinTypeProjectionPlan,
         defaultInterface: String?,
+        plansByQualifiedName: Map<String, KotlinTypeProjectionPlan>,
     ): CodeBlock {
         val code = CodeBlock.builder()
         code.add("return %T(\n", WINRT_CCW_DEFINITION_CLASS_NAME)
@@ -1109,10 +1114,11 @@ class KotlinProjectionSupportRenderer {
             .distinct()
             .sorted()
             .forEach { interfaceName ->
+                val interfacePlan = plansByQualifiedName[interfaceName]
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %T.Metadata.IID,\n", projectionClassNameForQualifiedName(interfaceName))
-                code.add("methods = emptyList(),\n")
+                code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(interfacePlan))
                 code.unindent()
                 code.add("),\n")
             }
@@ -1130,6 +1136,158 @@ class KotlinProjectionSupportRenderer {
         code.add(")\n")
         return code.build()
     }
+
+    private fun authoringCcwInterfaceMethodsCode(interfacePlan: KotlinTypeProjectionPlan?): CodeBlock {
+        if (interfacePlan == null || interfacePlan.instanceMemberBindings.isEmpty()) {
+            return CodeBlock.of("emptyList()")
+        }
+        val slotOrder = interfacePlan.abiSlotBindings.associate { it.constantName to it.slot }
+        val methods = interfacePlan.instanceMemberBindings.sortedWith(
+            compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder[it.slotConstantName] ?: Int.MAX_VALUE }
+                .thenBy { it.bindingName },
+        )
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        methods.forEach { binding ->
+            code.add("%T(\n", WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME)
+            code.indent()
+            code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
+            code.add("handler = { rawArgs ->\n")
+            code.indent()
+            code.add("%L", authoringCcwMethodHandlerCode(interfacePlan.type, binding))
+            code.unindent()
+            code.add("},\n")
+            code.unindent()
+            code.add("),\n")
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
+    private fun authoringCcwMethodSignatureCode(binding: KotlinProjectionInstanceMemberBinding): CodeBlock {
+        val explicitKinds = binding.parameterBindings.map { authoringCcwAbiValueKindCode(it.typeBinding) } +
+            if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+                emptyList()
+            } else {
+                listOf(CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME))
+            }
+        return if (explicitKinds.isEmpty()) {
+            CodeBlock.of("%T()", COM_METHOD_SIGNATURE_CLASS_NAME)
+        } else {
+            CodeBlock.builder()
+                .add("%T.of(", COM_METHOD_SIGNATURE_CLASS_NAME)
+                .apply {
+                    explicitKinds.forEachIndexed { index, kind ->
+                        if (index > 0) {
+                            add(", ")
+                        }
+                        add("%L", kind)
+                    }
+                }
+                .add(")")
+                .build()
+        }
+    }
+
+    private fun authoringCcwAbiValueKindCode(binding: KotlinProjectionAbiTypeBinding): CodeBlock = when (binding.kind) {
+        KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.Int8", COM_ABI_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16,
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.Int16", COM_ABI_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.Float", COM_ABI_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.Double", COM_ABI_VALUE_KIND_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Enum -> when (binding.enumUnderlyingType) {
+            WinRtIntegralType.Int8,
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.Int8", COM_ABI_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.Int16,
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.Int16", COM_ABI_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.Int64,
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
+            WinRtIntegralType.Int32,
+            WinRtIntegralType.UInt32,
+            null -> CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME)
+        }
+        KotlinProjectionAbiValueKind.Struct ->
+            if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
+                CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
+            } else {
+                CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
+            }
+        else -> CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME)
+    }
+
+    private fun authoringCcwMethodHandlerCode(
+        interfaceType: WinRtTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): CodeBlock {
+        val event = interfaceType.events.firstOrNull { event ->
+            binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
+                binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
+        }
+        return if (event != null) {
+            authoringCcwEventHandlerCode(event, binding)
+        } else {
+            authoringCcwUnsupportedMemberHandlerCode(binding)
+        }
+    }
+
+    private fun authoringCcwEventHandlerCode(
+        event: WinRtEventDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("try {\n")
+        code.indent()
+        if (binding.bindingName.endsWith("_ADD_SLOT")) {
+            val handlerType = binding.parameterBindings.singleOrNull()?.typeBinding?.resolvedTypeName
+            val handlerClass = handlerType?.let(::projectionClassNameForQualifiedName)
+            if (handlerClass == null) {
+                code.add("%T.E_INVALIDARG.value\n", KNOWN_HRESULTS_CLASS_NAME)
+            } else {
+                code.add(
+                    "val handler = %T.Metadata.fromAbi(rawArgs[0] as %T)\n",
+                    handlerClass,
+                    RAW_ADDRESS_CLASS_NAME,
+                )
+                code.add("if (handler == null) {\n")
+                code.indent()
+                code.add("%T.E_POINTER.value\n", KNOWN_HRESULTS_CLASS_NAME)
+                code.unindent()
+                code.add("} else {\n")
+                code.indent()
+                code.add("val token = value.add%L(handler)\n", event.name)
+                code.add("%T.Metadata.copyTo(token, rawArgs[1] as %T)\n", EVENT_REGISTRATION_TOKEN_CLASS_NAME, RAW_ADDRESS_CLASS_NAME)
+                code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+                code.unindent()
+                code.add("}\n")
+            }
+        } else {
+            code.add("value.remove%L(%T(rawArgs[0] as Long))\n", event.name, EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        code.unindent()
+        code.add("} catch (error: %T) {\n", Throwable::class.asClassName())
+        code.indent()
+        code.add("%T.setErrorInfo(error)\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.add("%T.hResultFromException(error).value\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.unindent()
+        code.add("}\n")
+        return code.build()
+    }
+
+    private fun authoringCcwUnsupportedMemberHandlerCode(binding: KotlinProjectionInstanceMemberBinding): CodeBlock =
+        CodeBlock.of(
+            "%T.E_NOTIMPL.value\n",
+            KNOWN_HRESULTS_CLASS_NAME,
+        )
 
     private fun authoringCcwFactoryRegisterFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
         val code = CodeBlock.builder()
