@@ -31,7 +31,7 @@
 - [x] Delegate callback marshaling now aligns generated callback argument value kinds with cswinrt delegate signatures so runtime-class event args decode as `IInspectableReference` instead of `IUnknownReference`.
 - [x] JVM WinUI bootstrap now stages WindowsAppSDK assets, creates an activation context from lifted registrations when available, and falls back to `MddBootstrapInitialize2` when needed.
 - [x] `System.Object` projections now surface as Kotlin `Any?` with runtime object/delegate CCW marshaling instead of leaking `IInspectableReference` into public APIs.
-- [x] WinUI app smoke sample uses generated projections for click/tapped handlers and message-loop bootstrap instead of sample-local delegate/runtime glue.
+- [x] WinUI app smoke sample uses generated projections for click/tapped handlers and WinAppSDK startup instead of sample-local delegate/runtime glue.
 - [x] Generated WinRT methods now project as Kotlin lower-camel members (`start`, `activate`, `addHandler`, `onLaunched`) while mapped collection ABI members stay hidden behind Kotlin collection APIs.
 - [x] Interface slot ordering now accounts for properties/events/methods by metadata row order before method-only wrappers, matching cswinrt ABI slot layout.
 - [x] Event-source helper generation now keeps owner mappings separate from reusable source classes, so shared delegate helpers such as `RoutedEventHandler` remain available for `IButtonBase.Click`.
