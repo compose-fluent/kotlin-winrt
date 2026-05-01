@@ -48,8 +48,7 @@
 
 - [x] JVM authoring runtime foundation: composable CCW path, authoring activation registry, metadata type lookup, generated type-details lookup, compiler-plugin scanner split, and K2/IR extension entrypoint exist.
 - [x] Generator authoring handoff plans exist for wrapper class, ABI class, custom QI, activation factory, module activation factory, exposed type details, and metadata type mapping.
-- [x] Authoring source discovery now shares metadata-index resolution between the precompile scanner and K2/IR compiler plugin validation; authored WinRT types must be public, non-generic, non-inner, and final when they are classes.
-- [ ] Source discovery: replace light-tree-only candidate collection with K2 semantic validation/diagnostics for public authored class/interface/enum/delegate/struct shapes, matching `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs`.
+- [x] Authoring source discovery now mirrors `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs`: light-tree scanning only collects candidates, K2/IR diagnostics validate effective public accessibility, non-generic/non-inner/final class shape, generated projection sources are excluded, and Gradle wires the shared metadata index into the compiler plugin.
 - [ ] Authoring WinMD emission: generate WinMD metadata from Kotlin authored declarations, then feed it back into projection generation before expanding samples.
 - [ ] Authoring writer output: turn current plan files into actual generated wrapper/ABI/custom-QI/factory/module-activation support code.
 - [ ] Server/host activation frozen: implement `DllGetActivationFactory`/host-style packaging only after JVM in-proc authoring and WinMD emission are coherent.
@@ -72,3 +71,4 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-generator:test --tests KotlinProjectionGeneratorTest.generator_emits_cswinrt_writer_support_handoffs_when_enabled`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-metadata:test --tests WinRtMetadataModelTest.semantic_helpers_expose_cswinrt_writer_exactness_descriptors`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-runtime:jvmTest --tests ParameterizedInterfaceIdTest --tests WinRtCollectionInterfaceIdsTest`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :kotlin-winrt-compiler-plugin:test --tests KotlinWinRtAuthoringScannerCliTest --tests KotlinWinRtCompilerPluginTest :kotlin-winrt-gradle-plugin:test --tests KotlinWinRtPluginTest.plugin_wires_extension_inputs_to_generation_task --tests KotlinWinRtPluginTest.plugin_generates_sources_into_real_gradle_library_artifact`

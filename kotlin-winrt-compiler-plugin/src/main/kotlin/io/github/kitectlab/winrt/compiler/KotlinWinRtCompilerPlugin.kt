@@ -81,10 +81,11 @@ class KotlinWinRtIrGenerationExtension(
         }
         val messageCollector = pluginContext.messageCollector
         moduleFragment.files
-            .flatMap { file -> file.declarations.flatMap(::classesIn) }
-            .forEach { klass ->
+            .flatMap { file -> file.declarations.flatMap(::classContextsIn) }
+            .forEach { context ->
+                val klass = context.klass
                 val authoredType = authoredTypeFor(klass, winRtTypes) ?: return@forEach
-                validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
+                validateAuthoredType(klass, authoredType, pluginContext.afterK2, context.containingTypesPublic) { message ->
                     messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
                 }
             }
@@ -95,6 +96,9 @@ class KotlinWinRtIrGenerationExtension(
         winRtTypes: Map<String, IndexedWinRtType>,
     ): KotlinWinRtAuthoredTypeCandidate? {
         val sourceTypeName = klass.fqNameWhenAvailable?.asString() ?: return null
+        if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX)) {
+            return null
+        }
         val resolvedWinRtTypes = klass.superTypes
             .mapNotNull { type -> type.classFqName?.asString() }
             .map(::projectionPackageToMetadataName)
@@ -123,6 +127,7 @@ class KotlinWinRtIrGenerationExtension(
         klass: IrClass,
         authoredType: KotlinWinRtAuthoredTypeCandidate,
         afterK2: Boolean,
+        containingTypesPublic: Boolean,
         report: (String) -> Unit,
     ) {
         if (!afterK2) {
@@ -130,6 +135,9 @@ class KotlinWinRtIrGenerationExtension(
         }
         if (klass.visibility != DescriptorVisibilities.PUBLIC) {
             report("WinRT authored type ${authoredType.sourceTypeName} must be public, matching cswinrt public component type discovery.")
+        }
+        if (!containingTypesPublic) {
+            report("WinRT authored type ${authoredType.sourceTypeName} must be nested only inside public types, matching cswinrt public accessibility discovery.")
         }
         if (klass.isInner) {
             report("WinRT authored type ${authoredType.sourceTypeName} must not be an inner class.")
@@ -143,9 +151,25 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun classesIn(declaration: IrDeclaration): List<IrClass> =
+    private fun classContextsIn(
+        declaration: IrDeclaration,
+        containingTypesPublic: Boolean = true,
+    ): List<AuthoredIrClassContext> =
         when (declaration) {
-            is IrClass -> listOf(declaration) + declaration.declarations.flatMap(::classesIn)
+            is IrClass -> {
+                val nestedContainingTypesPublic = containingTypesPublic && declaration.visibility == DescriptorVisibilities.PUBLIC
+                listOf(AuthoredIrClassContext(declaration, containingTypesPublic)) +
+                    declaration.declarations.flatMap { child -> classContextsIn(child, nestedContainingTypesPublic) }
+            }
             else -> emptyList()
         }
+
+    private data class AuthoredIrClassContext(
+        val klass: IrClass,
+        val containingTypesPublic: Boolean,
+    )
+
+    private companion object {
+        const val PROJECTION_PACKAGE_PREFIX: String = "io.github.kitectlab.winrt.projections."
+    }
 }

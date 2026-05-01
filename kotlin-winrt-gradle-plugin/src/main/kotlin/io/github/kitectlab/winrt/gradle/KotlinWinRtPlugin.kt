@@ -27,6 +27,7 @@ const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIde
 const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRtCompilerPlugin"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
+private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.kitectlab.winrt.compiler"
 
 private fun configureWinRtLibraryModel(
     project: Project,
@@ -268,6 +269,12 @@ private fun configureWinRtGeneration(
             project.dependencies.add(compilerPluginConfiguration.name, kotlinWinRtCompilerPluginDependency(project))
         }
         addGeneratedSourcesToKotlinMain(project, generatedSources)
+        configureKotlinWinRtCompilerPluginOptions(
+            project = project,
+            metadataIndex = generatedSources.map { directory ->
+                directory.file("kotlin-winrt-authoring/metadata-index.tsv")
+            },
+        )
         project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
         })
@@ -293,9 +300,24 @@ private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
     return if (localCompilerPlugin != null) {
         project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
     } else {
-        "io.github.kitectlab.winrt:kotlin-winrt-compiler-plugin:${project.version}"
+        kotlinWinRtCompilerPluginClasspathJar(project)
+            ?: "io.github.kitectlab.winrt:kotlin-winrt-compiler-plugin:${kotlinWinRtPluginVersion()}"
     }
 }
+
+private fun kotlinWinRtCompilerPluginClasspathJar(project: Project): Any? {
+    val compilerPluginClass = runCatching {
+        Class.forName("io.github.kitectlab.winrt.compiler.KotlinWinRtCommandLineProcessor")
+    }.getOrNull() ?: return null
+    val location = compilerPluginClass.protectionDomain?.codeSource?.location ?: return null
+    return runCatching {
+        project.files(File(location.toURI()))
+    }.getOrNull()
+}
+
+private fun kotlinWinRtPluginVersion(): String =
+    KotlinWinRtPlugin::class.java.`package`.implementationVersion
+        ?: "0.1.0-SNAPSHOT"
 
 private fun explicitMetadataInputFiles(inputs: List<String>): List<File> =
     inputs.mapNotNull { input ->
@@ -315,6 +337,22 @@ private fun addGeneratedSourcesToKotlinMain(
     val mainSourceSet = sourceSets.getByName("main")
     val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return
     kotlinSourceDirectorySet.callOneArg("srcDir", generatedSources)
+}
+
+private fun configureKotlinWinRtCompilerPluginOptions(
+    project: Project,
+    metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+) {
+    project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
+        val compilerOptions = task.callNoArg("getCompilerOptions") ?: return@Action
+        val freeCompilerArgs = compilerOptions.callNoArg("getFreeCompilerArgs") ?: return@Action
+        val metadataIndexPath = metadataIndex.get().asFile.absolutePath
+        freeCompilerArgs.callOneArg("add", "-P")
+        freeCompilerArgs.callOneArg(
+            "add",
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:metadataIndex=$metadataIndexPath",
+        )
+    })
 }
 
 private fun kotlinMainSourceDirs(project: Project): List<File> {

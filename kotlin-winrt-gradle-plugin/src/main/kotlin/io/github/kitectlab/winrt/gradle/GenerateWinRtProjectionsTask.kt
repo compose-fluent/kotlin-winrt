@@ -13,7 +13,6 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.process.ExecOperations
-import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -90,7 +89,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
-    @get:Classpath
+    @get:Internal
     abstract val authoringScannerClasspath: ConfigurableFileCollection
 
     @get:Inject
@@ -115,6 +114,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             ),
         ).generateTo(model, outputDirectory.get().asFile.toPath())
         val generatedRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
+        Files.createDirectories(authoringMetadataIndex.parent)
+        writeAuthoringMetadataIndex(model, authoringMetadataIndex)
         val authoringSourceRoots = sourceRoots.files
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
@@ -122,12 +124,10 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         if (authoringSourceRoots.isNotEmpty()) {
             val scannerWorkDirectory = temporaryDir.toPath().resolve("authoring-scanner")
             Files.createDirectories(scannerWorkDirectory)
-            val metadataIndex = scannerWorkDirectory.resolve("metadata-index.tsv")
             val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
-            writeAuthoringMetadataIndex(model, metadataIndex)
             runAuthoringScanner(
                 sourceRoots = authoringSourceRoots,
-                metadataIndex = metadataIndex,
+                metadataIndex = authoringMetadataIndex,
                 candidatesFile = candidatesFile,
             )
             KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(

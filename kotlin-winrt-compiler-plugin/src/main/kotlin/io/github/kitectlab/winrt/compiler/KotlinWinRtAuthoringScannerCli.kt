@@ -65,9 +65,6 @@ object KotlinWinRtAuthoringScannerCli {
         val packageName = source.packageName()
         val imports = parseImports(source)
         return source.classes().mapNotNull { klass ->
-            if (!source.isPublicDeclaration(klass)) {
-                return@mapNotNull null
-            }
             val className = source.className(klass) ?: return@mapNotNull null
             val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
             val resolvedWinRtTypes = source.superTypeNames(klass)
@@ -214,30 +211,19 @@ object KotlinWinRtAuthoringScannerCli {
             tree.root.descendantsOfType(KtNodeTypes.CLASS)
 
         fun className(classNode: LighterASTNode): String? {
-            var seenClassKeyword = false
+            var seenDeclarationKeyword = false
             return classNode.descendants().firstNotNullOfOrNull { node ->
                 when (node.tokenType) {
-                    KtTokens.CLASS_KEYWORD -> {
-                        seenClassKeyword = true
+                    KtTokens.CLASS_KEYWORD,
+                    KtTokens.INTERFACE_KEYWORD,
+                    KtTokens.OBJECT_KEYWORD,
+                    -> {
+                        seenDeclarationKeyword = true
                         null
                     }
-                    KtTokens.IDENTIFIER -> if (seenClassKeyword) nodeText(node) else null
+                    KtTokens.IDENTIFIER -> if (seenDeclarationKeyword) nodeText(node) else null
                     else -> null
                 }
-            }
-        }
-
-        fun isPublicDeclaration(classNode: LighterASTNode): Boolean {
-            val modifiers = classNode.children()
-                .firstOrNull { child -> child.tokenType == KtNodeTypes.MODIFIER_LIST }
-                ?.children()
-                .orEmpty()
-                .map { child -> child.tokenType }
-                .toSet()
-            return KtTokens.PUBLIC_KEYWORD in modifiers || modifiers.none { modifier ->
-                modifier == KtTokens.PRIVATE_KEYWORD ||
-                    modifier == KtTokens.INTERNAL_KEYWORD ||
-                    modifier == KtTokens.PROTECTED_KEYWORD
             }
         }
 

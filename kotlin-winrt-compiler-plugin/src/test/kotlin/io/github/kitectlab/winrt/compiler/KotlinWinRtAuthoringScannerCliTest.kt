@@ -8,7 +8,7 @@ import kotlin.io.path.writeText
 
 class KotlinWinRtAuthoringScannerCliTest {
     @Test
-    fun scans_runtime_class_and_interface_authored_types_without_application_special_case() {
+    fun scans_runtime_class_interface_and_nonpublic_candidates_for_k2_validation() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
         val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
@@ -24,6 +24,8 @@ class KotlinWinRtAuthoringScannerCliTest {
             class StringableThing : IStringable
 
             internal class InternalStringableThing : IStringable
+
+            interface StringableContract : IStringable
             """.trimIndent(),
         )
         metadataIndex.writeText(
@@ -46,10 +48,12 @@ class KotlinWinRtAuthoringScannerCliTest {
         )
 
         assertEquals(
-            """
-            sample	App	sample.App	Microsoft.UI.Xaml.Application	Microsoft.UI.Xaml.IApplicationOverrides	Microsoft.UI.Xaml.IApplicationOverrides
-            sample	StringableThing	sample.StringableThing		Windows.Foundation.IStringable
-            """.trimIndent(),
+            listOf(
+                "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides",
+                "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t",
+                "sample\tStringableContract\tsample.StringableContract\t\tWindows.Foundation.IStringable\t",
+                "sample\tStringableThing\tsample.StringableThing\t\tWindows.Foundation.IStringable",
+            ).joinToString("\n"),
             output.readText().trimEnd(),
         )
     }
