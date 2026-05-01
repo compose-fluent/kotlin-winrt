@@ -84,8 +84,11 @@ class KotlinWinRtIrGenerationExtension(
             .flatMap { file -> file.declarations.flatMap(::classContextsIn) }
             .forEach { context ->
                 val klass = context.klass
+                if (klass.visibility != DescriptorVisibilities.PUBLIC || !context.containingTypesPublic) {
+                    return@forEach
+                }
                 val authoredType = authoredTypeFor(klass, winRtTypes) ?: return@forEach
-                validateAuthoredType(klass, authoredType, pluginContext.afterK2, context.containingTypesPublic) { message ->
+                validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
                     messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
                 }
             }
@@ -127,17 +130,10 @@ class KotlinWinRtIrGenerationExtension(
         klass: IrClass,
         authoredType: KotlinWinRtAuthoredTypeCandidate,
         afterK2: Boolean,
-        containingTypesPublic: Boolean,
         report: (String) -> Unit,
     ) {
         if (!afterK2) {
             report("kotlin-winrt authoring requires K2 semantic analysis for ${authoredType.sourceTypeName}.")
-        }
-        if (klass.visibility != DescriptorVisibilities.PUBLIC) {
-            report("WinRT authored type ${authoredType.sourceTypeName} must be public, matching cswinrt public component type discovery.")
-        }
-        if (!containingTypesPublic) {
-            report("WinRT authored type ${authoredType.sourceTypeName} must be nested only inside public types, matching cswinrt public accessibility discovery.")
         }
         if (klass.isInner) {
             report("WinRT authored type ${authoredType.sourceTypeName} must not be an inner class.")

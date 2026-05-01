@@ -46,7 +46,7 @@ object WinUiDesktopSample {
         }
 }
 
-private class WinUiDesktopApp : Application() {
+class WinUiDesktopApp : Application() {
     private var myWindow: Window? = null
 
     override fun onLaunched(args: LaunchActivatedEventArgs) {

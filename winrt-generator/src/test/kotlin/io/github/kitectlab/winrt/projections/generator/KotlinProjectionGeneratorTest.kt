@@ -5029,6 +5029,12 @@ class KotlinProjectionGeneratorTest {
                                     addMethodName = "add_Typed",
                                     removeMethodName = "remove_Typed",
                                 ),
+                                WinRtEventDefinition(
+                                    name = "MapChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.MapChangedEventHandler<String,Int>",
+                                    addMethodName = "add_MapChanged",
+                                    removeMethodName = "remove_MapChanged",
+                                ),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -5092,6 +5098,48 @@ class KotlinProjectionGeneratorTest {
                         ),
                     ),
                 ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IObservableMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            genericParameterCount = 2,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IMapChangedEventArgs",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "MapChangedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            genericParameterCount = 2,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "sender",
+                                            "Windows.Foundation.Collections.IObservableMap<T0,T1>",
+                                        ),
+                                        WinRtParameterDefinition(
+                                            "event",
+                                            "Windows.Foundation.Collections.IMapChangedEventArgs<T0>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
             ),
         )
 
@@ -5145,6 +5193,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("handler.invoke("))
         assertTrue(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" ->"))
         assertTrue(eventProjectionHelpers.contains("_EventSource_Sample_Foundation_WidgetHandler(obj, index)"))
+        assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))
+        assertFalse(eventProjectionHelpers.contains("IMapChangedEventArgs.Metadata.wrap"))
         assertTrue(eventProjectionHelpers.contains("fun installEventSources()"))
         assertTrue(eventProjectionHelpers.contains("WinRTGenericTypeInstantiations.initializeBySourceType(entry.eventType)"))
         assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.registerEventSource"))

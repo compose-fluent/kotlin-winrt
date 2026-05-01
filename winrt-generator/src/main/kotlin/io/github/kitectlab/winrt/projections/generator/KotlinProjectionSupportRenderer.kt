@@ -381,7 +381,7 @@ class KotlinProjectionSupportRenderer {
                 val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
                 val delegatePlan = plansByType[rawEventType] ?: return@forEach
                 val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
-                if (invokeShape.isSupportedProjectedDelegateShape()) {
+                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
                     fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
                 }
             }
@@ -2647,6 +2647,7 @@ class KotlinProjectionSupportRenderer {
         val delegateType = typeRenderer.resolveTypeName(descriptor.projectedEventTypeName)
         return TypeSpec.classBuilder(descriptor.sourceClassName)
             .addModifiers(KModifier.INTERNAL)
+            .addTypeVariables(eventSourceTypeVariables(descriptor))
             .primaryConstructor(
                 FunSpec.constructorBuilder()
                     .addParameter("objectReference", ClassName("io.github.kitectlab.winrt.runtime", "ComObjectReference"))
@@ -2704,9 +2705,31 @@ class KotlinProjectionSupportRenderer {
     ): CodeBlock =
         if (mappedTypeByAbiName(binding.typeName) != null) {
             CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
+        } else if (binding.typeArguments.isNotEmpty() && binding.kind in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass)) {
+            CodeBlock.of(
+                "%T.Metadata.wrap<%L>(__args[%L] as %T)",
+                typeRenderer.resolveTypeName(binding.resolvedTypeName),
+                eventSourceTypeArgumentCode(binding.typeArguments),
+                index,
+                when (binding.kind) {
+                    KotlinProjectionAbiValueKind.ProjectedInterface -> IUNKNOWN_REFERENCE_CLASS_NAME
+                    else -> IINSPECTABLE_REFERENCE_CLASS_NAME
+                },
+            )
         } else {
             typeRenderer.delegateCallbackArgumentCode(index, binding)
         }
+
+    private fun eventSourceTypeArgumentCode(typeArguments: List<KotlinProjectionAbiTypeBinding>): CodeBlock {
+        val code = CodeBlock.builder()
+        typeArguments.forEachIndexed { index, argument ->
+            if (index > 0) {
+                code.add(", ")
+            }
+            code.add("%T", typeRenderer.resolveTypeName(argument.typeName))
+        }
+        return code.build()
+    }
 
     private fun eventSourceDelegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
         bindings.joinToString(prefix = "listOf(", postfix = ")") { eventSourceDelegateValueKindName(it) }
@@ -2718,6 +2741,12 @@ class KotlinProjectionSupportRenderer {
             -> "io.github.kitectlab.winrt.runtime.WinRtDelegateValueKind.IINSPECTABLE"
             else -> delegateValueKindName(binding)
         }
+
+    private fun eventSourceTypeVariables(descriptor: WinRtEventHelperSubclassDescriptor): List<TypeVariableName> =
+        descriptor.genericArgumentTypeNames
+            .filter { it.isEventSourceGenericTypeParameterName() }
+            .distinct()
+            .map { name -> TypeVariableName(name) }
 
     private fun eventSourceStateCode(
         delegatePlan: KotlinTypeProjectionPlan,
@@ -2854,14 +2883,27 @@ class KotlinProjectionSupportRenderer {
             val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
             val delegatePlan = plansByType[rawEventType] ?: return@forEach
             val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
-            if (invokeShape.isSupportedProjectedDelegateShape()) {
-                code.add("%S -> { obj, index -> %L(obj, index) }\n", descriptor.sourceClassName, descriptor.sourceClassName)
+            if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
+                code.add("%S -> { obj, index -> %L(obj, index) }\n", descriptor.sourceClassName, eventSourceConstructorCode(descriptor))
             }
         }
         code.add("else -> null\n")
         code.unindent()
         code.add("}\n")
         return code.build()
+    }
+
+    private fun eventSourceConstructorCode(descriptor: WinRtEventHelperSubclassDescriptor): CodeBlock {
+        val genericArguments = eventSourceTypeVariables(descriptor)
+        return if (genericArguments.isEmpty()) {
+            CodeBlock.of("%L", descriptor.sourceClassName)
+        } else {
+            CodeBlock.of(
+                "%L<%L>",
+                descriptor.sourceClassName,
+                genericArguments.joinToString(", ") { "Any?" },
+            )
+        }
     }
 
     private fun concreteEventInvokeShape(
@@ -2874,7 +2916,75 @@ class KotlinProjectionSupportRenderer {
             typesByQualifiedName = typesByQualifiedName,
         )
         return typeRenderer.outboundDelegateInvokeShape(typeBinding)
+            ?.substituteDelegateTypeArguments(typeBinding.typeArguments)
     }
+
+    private fun KotlinProjectionDelegateInvokeShape.substituteDelegateTypeArguments(
+        typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    ): KotlinProjectionDelegateInvokeShape {
+        if (typeArguments.isEmpty()) {
+            return this
+        }
+        return copy(
+            parameterBindings = parameterBindings.map { parameter ->
+                parameter.copy(typeBinding = parameter.typeBinding.substituteGenericTypeArguments(typeArguments))
+            },
+            returnBinding = returnBinding.substituteGenericTypeArguments(typeArguments),
+        )
+    }
+
+    private fun KotlinProjectionAbiTypeBinding.substituteGenericTypeArguments(
+        typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    ): KotlinProjectionAbiTypeBinding {
+        if (kind == KotlinProjectionAbiValueKind.GenericParameter && typeName.isEventSourceGenericTypeParameterName()) {
+            val index = typeName.drop(1).toIntOrNull()
+            if (index != null && index in typeArguments.indices) {
+                return typeArguments[index]
+            }
+        }
+        if (this.typeArguments.isEmpty()) {
+            return this
+        }
+        val substitutedArguments = this.typeArguments.map { it.substituteGenericTypeArguments(typeArguments) }
+        return copy(
+            typeName = substituteGenericTypeName(typeName, substitutedArguments),
+            typeArguments = substitutedArguments,
+        )
+    }
+
+    private fun substituteGenericTypeName(
+        typeName: String,
+        typeArguments: List<KotlinProjectionAbiTypeBinding>,
+    ): String {
+        val genericStart = typeName.indexOf('<')
+        if (genericStart < 0 || !typeName.endsWith('>')) {
+            return typeName
+        }
+        return typeName.substring(0, genericStart) + typeArguments.joinToString(prefix = "<", postfix = ">") { it.typeName }
+    }
+
+    private fun String.isEventSourceGenericTypeParameterName(): Boolean =
+        (startsWith("T") || startsWith("M")) && drop(1).toIntOrNull() != null
+
+    private fun KotlinProjectionDelegateInvokeShape.supportsEventSourceCallbackWrapping(): Boolean =
+        parameterBindings.all { it.typeBinding.supportsEventSourceCallbackWrapping() }
+
+    private fun KotlinProjectionAbiTypeBinding.supportsEventSourceCallbackWrapping(): Boolean {
+        if (typeArguments.any { !it.supportsEventSourceCallbackWrapping() }) {
+            return false
+        }
+        return when {
+            typeArguments.isEmpty() -> true
+            kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass) -> true
+            resolvedTypeName in EVENT_SOURCE_GENERIC_METADATA_WRAP_TYPES -> true
+            else -> false
+        }
+    }
+
+    private val EVENT_SOURCE_GENERIC_METADATA_WRAP_TYPES = setOf(
+        "Windows.Foundation.Collections.IObservableMap",
+        "Windows.Foundation.Collections.IObservableVector",
+    )
 
     private fun eventHandlerEventSourceFactoryForCode(
         subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
