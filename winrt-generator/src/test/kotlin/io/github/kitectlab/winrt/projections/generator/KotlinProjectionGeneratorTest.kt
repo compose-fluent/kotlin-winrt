@@ -4977,6 +4977,20 @@ class KotlinProjectionGeneratorTest {
                                         WinRtParameterDefinition("handler", "Sample.Foundation.WidgetHandler"),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "SumValues",
+                                    returnTypeName = "Int",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("values", "Array<Int>", isInParameter = true),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "RoundTripNames",
+                                    returnTypeName = "Array<String>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("names", "Array<String>", isInParameter = true),
+                                    ),
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(
@@ -5265,6 +5279,19 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("Authored delegate argument Sample.Foundation.WidgetHandler was null."))
         assertTrue(ccwFactories.contains("value.roundTripHandler(handler)"))
         assertTrue(ccwFactories.contains("ComWrappersSupport.createCCWForObject(__result"))
+        assertTrue(ccwFactories.contains("ComAbiValueKind.Int32"))
+        assertTrue(ccwFactories.contains("val values = run {"))
+        assertTrue(ccwFactories.contains("val __arrayLength = rawArgs[0] as Int"))
+        assertTrue(ccwFactories.contains("Array(__arrayLength) { __index ->"))
+        assertTrue(ccwFactories.contains("value.sumValues(values)"))
+        assertTrue(ccwFactories.contains("val names = run {"))
+        assertTrue(ccwFactories.contains("val __arrayMarshaler = Marshaler.string()"))
+        assertTrue(ccwFactories.contains("__arrayMarshaler.fromAbiArray(__arrayLength, __arrayData)"))
+        assertTrue(ccwFactories.contains("value.roundTripNames(names)"))
+        assertTrue(ccwFactories.contains("val __returnArrayMarshaler = Marshaler.string()"))
+        assertTrue(ccwFactories.contains("val __returnArray = __returnArrayMarshaler.createMarshalerArray(__result)"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[2] as RawAddress, __returnArray?.length ?: 0)"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[3] as RawAddress"))
         assertTrue(ccwFactories.contains("EventHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.addChanged(handler)"))
         assertTrue(ccwFactories.contains("EventRegistrationToken.Metadata.copyTo(token, rawArgs[1] as RawAddress)"))

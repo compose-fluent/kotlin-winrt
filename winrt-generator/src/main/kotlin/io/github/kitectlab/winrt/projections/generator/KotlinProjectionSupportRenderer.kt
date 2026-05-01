@@ -1527,12 +1527,8 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwMethodSignatureCode(binding: KotlinProjectionInstanceMemberBinding): CodeBlock {
-        val explicitKinds = binding.parameterBindings.map { authoringCcwAbiValueKindCode(it.typeBinding) } +
-            if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
-                emptyList()
-            } else {
-                listOf(CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME))
-            }
+        val explicitKinds = binding.parameterBindings.flatMap(::authoringCcwParameterAbiValueKindCodes) +
+            authoringCcwReturnAbiValueKindCodes(binding.returnBinding)
         return if (explicitKinds.isEmpty()) {
             CodeBlock.of("%T()", COM_METHOD_SIGNATURE_CLASS_NAME)
         } else {
@@ -1550,6 +1546,34 @@ class KotlinProjectionSupportRenderer {
                 .build()
         }
     }
+
+    private fun authoringCcwParameterAbiValueKindCodes(parameter: KotlinProjectionAbiParameterBinding): List<CodeBlock> =
+        if (parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
+            when (parameter.category) {
+                WinRtMetadataParameterCategory.PassArray,
+                WinRtMetadataParameterCategory.FillArray -> listOf(
+                    CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME),
+                    CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME),
+                )
+                WinRtMetadataParameterCategory.ReceiveArray -> listOf(
+                    CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME),
+                    CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME),
+                )
+                else -> listOf(CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME))
+            }
+        } else {
+            listOf(authoringCcwAbiValueKindCode(parameter.typeBinding))
+        }
+
+    private fun authoringCcwReturnAbiValueKindCodes(binding: KotlinProjectionAbiTypeBinding): List<CodeBlock> =
+        when (binding.kind) {
+            KotlinProjectionAbiValueKind.Unit -> emptyList()
+            KotlinProjectionAbiValueKind.Array -> listOf(
+                CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME),
+                CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME),
+            )
+            else -> listOf(CodeBlock.of("%T.Pointer", COM_ABI_VALUE_KIND_CLASS_NAME))
+        }
 
     private fun authoringCcwAbiValueKindCode(binding: KotlinProjectionAbiTypeBinding): CodeBlock = when (binding.kind) {
         KotlinProjectionAbiValueKind.Boolean,
@@ -1656,16 +1680,37 @@ class KotlinProjectionSupportRenderer {
             code.add(
                 "val %L = %L\n",
                 parameter.name,
-                authoringCcwDecodeArgumentCode(parameter.typeBinding, index),
+                authoringCcwDecodeArgumentCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index)),
             )
         }
         val invocation = authoringCcwInvocationCode(interfaceType, binding)
         if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
+            binding.parameterBindings.forEachIndexed { index, parameter ->
+                authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
+                    ?.let { postInvocation -> code.add("%L\n", postInvocation) }
+            }
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         } else {
             code.add("val __result = %L\n", invocation)
-            code.add("%L\n", authoringCcwWriteReturnCode(binding.returnBinding, "rawArgs[${binding.parameterBindings.size}] as RawAddress", "__result"))
+            binding.parameterBindings.forEachIndexed { index, parameter ->
+                authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
+                    ?.let { postInvocation -> code.add("%L\n", postInvocation) }
+            }
+            val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
+            if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
+                code.add(
+                    "%L\n",
+                    authoringCcwWriteArrayReturnCode(
+                        binding.returnBinding,
+                        "rawArgs[$returnRawIndex] as RawAddress",
+                        "rawArgs[${returnRawIndex + 1}] as RawAddress",
+                        "__result",
+                    ),
+                )
+            } else {
+                code.add("%L\n", authoringCcwWriteReturnCode(binding.returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
+            }
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         }
         code.unindent()
@@ -1740,11 +1785,38 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Delegate,
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> true
+        KotlinProjectionAbiValueKind.Array -> binding.typeArguments.singleOrNull()?.let(::authoringCcwArrayElementBindingIsSupported) == true
         KotlinProjectionAbiValueKind.Struct ->
             binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
                 typeRenderer.nativeStructClassName(binding) != null
         else -> false
     }
+
+    private fun authoringCcwArrayElementBindingIsSupported(binding: KotlinProjectionAbiTypeBinding): Boolean =
+        typeRenderer.nativeArrayElementReadCode(binding, CodeBlock.of("__data"), CodeBlock.of("__index")) != null ||
+            typeRenderer.nonBlittableArrayElementMarshalerExpression(binding) != null
+
+    private fun authoringCcwAbiArgumentCount(parameters: List<KotlinProjectionAbiParameterBinding>): Int =
+        parameters.sumOf(::authoringCcwAbiArgumentCount)
+
+    private fun authoringCcwAbiArgumentCount(parameter: KotlinProjectionAbiParameterBinding): Int =
+        if (parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Array) 2 else 1
+
+    private fun authoringCcwParameterRawIndex(
+        parameters: List<KotlinProjectionAbiParameterBinding>,
+        parameterIndex: Int,
+    ): Int =
+        parameters.take(parameterIndex).sumOf(::authoringCcwAbiArgumentCount)
+
+    private fun authoringCcwDecodeArgumentCode(
+        parameter: KotlinProjectionAbiParameterBinding,
+        rawIndex: Int,
+    ): CodeBlock =
+        if (parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
+            authoringCcwDecodeArrayArgumentCode(parameter, rawIndex)
+        } else {
+            authoringCcwDecodeArgumentCode(parameter.typeBinding, rawIndex)
+        }
 
     private fun authoringCcwDecodeArgumentCode(
         binding: KotlinProjectionAbiTypeBinding,
@@ -1799,6 +1871,73 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T(rawArgs[%L] as %T).inspectable()", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwDecodeArrayArgumentCode(
+        parameter: KotlinProjectionAbiParameterBinding,
+        rawIndex: Int,
+    ): CodeBlock {
+        if (parameter.category == WinRtMetadataParameterCategory.ReceiveArray) {
+            return CodeBlock.of("error(%S)", "Authored ReceiveArray parameter ${parameter.name} is not supported yet.")
+        }
+        val binding = parameter.typeBinding
+        val elementBinding = binding.typeArguments.singleOrNull()
+            ?: return CodeBlock.of("error(%S)", "Authored array parameter ${parameter.name} is missing an element binding.")
+        typeRenderer.nonBlittableArrayElementMarshalerExpression(elementBinding)?.let { elementMarshaler ->
+            return CodeBlock.of(
+                "run {\n·val __arrayLength = rawArgs[%L] as Int\n·val __arrayData = rawArgs[%L] as %T\n·val __arrayMarshaler = %L\n·(__arrayMarshaler.fromAbiArray(__arrayLength, __arrayData)?.toTypedArray() ?: emptyArray()) as %T\n}",
+                rawIndex,
+                rawIndex + 1,
+                RAW_ADDRESS_CLASS_NAME,
+                elementMarshaler,
+                typeRenderer.resolveTypeName(binding.typeName),
+            )
+        }
+        val elementRead = typeRenderer.nativeArrayElementReadCode(
+            elementBinding = elementBinding,
+            dataExpression = CodeBlock.of("__arrayData"),
+            indexExpression = CodeBlock.of("__index"),
+        ) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array argument ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "run {\n·val __arrayLength = rawArgs[%L] as Int\n·val __arrayData = rawArgs[%L] as %T\n·Array(__arrayLength) { __index -> %L } as %T\n}",
+            rawIndex,
+            rawIndex + 1,
+            RAW_ADDRESS_CLASS_NAME,
+            elementRead,
+            typeRenderer.resolveTypeName(binding.typeName),
+        )
+    }
+
+    private fun authoringCcwPostInvocationParameterCode(
+        parameter: KotlinProjectionAbiParameterBinding,
+        rawIndex: Int,
+    ): CodeBlock? {
+        if (parameter.typeBinding.kind != KotlinProjectionAbiValueKind.Array ||
+            parameter.category != WinRtMetadataParameterCategory.FillArray
+        ) {
+            return null
+        }
+        val elementBinding = parameter.typeBinding.typeArguments.singleOrNull() ?: return null
+        typeRenderer.nonBlittableArrayElementMarshalerExpression(elementBinding)?.let { elementMarshaler ->
+            return CodeBlock.of(
+                "run {\n·val __arrayMarshaler = %L\n·__arrayMarshaler.copyManagedArray(%L, rawArgs[%L] as %T)\n}",
+                elementMarshaler,
+                parameter.name,
+                rawIndex + 1,
+                RAW_ADDRESS_CLASS_NAME,
+            )
+        }
+        val elementWrite = typeRenderer.nativeArrayElementWriteCode(
+            elementBinding = elementBinding,
+            dataExpression = CodeBlock.of("rawArgs[%L] as %T", rawIndex + 1, RAW_ADDRESS_CLASS_NAME),
+            indexExpression = CodeBlock.of("__index"),
+            valueExpression = CodeBlock.of("__element"),
+        ) ?: return null
+        return CodeBlock.of(
+            "%L.forEachIndexed { __index, __element -> %L }",
+            parameter.name,
+            elementWrite,
+        )
     }
 
     private fun authoringCcwDecodeEnumRawCode(
@@ -1880,6 +2019,50 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.UnknownReference,
         KotlinProjectionAbiValueKind.InspectableReference -> authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
         else -> CodeBlock.of("error(%S)", "Unsupported authored ABI return ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwWriteArrayReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        lengthOutExpression: String,
+        dataOutExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val elementBinding = binding.typeArguments.singleOrNull()
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array return ${binding.describeAbiKind()}")
+        typeRenderer.nonBlittableArrayElementMarshalerExpression(elementBinding)?.let { elementMarshaler ->
+            return CodeBlock.of(
+                "run {\n·val __returnArrayMarshaler = %L\n·val __returnArray = __returnArrayMarshaler.createMarshalerArray(%L)\n·%T.writeInt32(%L, __returnArray?.length ?: 0)\n·%T.writePointer(%L, __returnArray?.data ?: %T.nullPointer)\n}",
+                elementMarshaler,
+                valueExpression,
+                PLATFORM_ABI_CLASS_NAME,
+                lengthOutExpression,
+                PLATFORM_ABI_CLASS_NAME,
+                dataOutExpression,
+                PLATFORM_ABI_CLASS_NAME,
+            )
+        }
+        val elementSize = typeRenderer.nativeArrayElementSizeExpression(elementBinding)
+            ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array return ${binding.describeAbiKind()}")
+        val elementWrite = typeRenderer.nativeArrayElementWriteCode(
+            elementBinding = elementBinding,
+            dataExpression = CodeBlock.of("__returnArrayData"),
+            indexExpression = CodeBlock.of("__index"),
+            valueExpression = CodeBlock.of("__element"),
+        ) ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array return ${binding.describeAbiKind()}")
+        return CodeBlock.of(
+            "run {\n·val __returnArrayMemory = %T.allocateBytesOwned(%L.size.toLong() * %L, %L)\n·val __returnArrayData = __returnArrayMemory.pointer\n·%L.forEachIndexed { __index, __element -> %L }\n·%T.writeInt32(%L, %L.size)\n·%T.writePointer(%L, __returnArrayData)\n}",
+            PLATFORM_ABI_CLASS_NAME,
+            valueExpression,
+            elementSize,
+            elementSize,
+            valueExpression,
+            elementWrite,
+            PLATFORM_ABI_CLASS_NAME,
+            lengthOutExpression,
+            valueExpression,
+            PLATFORM_ABI_CLASS_NAME,
+            dataOutExpression,
+        )
     }
 
     private fun authoringCcwWriteObjectReturnCode(
