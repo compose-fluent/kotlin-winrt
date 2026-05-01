@@ -48,6 +48,7 @@
 
 - [x] JVM authoring runtime foundation: composable CCW path, authoring activation registry, metadata type lookup, generated type-details lookup, compiler-plugin scanner split, and K2/IR extension entrypoint exist.
 - [x] Generator authoring handoff plans exist for wrapper class, ABI class, custom QI, activation factory, module activation factory, exposed type details, and metadata type mapping.
+- [x] Authoring source discovery now shares metadata-index resolution between the precompile scanner and K2/IR compiler plugin validation; authored WinRT types must be public, non-generic, non-inner, and final when they are classes.
 - [ ] Source discovery: replace light-tree-only candidate collection with K2 semantic validation/diagnostics for public authored class/interface/enum/delegate/struct shapes, matching `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs`.
 - [ ] Authoring WinMD emission: generate WinMD metadata from Kotlin authored declarations, then feed it back into projection generation before expanding samples.
 - [ ] Authoring writer output: turn current plan files into actual generated wrapper/ABI/custom-QI/factory/module-activation support code.

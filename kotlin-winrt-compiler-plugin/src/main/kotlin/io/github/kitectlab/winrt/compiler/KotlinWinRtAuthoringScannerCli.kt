@@ -26,7 +26,7 @@ object KotlinWinRtAuthoringScannerCli {
     @JvmStatic
     fun main(args: Array<String>) {
         val options = CliOptions.parse(args)
-        val index = readMetadataIndex(options.metadataIndex)
+        val index = readAuthoringMetadataIndex(options.metadataIndex)
         val candidates = scan(options.sourceRoots, index)
         options.output.parent?.let(Files::createDirectories)
         options.output.writeText(
@@ -65,6 +65,9 @@ object KotlinWinRtAuthoringScannerCli {
         val packageName = source.packageName()
         val imports = parseImports(source)
         return source.classes().mapNotNull { klass ->
+            if (!source.isPublicDeclaration(klass)) {
+                return@mapNotNull null
+            }
             val className = source.className(klass) ?: return@mapNotNull null
             val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
             val resolvedWinRtTypes = source.superTypeNames(klass)
@@ -137,25 +140,6 @@ object KotlinWinRtAuthoringScannerCli {
         }
     }
 
-    private fun readMetadataIndex(path: Path): Map<String, IndexedWinRtType> =
-        if (!Files.exists(path)) {
-            emptyMap()
-        } else {
-            Files.readAllLines(path)
-                .filter(String::isNotBlank)
-                .map { line ->
-                    val parts = line.split('\t')
-                    IndexedWinRtType(
-                        qualifiedName = parts.getOrElse(0) { "" },
-                        kind = parts.getOrElse(1) { "" },
-                        overridableInterfaces = parts.getOrElse(2) { "" }
-                            .split(';')
-                            .filter(String::isNotBlank),
-                    )
-                }
-                .associateBy(IndexedWinRtType::qualifiedName)
-        }
-
     private fun parseImports(file: KotlinLightSource): KotlinImports {
         val explicit = linkedMapOf<String, String>()
         val wildcards = mutableListOf<String>()
@@ -172,35 +156,6 @@ object KotlinWinRtAuthoringScannerCli {
             }
         }
         return KotlinImports(explicit, wildcards)
-    }
-
-    private fun resolveWinRtTypeName(
-        typeName: String,
-        packageName: String,
-        imports: KotlinImports,
-        winRtTypes: Map<String, IndexedWinRtType>,
-    ): String? {
-        val candidates = buildList {
-            add(typeName)
-            imports.explicit[typeName]?.let(::add)
-            imports.wildcards.forEach { wildcard -> add("$wildcard.$typeName") }
-            if (packageName.isNotBlank()) {
-                add("$packageName.$typeName")
-            }
-        }
-        return candidates
-            .flatMap { candidate -> listOf(candidate, projectionPackageToMetadataName(candidate)) }
-            .firstOrNull { candidate -> candidate in winRtTypes }
-    }
-
-    private fun projectionPackageToMetadataName(typeName: String): String {
-        val prefix = "io.github.kitectlab.winrt.projections."
-        if (!typeName.startsWith(prefix)) {
-            return typeName
-        }
-        return typeName.removePrefix(prefix)
-            .split('.')
-            .joinToString(".") { segment -> if (segment == "ui") "UI" else segment.replaceFirstChar(Char::uppercaseChar) }
     }
 
     private data class CliOptions(
@@ -240,26 +195,6 @@ object KotlinWinRtAuthoringScannerCli {
         }
     }
 
-    private data class IndexedWinRtType(
-        val qualifiedName: String,
-        val kind: String,
-        val overridableInterfaces: List<String>,
-    )
-
-    private data class KotlinImports(
-        val explicit: Map<String, String>,
-        val wildcards: List<String>,
-    )
-
-    private data class KotlinWinRtAuthoredTypeCandidate(
-        val packageName: String,
-        val className: String,
-        val sourceTypeName: String,
-        val winRtBaseClassName: String?,
-        val winRtInterfaceNames: List<String>,
-        val overridableInterfaceNames: List<String>,
-    )
-
     private data class KotlinLightSource(
         val text: String,
         val tree: FlyweightCapableTreeStructure<LighterASTNode>,
@@ -289,6 +224,20 @@ object KotlinWinRtAuthoringScannerCli {
                     KtTokens.IDENTIFIER -> if (seenClassKeyword) nodeText(node) else null
                     else -> null
                 }
+            }
+        }
+
+        fun isPublicDeclaration(classNode: LighterASTNode): Boolean {
+            val modifiers = classNode.children()
+                .firstOrNull { child -> child.tokenType == KtNodeTypes.MODIFIER_LIST }
+                ?.children()
+                .orEmpty()
+                .map { child -> child.tokenType }
+                .toSet()
+            return KtTokens.PUBLIC_KEYWORD in modifiers || modifiers.none { modifier ->
+                modifier == KtTokens.PRIVATE_KEYWORD ||
+                    modifier == KtTokens.INTERNAL_KEYWORD ||
+                    modifier == KtTokens.PROTECTED_KEYWORD
             }
         }
 

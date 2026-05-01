@@ -2,6 +2,7 @@ package io.github.kitectlab.winrt.compiler
 
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
 import org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor
@@ -9,7 +10,16 @@ import org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar
 import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.CompilerConfigurationKey
+import org.jetbrains.kotlin.descriptors.ClassKind
+import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
+import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
+import org.jetbrains.kotlin.ir.types.classFqName
+import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import java.nio.file.Path
 
 @OptIn(ExperimentalCompilerApi::class)
 class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
@@ -57,6 +67,7 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
 class KotlinWinRtIrGenerationExtension(
     private val metadataIndexPath: String?,
 ) : IrGenerationExtension {
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
@@ -64,8 +75,77 @@ class KotlinWinRtIrGenerationExtension(
         if (metadataIndexPath.isNullOrBlank()) {
             return
         }
-        // The compiler plugin is now the owner for post-analysis authoring transforms.
-        // Source generation still runs before compile so generated type details are compiled
-        // by the normal Kotlin task; this extension is the stable IR hook for the next slice.
+        val winRtTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
+        if (winRtTypes.isEmpty()) {
+            return
+        }
+        val messageCollector = pluginContext.messageCollector
+        moduleFragment.files
+            .flatMap { file -> file.declarations.flatMap(::classesIn) }
+            .forEach { klass ->
+                val authoredType = authoredTypeFor(klass, winRtTypes) ?: return@forEach
+                validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
+                    messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
+                }
+            }
     }
+
+    private fun authoredTypeFor(
+        klass: IrClass,
+        winRtTypes: Map<String, IndexedWinRtType>,
+    ): KotlinWinRtAuthoredTypeCandidate? {
+        val sourceTypeName = klass.fqNameWhenAvailable?.asString() ?: return null
+        val resolvedWinRtTypes = klass.superTypes
+            .mapNotNull { type -> type.classFqName?.asString() }
+            .map(::projectionPackageToMetadataName)
+            .mapNotNull(winRtTypes::get)
+        if (resolvedWinRtTypes.isEmpty()) {
+            return null
+        }
+        val packageName = sourceTypeName.substringBeforeLast('.', missingDelimiterValue = "")
+        val className = sourceTypeName.substringAfterLast('.')
+        val winRtBase = resolvedWinRtTypes.firstOrNull { type -> type.kind == "RuntimeClass" }
+        val directInterfaces = resolvedWinRtTypes
+            .filter { type -> type.kind == "Interface" }
+            .map { type -> type.qualifiedName }
+        val overridableInterfaces = winRtBase?.overridableInterfaces.orEmpty()
+        return KotlinWinRtAuthoredTypeCandidate(
+            packageName = packageName,
+            className = className,
+            sourceTypeName = sourceTypeName,
+            winRtBaseClassName = winRtBase?.qualifiedName,
+            winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
+            overridableInterfaceNames = overridableInterfaces.distinct().sorted(),
+        )
+    }
+
+    private fun validateAuthoredType(
+        klass: IrClass,
+        authoredType: KotlinWinRtAuthoredTypeCandidate,
+        afterK2: Boolean,
+        report: (String) -> Unit,
+    ) {
+        if (!afterK2) {
+            report("kotlin-winrt authoring requires K2 semantic analysis for ${authoredType.sourceTypeName}.")
+        }
+        if (klass.visibility != DescriptorVisibilities.PUBLIC) {
+            report("WinRT authored type ${authoredType.sourceTypeName} must be public, matching cswinrt public component type discovery.")
+        }
+        if (klass.isInner) {
+            report("WinRT authored type ${authoredType.sourceTypeName} must not be an inner class.")
+        }
+        if (klass.typeParameters.isNotEmpty()) {
+            report("WinRT authored type ${authoredType.sourceTypeName} must not be generic.")
+        }
+        if (klass.kind == ClassKind.CLASS && klass.modality != Modality.FINAL) {
+            report("WinRT authored class ${authoredType.sourceTypeName} must be final.")
+        }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun classesIn(declaration: IrDeclaration): List<IrClass> =
+        when (declaration) {
+            is IrClass -> listOf(declaration) + declaration.declarations.flatMap(::classesIn)
+            else -> emptyList()
+        }
 }

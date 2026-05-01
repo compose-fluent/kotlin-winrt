@@ -19,9 +19,11 @@ class KotlinWinRtAuthoringScannerCliTest {
             import io.github.kitectlab.winrt.projections.microsoft.ui.xaml.Application
             import io.github.kitectlab.winrt.projections.windows.foundation.IStringable
 
-            internal class App : Application()
+            class App : Application()
 
-            internal class StringableThing : IStringable
+            class StringableThing : IStringable
+
+            internal class InternalStringableThing : IStringable
             """.trimIndent(),
         )
         metadataIndex.writeText(
