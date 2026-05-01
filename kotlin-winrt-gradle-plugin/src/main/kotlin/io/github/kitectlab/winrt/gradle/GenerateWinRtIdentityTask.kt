@@ -1,12 +1,16 @@
 package io.github.kitectlab.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 
@@ -45,6 +49,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:Input
     abstract val runtimeAssets: ListProperty<String>
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoredMetadataFiles: ConfigurableFileCollection
+
     @TaskAction
     fun generate() {
         val target = outputFile.get().asFile.toPath()
@@ -66,7 +75,8 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("    \"includeExtensions\": ${includeWindowsSdkExtensions.get()}")
                 appendLine("  },")
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
-                appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()}")
+                appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
+                appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
                 appendLine("}")
             },
         )

@@ -60,6 +60,12 @@ private fun configureWinRtLibraryModel(
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
+            task.authoredMetadataFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
+                ),
+            )
+            task.dependsOn("generateWinRtProjections")
         },
     )
 
