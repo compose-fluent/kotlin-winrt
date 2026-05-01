@@ -75,4 +75,17 @@ class WinRtAuthoringMetadataTest {
             output.readText(),
         )
     }
+
+    @Test
+    fun writes_minimal_loadable_winmd_pe_shell() {
+        val output = Files.createTempFile("kotlin-winrt-empty-", ".winmd")
+
+        WinRtPortableExecutableMetadataWriter.writeEmptyWinmd(
+            assemblyName = "Sample.Component",
+            outputFile = output,
+        )
+
+        val model = WinRtMetadataLoader.load(output)
+        assertTrue(model.namespaces.isEmpty())
+    }
 }
