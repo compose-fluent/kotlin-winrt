@@ -89,6 +89,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val nugetPackages: ListProperty<String>
 
+    @get:Input
+    abstract val authoringAssemblyName: Property<String>
+
     @get:Internal
     abstract val authoringScannerClasspath: ConfigurableFileCollection
 
@@ -129,6 +132,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         KotlinWinRtAuthoringMetadataModel.writeDescriptor(
             candidates = authoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/authored-metadata.tsv"),
+        )
+        KotlinWinRtAuthoringMetadataModel.writeWinmd(
+            assemblyName = authoringAssemblyName.get(),
+            candidates = authoringCandidates,
+            outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.winmd"),
         )
         KotlinProjectionGenerator(
             emitSupportFiles = true,

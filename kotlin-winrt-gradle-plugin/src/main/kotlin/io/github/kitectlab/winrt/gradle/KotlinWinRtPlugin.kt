@@ -252,6 +252,7 @@ private fun configureWinRtGeneration(
                     }
                 },
             )
+            task.authoringAssemblyName.set(project.name)
             task.authoringScannerClasspath.from(compilerPluginClasspath)
             task.sourceRoots.from(
                 project.provider {

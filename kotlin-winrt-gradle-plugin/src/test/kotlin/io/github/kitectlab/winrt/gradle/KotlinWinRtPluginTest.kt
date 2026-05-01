@@ -1,5 +1,6 @@
 package io.github.kitectlab.winrt.gradle
 
+import io.github.kitectlab.winrt.metadata.WinRtMetadataLoader
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -62,6 +63,7 @@ class KotlinWinRtPluginTest {
             listOf("Microsoft.WindowsAppSDK@1.8.260416003"),
             task.nugetPackages.get(),
         )
+        assertEquals(project.name, task.authoringAssemblyName.get())
     }
 
     @Test
@@ -469,6 +471,11 @@ class KotlinWinRtPluginTest {
                 ),
             ),
         )
+        val winmd = projectDir.resolve(
+            "build/generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/kotlin-winrt-plugin-test.winmd",
+        )
+        assertTrue(Files.isRegularFile(winmd))
+        assertTrue(WinRtMetadataLoader.load(winmd).namespaces.isEmpty())
         JarFile(projectDir.resolve("build/libs/kotlin-winrt-plugin-test.jar").toFile()).use { jar ->
             assertTrue(
                 jar.getEntry(

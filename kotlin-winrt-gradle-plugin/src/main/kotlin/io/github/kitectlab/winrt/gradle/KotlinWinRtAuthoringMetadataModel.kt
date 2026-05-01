@@ -4,6 +4,7 @@ import io.github.kitectlab.winrt.metadata.WinRtAuthoredMetadataDescriptorWriter
 import io.github.kitectlab.winrt.metadata.WinRtAuthoredRuntimeClassDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtAuthoringMetadata
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
+import io.github.kitectlab.winrt.metadata.WinRtPortableExecutableMetadataWriter
 import java.nio.file.Path
 
 object KotlinWinRtAuthoringMetadataModel {
@@ -22,12 +23,27 @@ object KotlinWinRtAuthoringMetadataModel {
         outputFile: Path,
     ) {
         WinRtAuthoredMetadataDescriptorWriter.write(
-            runtimeClasses = candidates
-                .filter { candidate -> candidate.sourceTypeName.isNotBlank() && candidate.winRtInterfaceNames.isNotEmpty() }
-                .map(::runtimeClassDescriptor),
+            runtimeClasses = runtimeClassDescriptors(candidates),
             outputFile = outputFile,
         )
     }
+
+    fun writeWinmd(
+        assemblyName: String,
+        candidates: List<KotlinWinRtAuthoredTypeCandidate>,
+        outputFile: Path,
+    ) {
+        WinRtPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = assemblyName,
+            runtimeClasses = runtimeClassDescriptors(candidates),
+            outputFile = outputFile,
+        )
+    }
+
+    private fun runtimeClassDescriptors(candidates: List<KotlinWinRtAuthoredTypeCandidate>): List<WinRtAuthoredRuntimeClassDescriptor> =
+        candidates
+            .filter { candidate -> candidate.sourceTypeName.isNotBlank() && candidate.winRtInterfaceNames.isNotEmpty() }
+            .map(::runtimeClassDescriptor)
 
     private fun runtimeClassDescriptor(candidate: KotlinWinRtAuthoredTypeCandidate): WinRtAuthoredRuntimeClassDescriptor =
         WinRtAuthoredRuntimeClassDescriptor(
