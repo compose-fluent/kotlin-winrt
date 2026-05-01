@@ -43,11 +43,11 @@ object KotlinWinRtAuthoringMetadataModel {
 
     fun writeHostManifest(
         assemblyName: String,
+        targetArtifactName: String = "$assemblyName.jar",
         candidates: List<KotlinWinRtAuthoredTypeCandidate>,
         outputFile: Path,
     ) {
         val runtimeClassNames = runtimeClassDescriptors(candidates).map { it.runtimeClassName }.sorted()
-        val targetArtifactName = "$assemblyName.jar"
         Files.createDirectories(outputFile.parent)
         Files.writeString(
             outputFile,

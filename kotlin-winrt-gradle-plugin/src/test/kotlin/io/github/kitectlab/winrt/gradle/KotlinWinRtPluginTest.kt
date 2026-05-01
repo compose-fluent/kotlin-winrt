@@ -64,6 +64,19 @@ class KotlinWinRtPluginTest {
             task.nugetPackages.get(),
         )
         assertEquals(project.name, task.authoringAssemblyName.get())
+        assertEquals("${project.name}.jar", task.authoringTargetArtifactName.get())
+    }
+
+    @Test
+    fun generation_task_uses_gradle_jar_archive_name_for_authoring_target_artifact() {
+        val project = ProjectBuilder.builder().withName("mapped-component").build()
+        project.version = "1.2.3"
+        project.pluginManager.apply("java")
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+
+        val task = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
+
+        assertEquals("mapped-component-1.2.3.jar", task.authoringTargetArtifactName.get())
     }
 
     @Test

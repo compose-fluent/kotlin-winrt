@@ -92,6 +92,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val authoringAssemblyName: Property<String>
 
+    @get:Input
+    abstract val authoringTargetArtifactName: Property<String>
+
     @get:Internal
     abstract val authoringScannerClasspath: ConfigurableFileCollection
 
@@ -140,6 +143,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         )
         KotlinWinRtAuthoringMetadataModel.writeHostManifest(
             assemblyName = authoringAssemblyName.get(),
+            targetArtifactName = authoringTargetArtifactName.get(),
             candidates = authoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.host.json"),
         )

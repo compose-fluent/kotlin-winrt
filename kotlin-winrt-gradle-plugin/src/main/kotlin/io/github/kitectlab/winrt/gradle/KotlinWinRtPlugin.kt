@@ -12,6 +12,7 @@ import org.gradle.api.file.CopySpec
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
 import java.io.File
+import org.gradle.jvm.tasks.Jar
 
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -275,6 +276,11 @@ private fun configureWinRtGeneration(
                 },
             )
             task.authoringAssemblyName.set(project.name)
+            task.authoringTargetArtifactName.set(
+                project.provider {
+                    (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
+                },
+            )
             task.authoringScannerClasspath.from(compilerPluginClasspath)
             task.sourceRoots.from(
                 project.provider {
