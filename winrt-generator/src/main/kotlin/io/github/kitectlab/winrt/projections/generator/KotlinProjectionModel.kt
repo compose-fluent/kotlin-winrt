@@ -97,11 +97,13 @@ import io.github.kitectlab.winrt.runtime.WinRtClosableObject
 import io.github.kitectlab.winrt.runtime.WinRtComposableObjectReference
 import io.github.kitectlab.winrt.runtime.WinRtAttributeUsage
 import io.github.kitectlab.winrt.runtime.WinRtActivationFactory
+import io.github.kitectlab.winrt.runtime.WinRtCcwDefinition
 import io.github.kitectlab.winrt.runtime.WinRtContractVersion
 import io.github.kitectlab.winrt.runtime.WinRtDefaultOverload
 import io.github.kitectlab.winrt.runtime.WinRtExperimental
 import io.github.kitectlab.winrt.runtime.WinRtOverload
 import io.github.kitectlab.winrt.runtime.WinRtSupportedOSPlatform
+import io.github.kitectlab.winrt.runtime.WinRtInspectableInterfaceDefinition
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
@@ -135,6 +137,8 @@ internal val ACTIVATION_FACTORY_CLASS_NAME = ActivationFactory::class.asClassNam
 internal val COM_OBJECT_REFERENCE_CLASS_NAME = ComObjectReference::class.asClassName()
 internal val COM_WRAPPERS_SUPPORT_CLASS_NAME = ComWrappersSupport::class.asClassName()
 internal val COM_VTABLE_INVOKER_CLASS_NAME = ComVtableInvoker::class.asClassName()
+internal val WINRT_CCW_DEFINITION_CLASS_NAME = WinRtCcwDefinition::class.asClassName()
+internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectableInterfaceDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.kitectlab.winrt.projections.support", "WinRTGenericTypeInstantiations")
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()

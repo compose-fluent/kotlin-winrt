@@ -151,6 +151,7 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderAuthoringServerActivationFactories(inventory, plans, semanticHelpers),
+            renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -1053,6 +1054,106 @@ class KotlinProjectionSupportRenderer {
         "_ServerActivationFactory_" + plan.type.qualifiedName
             .replace('.', '_')
             .replace('`', '_')
+
+    private fun renderAuthoringCcwFactories(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val fileBuilder = supportFileSpec("WinRTAuthoringCcwFactories")
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            fileBuilder.addFunction(authoringCcwDefinitionFunction(plan))
+        }
+        fileBuilder.addType(
+            TypeSpec.objectBuilder("WinRTAuthoringCcwFactories")
+                .addModifiers(KModifier.INTERNAL)
+                .addFunction(authoringCcwFactoryRegisterFunction(entries))
+                .build(),
+        )
+        return supportFile("WinRTAuthoringCcwFactories.kt", fileBuilder.build())
+    }
+
+    private fun authoringCcwDefinitionFunction(plan: KotlinTypeProjectionPlan): FunSpec {
+        val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+        val functionName = authoringCcwDefinitionFunctionName(plan)
+        val defaultInterface = plan.defaultInterfaceName
+        return FunSpec.builder(functionName)
+            .addModifiers(KModifier.PRIVATE)
+            .addParameter("value", projectedType)
+            .returns(WINRT_CCW_DEFINITION_CLASS_NAME)
+            .addCode(authoringCcwDefinitionCode(plan, defaultInterface))
+            .build()
+    }
+
+    private fun authoringCcwDefinitionCode(
+        plan: KotlinTypeProjectionPlan,
+        defaultInterface: String?,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("return %T(\n", WINRT_CCW_DEFINITION_CLASS_NAME)
+        code.indent()
+        code.add("interfaceDefinitions = listOf(\n")
+        code.indent()
+        plan.type.implementedInterfaces
+            .map { it.interfaceName.substringBefore('<') }
+            .distinct()
+            .sorted()
+            .forEach { interfaceName ->
+                code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
+                code.indent()
+                code.add("interfaceId = %T.Metadata.IID,\n", projectionClassNameForQualifiedName(interfaceName))
+                code.add("methods = emptyList(),\n")
+                code.unindent()
+                code.add("),\n")
+            }
+        code.unindent()
+        code.add("),\n")
+        code.add(
+            "defaultInterfaceId = %L,\n",
+            defaultInterface
+                ?.substringBefore('<')
+                ?.let { CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(it)) }
+                ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME),
+        )
+        code.add("runtimeClassName = %S,\n", plan.type.qualifiedName)
+        code.unindent()
+        code.add(")\n")
+        return code.build()
+    }
+
+    private fun authoringCcwFactoryRegisterFunction(entries: List<KotlinTypeProjectionPlan>): FunSpec {
+        val code = CodeBlock.builder()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+            code.add(
+                "%T.registerCcwFactory(%T::class) { value ->\n",
+                COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                projectedType,
+            )
+            code.indent()
+            code.add("%L(value as %T)\n", authoringCcwDefinitionFunctionName(plan), projectedType)
+            code.unindent()
+            code.add("}\n")
+        }
+        return FunSpec.builder("register")
+            .addCode(code.build())
+            .build()
+    }
+
+    private fun authoringCcwDefinitionFunctionName(plan: KotlinTypeProjectionPlan): String =
+        "createCcwDefinitionFor" + plan.type.qualifiedName
+            .replace(".", "_")
+            .replace("`", "_")
 
     private fun delegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
         bindings.joinToString(prefix = "listOf(", postfix = ")") { delegateValueKindName(it) }
