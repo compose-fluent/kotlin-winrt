@@ -1234,6 +1234,8 @@ class KotlinProjectionSupportRenderer {
         }
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
+        } else if (authoringCcwBindingIsSupported(binding)) {
+            authoringCcwOrdinaryMemberHandlerCode(interfaceType, binding)
         } else {
             authoringCcwUnsupportedMemberHandlerCode(binding)
         }
@@ -1281,6 +1283,221 @@ class KotlinProjectionSupportRenderer {
         code.unindent()
         code.add("}\n")
         return code.build()
+    }
+
+    private fun authoringCcwOrdinaryMemberHandlerCode(
+        interfaceType: WinRtTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("try {\n")
+        code.indent()
+        binding.parameterBindings.forEachIndexed { index, parameter ->
+            code.add(
+                "val %L = %L\n",
+                parameter.name,
+                authoringCcwDecodeArgumentCode(parameter.typeBinding, index),
+            )
+        }
+        val invocation = authoringCcwInvocationCode(interfaceType, binding)
+        if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+            code.add("%L\n", invocation)
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        } else {
+            code.add("val __result = %L\n", invocation)
+            code.add("%L\n", authoringCcwWriteReturnCode(binding.returnBinding, "rawArgs[${binding.parameterBindings.size}] as RawAddress", "__result"))
+            code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+        }
+        code.unindent()
+        code.add("} catch (error: %T) {\n", Throwable::class.asClassName())
+        code.indent()
+        code.add("%T.setErrorInfo(error)\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.add("%T.hResultFromException(error).value\n", EXCEPTION_HELPERS_CLASS_NAME)
+        code.unindent()
+        code.add("}\n")
+        return code.build()
+    }
+
+    private fun authoringCcwInvocationCode(
+        interfaceType: WinRtTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): CodeBlock {
+        interfaceType.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
+            ?.let { method ->
+                return CodeBlock.builder()
+                    .add("value.%L(", method.projectedMethodName())
+                    .apply {
+                        binding.parameterBindings.forEachIndexed { index, parameter ->
+                            if (index > 0) {
+                                add(", ")
+                            }
+                            add("%L", parameter.name)
+                        }
+                    }
+                    .add(")")
+                    .build()
+            }
+        interfaceType.properties.firstOrNull { property ->
+            binding.bindingName == "${property.name.uppercase()}_GETTER_SLOT" ||
+                binding.bindingName == "${property.name.uppercase()}_SETTER_SLOT"
+        }?.let { property ->
+            val propertyName = property.name.replaceFirstChar(Char::lowercase)
+            return if (binding.bindingName.endsWith("_GETTER_SLOT")) {
+                CodeBlock.of("value.%L", propertyName)
+            } else {
+                CodeBlock.of("value.%L = %L", propertyName, binding.parameterBindings.single().name)
+            }
+        }
+        return CodeBlock.of("error(%S)", "No authored member body for ${interfaceType.qualifiedName}.${binding.bindingName}")
+    }
+
+    private fun authoringCcwBindingIsSupported(binding: KotlinProjectionInstanceMemberBinding): Boolean =
+        binding.parameterBindings.all { authoringCcwAbiBindingIsSupported(it.typeBinding) } &&
+            authoringCcwAbiBindingIsSupported(binding.returnBinding)
+
+    private fun authoringCcwAbiBindingIsSupported(binding: KotlinProjectionAbiTypeBinding): Boolean = when (binding.kind) {
+        KotlinProjectionAbiValueKind.Unit,
+        KotlinProjectionAbiValueKind.String,
+        KotlinProjectionAbiValueKind.Boolean,
+        KotlinProjectionAbiValueKind.Int8,
+        KotlinProjectionAbiValueKind.UInt8,
+        KotlinProjectionAbiValueKind.Int16,
+        KotlinProjectionAbiValueKind.UInt16,
+        KotlinProjectionAbiValueKind.Int32,
+        KotlinProjectionAbiValueKind.UInt32,
+        KotlinProjectionAbiValueKind.Int64,
+        KotlinProjectionAbiValueKind.UInt64,
+        KotlinProjectionAbiValueKind.Float,
+        KotlinProjectionAbiValueKind.Double,
+        KotlinProjectionAbiValueKind.Char16,
+        KotlinProjectionAbiValueKind.GuidValue,
+        KotlinProjectionAbiValueKind.Enum,
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference -> true
+        KotlinProjectionAbiValueKind.Struct -> binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken"
+        else -> false
+    }
+
+    private fun authoringCcwDecodeArgumentCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock = when (binding.kind) {
+        KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", NATIVE_STRING_MARSHALER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("(rawArgs[%L] as Byte).toInt() != 0", index)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("rawArgs[%L] as Byte", index)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("(rawArgs[%L] as Byte).toUByte()", index)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("rawArgs[%L] as Short", index)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("(rawArgs[%L] as Short).toUShort()", index)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("rawArgs[%L] as Int", index)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("(rawArgs[%L] as Int).toUInt()", index)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("rawArgs[%L] as Long", index)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("(rawArgs[%L] as Long).toULong()", index)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("rawArgs[%L] as Float", index)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("rawArgs[%L] as Double", index)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("(rawArgs[%L] as Short).toInt().toChar()", index)
+        KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.readGuid(rawArgs[%L] as %T)", PLATFORM_ABI_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Enum -> CodeBlock.of(
+            "%T.Metadata.fromAbi(%L)",
+            typeRenderer.resolveTypeName(binding.resolvedTypeName),
+            authoringCcwDecodeEnumRawCode(binding, index),
+        )
+        KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T(rawArgs[%L] as Long)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, index)
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
+            "%T.Metadata.wrap(%T(rawArgs[%L] as %T).inspectable())",
+            typeRenderer.resolveTypeName(binding.resolvedTypeName),
+            IUNKNOWN_REFERENCE_CLASS_NAME,
+            index,
+            RAW_ADDRESS_CLASS_NAME,
+        )
+        KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T(rawArgs[%L] as %T)", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T(rawArgs[%L] as %T).inspectable()", IUNKNOWN_REFERENCE_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
+        else -> CodeBlock.of("error(%S)", "Unsupported authored ABI argument ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwDecodeEnumRawCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        index: Int,
+    ): CodeBlock = when (binding.enumUnderlyingType) {
+        WinRtIntegralType.Int8 -> CodeBlock.of("rawArgs[%L] as Byte", index)
+        WinRtIntegralType.UInt8 -> CodeBlock.of("(rawArgs[%L] as Byte).toUByte()", index)
+        WinRtIntegralType.Int16 -> CodeBlock.of("rawArgs[%L] as Short", index)
+        WinRtIntegralType.UInt16 -> CodeBlock.of("(rawArgs[%L] as Short).toUShort()", index)
+        WinRtIntegralType.Int64 -> CodeBlock.of("rawArgs[%L] as Long", index)
+        WinRtIntegralType.UInt64 -> CodeBlock.of("(rawArgs[%L] as Long).toULong()", index)
+        WinRtIntegralType.Int32,
+        WinRtIntegralType.UInt32,
+        null -> CodeBlock.of("rawArgs[%L] as Int", index)
+    }
+
+    private fun authoringCcwWriteReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock = when (binding.kind) {
+        KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L).handle)", PLATFORM_ABI_CLASS_NAME, outExpression, HSTRING_CLASS_NAME, valueExpression)
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.writeInt8(%L, if (%L) 1.toByte() else 0.toByte())", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.writeInt32(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.writeInt32(%L, %L.toInt())", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.writeFloat(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.writeDouble(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.writeInt16(%L, %L.code.toShort())", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, outExpression, valueExpression)
+        KotlinProjectionAbiValueKind.Enum -> CodeBlock.of(
+            "%L",
+            authoringCcwWriteReturnCode(
+                KotlinProjectionAbiTypeBinding(
+                    kind = when (binding.enumUnderlyingType) {
+                        WinRtIntegralType.Int8 -> KotlinProjectionAbiValueKind.Int8
+                        WinRtIntegralType.UInt8 -> KotlinProjectionAbiValueKind.UInt8
+                        WinRtIntegralType.Int16 -> KotlinProjectionAbiValueKind.Int16
+                        WinRtIntegralType.UInt16 -> KotlinProjectionAbiValueKind.UInt16
+                        WinRtIntegralType.Int64 -> KotlinProjectionAbiValueKind.Int64
+                        WinRtIntegralType.UInt64 -> KotlinProjectionAbiValueKind.UInt64
+                        WinRtIntegralType.Int32,
+                        WinRtIntegralType.UInt32,
+                        null -> KotlinProjectionAbiValueKind.Int32
+                    },
+                    typeName = binding.typeName,
+                ),
+                outExpression,
+                CodeBlock.of("%T.Metadata.toAbi(%L)", typeRenderer.resolveTypeName(binding.resolvedTypeName), valueExpression).toString(),
+            ),
+        )
+        KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.Metadata.copyTo(%L, %L)", EVENT_REGISTRATION_TOKEN_CLASS_NAME, valueExpression, outExpression)
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        KotlinProjectionAbiValueKind.UnknownReference,
+        KotlinProjectionAbiValueKind.InspectableReference -> authoringCcwWriteObjectReturnCode(binding, outExpression, valueExpression)
+        else -> CodeBlock.of("error(%S)", "Unsupported authored ABI return ${binding.describeAbiKind()}")
+    }
+
+    private fun authoringCcwWriteObjectReturnCode(
+        binding: KotlinProjectionAbiTypeBinding,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val interfaceId = binding.interfaceId?.let { CodeBlock.of("%T(%S)", GUID_CLASS_NAME, it.toString()) }
+            ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME)
+        return CodeBlock.of(
+            "%T.createCCWForObject(%L, %L).use { __returnReference -> %T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer())) }",
+            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+            valueExpression,
+            interfaceId,
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+            PLATFORM_ABI_CLASS_NAME,
+        )
     }
 
     private fun authoringCcwUnsupportedMemberHandlerCode(binding: KotlinProjectionInstanceMemberBinding): CodeBlock =
