@@ -88,4 +88,31 @@ class WinRtAuthoringMetadataTest {
         val model = WinRtMetadataLoader.load(output)
         assertTrue(model.namespaces.isEmpty())
     }
+
+    @Test
+    fun writes_authored_runtime_class_typedefs_into_loadable_winmd() {
+        val output = Files.createTempFile("kotlin-winrt-authored-", ".winmd")
+
+        WinRtPortableExecutableMetadataWriter.writeAuthoredWinmd(
+            assemblyName = "Sample.Component",
+            runtimeClasses = listOf(
+                WinRtAuthoredRuntimeClassDescriptor(
+                    runtimeClassName = "Sample.Component.Widget",
+                    baseRuntimeClassName = "Sample.Component.BaseWidget",
+                    interfaceNames = listOf("Sample.Component.IWidget"),
+                ),
+            ),
+            outputFile = output,
+        )
+
+        val runtimeClass = WinRtMetadataLoader.load(output)
+            .namespaces
+            .single { namespace -> namespace.name == "Sample.Component" }
+            .types
+            .single()
+        assertEquals("Widget", runtimeClass.name)
+        assertEquals(WinRtTypeKind.RuntimeClass, runtimeClass.kind)
+        assertEquals("Sample.Component.BaseWidget", runtimeClass.baseTypeName)
+        assertTrue(runtimeClass.isSealedType)
+    }
 }

@@ -11,12 +11,22 @@ object WinRtPortableExecutableMetadataWriter {
         outputFile: Path,
     ) {
         Files.createDirectories(outputFile.parent)
-        Files.write(outputFile, EmptyWinmdBuilder(assemblyName).build())
+        Files.write(outputFile, WinmdBuilder(assemblyName, emptyList()).build())
+    }
+
+    fun writeAuthoredWinmd(
+        assemblyName: String,
+        runtimeClasses: List<WinRtAuthoredRuntimeClassDescriptor>,
+        outputFile: Path,
+    ) {
+        Files.createDirectories(outputFile.parent)
+        Files.write(outputFile, WinmdBuilder(assemblyName, runtimeClasses).build())
     }
 }
 
-private class EmptyWinmdBuilder(
+private class WinmdBuilder(
     private val assemblyName: String,
+    private val runtimeClasses: List<WinRtAuthoredRuntimeClassDescriptor>,
 ) {
     private val strings = IndexedStringHeap()
     private val guid = byteArrayOf(
@@ -28,8 +38,12 @@ private class EmptyWinmdBuilder(
         val moduleName = strings.index("$assemblyName.winmd")
         val moduleTypeName = strings.index("<Module>")
         val assemblyNameIndex = strings.index(assemblyName)
+        val baseTypeRefs = runtimeClasses
+            .map { descriptor -> descriptor.baseRuntimeClassName ?: "System.Object" }
+            .distinct()
+            .map { qualifiedName -> TypeRefRow(qualifiedName) }
         val metadataRoot = metadataRoot(
-            tables = tablesStream(moduleName, moduleTypeName, assemblyNameIndex),
+            tables = tablesStream(moduleName, moduleTypeName, assemblyNameIndex, baseTypeRefs),
             strings = strings.bytes(),
             guid = guid,
             blob = byteArrayOf(0),
@@ -61,9 +75,13 @@ private class EmptyWinmdBuilder(
         moduleName: Int,
         moduleTypeName: Int,
         assemblyNameIndex: Int,
+        typeRefs: List<TypeRefRow>,
     ): ByteArray {
         val writer = BinaryWriter()
-        val validMask = (1L shl TABLE_MODULE) or (1L shl TABLE_TYPE_DEF) or (1L shl TABLE_ASSEMBLY)
+        val validMask = (1L shl TABLE_MODULE) or
+            (if (typeRefs.isEmpty()) 0L else 1L shl TABLE_TYPE_REF) or
+            (1L shl TABLE_TYPE_DEF) or
+            (1L shl TABLE_ASSEMBLY)
         writer.int32(0)
         writer.int8(2)
         writer.int8(0)
@@ -72,19 +90,39 @@ private class EmptyWinmdBuilder(
         writer.int64(validMask)
         writer.int64(validMask)
         writer.int32(1)
-        writer.int32(1)
+        if (typeRefs.isNotEmpty()) {
+            writer.int32(typeRefs.size)
+        }
+        writer.int32(1 + runtimeClasses.size)
         writer.int32(1)
         writer.int16(0)
         writer.index(moduleName)
         writer.index(1)
         writer.index(0)
         writer.index(0)
+        typeRefs.forEach { typeRef ->
+            writer.index(0)
+            writer.index(strings.index(typeRef.name))
+            writer.index(strings.index(typeRef.namespace))
+        }
         writer.int32(0)
         writer.index(moduleTypeName)
         writer.index(0)
         writer.index(0)
         writer.index(1)
         writer.index(1)
+        runtimeClasses.forEach { descriptor ->
+            val namespace = descriptor.runtimeClassName.substringBeforeLast('.', missingDelimiterValue = "")
+            val name = descriptor.runtimeClassName.substringAfterLast('.')
+            val baseTypeName = descriptor.baseRuntimeClassName ?: "System.Object"
+            val baseTypeRefRowId = typeRefs.indexOfFirst { typeRef -> typeRef.qualifiedName == baseTypeName } + 1
+            writer.int32(TYPE_ATTRIBUTES_PUBLIC or TYPE_ATTRIBUTES_WINDOWS_RUNTIME or TYPE_ATTRIBUTES_BEFORE_FIELD_INIT or if (descriptor.isSealed) TYPE_ATTRIBUTES_SEALED else 0)
+            writer.index(strings.index(name))
+            writer.index(strings.index(namespace))
+            writer.index((baseTypeRefRowId shl 2) or CODED_TYPE_DEF_OR_REF_TYPE_REF)
+            writer.index(1)
+            writer.index(1)
+        }
         writer.int32(0x00008004)
         writer.int16(1)
         writer.int16(0)
@@ -209,6 +247,10 @@ private class EmptyWinmdBuilder(
     }
 
     private data class StreamPart(val name: String, val bytes: ByteArray)
+    private data class TypeRefRow(val qualifiedName: String) {
+        val namespace: String = qualifiedName.substringBeforeLast('.', missingDelimiterValue = "")
+        val name: String = qualifiedName.substringAfterLast('.')
+    }
 
     private companion object {
         const val PE_HEADER_OFFSET = 0x80
@@ -218,8 +260,14 @@ private class EmptyWinmdBuilder(
         const val SECTION_RVA = 0x2000
         const val CLI_HEADER_SIZE = 72
         const val TABLE_MODULE = 0
+        const val TABLE_TYPE_REF = 1
         const val TABLE_TYPE_DEF = 2
         const val TABLE_ASSEMBLY = 0x20
+        const val CODED_TYPE_DEF_OR_REF_TYPE_REF = 1
+        const val TYPE_ATTRIBUTES_PUBLIC = 0x00000001
+        const val TYPE_ATTRIBUTES_WINDOWS_RUNTIME = 0x00004000
+        const val TYPE_ATTRIBUTES_SEALED = 0x00000100
+        const val TYPE_ATTRIBUTES_BEFORE_FIELD_INIT = 0x00100000
     }
 }
 
