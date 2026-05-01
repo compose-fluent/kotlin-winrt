@@ -110,6 +110,12 @@ class KotlinProjectionGenerator(
     private val emitSupportFiles: Boolean = false,
     private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
 ) {
+    init {
+        require(emitSupportFiles || projectionContext.sources.isEmpty()) {
+            "KotlinProjectionGenerator requires emitSupportFiles=true when a projection context is supplied."
+        }
+    }
+
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)

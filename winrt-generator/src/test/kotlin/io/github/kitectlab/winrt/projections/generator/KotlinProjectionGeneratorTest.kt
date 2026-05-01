@@ -13,6 +13,7 @@ import io.github.kitectlab.winrt.metadata.WinRtIntegralType
 import io.github.kitectlab.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.kitectlab.winrt.metadata.WinRtMetadataModel
 import io.github.kitectlab.winrt.metadata.WinRtMetadataProjectionContext
+import io.github.kitectlab.winrt.metadata.WinRtMetadataSource
 import io.github.kitectlab.winrt.metadata.WinRtMethodDefinition
 import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
@@ -32,6 +33,21 @@ import java.nio.file.Files
 import kotlin.io.path.isRegularFile
 
 class KotlinProjectionGeneratorTest {
+    @Test
+    fun generator_requires_support_files_for_projection_context_callers() {
+        val error = runCatching {
+            KotlinProjectionGenerator(
+                emitSupportFiles = false,
+                projectionContext = WinRtMetadataProjectionContext(
+                    sources = listOf(WinRtMetadataSource.windowsSdk()),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error!!.message.orEmpty().contains("emitSupportFiles=true"))
+    }
+
     @Test
     fun generator_projects_method_generic_parameters_like_cswinrt_method_generic_signature_branch() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_signature MethodDef.GenericParam() handling.
