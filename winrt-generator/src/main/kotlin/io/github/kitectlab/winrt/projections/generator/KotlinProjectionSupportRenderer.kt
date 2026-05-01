@@ -945,6 +945,19 @@ class KotlinProjectionSupportRenderer {
                             .addStatement("ENTRIES.forEach(install)")
                             .build(),
                     )
+                    .addFunction(
+                        FunSpec.builder("registerModuleActivationFactories")
+                            .addParameter("createFactory", Function1::class.asClassName().parameterizedBy(entryClass, COM_OBJECT_REFERENCE_CLASS_NAME))
+                            .addCode(
+                                "ENTRIES.forEach { entry ->\n" +
+                                    "    %T.registerAuthoringActivationFactory(entry.runtimeClassName) {\n" +
+                                    "        createFactory(entry)\n" +
+                                    "    }\n" +
+                                    "}\n",
+                                COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                            )
+                            .build(),
+                    )
                     .build(),
             )
             .build()
