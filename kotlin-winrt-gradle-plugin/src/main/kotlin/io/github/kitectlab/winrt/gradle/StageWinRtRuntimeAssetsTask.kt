@@ -63,6 +63,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredMetadataFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoredHostManifestFiles: ConfigurableFileCollection
+
     @TaskAction
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
@@ -76,6 +81,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 }
             }
         (authoredMetadataFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata))
+            .map(Path::of)
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isRegularFile()) {
+                    copyFile(source, outputRoot.resolve(source.name))
+                }
+            }
+        (authoredHostManifestFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests))
             .map(Path::of)
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
@@ -278,6 +291,12 @@ internal fun readRuntimeAssets(identityFile: java.io.File): List<String> {
 internal fun readAuthoredMetadata(identityFile: java.io.File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     val match = Regex(""""authoredMetadata"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
+    return readJsonStringArray(match.groupValues[1])
+}
+
+internal fun readAuthoredHostManifests(identityFile: java.io.File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val match = Regex(""""authoredHostManifests"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
     return readJsonStringArray(match.groupValues[1])
 }
 

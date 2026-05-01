@@ -54,6 +54,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredMetadataFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoredHostManifestFiles: ConfigurableFileCollection
+
     @TaskAction
     fun generate() {
         val target = outputFile.get().asFile.toPath()
@@ -76,7 +81,8 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  },")
                 appendLine("  \"nugetPackages\": ${nugetPackages.get().toJsonArray()},")
                 appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
-                appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
+                appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
+                appendLine("  \"authoredHostManifests\": ${authoredHostManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
                 appendLine("}")
             },
         )

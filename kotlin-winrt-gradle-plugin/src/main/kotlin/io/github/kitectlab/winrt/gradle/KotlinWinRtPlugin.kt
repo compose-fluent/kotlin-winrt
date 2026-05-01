@@ -65,6 +65,11 @@ private fun configureWinRtLibraryModel(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
                 ),
             )
+            task.authoredHostManifestFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
+                ),
+            )
             task.dependsOn("generateWinRtProjections")
         },
     )
@@ -188,6 +193,11 @@ private fun configureWinRtApplicationTasks(
             task.authoredMetadataFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
+                ),
+            )
+            task.authoredHostManifestFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
                 ),
             )
             task.dependsOn("generateWinRtProjections")

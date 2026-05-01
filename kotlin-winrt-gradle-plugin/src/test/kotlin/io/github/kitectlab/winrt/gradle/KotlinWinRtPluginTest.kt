@@ -142,6 +142,8 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"authoredMetadata\": ["))
         assertTrue(json.contains("kotlin-winrt-authoring"))
         assertTrue(json.contains("${project.name}.winmd"))
+        assertTrue(json.contains("\"authoredHostManifests\": ["))
+        assertTrue(json.contains("${project.name}.host.json"))
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
         assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
@@ -262,21 +264,27 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val appDll = project.layout.buildDirectory.file("component/AppComponent.dll").get().asFile.toPath()
         val appWinmd = project.layout.buildDirectory.file("component/AppComponent.winmd").get().asFile.toPath()
+        val appHostManifest = project.layout.buildDirectory.file("component/AppComponent.host.json").get().asFile.toPath()
         val dependencyDll = project.layout.buildDirectory.file("dependency/DependencyComponent.dll").get().asFile.toPath()
         val dependencyWinmd = project.layout.buildDirectory.file("dependency/DependencyComponent.winmd").get().asFile.toPath()
+        val dependencyHostManifest = project.layout.buildDirectory.file("dependency/DependencyComponent.host.json").get().asFile.toPath()
         Files.createDirectories(appDll.parent)
         Files.createDirectories(appWinmd.parent)
+        Files.createDirectories(appHostManifest.parent)
         Files.createDirectories(dependencyDll.parent)
         Files.createDirectories(dependencyWinmd.parent)
+        Files.createDirectories(dependencyHostManifest.parent)
         Files.writeString(appDll, "app")
         Files.writeString(appWinmd, "app-winmd")
+        Files.writeString(appHostManifest, "app-host")
         Files.writeString(dependencyDll, "dependency")
         Files.writeString(dependencyWinmd, "winmd")
+        Files.writeString(dependencyHostManifest, "host")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
         Files.writeString(
             dependencyIdentity.toPath(),
-            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadata":["${dependencyWinmd.toString().replace("\\", "\\\\")}"]}""",
+            """{"runtimeAssets":["${dependencyDll.toString().replace("\\", "\\\\")}"],"authoredMetadata":["${dependencyWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifests":["${dependencyHostManifest.toString().replace("\\", "\\\\")}"]}""",
         )
 
         val task = project.tasks.register(
@@ -287,6 +295,7 @@ class KotlinWinRtPluginTest {
             registeredTask.nugetPackages.set(emptyList())
             registeredTask.runtimeAssets.set(listOf(appDll.toString()))
             registeredTask.authoredMetadataFiles.from(appWinmd)
+            registeredTask.authoredHostManifestFiles.from(appHostManifest)
             registeredTask.nugetGlobalPackagesRoots.set(emptyList())
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
@@ -301,8 +310,10 @@ class KotlinWinRtPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.winmd")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.host.json")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.winmd")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.host.json")))
     }
 
     @Test
