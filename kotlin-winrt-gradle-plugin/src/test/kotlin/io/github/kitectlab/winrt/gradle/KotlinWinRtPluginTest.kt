@@ -261,12 +261,15 @@ class KotlinWinRtPluginTest {
     fun runtime_assets_task_stages_local_component_assets_from_application_and_dependency_identity() {
         val project = ProjectBuilder.builder().build()
         val appDll = project.layout.buildDirectory.file("component/AppComponent.dll").get().asFile.toPath()
+        val appWinmd = project.layout.buildDirectory.file("component/AppComponent.winmd").get().asFile.toPath()
         val dependencyDll = project.layout.buildDirectory.file("dependency/DependencyComponent.dll").get().asFile.toPath()
         val dependencyWinmd = project.layout.buildDirectory.file("dependency/DependencyComponent.winmd").get().asFile.toPath()
         Files.createDirectories(appDll.parent)
+        Files.createDirectories(appWinmd.parent)
         Files.createDirectories(dependencyDll.parent)
         Files.createDirectories(dependencyWinmd.parent)
         Files.writeString(appDll, "app")
+        Files.writeString(appWinmd, "app-winmd")
         Files.writeString(dependencyDll, "dependency")
         Files.writeString(dependencyWinmd, "winmd")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
@@ -283,6 +286,7 @@ class KotlinWinRtPluginTest {
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
             registeredTask.runtimeAssets.set(listOf(appDll.toString()))
+            registeredTask.authoredMetadataFiles.from(appWinmd)
             registeredTask.nugetGlobalPackagesRoots.set(emptyList())
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
@@ -296,6 +300,7 @@ class KotlinWinRtPluginTest {
 
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.dll")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.winmd")))
     }

@@ -185,6 +185,12 @@ private fun configureWinRtApplicationTasks(
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.dependencyIdentityFiles.from(identityDependencies)
+            task.authoredMetadataFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
+                ),
+            )
+            task.dependsOn("generateWinRtProjections")
         },
     )
     project.plugins.withId("java") {

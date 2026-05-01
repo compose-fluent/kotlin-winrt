@@ -10,6 +10,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -57,6 +58,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoredMetadataFiles: ConfigurableFileCollection
+
     @TaskAction
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
@@ -69,7 +75,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     copyFile(source, outputRoot.resolve(source.name))
                 }
             }
-        dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata)
+        (authoredMetadataFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata))
             .map(Path::of)
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
