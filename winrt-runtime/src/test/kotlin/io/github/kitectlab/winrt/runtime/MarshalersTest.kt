@@ -42,6 +42,17 @@ class MarshalersTest {
     }
 
     @Test
+    fun generic_parameter_marshaler_round_trips_reference_arrays_on_windows() {
+        assumeTrue(PlatformRuntime.isWindows)
+
+        val marshaler = Marshaler.genericParameter<String>()
+        marshaler.fromManagedArray(arrayOf("one", "two")).use { abiArray ->
+            assertNotNull(abiArray)
+            assertEquals(listOf("one", "two"), marshaler.fromAbiArray(abiArray!!.length, abiArray.data))
+        }
+    }
+
+    @Test
     fun interface_marshaler_reuses_unwrapped_projected_objects() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle("test.IFoo", Guid("66666666-6666-6666-6666-666666666666"))

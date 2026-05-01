@@ -120,6 +120,8 @@ class Marshaler<T> internal constructor(
         ): Marshaler<T> = MarshalInspectable.of(expectedType, projector)
 
         fun inspectableAny(): Marshaler<Any?> = MarshalInspectable.any()
+
+        fun <T> genericParameter(): Marshaler<T> = MarshalGenericParameter.of()
     }
 }
 
@@ -510,6 +512,32 @@ object MarshalInspectable {
                     null -> PlatformAbi.nullPointer
                     else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
                 }
+            },
+            disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
+            disposeAbiPointer = { pointer ->
+                if (!PlatformAbi.isNull(pointer)) {
+                    IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
+                }
+            },
+        )
+}
+
+object MarshalGenericParameter {
+    fun <T> of(): Marshaler<T> =
+        pointerMarshaler(
+            category = WinRtAbiCategory.INSPECTABLE,
+            createMarshaler = { value -> WinRtGenericParameterProjection.createReference(value) },
+            getAbiPointer = { value ->
+                when (value) {
+                    null -> PlatformAbi.nullPointer
+                    is ComObjectReference -> value.pointer.asRawAddress()
+                    is RawAddress -> value
+                    else -> error("Expected generic parameter marshaler, got '${abiTypeName(value)}'.")
+                }
+            },
+            fromAbiPointer = { pointer -> WinRtGenericParameterProjection.fromAbi(pointer) },
+            fromManagedPointer = { value ->
+                WinRtGenericParameterProjection.createReference(value)?.useAndGetRef() ?: PlatformAbi.nullPointer
             },
             disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
             disposeAbiPointer = { pointer ->

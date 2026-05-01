@@ -5000,6 +5000,15 @@ class KotlinProjectionGeneratorTest {
                                         WinRtParameterDefinition("value", "M0"),
                                     ),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "RoundTripGenericArray",
+                                    returnTypeName = "Array<M0>",
+                                    genericParameterCount = 1,
+                                    genericParameters = listOf(WinRtGenericParameterDefinition("M0", 0)),
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("values", "Array<M0>", isInParameter = true),
+                                    ),
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(
@@ -5321,6 +5330,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.createReference(__result).use"))
         assertTrue(ccwFactories.contains("__returnReference?.getRefPointer()"))
         assertTrue(ccwFactories.contains("PlatformAbi.nullPointer"))
+        assertTrue(ccwFactories.contains("val __arrayMarshaler = Marshaler.genericParameter<M0>()"))
+        assertTrue(ccwFactories.contains("value.roundTripGenericArray(values)"))
+        assertTrue(ccwFactories.contains("val __returnArrayMarshaler = Marshaler.genericParameter<M0>()"))
         assertTrue(ccwFactories.contains("EventHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.addChanged(handler)"))
         assertTrue(ccwFactories.contains("EventRegistrationToken.Metadata.copyTo(token, rawArgs[1] as RawAddress)"))

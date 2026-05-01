@@ -611,5 +611,7 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayElementMarshalerExpressio
             val projectedType = resolveTypeName(elementBinding.resolvedTypeName)
             CodeBlock.of("%T.inspectable(%T::class)", MARSHALER_CLASS_NAME, projectedType)
         }
+        KotlinProjectionAbiValueKind.GenericParameter ->
+            CodeBlock.of("%T.genericParameter<%T>()", MARSHALER_CLASS_NAME, resolveTypeName(elementBinding.typeName))
         else -> null
     }
