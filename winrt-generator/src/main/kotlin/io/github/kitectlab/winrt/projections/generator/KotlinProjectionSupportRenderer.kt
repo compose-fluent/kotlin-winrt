@@ -1734,6 +1734,7 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.Char16,
         KotlinProjectionAbiValueKind.GuidValue,
         KotlinProjectionAbiValueKind.Enum,
+        KotlinProjectionAbiValueKind.Object,
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,
@@ -1779,6 +1780,7 @@ class KotlinProjectionSupportRenderer {
                     CodeBlock.of("%T.Metadata.fromAbi(rawArgs[%L] as %T)", structType, index, RAW_ADDRESS_CLASS_NAME)
                 }
             }
+        KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.fromAbi(rawArgs[%L] as %T)", WINRT_OBJECT_MARSHALLER_CLASS_NAME, index, RAW_ADDRESS_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of(
             "%T.Metadata.wrap(%T(rawArgs[%L] as %T).inspectable())",
@@ -1865,6 +1867,13 @@ class KotlinProjectionSupportRenderer {
                     CodeBlock.of("%T.Metadata.copyTo(%L, %L)", structType, valueExpression, outExpression)
                 }
             }
+        KotlinProjectionAbiValueKind.Object -> CodeBlock.of(
+            "%T.createMarshaler(%L).use { __returnMarshaler -> %T.writePointer(%L, __returnMarshaler.abi) }",
+            WINRT_OBJECT_MARSHALLER_CLASS_NAME,
+            valueExpression,
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
+        )
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
         KotlinProjectionAbiValueKind.Delegate,

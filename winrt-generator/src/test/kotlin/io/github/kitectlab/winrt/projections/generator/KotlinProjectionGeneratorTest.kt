@@ -4957,6 +4957,13 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("11111111-2222-3333-4444-555555555553"),
                             methods = listOf(
                                 WinRtMethodDefinition(
+                                    name = "EchoObject",
+                                    returnTypeName = "System.Object",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("input", "System.Object"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
                                     name = "RoundTripPoint",
                                     returnTypeName = "Sample.Foundation.WidgetPoint",
                                     parameters = listOf(
@@ -5247,6 +5254,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("methods = listOf("))
         assertTrue(ccwFactories.contains("WinRtInspectableMethodDefinition"))
         assertTrue(ccwFactories.contains("signature = ComMethodSignature.of(ComAbiValueKind.Pointer, ComAbiValueKind.Pointer)"))
+        assertTrue(ccwFactories.contains("val input = WinRtObjectMarshaller.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories.contains("value.echoObject(input)"))
+        assertTrue(ccwFactories.contains("WinRtObjectMarshaller.createMarshaler(__result).use"))
         assertTrue(ccwFactories.contains("ComAbiValueKind.Struct(WidgetPoint.Metadata.layout.abiLayout)"))
         assertTrue(ccwFactories.contains("WidgetPoint.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.roundTripPoint(point)"))
