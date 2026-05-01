@@ -7,12 +7,39 @@ import io.github.kitectlab.winrt.metadata.WinRtNamespace
 import io.github.kitectlab.winrt.metadata.WinRtParameterDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.io.path.readText
 
 class KotlinWinRtAuthoringSourceScannerTest {
+    @Test
+    fun merges_scanned_authored_runtime_classes_into_projection_metadata_model() {
+        val augmented = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
+            model = model(),
+            candidates = listOf(
+                KotlinWinRtAuthoredTypeCandidate(
+                    packageName = "sample",
+                    className = "App",
+                    sourceTypeName = "sample.App",
+                    winRtBaseClassName = "Microsoft.UI.Xaml.Application",
+                    winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+                    overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationOverrides"),
+                ),
+            ),
+        )
+
+        val authoredType = augmented.namespaces.single { namespace -> namespace.name == "sample" }.types.single()
+        assertEquals(WinRtTypeKind.RuntimeClass, authoredType.kind)
+        assertEquals("sample.App", authoredType.qualifiedName)
+        assertEquals("Microsoft.UI.Xaml.Application", authoredType.baseTypeName)
+        assertEquals("Microsoft.UI.Xaml.IApplicationOverrides", authoredType.defaultInterfaceName)
+        assertTrue(authoredType.activation.isActivatable)
+        assertTrue(authoredType.implementedInterfaces.single().isDefault)
+        assertTrue(authoredType.implementedInterfaces.single().isOverridable)
+    }
+
     @Test
     fun renders_generated_type_details_for_scanned_authored_type() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-details-")

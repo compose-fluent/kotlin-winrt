@@ -98,12 +98,34 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @TaskAction
     fun generate() {
         val sources = metadataSources()
-        val model = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
+        val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
             namespaces = includeNamespaces.get().toSet(),
             types = includeTypes.get().toSet(),
             excludedNamespaces = excludeNamespaces.get().toSet(),
             excludedTypes = excludeTypes.get().toSet(),
         )
+        val generatedRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
+        Files.createDirectories(authoringMetadataIndex.parent)
+        writeAuthoringMetadataIndex(baseModel, authoringMetadataIndex)
+        val authoringSourceRoots = sourceRoots.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
+            .filter(::containsKotlinSource)
+        val authoringCandidates = if (authoringSourceRoots.isEmpty()) {
+            emptyList()
+        } else {
+            val scannerWorkDirectory = temporaryDir.toPath().resolve("authoring-scanner")
+            Files.createDirectories(scannerWorkDirectory)
+            val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
+            runAuthoringScanner(
+                sourceRoots = authoringSourceRoots,
+                metadataIndex = authoringMetadataIndex,
+                candidatesFile = candidatesFile,
+            )
+            KotlinWinRtAuthoringCandidateFile.read(candidatesFile)
+        }
+        val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, authoringCandidates)
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(
@@ -113,25 +135,10 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                 additionExclude = additionExcludeNamespaces.get().toSet(),
             ),
         ).generateTo(model, outputDirectory.get().asFile.toPath())
-        val generatedRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
-        val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
-        Files.createDirectories(authoringMetadataIndex.parent)
         writeAuthoringMetadataIndex(model, authoringMetadataIndex)
-        val authoringSourceRoots = sourceRoots.files
-            .map { it.toPath().toAbsolutePath().normalize() }
-            .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
-            .filter(::containsKotlinSource)
-        if (authoringSourceRoots.isNotEmpty()) {
-            val scannerWorkDirectory = temporaryDir.toPath().resolve("authoring-scanner")
-            Files.createDirectories(scannerWorkDirectory)
-            val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
-            runAuthoringScanner(
-                sourceRoots = authoringSourceRoots,
-                metadataIndex = authoringMetadataIndex,
-                candidatesFile = candidatesFile,
-            )
+        if (authoringCandidates.isNotEmpty()) {
             KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
-                candidates = KotlinWinRtAuthoringCandidateFile.read(candidatesFile),
+                candidates = authoringCandidates,
                 metadataModel = model,
                 outputDirectory = outputDirectory.get().asFile.toPath(),
             )
