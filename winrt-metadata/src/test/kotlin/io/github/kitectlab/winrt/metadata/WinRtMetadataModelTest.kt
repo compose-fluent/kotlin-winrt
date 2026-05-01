@@ -2205,6 +2205,7 @@ class WinRtMetadataModelTest {
             namespace = "Windows.Foundation",
             name = "EventHandler",
             kind = WinRtTypeKind.Delegate,
+            iid = Guid("cccccccc-cccc-cccc-cccc-cccccccccccc"),
             genericParameterCount = 1,
             genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
             methods = listOf(
@@ -2420,8 +2421,11 @@ class WinRtMetadataModelTest {
 
         val guid = helpers.guidSignatureDescriptor(vector)
         assertEquals("AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA", guid.guidText)
-        assertEquals("pinterface(Windows.Foundation.Collections.IVector)", guid.signatureFragment)
+        assertEquals("{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}", guid.signatureFragment)
         assertEquals(16, guid.guidBytes.size)
+        assertEquals("delegate({cccccccc-cccc-cccc-cccc-cccccccccccc})", helpers.guidSignatureDescriptor(eventHandler).signatureFragment)
+        assertEquals("struct(Sample.Foundation.Point;f4)", helpers.guidSignatureDescriptor(point).signatureFragment)
+        assertEquals("rc(Sample.Foundation.Widget;{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb})", helpers.guidSignatureDescriptor(widget).signatureFragment)
 
         val vtable = helpers.vtableWriterDescriptor(iWidget)
         assertEquals(listOf("GetValue_0"), vtable.methods.map { it.vmethodName })

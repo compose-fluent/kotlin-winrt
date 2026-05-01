@@ -1671,7 +1671,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             guidText = guidText,
             guidBytes = guidText?.let(::guidTextToBytes).orEmpty(),
             signatureFragment = guidSignatureFragment(type),
-            parameterizedSignatureFragments = type.genericParameters.map { parameter -> "pinterface(${parameter.name})" },
+            parameterizedSignatureFragments = type.genericParameters.map { parameter -> parameter.name },
         )
     }
 
@@ -2268,12 +2268,73 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     private fun guidSignatureFragment(type: WinRtTypeDefinition): String =
         when (type.kind) {
-            WinRtTypeKind.Interface -> "pinterface(${type.qualifiedName})"
-            WinRtTypeKind.Delegate -> "delegate(${type.qualifiedName})"
-            WinRtTypeKind.RuntimeClass -> "rc(${type.qualifiedName};${getDefaultInterface(type)?.normalized()?.typeName.orEmpty()})"
-            WinRtTypeKind.Struct -> "struct(${type.qualifiedName};${type.fields.joinToString(";") { it.type.normalized().typeName }})"
-            WinRtTypeKind.Enum -> "enum(${type.qualifiedName};${type.enumUnderlyingType ?: WinRtIntegralType.Int32})"
-            WinRtTypeKind.Unknown -> type.qualifiedName
+            WinRtTypeKind.Interface -> type.iid?.let(::guidSignatureFragmentForGuid).orEmpty()
+            WinRtTypeKind.Delegate -> type.iid?.let { guid -> "delegate(${guidSignatureFragmentForGuid(guid)})" }.orEmpty()
+            WinRtTypeKind.RuntimeClass -> {
+                val defaultInterfaceSignature = getDefaultInterface(type)
+                    ?.let { defaultInterface -> guidSignatureFragmentForTypeRef(defaultInterface, type.namespace) }
+                    .orEmpty()
+                if (defaultInterfaceSignature.isNotEmpty()) {
+                    "rc(${type.qualifiedName};$defaultInterfaceSignature)"
+                } else {
+                    type.iid?.let(::guidSignatureFragmentForGuid).orEmpty()
+                }
+            }
+            WinRtTypeKind.Struct -> {
+                val fieldSignatures = type.fields
+                    .filterNot { field -> field.isStatic || field.isLiteral }
+                    .joinToString(";") { field -> guidSignatureFragmentForTypeRef(field.type, type.namespace) }
+                "struct(${type.qualifiedName};$fieldSignatures)"
+            }
+            WinRtTypeKind.Enum -> "enum(${type.qualifiedName};${if (isFlagsEnum(type)) "u4" else "i4"})"
+            WinRtTypeKind.Unknown -> ""
+        }
+
+    private fun guidSignatureFragmentForTypeRef(type: WinRtTypeRef, currentNamespace: String): String {
+        val normalizedType = type.normalized()
+        fundamentalGuidSignatureFragment(normalizedType.typeName)?.let { signature -> return signature }
+        if (normalizedType.kind != WinRtTypeRefKind.Named) {
+            return ""
+        }
+        val resolvedType = resolveTypeReference(normalizedType, currentNamespace, typesByQualifiedName)
+        val definition = resolvedType.definitionType
+        if (normalizedType.typeArguments.isNotEmpty() && definition?.iid != null) {
+            return buildString {
+                append("pinterface(")
+                append(guidSignatureFragmentForGuid(definition.iid))
+                normalizedType.typeArguments.forEach { argument ->
+                    append(';')
+                    append(guidSignatureFragmentForTypeRef(argument, currentNamespace))
+                }
+                append(')')
+            }
+        }
+        return definition?.let(::guidSignatureFragment)
+            ?: fundamentalGuidSignatureFragment(resolvedType.displayName)
+            ?: ""
+    }
+
+    private fun guidSignatureFragmentForGuid(guid: io.github.kitectlab.winrt.runtime.Guid): String =
+        "{${guid.toString().lowercase()}}"
+
+    private fun fundamentalGuidSignatureFragment(typeName: String): String? =
+        when (typeName.substringBefore('<').removeSuffix("?")) {
+            "Boolean", "Bool" -> "b1"
+            "Char", "Char16" -> "c2"
+            "Byte", "Int8", "SByte" -> "i1"
+            "UByte", "UInt8" -> "u1"
+            "Short", "Int16" -> "i2"
+            "UShort", "UInt16" -> "u2"
+            "Int", "Int32" -> "i4"
+            "UInt", "UInt32" -> "u4"
+            "Long", "Int64" -> "i8"
+            "ULong", "UInt64" -> "u8"
+            "Float", "Single" -> "f4"
+            "Double" -> "f8"
+            "String" -> "string"
+            "Guid", "System.Guid" -> "g16"
+            "Any", "Object", "System.Object" -> "cinterface(IInspectable)"
+            else -> null
         }
 
     private fun escapeIdentifier(value: String): String =
