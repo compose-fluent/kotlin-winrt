@@ -287,6 +287,38 @@ class WinRtAuthoringTest {
     }
 
     @Test
+    fun authored_host_manifest_loader_reads_cswinrt_style_target_mappings() {
+        val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-schema-")
+        val manifestPath = directory.resolve("MappedComponent.host.json")
+        Files.writeString(
+            manifestPath,
+            """
+            {
+              "schemaVersion": 1,
+              "model": "jvm-authoring-host",
+              "assemblyName": "MappedComponent",
+              "hostExportsClass": "sample.MappedHostExports",
+              "targetArtifact": "MappedComponent.jar",
+              "activatableClassTargets": {
+                "Sample.Authoring.MappedComponent": "MappedComponent.jar"
+              }
+            }
+            """.trimIndent(),
+        )
+
+        val manifest = WinRtAuthoringHostManifestLoader.read(manifestPath)
+
+        assertEquals("MappedComponent", manifest.assemblyName)
+        assertEquals("sample.MappedHostExports", manifest.hostExportsClass)
+        assertEquals("MappedComponent.jar", manifest.targetArtifact)
+        assertEquals(
+            mapOf("Sample.Authoring.MappedComponent" to "MappedComponent.jar"),
+            manifest.activatableClassTargets,
+        )
+        assertEquals(directory, manifest.sourceDirectory)
+    }
+
+    @Test
     fun authored_host_manifest_loader_installs_activation_factory_fallback() {
         assumeTrue(PlatformRuntime.isWindows)
         ComWrappersSupport.clearRegistriesForTests()

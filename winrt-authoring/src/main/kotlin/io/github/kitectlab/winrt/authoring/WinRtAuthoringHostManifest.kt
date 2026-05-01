@@ -11,6 +11,7 @@ import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.PlatformRuntime
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtPlatformApi
+import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -23,10 +24,16 @@ data class WinRtAuthoringHostManifest(
     val targetArtifact: String,
     val activatableClasses: List<String>,
     val activatableClassTargets: Map<String, String>,
+    val sourceDirectory: Path? = null,
 )
 
 object WinRtAuthoringHostManifestLoader {
     private const val RUNTIME_ASSETS_RESOURCE_DIRECTORY = "kotlin-winrt-runtime-assets"
+
+    private data class HostExportEntry(
+        val hostExportsClass: String,
+        val classLoader: ClassLoader?,
+    )
 
     fun read(path: Path): WinRtAuthoringHostManifest {
         val content = Files.readString(path)
@@ -36,6 +43,7 @@ object WinRtAuthoringHostManifestLoader {
             targetArtifact = readJsonString(content, "targetArtifact").orEmpty(),
             activatableClasses = readJsonStringArray(content, "activatableClasses"),
             activatableClassTargets = readJsonStringMap(content, "activatableClassTargets"),
+            sourceDirectory = path.parent,
         )
     }
 
@@ -57,16 +65,17 @@ object WinRtAuthoringHostManifestLoader {
         val entries = manifests
             .filter { it.hostExportsClass.isNotBlank() && it.runtimeClassNames().isNotEmpty() }
             .flatMap { manifest ->
-                manifest.runtimeClassNames().map { runtimeClassName -> runtimeClassName to manifest.hostExportsClass }
+                val entry = manifest.hostExportEntry()
+                manifest.runtimeClassNames().map { runtimeClassName -> runtimeClassName to entry }
             }
             .toMap()
         if (entries.isEmpty()) {
             return
         }
         ComWrappersSupport.registerAuthoringActivationFactoryFallback { runtimeClassName, interfaceId ->
-            val hostExportsClass = entries[runtimeClassName]
+            val entry = entries[runtimeClassName]
                 ?: return@registerAuthoringActivationFactoryFallback ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
-            activate(hostExportsClass, runtimeClassName, interfaceId)
+            activate(entry, runtimeClassName, interfaceId)
         }
     }
 
@@ -83,14 +92,14 @@ object WinRtAuthoringHostManifestLoader {
     }
 
     private fun activate(
-        hostExportsClass: String,
+        entry: HostExportEntry,
         runtimeClassName: String,
         interfaceId: Guid,
     ): ActivationResult {
         if (!PlatformRuntime.isWindows) {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
-        val exportsClass = Class.forName(hostExportsClass)
+        val exportsClass = Class.forName(entry.hostExportsClass, true, entry.classLoader ?: defaultHostClassLoader())
         runCatching {
             exportsClass.getMethod("registerActivationFactories").invoke(exportsInstance(exportsClass))
         }
@@ -119,6 +128,25 @@ object WinRtAuthoringHostManifestLoader {
 
     private fun exportsInstance(exportsClass: Class<*>): Any? =
         runCatching { exportsClass.getField("INSTANCE").get(null) }.getOrNull()
+
+    private fun WinRtAuthoringHostManifest.hostExportEntry(): HostExportEntry =
+        HostExportEntry(
+            hostExportsClass = hostExportsClass,
+            classLoader = targetArtifactClassLoader(),
+        )
+
+    private fun WinRtAuthoringHostManifest.targetArtifactClassLoader(): ClassLoader? {
+        val directory = sourceDirectory ?: return defaultHostClassLoader()
+        val artifactName = targetArtifact.takeIf { it.isNotBlank() } ?: return defaultHostClassLoader()
+        val artifact = directory.resolve(artifactName)
+        if (!artifact.isRegularFile()) {
+            return defaultHostClassLoader()
+        }
+        return URLClassLoader(arrayOf(artifact.toUri().toURL()), defaultHostClassLoader())
+    }
+
+    private fun defaultHostClassLoader(): ClassLoader? =
+        Thread.currentThread().contextClassLoader ?: WinRtAuthoringHostManifestLoader::class.java.classLoader
 
     private fun readJsonString(content: String, name: String): String? =
         Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
