@@ -150,6 +150,7 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringCustomQueryInterfacePlan(inventory, plans, semanticHelpers),
             renderAuthoringActivationFactoryPlan(inventory, plans, semanticHelpers),
             renderAuthoringModuleActivationFactoryPlan(inventory, plans, semanticHelpers),
+            renderAuthoringServerActivationFactories(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
     }
@@ -963,6 +964,95 @@ class KotlinProjectionSupportRenderer {
             .build()
         return supportFile("WinRTAuthoringModuleActivationFactoryPlan.kt", fileSpec)
     }
+
+    private fun renderAuthoringServerActivationFactories(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): KotlinProjectionFile? {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return null
+        }
+        val authoredTypeNames = inventory.authoredMetadataTypeMappings.mapTo(mutableSetOf()) { it.projectedTypeName }
+        val entries = plans
+            .filter { it.type.kind == WinRtTypeKind.RuntimeClass && it.type.qualifiedName in authoredTypeNames }
+            .filterNot { semanticHelpers.isStatic(it.type) }
+        if (entries.isEmpty()) {
+            return null
+        }
+        val fileBuilder = supportFileSpec("WinRTAuthoringServerActivationFactories")
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            fileBuilder.addType(authoringServerActivationFactoryClass(plan, semanticHelpers))
+        }
+        fileBuilder.addType(
+            TypeSpec.objectBuilder("WinRTAuthoringServerActivationFactories")
+                .addModifiers(KModifier.INTERNAL)
+                .addFunction(authoringServerActivationFactoryRegisterFunction(entries))
+                .build(),
+        )
+        return supportFile("WinRTAuthoringServerActivationFactories.kt", fileBuilder.build())
+    }
+
+    private fun authoringServerActivationFactoryClass(
+        plan: KotlinTypeProjectionPlan,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): TypeSpec {
+        val projectedType = ClassName(plan.packageName, plan.type.name)
+        val isActivatable = !semanticHelpers.isStatic(plan.type) && semanticHelpers.hasDefaultConstructor(plan.type)
+        return TypeSpec.classBuilder(authoringServerActivationFactoryClassName(plan))
+            .addModifiers(KModifier.INTERNAL)
+            .addSuperinterface(WINRT_ACTIVATION_FACTORY_CLASS_NAME)
+            .addFunction(
+                FunSpec.builder("activateInstance")
+                    .addModifiers(KModifier.OVERRIDE)
+                    .returns(COM_OBJECT_REFERENCE_CLASS_NAME)
+                    .apply {
+                        if (isActivatable) {
+                            addStatement("return %T.createCCWForObject(%T())", COM_WRAPPERS_SUPPORT_CLASS_NAME, projectedType)
+                        } else {
+                            addStatement(
+                                "throw %T(%S)",
+                                UnsupportedOperationException::class.asClassName(),
+                                "Runtime class '${plan.type.qualifiedName}' does not expose default activation.",
+                            )
+                        }
+                    }
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun authoringServerActivationFactoryRegisterFunction(
+        entries: List<KotlinTypeProjectionPlan>,
+    ): FunSpec {
+        val code = CodeBlock.builder()
+        code.add("%T.registerModuleActivationFactories { entry ->\n", ClassName(SUPPORT_PACKAGE, "WinRTAuthoringModuleActivationFactoryPlan"))
+        code.indent()
+        code.add("when (entry.runtimeClassName) {\n")
+        code.indent()
+        entries.sortedBy { it.type.qualifiedName }.forEach { plan ->
+            code.add(
+                "%S -> %T.createCCWForObject(%T(), %T.IActivationFactory)\n",
+                plan.type.qualifiedName,
+                COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                ClassName(SUPPORT_PACKAGE, authoringServerActivationFactoryClassName(plan)),
+                IID_CLASS_NAME,
+            )
+        }
+        code.add("else -> error(%S + entry.runtimeClassName)\n", "No authored activation factory for runtime class: ")
+        code.unindent()
+        code.add("}\n")
+        code.unindent()
+        code.add("}\n")
+        return FunSpec.builder("register")
+            .addCode(code.build())
+            .build()
+    }
+
+    private fun authoringServerActivationFactoryClassName(plan: KotlinTypeProjectionPlan): String =
+        "_ServerActivationFactory_" + plan.type.qualifiedName
+            .replace('.', '_')
+            .replace('`', '_')
 
     private fun delegateValueKindList(bindings: List<KotlinProjectionAbiTypeBinding>): String =
         bindings.joinToString(prefix = "listOf(", postfix = ")") { delegateValueKindName(it) }

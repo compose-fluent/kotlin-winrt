@@ -96,6 +96,7 @@ import io.github.kitectlab.winrt.runtime.WinRtProjectedDelegate
 import io.github.kitectlab.winrt.runtime.WinRtClosableObject
 import io.github.kitectlab.winrt.runtime.WinRtComposableObjectReference
 import io.github.kitectlab.winrt.runtime.WinRtAttributeUsage
+import io.github.kitectlab.winrt.runtime.WinRtActivationFactory
 import io.github.kitectlab.winrt.runtime.WinRtContractVersion
 import io.github.kitectlab.winrt.runtime.WinRtDefaultOverload
 import io.github.kitectlab.winrt.runtime.WinRtExperimental
@@ -187,6 +188,7 @@ internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
     ClassName("io.github.kitectlab.winrt.projections.support", "WinRTEventProjectionHelpers")
 internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRtClosableObject::class.asClassName()
 internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRtComposableObjectReference::class.asClassName()
+internal val WINRT_ACTIVATION_FACTORY_CLASS_NAME = WinRtActivationFactory::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
 internal val ABSTRACT_LIST_CLASS_NAME = AbstractList::class.asClassName()
 internal val ABSTRACT_MAP_CLASS_NAME = AbstractMap::class.asClassName()
