@@ -1,97 +1,60 @@
 # Plan
 
-## Operating Rules
+## Rules
 
-- [ ] `.cswinrt/` is the source of truth for runtime, metadata, generator, projections, authoring, and samples.
+- [ ] `.cswinrt/` is the implementation baseline for runtime, metadata, generator, authoring, projections, and samples.
 - [ ] Keep dependency order: `winrt-runtime` -> `winrt-metadata` -> `winrt-generator` -> `winrt-projections` -> `winrt-authoring` -> `winrt-samples`.
-- [ ] Do not design from tests or samples; tests validate the `.cswinrt`-mapped contract.
-- [ ] Do not duplicate semantic branch tables; put shared decisions in the owner matching `.cswinrt`.
+- [ ] Tests validate `.cswinrt` parity; do not derive runtime/generator rules from sample failures.
 - [ ] Keep `sample-jvm-winui3` legacy-only unless explicitly requested.
-- [ ] Update this file with every scope/status change.
 
 ## Current Focus
 
-- [ ] Authoring 1 正在做: close the JVM composable CCW/runtime-class authoring path needed by cswinrt-style WinUI `Application.Start((e) => new App())`.
-- [ ] Sample 11 正在做: validate WinUI through authored `WinUiDesktopApp` plus `IApplicationFactory.CreateInstance`; compile is green, visual run/fail-fast validation is pending.
-- [ ] Queue 24.14: generated authoring/server writers are now the active post-runtime authoring target; `mingwX64` authoring stays frozen until JVM contracts are stable.
+- [ ] CCW/object marshaling parity 正在做: close remaining cswinrt `GetInterfaceTableEntries` differences for boxed values/delegates and keep WinUI smoke as validation only.
+- [ ] Generator audit closure 正在做: keep non-authoring gaps explicit instead of claiming full parity; authoring writer output is now in scope.
 
 ## Completed Baseline
 
-- [x] Module layout exists: `winrt-runtime`, `winrt-metadata`, `winrt-generator`, `winrt-projections`, `winrt-authoring`, and `winrt-samples`.
-- [x] Runtime baseline is closed through ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML/system helpers, configuration, and vtable fast paths.
-- [x] Metadata baseline is closed through real WinMD ingestion, deterministic model construction, type refs, ABI descriptors, semantic helpers, source/cache handling, diagnostics, and writer-handoff descriptors.
-- [x] Generator app-consumption baseline is closed through declaration/member emission, activation/static/factory surfaces, mapped collections, async/reference/custom mappings, generic ABI inventory, event helpers, ABI invoke planning, support handoff APIs, and method-generic inputs.
-- [x] Generator structure is split by `.cswinrt/src/cswinrt` writer responsibility; mapped type decisions are centralized.
-- [x] Plugin baseline is closed through `winRt {}` DSL, SDK/NuGet inputs, Microsoft NuGet CLI restore/cache semantics, NuGet dependency closure, incremental generated-source wiring, identity JSON, and application resource/runtime staging.
+- [x] Modules exist with `.cswinrt` ownership mapping: `winrt-runtime`, `winrt-metadata`, `winrt-generator`, `winrt-projections`, `winrt-authoring`, `winrt-samples`.
+- [x] Runtime baseline covers ABI primitives, activation, object identity, marshaling, delegates/events, collections, async, XAML helpers, configuration, and vtable fast paths.
+- [x] Metadata baseline covers WinMD ingestion, deterministic model construction, type refs, ABI descriptors, semantic helpers, source/cache handling, diagnostics, and writer-handoff descriptors.
+- [x] Generator app-consumption baseline covers declaration/member emission, activation/static/factory surfaces, mapped collections, async/reference/custom mappings, generic ABI inventory, event helpers, ABI invoke planning, support handoff APIs, and method-generic inputs.
+- [x] Plugin baseline covers `winRt {}` DSL, SDK/NuGet inputs, Microsoft NuGet CLI restore/cache semantics, NuGet dependency closure, incremental generated-source wiring, identity JSON, and application resource/runtime staging.
 - [x] WindowsAppSDK consumption uses direct `nugetPackage("Microsoft.WindowsAppSDK", version)` plus generic NuGet dependency closure.
+
+## Recent Runtime Findings
+
+- [x] Runtime-class parameters now follow cswinrt `AsValue(iid)` intent: generated ABI marshaling QIs projected runtime-class arguments to the default-interface IID before passing the raw COM pointer.
+- [x] Delegate CCW public suffix matches cswinrt `GetInterfaceTableEntries`: delegate IID, `IStringable`, `IWeakReferenceSource`, `IMarshal`, `IAgileObject`, `IInspectable`, `IUnknown`.
+- [x] Managed CCWs now expose hidden `IReferenceTrackerTarget` QI support for WinUI tracker probes without adding it to `IInspectable.GetIids`.
+- [x] Delegate-as-object marshaling now exposes `IReference<TDelegate>` using cswinrt parameterized IID rules; `AddHandler(Object handler)` no longer fails on `DEA1E123-12EA-5CB3-B923-ABE74E426D9E`.
+- [x] Boxed reference hosts now expose cswinrt-style `IPropertyValue` plus standard CCW suffix interfaces and hidden `IReferenceTrackerTarget`.
+
+## Generator Gaps
+
+- [ ] Mapped type parity: cswinrt skips all `get_mapped_type(ns,name)` projected/ABI generation; Kotlin still has narrower skip rules and split metadata/generator mapped tables.
+- [ ] Generic signature/IID parity: verify and close type-parameter signatures for `IReference<T>`, async, collections, and generic delegates against cswinrt `write_guid_signature`.
+- [ ] Generic event-source parity: broaden non-`EventHandler<T>` generic delegate event-source generation if cswinrt emits helper/source tables for those shapes.
+- [ ] Support-file defaults: ensure direct `KotlinProjectionGenerator` callers cannot silently omit required support files when CLI/plugin paths need them.
 
 ## Authoring Plan
 
-- [ ] A1 Runtime aggregation parity 正在做: mirror `.cswinrt/src/WinRT.Runtime/ComWrappersSupport.net5.cs` `ComWrappersHelper.Init` for JVM. Kotlin owner: `winrt-runtime` `ComWrappersSupport`/`WinRtInspectableComObject`. Current state: outer CCW owns authored interfaces, native composable factory receives the base pointer, inner/result pointers are retained, outer QI fallback registers forwarded pointers, and aggregation cleanup distinguishes tracker objects. Remaining: validate against real WinUI run.
-- [x] A2 Reference tracker parity: mirrors `.cswinrt` `IReferenceTracker` handling in `ComWrappersHelper.Init` for the JVM authoring boundary. Kotlin owner: `winrt-runtime` `ComObjectReference`/reference tracker support. Composition probes the inner for `IReferenceTracker`, immediately releases the probed tracker pointer like cswinrt aggregation, records aggregated tracker objects, and suppresses normal inner/instance release for that case.
-- [x] A3 Object registration and identity: mirrors `.cswinrt` `RegisterObjectForInterface`, `FindObject<T>`, and RCW cache behavior for the JVM authoring boundary. Kotlin owner: `winrt-runtime` object registry. Authored Kotlin objects are registered through their own CCW pointers plus external inner/result/fallback aliases, aggregation aliases override the native inner registration as cswinrt does, and RCW cache keys use COM `IUnknown` identity across interface pointers.
-- [x] A4 Authoring API surface: mirrors cswinrt's modern `[WinRTExposedType]` metadata intent without copying C# attributes. Kotlin owner: `winrt-authoring`. Authored runtime classes now register through authoring-owned type/interface/method definitions, with runtime CCW conversion kept inside `winrt-authoring`; the WinUI sample uses this authored model for its composable `Application` override surface.
-- [x] A5 Generated authoring metadata mapping: mirrors `.cswinrt/src/cswinrt/main.cpp` `AuthoringMetadataTypeInitializer` and `RegisterAuthoringMetadataTypeLookup`. Kotlin owner: `winrt-generator` plus `winrt-runtime`. Component support generation now emits `AuthoringMetadataTypeMappingHelper.kt`, and runtime exposes authoring metadata mapping registration/lookup without sample-side hand registration.
-- [x] A6 Wrapper class writer handoff: mirrors `.cswinrt/src/cswinrt/code_writers.h` `write_wrapper_class` responsibility by generating `WinRTAuthoringWrapperPlan.kt`. Kotlin owner: `winrt-generator`. The plan centralizes projected type, metadata carrier, default interface, implemented interfaces, factory members, and composable base inputs for the later ABI/custom-QI writers.
-- [x] A7 ABI class writer handoff: mirrors `write_abi_class` for authored runtime classes by generating `WinRTAuthoringAbiClassPlan.kt`. Kotlin owner: `winrt-generator`. The plan captures `GetAbi`, `FromAbi`, `FromManaged`, marshaler creation, array, dispose, default-interface, and marshaler-family decisions for later runtime-backed emission.
-- [x] A8 Custom QI writer handoff: mirrors `write_custom_query_interface_impl` by generating `WinRTAuthoringCustomQueryInterfacePlan.kt`. Kotlin owner: `winrt-generator`. The plan captures overridable interface IIDs, base fallback, `IInspectable`/`IWeakReferenceSource` NotHandled policy, and native-object forwarding target for later runtime-backed emission.
-- [x] A8.1 Support handoff rendering: generated support files that declare handoff tables, registries, event helpers, ABI/type-shape plans, namespace additions, and authoring mapping now use KotlinPoet for file/class/function/property structure instead of hand-written Kotlin templates.
-- [x] A8.2 Generator KotlinPoet audit: full-file generation now routes through KotlinPoet; the remaining generator `buildString` usages are planner signature/cache keys, and expression-body fragments remain `CodeBlock` based.
-- [x] A8.3 Support map initializer stability: support plan renderers avoid trailing-lambda initializers in generated properties so KotlinPoet line wrapping cannot split `associateBy`/`groupBy` into invalid Kotlin.
-- [x] A9.1 Activation factory writer handoff: mirrors `write_factory_class` inputs by generating `WinRTAuthoringActivationFactoryPlan.kt`. Kotlin owner: `winrt-generator`. The plan captures server factory type names, unconditional `IActivationFactory` participation, activatable/static/composable factory interface names, expanded factory member references, `Make` marshaler intent, default-constructor-gated `ActivateInstance` behavior, and class-constructor handoff.
-- [x] A9.2 Runtime authoring activation registry: mirrors the `ServerActivationFactory.Make()` handoff by letting authored factories register runtime-class-name lookups before `RoGetActivationFactory`. Kotlin owner: `winrt-runtime`/`winrt-authoring`. Registered factories expose `IActivationFactory`, `ActivateInstance` creates and marshals Kotlin authored instances when a default constructor is supplied, and otherwise keeps the cswinrt not-implemented behavior.
-- [x] A9.3 Factory interface forwarding contract: mirrors `write_factory_class_inheritance`/`write_factory_class_members` by allowing authored activation factories to expose additional factory interfaces whose members run on the server factory object. Kotlin owner: `winrt-authoring`; generator hookup remains in A9.
-- [x] A9.4 Non-default activation behavior: mirrors `write_factory_class` by keeping `IActivationFactory` available for authored factory-only classes while `ActivateInstance` reports `E_NOTIMPL` when no default constructor is supplied. Kotlin owner: `winrt-authoring`.
-- [ ] A9 Activation factory writer: mirror `write_factory_class`. Kotlin owner: `winrt-generator`/`winrt-authoring`. Required contract: activatable authored classes produce factories that create Kotlin instances and marshal them through CCW; static/factory interfaces forward to authored companion/factory implementations.
-- [x] A10.1 JVM module activation lookup: mirrors `write_module_activation_factory` switch semantics for in-proc JVM authoring. Kotlin owner: `winrt-authoring`. `WinRtAuthoring.getActivationFactory` returns an owned authored activation factory pointer for registered runtime class names and null for misses, without falling through to OS activation.
-- [x] A10.2 Module activation partial fallback: mirrors `GetActivationFactoryPartial` by allowing authoring modules to register fallback activation-factory lookups for dependency/partial factory chains. Kotlin owner: `winrt-authoring`; plugin packaging will wire dependency modules later.
-- [x] A10.3 Module activation writer handoff: mirrors `write_module_activation_factory` dispatch inputs by generating `WinRTAuthoringModuleActivationFactoryPlan.kt`. Kotlin owner: `winrt-generator`. The plan maps runtime class names to server factory entries and exposes lambda-based factory/fallback dispatch without forcing `winrt-projections` to depend on `winrt-authoring`.
-- [ ] A10 Module activation factory: mirror `write_module_activation_factory`. Kotlin owner: `winrt-authoring` plus plugin packaging. Required contract: runtime class name lookup returns activation factories for authored classes, with partial/dependency factory handoff planned before server packaging.
-- [x] A10.4 Composable factory invocation owner: moves WinUI composable `CreateInstance` ABI invocation out of samples and into `winrt-authoring` as `createComposableObjectWithFactory`, keeping samples focused on selecting the projected factory/slot rather than owning runtime vtable mechanics.
-- [x] A11.1 Generic WinRT-exposed source scan: mirrors cswinrt `WinRTExposedType` discovery intent for all Kotlin source types that implement WinRT interfaces or inherit WinRT runtime classes. Kotlin owner: plugin/source-generation plus `winrt-runtime` type-details lookup. The plugin scans Kotlin source through compiler embeddable K2 light-tree parsing instead of regex; `Application` is only the first validation case, not a special scan target.
-- [x] A11.2 Generated type-details lookup: mirrors cswinrt `WinRTExposedTypeAttribute -> IWinRTExposedTypeDetails` lookup by letting JVM CCW creation discover generated `WinRT_*_TypeDetails` providers by source type name before falling back to synthetic `IInspectable`.
-- [x] A11.3 Generated source type-details emission: mirrors cswinrt source-generator type-details handoff by emitting same-package `WinRT_*_TypeDetails` objects during plugin projection generation. Kotlin owner: plugin/source-generation. The renderer now uses KotlinPoet for file/object/function structure and emits interface IID, method signature, runtime class name, and handler skeleton data from metadata.
-- [x] A11.4 Compiler-plugin split: Kotlin authoring source analysis moved out of the Gradle plugin into `kotlin-winrt-compiler-plugin`. Kotlin owner: compiler plugin plus Gradle wiring. Gradle now invokes a pre-compile K2 light-tree scanner CLI from the compiler-plugin artifact, keeps `kotlin-compiler-embeddable` off the Gradle plugin runtime classpath, and registers the same artifact on Kotlin compiler-plugin classpath for later IR authoring transforms.
-- [x] A11.5 Authored override ABI argument handoff: generated type-details method handlers now decode in-ABI primitive/object arguments from metadata and call the projected override method with arguments, matching the cswinrt vtable-to-projection responsibility instead of the old no-arg skeleton.
-- [x] A11.6 Event helper emission hardening: generated WinUI event source helper code stays valid under KotlinPoet wrapping by using structured SAM constructor emission and explicit runtime lookup failure at the nullable event-source boundary.
-- [x] A11.7 Compiler-plugin IR entrypoint: `kotlin-winrt-compiler-plugin` now owns a real K2/IR extension hook so later authoring transforms do not move semantic work back into the Gradle plugin.
-- [ ] A11 Authoring WinMD generation: mirror `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs` flow. Kotlin owner: `winrt-authoring`/plugin. Required contract: scan authored public Kotlin declarations, produce WinMD metadata, feed generated metadata back into projection generation, and keep diagnostics separate from runtime behavior.
-- [ ] A12 Authoring validation: mirror `.cswinrt/src/Samples/WinUIDesktopSample` first, then minimal authored component activation. Kotlin owner: `winrt-samples`. Required contract: WinUI app starts as authored `Application` subclass equivalent, `OnLaunched` is invoked through `IApplicationOverrides`, and no sample-local workaround owns runtime behavior.
-- [ ] A13 Host/server activation frozen: mirror `.cswinrt/src/Authoring/WinRT.Host` only after JVM in-proc authoring is coherent. Kotlin owner: future `winrt-authoring` host/plugin packaging. Required contract: runtimeconfig/hostfxr-like loading, class-to-assembly mapping, and `DllGetActivationFactory` are planned separately; not required for current WinUI app-consumption sample.
-- [ ] A14 `mingwX64` authoring frozen: keep shared contracts native-viable, but implement native CCW/host support only after JVM authoring contracts and validation are stable.
-
-## Generator Audit Summary
-
-- [x] `.cswinrt/src/cswinrt/main.cpp` dispatch, mapped type table, type/signature writers, attributes, contracts, enums, structs, interfaces, classes, mapped helpers, delegates, generics, event helpers, namespace additions, and method-generic inputs are closed for the current JVM app-consumption boundary.
-- [ ] Authoring-gated writers remain: `write_wrapper_class`, `write_abi_class`, `write_custom_query_interface_impl`, `write_factory_class`, `write_module_activation_factory`, `write_winrt_exposed_type_class`, CCW/server activation, and user-subclassing.
+- [x] JVM authoring runtime foundation: composable CCW path, authoring activation registry, metadata type lookup, generated type-details lookup, compiler-plugin scanner split, and K2/IR extension entrypoint exist.
+- [x] Generator authoring handoff plans exist for wrapper class, ABI class, custom QI, activation factory, module activation factory, exposed type details, and metadata type mapping.
+- [ ] Source discovery: replace light-tree-only candidate collection with K2 semantic validation/diagnostics for public authored class/interface/enum/delegate/struct shapes, matching `.cswinrt/src/Authoring/WinRT.SourceGenerator/Generator.cs`.
+- [ ] Authoring WinMD emission: generate WinMD metadata from Kotlin authored declarations, then feed it back into projection generation before expanding samples.
+- [ ] Authoring writer output: turn current plan files into actual generated wrapper/ABI/custom-QI/factory/module-activation support code.
+- [ ] Server/host activation frozen: implement `DllGetActivationFactory`/host-style packaging only after JVM in-proc authoring and WinMD emission are coherent.
+- [ ] `mingwX64` authoring frozen: keep shared contracts native-viable, but defer native CCW/host implementation until JVM authoring stabilizes.
 
 ## Frozen
 
-- [ ] `mingwX64`: keep shared APIs viable, but full native runtime/authoring parity starts after JVM authoring is coherent.
-- [ ] `winrt-samples`: do not expand beyond validating completed runtime/generator/authoring slices.
+- [ ] `winrt-samples`: only validate completed runtime/generator/authoring slices; no sample-local runtime workarounds.
 - [ ] `winrt-projections`: avoid broad checked-in projection growth; prefer plugin-generated output.
+- [ ] `mingwX64`: full native parity starts after JVM authoring and WinUI app-consumption validation are stable.
 
 ## Validation
 
-- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-metadata:test --no-configuration-cache --no-daemon`
-- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-generator:test`
-- [x] `./.agent_scripts/run_windows_gradle.sh :winrt-projections:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-samples:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-runtime:jvmTest :winrt-authoring:test --tests io.github.kitectlab.winrt.authoring.WinRtAuthoringTest`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-runtime:jvmTest :winrt-authoring:test --tests io.github.kitectlab.winrt.runtime.ComWrappersSupportTest --tests io.github.kitectlab.winrt.authoring.WinRtAuthoringTest`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-samples:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=2 :winrt-runtime:jvmTest :winrt-authoring:test --tests io.github.kitectlab.winrt.runtime.ComWrappersSupportTest --tests io.github.kitectlab.winrt.authoring.WinRtAuthoringTest`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=2 :winrt-samples:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh validateWinRtQueue16 --no-configuration-cache`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dorg.gradle.jvmargs='-Xmx2048m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=512m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=2 :winrt-generator:test --tests io.github.kitectlab.winrt.projections.generator.KotlinProjectionGeneratorTest.generator_emits_cswinrt_writer_support_handoffs_when_enabled`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxDirectMemorySize=1024m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=512m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-generator:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxDirectMemorySize=1024m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=512m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-generator:compileKotlin :winrt-authoring:compileKotlin :winrt-samples:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxDirectMemorySize=1024m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=512m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-generator:test --tests io.github.kitectlab.winrt.projections.generator.KotlinProjectionGeneratorTest.generator_emits_cswinrt_writer_support_handoffs_when_enabled`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxDirectMemorySize=512m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=256m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :kotlin-winrt-gradle-plugin:test --tests io.github.kitectlab.winrt.gradle.KotlinWinRtAuthoringSourceScannerTest`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxDirectMemorySize=512m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=256m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-runtime:jvmTest --tests io.github.kitectlab.winrt.runtime.ComWrappersSupportTest.create_ccw_uses_generated_type_details_without_manual_registration`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxDirectMemorySize=512m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=256m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :kotlin-winrt-compiler-plugin:test :kotlin-winrt-gradle-plugin:test --tests io.github.kitectlab.winrt.gradle.KotlinWinRtAuthoringSourceScannerTest :winrt-generator:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxDirectMemorySize=1024m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=512m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-samples:generateWinRtProjections`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxDirectMemorySize=1024m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=512m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-samples:compileKotlin`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxDirectMemorySize=512m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=256m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :winrt-runtime:jvmTest --tests io.github.kitectlab.winrt.runtime.ComWrappersSupportTest :winrt-authoring:test --tests io.github.kitectlab.winrt.authoring.WinRtAuthoringTest`
-- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache -Dkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs='-Xmx2048m -XX:MaxDirectMemorySize=512m -XX:TieredStopAtLevel=1 -XX:ReservedCodeCacheSize=256m -Dfile.encoding=UTF-8' -Dorg.gradle.workers.max=1 :kotlin-winrt-compiler-plugin:test`
-- [ ] Next authoring validation: opt-in WinUI visual run.
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache ... :winrt-runtime:jvmTest --tests WinRtDelegateBridgeTest.delegate_reference_supports_hidden_reference_tracker_target_query_interface --tests WinRtDelegateBridgeTest.delegate_inspectable_get_iids_returns_com_task_allocated_interfaces --tests WindowsRuntimePlatformTest.iid_catalog_matches_cswinrt_reference_values`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 ... :winrt-samples:compileKotlin`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-runtime:jvmTest --tests ValueBoxingTest.reference_projection_hosts_expose_cswinrt_ccw_suffix_interfaces --tests ValueBoxingTest.boxed_ccws_expose_reference_and_property_value_interfaces --tests WinRtDelegateBridgeTest.delegate_reference_supports_nullable_delegate_reference_query_interface`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -DKOTLIN_WINRT_TRACE_CCW=true -Dkotlin.winrt.samples.runWinUiSmoke=true -Dkotlin.winrt.samples.autoNavigateWinUi=true ... :winrt-samples:run` reached the WinUI message loop without `NTSTATUS 0xC000027B`; run was manually stopped after the window stayed alive.

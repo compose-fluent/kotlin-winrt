@@ -1,6 +1,7 @@
 package io.github.kitectlab.winrt.runtime
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -115,6 +116,224 @@ class WinRtDelegateBridgeTest {
         }
 
         assertEquals(1, invocationCount)
+    }
+
+    @Test
+    fun delegate_reference_supports_agile_object_query_interface() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IAgileObject).getOrThrow().use { agile ->
+                    assertTrue(agile.sameIdentity(reference))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_reference_supports_inspectable_object_query_interface() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IInspectable).getOrThrow().use { inspectable ->
+                    assertTrue(inspectable.sameIdentity(reference))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_ccw_iunknown_uses_default_delegate_interface_pointer() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IUnknown).getOrThrow().use { unknown ->
+                    assertEquals(
+                        PlatformAbi.pointerKey(reference.pointer.asRawAddress()),
+                        PlatformAbi.pointerKey(unknown.pointer.asRawAddress()),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_reference_exposes_standard_ccw_interfaces() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                listOf(IID.IWeakReferenceSource, IID.IMarshal, IID.IAgileObject, IID.IInspectable).forEach { iid ->
+                    reference.queryInterface(iid).getOrThrow().use { queried ->
+                        assertTrue(queried.sameIdentity(reference))
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_reference_supports_hidden_reference_tracker_target_query_interface() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
+                    assertTrue(trackerTarget.sameIdentity(reference))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_reference_supports_nullable_delegate_reference_query_interface() {
+        var invocationCount = 0
+        val delegateIid = Guid("b60074f3-125b-534e-8f9c-9769bd3f0f64")
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) {
+            invocationCount += 1
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                val nullableDelegateIid = it.descriptor.referenceInterfaceId()
+                assertEquals(Guid("dea1e123-12ea-5cb3-b923-abe74e426d9e"), nullableDelegateIid)
+                reference.queryInterface(nullableDelegateIid).getOrThrow().use { nullableDelegate ->
+                    assertTrue(nullableDelegate.sameIdentity(reference))
+                    PlatformAbi.confinedScope().use { scope ->
+                        val valueOut = PlatformAbi.allocatePointerSlot(scope)
+                        val hr = ComVtableInvoker.invokeArgs(
+                            instance = nullableDelegate.pointer,
+                            slot = IInspectableVftblSlots.FirstCustom,
+                            arg0 = valueOut,
+                        )
+                        HResult(hr).requireSuccess()
+                        val delegatePointer = PlatformAbi.readPointer(valueOut)
+                        WinRtDelegateReference(delegatePointer, it.descriptor).use { value ->
+                            value.invokeAbi(listOf(PlatformAbi.nullPointer)).requireSuccess()
+                        }
+                    }
+                }
+            }
+        }
+
+        assertEquals(1, invocationCount)
+    }
+
+    @Test
+    fun delegate_inspectable_get_iids_returns_com_task_allocated_interfaces() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f")
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IInspectable).getOrThrow().use { inspectable ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val firstCountOut = PlatformAbi.allocateInt32Slot(scope)
+                        val firstIdsOut = PlatformAbi.allocatePointerSlot(scope)
+                        val firstHr = ComVtableInvoker.invokeArgs(
+                            instance = inspectable.pointer,
+                            slot = IInspectableVftblSlots.GetIids,
+                            arg0 = firstCountOut,
+                            arg1 = firstIdsOut,
+                        )
+                        HResult(firstHr).requireSuccess()
+                        val firstIds = PlatformAbi.readPointer(firstIdsOut)
+                        try {
+                            val count = PlatformAbi.readInt32(firstCountOut)
+                            val iids = (0 until count).map { index ->
+                                PlatformAbi.readGuid(
+                                    PlatformAbi.slice(
+                                        firstIds,
+                                        index.toLong() * Guid.BYTE_SIZE,
+                                        Guid.BYTE_SIZE.toLong(),
+                                    ),
+                                )
+                            }
+                            assertEquals(
+                                listOf(
+                                    delegateIid,
+                                    ParameterizedInterfaceId.createFromParameterizedInterface(
+                                        IID.IReference,
+                                        WinRtTypeSignature.delegate(delegateIid),
+                                    ),
+                                    IID.IStringable,
+                                    IID.IWeakReferenceSource,
+                                    IID.IMarshal,
+                                    IID.IAgileObject,
+                                    IID.IInspectable,
+                                    IID.IUnknown,
+                                ),
+                                iids,
+                            )
+                        } finally {
+                            WinRtPlatformApi.coTaskMemFreeRaw(firstIds)
+                        }
+
+                        val secondCountOut = PlatformAbi.allocateInt32Slot(scope)
+                        val secondIdsOut = PlatformAbi.allocatePointerSlot(scope)
+                        val secondHr = ComVtableInvoker.invokeArgs(
+                            instance = inspectable.pointer,
+                            slot = IInspectableVftblSlots.GetIids,
+                            arg0 = secondCountOut,
+                            arg1 = secondIdsOut,
+                        )
+                        HResult(secondHr).requireSuccess()
+                        val secondIds = PlatformAbi.readPointer(secondIdsOut)
+                        try {
+                            assertNotEquals(0L, PlatformAbi.pointerKey(secondIds))
+                        } finally {
+                            WinRtPlatformApi.coTaskMemFreeRaw(secondIds)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun delegate_inspectable_query_returns_explicit_inspectable_entry() {
+        val delegateIid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53e")
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = delegateIid,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IInspectable).getOrThrow().use { inspectable ->
+                    reference.queryInterface(IID.IStringable).getOrThrow().use { stringable ->
+                        assertNotEquals(
+                            PlatformAbi.pointerKey(stringable.pointer),
+                            PlatformAbi.pointerKey(inspectable.pointer),
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @Test

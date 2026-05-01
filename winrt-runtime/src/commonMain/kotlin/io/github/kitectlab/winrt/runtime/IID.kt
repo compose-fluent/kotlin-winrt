@@ -41,6 +41,7 @@ object IID {
     val ICommand: Guid = guidOf("E5AF3542-CA67-4081-995B-709DD13792DF")
     val IGlobalInterfaceTable: Guid = guidOf("00000146-0000-0000-C000-000000000046")
     val EventHandler: Guid = guidOf("C50898F6-C536-5F47-8583-8B2C2438A13B")
+    val IReference: Guid = guidOf("61C17706-2D65-11E0-9AE8-D48564015472")
     val IBindableVectorView: Guid = guidOf("346DD6E7-976E-4BC3-815D-ECE243BC0F33")
     val IEnumerable: Guid = guidOf("036D2C08-DF29-41AF-8AA2-D774BE62BA6F")
     val IList: Guid = guidOf("393DE7DE-6FD0-4C0D-BB71-47244A113E93")

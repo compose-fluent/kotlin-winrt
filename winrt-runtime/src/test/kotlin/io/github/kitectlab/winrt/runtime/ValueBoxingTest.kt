@@ -100,6 +100,32 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun reference_projection_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val pointer = WinRtReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
+        try {
+            IUnknownReference(pointer.asRawComPtr(), IID.NullableString, preventReleaseOnDispose = true).use { reference ->
+                listOf(
+                    IID.IPropertyValue,
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IReferenceTrackerTarget,
+                ).forEach { iid ->
+                    reference.queryInterface(iid).getOrThrow().use { queried ->
+                        assertTrue(queried.sameIdentity(reference))
+                    }
+                }
+            }
+        } finally {
+            IUnknownReference(pointer.asRawComPtr(), IID.NullableString).close()
+        }
+    }
+
+    @Test
     fun runtime_hooks_project_uri_and_iclosable_like_cswinrt() {
         assumeTrue(PlatformRuntime.isWindows)
         ComWrappersSupport.clearRegistriesForTests()

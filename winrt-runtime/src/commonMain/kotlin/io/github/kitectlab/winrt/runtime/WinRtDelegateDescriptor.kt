@@ -6,6 +6,7 @@ data class WinRtDelegateDescriptor(
     val returnKind: WinRtDelegateValueKind = WinRtDelegateValueKind.UNIT,
     val parameterStructAdapters: List<NativeStructAdapter<*>?> = emptyList(),
     val returnStructAdapter: NativeStructAdapter<*>? = null,
+    val runtimeClassName: String? = null,
 ) {
     init {
         require(returnKind.isSupportedDelegateReturnKind()) {
@@ -40,6 +41,12 @@ data class WinRtDelegateDescriptor(
         }
         return WinRtTypeSignature.parameterizedInterface(genericDelegateIid, *argumentSignatures)
     }
+
+    fun referenceInterfaceId(): Guid =
+        ParameterizedInterfaceId.createFromParameterizedInterface(
+            IID.IReference,
+            WinRtTypeSignature.delegate(interfaceId),
+        )
 }
 
 private fun WinRtDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =
