@@ -41,7 +41,7 @@
 
 - [ ] Mapped type parity: cswinrt skips all `get_mapped_type(ns,name)` projected/ABI generation; Kotlin still has narrower skip rules and split metadata/generator mapped tables.
 - [ ] Generic signature/IID parity: verify and close type-parameter signatures for `IReference<T>`, async, collections, and generic delegates against cswinrt `write_guid_signature`.
-- [ ] Generic event-source parity: broaden non-`EventHandler<T>` generic delegate event-source generation if cswinrt emits helper/source tables for those shapes.
+- [x] Generic event-source parity: confirmed against `.cswinrt/src/cswinrt/code_writers.h` that only `Windows.Foundation/System.EventHandler<T>` share `EventHandlerEventSource`; other generic delegates keep their own source subclasses.
 - [x] Support-file defaults: direct `KotlinProjectionGenerator` callers that provide a real projection context must set `emitSupportFiles=true`, so CLI/plugin-style generation cannot silently omit required support files.
 
 ## Authoring Plan

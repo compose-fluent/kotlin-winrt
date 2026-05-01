@@ -4865,6 +4865,23 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation",
+                            name = "TypedEventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            genericParameterCount = 2,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "T0"),
+                                        WinRtParameterDefinition("args", "T1"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
                             name = "IReference",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555552"),
@@ -4899,6 +4916,12 @@ class KotlinProjectionGeneratorTest {
                                     delegateTypeName = "Sample.Foundation.WidgetHandler",
                                     addMethodName = "add_Ticked",
                                     removeMethodName = "remove_Ticked",
+                                ),
+                                WinRtEventDefinition(
+                                    name = "Typed",
+                                    delegateTypeName = "Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget,Int>",
+                                    addMethodName = "add_Typed",
+                                    removeMethodName = "remove_Typed",
                                 ),
                             ),
                         ),
@@ -4998,6 +5021,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("Windows.Foundation.EventHandler<Int>\" -> { obj, index ->"))
         assertTrue(eventProjectionHelpers.contains("EventHandlerEventSource<"))
         assertTrue(eventProjectionHelpers.contains("argsKind = "))
+        assertTrue(eventProjectionHelpers.contains("\"_EventSource_Windows_Foundation_TypedEventHandler"))
+        assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_TypedEventHandler"))
+        assertTrue(eventProjectionHelpers.contains("EventSource<TypedEventHandler<Widget, Int>>"))
+        assertFalse(eventProjectionHelpers.contains("usesSharedEventHandlerSource = true,\n    genericArgumentTypeNames = listOf(\"Sample.Foundation.Widget\", \"Int\")"))
         assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
         assertTrue(eventProjectionHelpers.contains("EventSource<WidgetHandler>"))
         assertTrue(eventProjectionHelpers.contains("handler.invoke("))

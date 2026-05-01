@@ -315,7 +315,6 @@ class KotlinProjectionSupportRenderer {
         val eventSourceEntries = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
-            .filter { it.usesSharedEventHandlerSource || it.genericArgumentTypeNames.isEmpty() }
             .distinctBy { it.eventTypeName to it.ownerTypeName }
             .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
         val eventSourceFactoryDescriptors = eventSourceEntries
@@ -376,7 +375,7 @@ class KotlinProjectionSupportRenderer {
             .forEach { descriptor ->
                 val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
                 val delegatePlan = plansByType[rawEventType] ?: return@forEach
-                val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
+                val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
                 if (invokeShape.isSupportedProjectedDelegateShape()) {
                     fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
                 }
@@ -1300,7 +1299,7 @@ class KotlinProjectionSupportRenderer {
         delegatePlan: KotlinTypeProjectionPlan,
         invokeShape: KotlinProjectionDelegateInvokeShape,
     ): TypeSpec {
-        val delegateType = typeRenderer.resolveTypeName(delegatePlan.type.qualifiedName)
+        val delegateType = typeRenderer.resolveTypeName(descriptor.projectedEventTypeName)
         return TypeSpec.classBuilder(descriptor.sourceClassName)
             .addModifiers(KModifier.INTERNAL)
             .primaryConstructor(
@@ -1481,7 +1480,7 @@ class KotlinProjectionSupportRenderer {
                 .addModifiers(KModifier.PRIVATE)
                 .addParameter("entry", entryClass)
                 .returns(ClassName("io.github.kitectlab.winrt.runtime", "WinRtEventSourceFactory").copy(nullable = true))
-                .addCode(eventSourceFactoryForCode(subclassDescriptors, plansByType))
+                .addCode(eventSourceFactoryForCode(subclassDescriptors, plansByType, typesByQualifiedName))
                 .build(),
             FunSpec.builder("eventHandlerEventSourceFactoryFor")
                 .addModifiers(KModifier.PRIVATE)
@@ -1498,6 +1497,7 @@ class KotlinProjectionSupportRenderer {
     private fun eventSourceFactoryForCode(
         subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
         val code = CodeBlock.builder()
         code.add("return when (entry.sourceClass) {\n")
@@ -1508,7 +1508,7 @@ class KotlinProjectionSupportRenderer {
         subclassDescriptors.filterNot { it.usesSharedEventHandlerSource }.forEach { descriptor ->
             val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
             val delegatePlan = plansByType[rawEventType] ?: return@forEach
-            val invokeShape = delegatePlan.delegateInvokeShape ?: return@forEach
+            val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
             if (invokeShape.isSupportedProjectedDelegateShape()) {
                 code.add("%S -> { obj, index -> %L(obj, index) }\n", descriptor.sourceClassName, descriptor.sourceClassName)
             }
@@ -1517,6 +1517,18 @@ class KotlinProjectionSupportRenderer {
         code.unindent()
         code.add("}\n")
         return code.build()
+    }
+
+    private fun concreteEventInvokeShape(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): KotlinProjectionDelegateInvokeShape? {
+        val typeBinding = planner.classifyAbiTypeBinding(
+            typeName = descriptor.eventTypeName,
+            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        return typeRenderer.outboundDelegateInvokeShape(typeBinding)
     }
 
     private fun eventHandlerEventSourceFactoryForCode(
