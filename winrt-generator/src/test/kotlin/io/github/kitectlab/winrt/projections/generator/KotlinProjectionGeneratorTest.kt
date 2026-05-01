@@ -3562,6 +3562,57 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_skips_cswinrt_mapped_declarations_without_kotlin_support_surfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IReference",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            genericParameterCount = 1,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "T0",
+                                    getterMethodName = "get_Value",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IPropertyValue",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555554"),
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator().generate(model).associateBy { it.relativePath.substringAfterLast('/') }
+
+        assertFalse(filesByName.containsKey("IReference.kt"))
+        assertFalse(filesByName.containsKey("IPropertyValue.kt"))
+        assertTrue(filesByName.getValue("IVector.kt").contents.contains("public interface IVector<T0>"))
+    }
+
+    @Test
     fun generator_uses_runtime_backed_cswinrt_system_mapped_type_names() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

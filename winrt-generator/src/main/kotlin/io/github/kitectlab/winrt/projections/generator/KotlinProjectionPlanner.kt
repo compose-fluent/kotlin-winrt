@@ -32,6 +32,7 @@ import io.github.kitectlab.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtTypeDefinition
 import io.github.kitectlab.winrt.metadata.WinRtTypeRef
 import io.github.kitectlab.winrt.metadata.WinRtTypeKind
+import io.github.kitectlab.winrt.metadata.WinRtMappedTypeDescriptor
 import io.github.kitectlab.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.kitectlab.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.kitectlab.winrt.metadata.projectedAttributes
@@ -143,11 +144,7 @@ class KotlinProjectionPlanner(
         if (!typeDeclarationDescriptor.writesProjectedDeclaration) {
             return null
         }
-        val metadataMappedType = semanticHelpers.getMappedType(type.namespace, type.name)
-        if (metadataMappedType != null && metadataMappedType.mappedQualifiedName == null) {
-            return null
-        }
-        if (mappedTypeByAbiName(type.qualifiedName)?.isRuntimeOwnedProjection() == true) {
+        if (shouldSkipMappedProjection(type, semanticHelpers)) {
             return null
         }
         fun interfaceIidFor(interfaceName: String): Guid? =
@@ -257,6 +254,21 @@ class KotlinProjectionPlanner(
             projectedAttributes = semanticHelpers.projectedAttributes(type),
             companionKinds = planCompanions(type),
         )
+    }
+
+    private fun shouldSkipMappedProjection(
+        type: WinRtTypeDefinition,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): Boolean {
+        val metadataMappedType = semanticHelpers.getMappedType(type.namespace, type.name)
+        val generatorMappedType = mappedTypeByAbiName(type.qualifiedName)
+        if (metadataMappedType == null) {
+            return generatorMappedType?.isRuntimeOwnedProjection() == true
+        }
+        if (metadataMappedType.requiresKotlinMappedSupportDeclaration(type)) {
+            return false
+        }
+        return true
     }
 
     private fun planAbiSlotBindings(
@@ -1792,6 +1804,11 @@ internal fun stringListCode(values: List<String>): CodeBlock =
 
 internal fun WinRtTypeDefinition.localAbiMembers(): List<String> =
     localAbiMemberOrders().map(AbiMemberOrder::constantName)
+
+private fun WinRtMappedTypeDescriptor.requiresKotlinMappedSupportDeclaration(type: WinRtTypeDefinition): Boolean =
+    hasCustomMembersOutput ||
+        type.kind == WinRtTypeKind.Delegate ||
+        abiQualifiedName == "Windows.Foundation.Collections.IKeyValuePair"
 
 internal fun WinRtTypeDefinition.localAbiMemberOrders(): List<AbiMemberOrder> =
     buildList<AbiMemberOrder> {

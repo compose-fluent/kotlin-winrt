@@ -39,8 +39,8 @@
 
 ## Generator Gaps
 
-- [ ] Mapped type parity: cswinrt skips all `get_mapped_type(ns,name)` projected/ABI generation; Kotlin still has narrower skip rules and split metadata/generator mapped tables.
 - [ ] Generic signature/IID parity: verify and close type-parameter signatures for `IReference<T>`, async, collections, and generic delegates against cswinrt `write_guid_signature`.
+- [x] Mapped type declaration parity: planner now enters through metadata `getMappedType(ns,name)` and skips mapped declarations such as `IReference<T>`/`IPropertyValue`; Kotlin keeps only support declarations needed for mapped collection/custom-member slot metadata, while KMP value structs such as `Point`/`Vector3` remain generated because they are not .NET aliases.
 - [x] Generic event-source parity: confirmed against `.cswinrt/src/cswinrt/code_writers.h` that only `Windows.Foundation/System.EventHandler<T>` share `EventHandlerEventSource`; other generic delegates keep their own source subclasses.
 - [x] Support-file defaults: direct `KotlinProjectionGenerator` callers that provide a real projection context must set `emitSupportFiles=true`, so CLI/plugin-style generation cannot silently omit required support files.
 
@@ -68,3 +68,5 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-configuration-cache :winrt-runtime:jvmTest --tests ValueBoxingTest.reference_projection_hosts_expose_cswinrt_ccw_suffix_interfaces --tests ValueBoxingTest.boxed_ccws_expose_reference_and_property_value_interfaces --tests WinRtDelegateBridgeTest.delegate_reference_supports_nullable_delegate_reference_query_interface`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -DKOTLIN_WINRT_TRACE_CCW=true -Dkotlin.winrt.samples.runWinUiSmoke=true -Dkotlin.winrt.samples.autoNavigateWinUi=true ... :winrt-samples:run` reached the WinUI message loop and survived click validation after delegate callback marshaling fix.
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -DKOTLIN_WINRT_TRACE_CCW=true -Dkotlin.winrt.samples.runWinUiSmoke=true -Dkotlin.winrt.samples.autoNavigateWinUi=true ... :winrt-samples:run` reached `button.click.add`, window activation, page creation, tapped handler registration, and content replacement with the process still alive before manual cleanup.
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-generator:test --tests KotlinProjectionGeneratorTest.generator_skips_cswinrt_mapped_declarations_without_kotlin_support_surfaces --tests KotlinProjectionGeneratorTest.generator_uses_runtime_backed_cswinrt_system_mapped_type_names --tests KotlinProjectionGeneratorTest.generator_substitutes_generic_collection_closure_arguments`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-generator:test --tests KotlinProjectionGeneratorTest.generator_emits_cswinrt_writer_support_handoffs_when_enabled`
