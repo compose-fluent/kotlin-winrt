@@ -8,6 +8,7 @@ import io.github.kitectlab.winrt.runtime.ComWrappersSupport
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.ActivationFactory
 import io.github.kitectlab.winrt.runtime.ActivationFactoryReference
+import io.github.kitectlab.winrt.runtime.HString
 import io.github.kitectlab.winrt.runtime.IUnknownReference
 import io.github.kitectlab.winrt.runtime.KnownHResults
 import io.github.kitectlab.winrt.runtime.PlatformAbi
@@ -218,6 +219,70 @@ class WinRtAuthoringTest {
     }
 
     @Test
+    fun authored_host_bridge_matches_cswinrt_dll_get_activation_factory_shape() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+        val interfaceId = Guid("77777777-1111-2222-3333-444444444444")
+        WinRtAuthoring.registerType<HostActivatedComponent>(
+            WinRtAuthoredTypeDefinition(
+                runtimeClassName = "Sample.Authoring.HostActivatedComponent",
+                defaultInterfaceId = interfaceId,
+                interfaces = listOf(
+                    WinRtAuthoredInterfaceDefinition(
+                        interfaceId = interfaceId,
+                        methods = emptyList(),
+                        isDefault = true,
+                    ),
+                ),
+            ),
+        )
+        WinRtAuthoring.registerActivationFactory<HostActivatedComponent>(
+            runtimeClassName = "Sample.Authoring.HostActivatedComponent",
+            createInstance = ::HostActivatedComponent,
+        )
+
+        PlatformAbi.confinedScope().use { scope ->
+            val factoryOut = PlatformAbi.allocatePointerSlot(scope)
+            assertEquals(
+                KnownHResults.E_INVALIDARG.value,
+                WinRtAuthoringHostBridge.dllGetActivationFactory(PlatformAbi.nullPointer, factoryOut),
+            )
+            HString.createReference("Sample.Authoring.HostActivatedComponent").use { runtimeClass ->
+                assertEquals(
+                    KnownHResults.E_INVALIDARG.value,
+                    WinRtAuthoringHostBridge.dllGetActivationFactory(runtimeClass.handle, PlatformAbi.nullPointer),
+                )
+            }
+            HString.createReference("Sample.Authoring.MissingComponent").use { missingClass ->
+                assertEquals(
+                    0x80040111.toInt(),
+                    WinRtAuthoringHostBridge.dllGetActivationFactory(missingClass.handle, factoryOut),
+                )
+                assertTrue(PlatformAbi.isNull(PlatformAbi.readPointer(factoryOut)))
+            }
+            HString.createReference("Sample.Authoring.HostActivatedComponent").use { runtimeClass ->
+                assertEquals(
+                    KnownHResults.S_OK.value,
+                    WinRtAuthoringHostBridge.dllGetActivationFactory(runtimeClass.handle, factoryOut),
+                )
+                val factoryPointer = PlatformAbi.readPointer(factoryOut)
+                assertTrue(!PlatformAbi.isNull(factoryPointer))
+                ActivationFactoryReference(PlatformAbi.toRawComPtr(factoryPointer)).use { factory ->
+                    factory.activateInstance().use { instance ->
+                        assertNotNull(
+                            ComWrappersSupport.findObject(
+                                PlatformAbi.fromRawComPtr(instance.pointer),
+                                HostActivatedComponent::class,
+                            ),
+                        )
+                    }
+                }
+            }
+            assertEquals(KnownHResults.S_FALSE.value, WinRtAuthoringHostBridge.dllCanUnloadNow())
+        }
+    }
+
+    @Test
     fun composable_object_forwards_outer_query_interface_to_inner_after_factory_composition() {
         ComWrappersSupport.clearRegistriesForTests()
         val outerIid = Guid("11111111-1111-1111-1111-111111111111")
@@ -400,4 +465,6 @@ class WinRtAuthoringTest {
     private class ModuleActivatedComponent
 
     private class FallbackActivatedComponent
+
+    private class HostActivatedComponent
 }

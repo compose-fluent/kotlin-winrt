@@ -5,10 +5,12 @@ import io.github.kitectlab.winrt.runtime.ComMethodSignature
 import io.github.kitectlab.winrt.runtime.ComObjectReference
 import io.github.kitectlab.winrt.runtime.ComVtableInvoker
 import io.github.kitectlab.winrt.runtime.ComWrappersSupport
+import io.github.kitectlab.winrt.runtime.ExceptionHelpers
 import io.github.kitectlab.winrt.runtime.Guid
 import io.github.kitectlab.winrt.runtime.HResult
 import io.github.kitectlab.winrt.runtime.IID
 import io.github.kitectlab.winrt.runtime.KnownHResults
+import io.github.kitectlab.winrt.runtime.NativeStringMarshaller
 import io.github.kitectlab.winrt.runtime.PlatformAbi
 import io.github.kitectlab.winrt.runtime.RawAddress
 import io.github.kitectlab.winrt.runtime.WinRtCcwDefinition
@@ -227,4 +229,35 @@ object WinRtAuthoring {
     fun clearActivationFactoryFallbacksForTests() {
         activationFactoryFallbacks.clear()
     }
+}
+
+object WinRtAuthoringHostBridge {
+    private val CLASS_E_CLASSNOTAVAILABLE = HResult(0x80040111.toInt())
+
+    fun dllGetActivationFactory(
+        activatableClassId: RawAddress,
+        factoryOut: RawAddress,
+    ): Int {
+        if (PlatformAbi.isNull(activatableClassId) || PlatformAbi.isNull(factoryOut)) {
+            return KnownHResults.E_INVALIDARG.value
+        }
+
+        return try {
+            val runtimeClassName = NativeStringMarshaller.fromAbi(activatableClassId)
+            val factory = WinRtAuthoring.getActivationFactory(runtimeClassName)
+            if (PlatformAbi.isNull(factory)) {
+                PlatformAbi.writePointer(factoryOut, PlatformAbi.nullPointer)
+                CLASS_E_CLASSNOTAVAILABLE.value
+            } else {
+                PlatformAbi.writePointer(factoryOut, factory)
+                KnownHResults.S_OK.value
+            }
+        } catch (error: Throwable) {
+            ExceptionHelpers.setErrorInfo(error)
+            ExceptionHelpers.getHRForException(error).value
+        }
+    }
+
+    fun dllCanUnloadNow(): Int =
+        KnownHResults.S_FALSE.value
 }
