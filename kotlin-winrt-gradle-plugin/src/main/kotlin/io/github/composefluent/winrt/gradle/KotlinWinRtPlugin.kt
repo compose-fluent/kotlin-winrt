@@ -458,9 +458,12 @@ private fun Any.callNoArg(name: String): Any? =
     }?.invoke(this)
 
 private fun Any.callOneArg(name: String, argument: Any): Any? =
-    javaClass.methods.firstOrNull { method ->
-        method.name == name && method.parameterCount == 1
-    }?.invoke(this, argument)
+    javaClass.methods
+        .filter { method -> method.name == name && method.parameterCount == 1 }
+        .sortedBy { method -> if (method.parameterTypes[0].isInstance(argument)) 0 else 1 }
+        .firstNotNullOfOrNull { method ->
+            runCatching { method.invoke(this, argument) }.getOrNull()
+        }
 
 private fun Project.hasKotlinWinRtIdentityMetadata(): Boolean =
     configurations.findByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)?.isCanBeConsumed == true

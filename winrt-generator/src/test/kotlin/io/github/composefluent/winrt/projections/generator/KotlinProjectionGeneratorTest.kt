@@ -226,12 +226,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("nativeObject.pointer"))
         assertTrue(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject"))
         assertFalse(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject = error(\"WinRT ABI binding is unavailable\")"))
-        assertTrue(jsonObject, jsonObject.contains("HString.create(json).use { __jsonAbi ->"))
+        assertTrue(jsonObject, jsonObject.contains("HString.createReference(json).use { __jsonAbi ->"))
         assertTrue(jsonObject, jsonObject.contains("internal val STATIC_PARSE_SLOT: Int = IJsonObjectStatics.Metadata.PARSE_SLOT"))
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
         assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(jsonObject, jsonObject.contains("private val _defaultInterface: ComObjectReference"))
+        assertTrue(jsonObject, jsonObject.contains("Metadata.acquireInterface(_inner, IJsonObject.Metadata.IID)"))
 
         assertTrue(jsonArray, jsonArray.contains("public class JsonArray internal constructor("))
         assertTrue(jsonArray, jsonArray.contains("fun getStringAt(index: UInt): String"))
@@ -1358,11 +1359,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("IWinRTObject"))
         assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
         assertTrue(widgetContents.contains("fun setValue(`value`: WidgetValue)"))
-        assertTrue(widgetContents, widgetContents.contains("nativeObject.queryInterface(Guid(\"22222222-2222-2222-2222-222222222222\"))"))
-        assertTrue(widgetContents.contains("__valueAbiReference.use {"))
+        assertTrue(widgetContents, widgetContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
         assertTrue(widgetContents.contains("fun setNamedValue(name: String, `value`: WidgetValue)"))
-        assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
-        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("nativeObject.queryInterface(Guid(\"22222222-2222-2222-2222-222222222222\"))"))
+        assertTrue(widgetContents.contains("HString.createReference(name).use { __nameAbi ->"))
+        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
     }
 
     @Test
@@ -3141,7 +3141,7 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("fun getNamedString(name: String): String"))
-        assertTrue(widgetContents.contains("HString.create(name).use { __nameAbi ->"))
+        assertTrue(widgetContents.contains("HString.createReference(name).use { __nameAbi ->"))
         assertFalse(widgetContents.contains("-> {"))
         assertTrue(widgetContents.contains("Metadata.GETNAMEDSTRING_SLOT"))
         assertTrue(widgetContents.contains("fun getStringAt(index: UInt): String"))

@@ -11,6 +11,7 @@
 
 - [ ] CCW/object marshaling parity 正在做: close remaining cswinrt `GetInterfaceTableEntries` differences for boxed values/delegates and keep WinUI smoke as validation only.
 - [ ] Generator audit closure 正在做: keep non-authoring gaps explicit instead of claiming full parity; authoring writer output is closed and remaining active authoring work is host packaging.
+- [ ] WinUI object collection insertion 正在做: map cswinrt collection/object marshaling for `ItemCollection<Any?>.add(string)` before using populated ComboBox/ListView item collections in samples.
 
 ## Completed Baseline
 
@@ -34,6 +35,9 @@
 - [x] JVM WinUI bootstrap now stages WindowsAppSDK assets, creates an activation context from lifted registrations when available, and falls back to `MddBootstrapInitialize2` when needed.
 - [x] `System.Object` projections now surface as Kotlin `Any?` with runtime object/delegate CCW marshaling instead of leaking `IInspectableReference` into public APIs.
 - [x] WinUI app smoke sample uses generated projections for click/tapped handlers and WinAppSDK startup instead of sample-local delegate/runtime glue.
+- [x] WinUI controls sample composes common WinUI 3 controls through generated projections, installs `XamlControlsResources`, and sets the window `MicaBackdrop` without sample-local runtime glue.
+- [x] WinUI runtime-class wrappers now acquire default interfaces with explicit interface lookup instead of assuming sealed class activation returns a default-interface pointer; this matches cswinrt ObjectReference interface ownership and fixes WinUI string setters such as `TextBlock.text`.
+- [x] Generated string input parameters now use reference HSTRING marshaling, matching cswinrt `MarshalString` input semantics.
 - [x] Generated WinRT methods now project as Kotlin lower-camel members (`start`, `activate`, `addHandler`, `onLaunched`) while mapped collection ABI members stay hidden behind Kotlin collection APIs.
 - [x] Interface slot ordering now accounts for properties/events/methods by metadata row order before method-only wrappers, matching cswinrt ABI slot layout.
 - [x] Event-source helper generation now keeps owner mappings separate from reusable source classes, so shared delegate helpers such as `RoutedEventHandler` remain available for `IButtonBase.Click`.
@@ -95,3 +99,6 @@
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :kotlin-winrt-gradle-plugin:test --tests KotlinWinRtPluginTest.plugin_wires_extension_inputs_to_generation_task --tests KotlinWinRtPluginTest.plugin_generates_sources_into_real_gradle_library_artifact`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-generator:test --tests KotlinProjectionGeneratorTest.generator_emits_cswinrt_writer_support_handoffs_when_enabled`
 - [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-runtime:jvmTest --tests WinRtActivationFactorySupportTest`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache ... :winrt-generator:test --tests io.github.composefluent.winrt.projections.generator.KotlinProjectionGeneratorTest`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 ... :winrt-samples:compileKotlin :winrt-samples:test --tests io.github.composefluent.winrt.samples.WinUiDesktopSampleTest.winui_desktop_sample_uses_generated_winui_projection_surface`
+- [x] `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 -Dkotlin.winrt.samples.runWinUiSmoke=true ... :winrt-samples:run` opened the WinUI controls sample with `XamlControlsResources`, Mica backdrop, TextBlock/TextBox/ToggleSwitch/Slider/ComboBox/ListView/Button projection calls, then was manually stopped.

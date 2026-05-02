@@ -655,23 +655,18 @@ class KotlinProjectionRenderer {
                 PropertySpec.builder("_defaultInterface", defaultCacheType)
                     .addModifiers(KModifier.PRIVATE)
                     .apply {
-                        if (defaultObjectReferencePlan?.usesInner == true) {
-                            getter(
-                                FunSpec.getterBuilder()
-                                    .addCode("return _inner\n")
-                                    .build(),
-                            )
-                        } else if (defaultObjectReferencePlan != null) {
+                        if (defaultObjectReferencePlan != null) {
                             delegate(
                                 runtimeClassObjectReferenceCacheInitializer(
                                     defaultObjectReferencePlan,
+                                    plan.typesByQualifiedName,
                                     "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
                                     projectionClassName(defaultObjectReferencePlan.interfaceName.substringBefore('<')),
                                 ),
                             )
                         } else {
                             delegate(
-                                runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, "Metadata.acquireDefaultInterface(_inner)"),
+                                runtimeClassObjectReferenceCacheInitializer(defaultObjectReferencePlan, plan.typesByQualifiedName, "Metadata.acquireDefaultInterface(_inner)"),
                             )
                         }
                     }
@@ -695,6 +690,7 @@ class KotlinProjectionRenderer {
                         .delegate(
                             runtimeClassObjectReferenceCacheInitializer(
                                 objectReferencePlan,
+                                plan.typesByQualifiedName,
                                 "Metadata.acquireInterface(_inner, %T.Metadata.IID)",
                                 projectionClassName(binding.qualifiedName.substringBefore('<')),
                             ),
@@ -2132,6 +2128,7 @@ class KotlinProjectionRenderer {
 
     private fun runtimeClassObjectReferenceCacheInitializer(
         objectReferencePlan: WinRtObjectReferencePlanDescriptor?,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         acquireExpression: String,
         vararg acquireArgs: Any,
     ): CodeBlock {
@@ -2145,6 +2142,18 @@ class KotlinProjectionRenderer {
         }
         if (objectReferencePlan?.usesDefaultInterfaceObjRef == true && objectReferencePlan.defaultInterfaceObjRefVtableSlot != null) {
             body.addStatement("_inner.getDefaultInterfaceObjectReference(%L)", objectReferencePlan.defaultInterfaceObjRefVtableSlot)
+        } else if (objectReferencePlan?.requiresGenericInstantiation == true) {
+            val signature = abiTypeSignature(renderAbiTypeBinding(objectReferencePlan.interfaceName, typesByQualifiedName))
+            if (signature != null) {
+                body.addStatement(
+                    "Metadata.acquireInterface(_inner, %T.createFromSignature(%L))",
+                    PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+                    signature,
+                )
+            } else {
+                body.add(acquireExpression, *acquireArgs)
+                body.add("\n")
+            }
         } else {
             body.add(acquireExpression, *acquireArgs)
             body.add("\n")

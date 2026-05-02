@@ -208,7 +208,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             abiArgumentExpression = CodeBlock.of("%L.handle", abiLocalName),
             abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
             scopeOpeners = listOf(
-                CodeBlock.of("%T.create(%L).use { %L ->", HSTRING_CLASS_NAME, parameterName, abiLocalName),
+                CodeBlock.of("%T.createReference(%L).use { %L ->", HSTRING_CLASS_NAME, parameterName, abiLocalName),
             ),
         )
         KotlinProjectionAbiValueKind.Boolean -> KotlinProjectionAbiMarshalerPlan(
@@ -376,40 +376,19 @@ private fun projectedInterfaceParameterMarshaler(
 private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
     parameterName: String,
     parameterBinding: KotlinProjectionAbiParameterBinding,
-): KotlinProjectionAbiMarshalerPlan {
-    val interfaceId = parameterBinding.typeBinding.interfaceId
-        ?: return KotlinProjectionAbiMarshalerPlan(
-            name = parameterName,
-            typeBinding = parameterBinding.typeBinding,
-            isReturn = false,
-            abiArgumentExpression = CodeBlock.of(
-                "%T.fromRawComPtr((%L as %T).nativeObject.pointer)",
-                PLATFORM_ABI_CLASS_NAME,
-                parameterName,
-                IWINRT_OBJECT_CLASS_NAME,
-            ),
-            abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        )
-    val referenceName = "__${parameterName}AbiReference"
-    return KotlinProjectionAbiMarshalerPlan(
+): KotlinProjectionAbiMarshalerPlan =
+    KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr(%L.pointer)", PLATFORM_ABI_CLASS_NAME, referenceName),
-        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-        scopeOpeners = listOf(
-            CodeBlock.of(
-                "val %L = (%L as %T).nativeObject.queryInterface(%T(%S)).getOrThrow()\n%L.use {",
-                referenceName,
-                parameterName,
-                IWINRT_OBJECT_CLASS_NAME,
-                GUID_CLASS_NAME,
-                interfaceId.toString(),
-                referenceName,
-            ),
+        abiArgumentExpression = CodeBlock.of(
+            "%T.fromRawComPtr((%L as %T).nativeObject.pointer)",
+            PLATFORM_ABI_CLASS_NAME,
+            parameterName,
+            IWINRT_OBJECT_CLASS_NAME,
         ),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
-}
 
 private fun genericParameterMarshaler(
     parameterName: String,
