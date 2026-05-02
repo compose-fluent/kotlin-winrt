@@ -25,6 +25,11 @@ open class WinRtReferenceValueAdapter<T>(
         marshaller(value).let { reference ->
             WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
         }
+
+    open fun createOutputMarshaler(value: T): WinRtObjectMarshaler =
+        marshaller(value).let { reference ->
+            WinRtObjectMarshaler(reference.getRefPointer().asRawAddress(), reference::close)
+        }
 }
 
 object WinRtReferenceValueAdapters {
@@ -71,6 +76,9 @@ object WinRtReferenceValueAdapters {
             },
         ) {
             override fun createInputMarshaler(value: Any?): WinRtObjectMarshaler =
+                WinRtObjectMarshaller.createMarshaler(value)
+
+            override fun createOutputMarshaler(value: Any?): WinRtObjectMarshaler =
                 WinRtObjectMarshaller.createMarshaler(value)
         }
 
@@ -303,9 +311,10 @@ object WinRtIteratorProjection {
                             signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val resultOut = rawArgs[0] as RawAddress
-                            val current = state.currentOrNull()
-                                ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
-                            resultOut.writeManagedValue(current, elementAdapter)
+                            if (!state.hasCurrent) {
+                                return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            }
+                            resultOut.writeManagedValue(state.current(), elementAdapter)
                             KnownHResults.S_OK.value
                         },
                         WinRtInspectableMethodDefinition(
@@ -358,6 +367,12 @@ object WinRtIteratorProjection {
 
         fun currentOrNull(): T? = currentValue
 
+        fun current(): T {
+            check(hasCurrent) { "Iterator current value is not available." }
+            @Suppress("UNCHECKED_CAST")
+            return currentValue as T
+        }
+
         fun moveNext(): Boolean {
             hasCurrent = iterator.hasNext()
             currentValue = if (hasCurrent) iterator.next() else null
@@ -370,9 +385,9 @@ object WinRtIteratorProjection {
                 return emptyList()
             }
             val written = mutableListOf<T>()
-            currentValue?.let(written::add)
+            written.add(current())
             while (written.size < capacity && moveNext()) {
-                currentValue?.let(written::add)
+                written.add(current())
             }
             if (written.size >= capacity) {
                 moveNext()
@@ -432,8 +447,10 @@ object WinRtReadOnlyListProjection {
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
                             val resultOut = rawArgs[1] as RawAddress
-                            val value = managed.getOrNull(index.toInt())
-                                ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            if (index >= managed.size.toUInt()) {
+                                return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            }
+                            val value = managed[index.toInt()]
                             resultOut.writeManagedValue(value, elementAdapter)
                             KnownHResults.S_OK.value
                         },
@@ -581,8 +598,10 @@ object WinRtListProjection {
                         ) { rawArgs ->
                             val index = (rawArgs[0] as Int).toUInt()
                             val resultOut = rawArgs[1] as RawAddress
-                            val value = managed.getOrNull(index.toInt())
-                                ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            if (index >= managed.size.toUInt()) {
+                                return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            }
+                            val value = managed[index.toInt()]
                             resultOut.writeManagedValue(value, elementAdapter)
                             KnownHResults.S_OK.value
                         },
@@ -1228,7 +1247,9 @@ private fun <T> RawAddress.writeManagedValues(
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
     values.forEachIndexed { index, value ->
-        PlatformAbi.writePointerAt(this, index, adapter.marshaller(value).useAndGetRef())
+        adapter.createOutputMarshaler(value).use { marshaler ->
+            PlatformAbi.writePointerAt(this, index, marshaler.abi)
+        }
     }
 }
 
@@ -1236,7 +1257,9 @@ private fun <T> RawAddress.writeManagedValue(
     value: T,
     adapter: WinRtReferenceValueAdapter<T>,
 ) {
-    PlatformAbi.writePointer(this, adapter.marshaller(value).useAndGetRef())
+    adapter.createOutputMarshaler(value).use { marshaler ->
+        PlatformAbi.writePointer(this, marshaler.abi)
+    }
 }
 
 private fun RawAddress.writeBoolean(value: Boolean) {

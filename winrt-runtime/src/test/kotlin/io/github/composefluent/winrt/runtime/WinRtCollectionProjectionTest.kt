@@ -60,6 +60,42 @@ class WinRtCollectionProjectionTest {
     }
 
     @Test
+    fun object_collection_ccw_outputs_null_values_as_null_inspectable_pointers() {
+        val adapter = WinRtReferenceValueAdapters.object_
+        val listAbi = WinRtReadOnlyListProjection.fromManaged(listOf<Any?>(null), adapter)
+        val iterableAbi = WinRtIterableProjection.fromManaged(listOf<Any?>(null), adapter)
+
+        try {
+            ComObjectReference(listAbi.asRawComPtr(), vectorViewInterfaceIdFor(adapter)).use { owner ->
+                ComObjectReference(owner.pointer, vectorViewInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
+                    WinRtVectorViewReference(borrowed.getRefPointer().asRawAddress(), vectorViewInterfaceIdFor(adapter)).use { vectorView ->
+                        assertEquals(null, vectorView.getAtOrNull(0u))
+                        assertEquals(listOf(null), vectorView.getMany(0u, 1))
+                    }
+                }
+            }
+            ComObjectReference(iterableAbi.asRawComPtr(), iterableInterfaceIdFor(adapter)).use { owner ->
+                ComObjectReference(owner.pointer, iterableInterfaceIdFor(adapter), preventReleaseOnDispose = true).use { borrowed ->
+                    WinRtIterableReference(borrowed.getRefPointer().asRawAddress(), iterableInterfaceIdFor(adapter)).use { iterable ->
+                        iterable.first(iteratorInterfaceIdFor(adapter)).use { iterator ->
+                            assertTrue(iterator.hasCurrent())
+                            assertEquals(null, iterator.currentOrNull())
+                            assertEquals(listOf(null), iterator.getMany(1))
+                        }
+                    }
+                }
+            }
+        } finally {
+            if (!PlatformAbi.isNull(listAbi)) {
+                IUnknownReference(listAbi.asRawComPtr()).close()
+            }
+            if (!PlatformAbi.isNull(iterableAbi)) {
+                IUnknownReference(iterableAbi.asRawComPtr()).close()
+            }
+        }
+    }
+
+    @Test
     fun mutable_list_helpers_mutate_managed_list_and_project_back() {
         val allocated = mutableListOf<AutoCloseable>()
         val adapter = labelAdapter(allocated)

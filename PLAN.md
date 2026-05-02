@@ -40,6 +40,7 @@
 - [x] WinUI runtime-class wrappers now acquire default interfaces with explicit interface lookup instead of assuming sealed class activation returns a default-interface pointer; this matches cswinrt ObjectReference interface ownership and fixes WinUI string setters such as `TextBlock.text`.
 - [x] Generated string input parameters now use reference HSTRING marshaling, matching cswinrt `MarshalString` input semantics.
 - [x] `IVector<System.Object>` input marshaling now routes through the shared `WinRtObjectMarshaller` path, matching cswinrt `MarshalInspectable<object>` behavior for null/object/delegate/boxed-value inputs instead of using a collection-local non-null `IInspectable` shortcut.
+- [x] Collection CCW output marshaling now routes `System.Object` elements through `WinRtObjectMarshaller` as well, so managed `Iterable/List<Any?>` null elements are returned as null `IInspectable*` instead of being treated as missing elements or rejected by a collection-local adapter.
 - [x] Generated WinRT methods now project as Kotlin lower-camel members (`start`, `activate`, `addHandler`, `onLaunched`) while mapped collection ABI members stay hidden behind Kotlin collection APIs.
 - [x] Interface slot ordering now accounts for properties/events/methods by metadata row order before method-only wrappers, matching cswinrt ABI slot layout.
 - [x] Event-source helper generation now keeps owner mappings separate from reusable source classes, so shared delegate helpers such as `RoutedEventHandler` remain available for `IButtonBase.Click`.
