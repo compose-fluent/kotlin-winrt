@@ -528,6 +528,16 @@ class KotlinWinRtPluginTest {
                     "windows/foundation/IStringable.class",
                 ) != null,
             )
+            assertTrue(
+                jar.getEntry(
+                    "kotlin-winrt-runtime-assets/kotlin-winrt-plugin-test.winmd",
+                ) != null,
+            )
+            assertTrue(
+                jar.getEntry(
+                    "kotlin-winrt-runtime-assets/kotlin-winrt-plugin-test.host.json",
+                ) != null,
+            )
         }
 
         val secondResult = GradleRunner.create()

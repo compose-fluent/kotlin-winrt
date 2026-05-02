@@ -94,6 +94,19 @@ private fun configureWinRtLibraryModel(
     extension.whenApplicationConfigured {
         identityElements.isCanBeConsumed = false
     }
+    project.plugins.withId("java") {
+        val generatedAuthoringDirectory = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring")
+        project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
+            task.dependsOn("generateWinRtProjections")
+            if (task is Copy) {
+                task.from(generatedAuthoringDirectory, Action<CopySpec> { spec ->
+                    spec.include("${project.name}.winmd")
+                    spec.include("${project.name}.host.json")
+                    spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
+                })
+            }
+        })
+    }
 }
 
 private fun configureWinRtApplicationModel(
