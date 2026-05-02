@@ -888,6 +888,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
+        assertTrue(widgetContents.contains("ComWrappersSupport.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }"))
         assertTrue(widgetContents.contains("internal fun wrap(instance: IInspectableReference): Widget = Widget(instance, kotlin.Unit)"))
         assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
         assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))

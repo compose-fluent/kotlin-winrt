@@ -26,14 +26,28 @@ private fun registerProjectionTypeIndexLine(
     if (kotlinTypeName.isBlank() || projectedTypeName.isBlank()) {
         return
     }
-    val kClass = runCatching {
-        Class.forName(kotlinTypeName, false, classLoader).kotlin
+    val javaClass = runCatching {
+        Class.forName(kotlinTypeName, true, classLoader)
     }.getOrNull() ?: return
+    registerGeneratedRuntimeClassFactory(javaClass)
+    val kClass = javaClass.kotlin
     registerProjectionTypeIndex(
         kClass = kClass,
         projectedTypeName = projectedTypeName,
         kind = kind,
     )
+}
+
+private fun registerGeneratedRuntimeClassFactory(javaClass: Class<*>) {
+    val metadata = runCatching {
+        javaClass.getField("Metadata").get(null)
+    }.getOrNull() ?: return
+    val register = metadata.javaClass.methods.firstOrNull { method ->
+        method.name == "register" && method.parameterCount == 0
+    } ?: return
+    runCatching {
+        register.invoke(metadata)
+    }
 }
 
 @Suppress("UNCHECKED_CAST")
@@ -70,4 +84,3 @@ private fun registerProjectionTypeIndex(
         runtimeClassName = projectedTypeName.takeIf { isRuntimeClass },
     )
 }
-

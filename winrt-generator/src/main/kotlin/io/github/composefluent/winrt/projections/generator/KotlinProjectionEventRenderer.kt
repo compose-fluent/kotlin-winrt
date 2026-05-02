@@ -1050,6 +1050,15 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
         KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds) {
         builder.addFunction(
+            FunSpec.builder("register")
+                .addModifiers(KModifier.INTERNAL)
+                .addCode(
+                    "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
+                    COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                )
+                .build(),
+        )
+        builder.addFunction(
             FunSpec.builder("wrap")
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
