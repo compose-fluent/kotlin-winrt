@@ -22,7 +22,7 @@ internal object InteropRuntimeHooks {
         }
         return definition.copy(
             interfaceDefinitions = augmentedInterfaces,
-            hiddenInterfaceDefinitions = listOf(createReferenceTrackerTargetInterfaceDefinition()),
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions + createReferenceTrackerTargetInterfaceDefinition(),
         )
     }
 

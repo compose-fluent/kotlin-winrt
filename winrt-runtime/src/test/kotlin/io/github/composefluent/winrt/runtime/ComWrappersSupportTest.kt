@@ -166,6 +166,53 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun ccw_augmentation_preserves_existing_hidden_interfaces_and_appends_tracker_target() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val publicInterfaceId = Guid("67676767-6767-6767-6767-676767676767")
+        val hiddenInterfaceId = Guid("68686868-6868-6868-6868-686868686868")
+        ComWrappersSupport.registerCcwFactory(TestManagedType::class) {
+            WinRtCcwDefinition(
+                interfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = publicInterfaceId,
+                        methods = emptyList(),
+                    ),
+                ),
+                hiddenInterfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = hiddenInterfaceId,
+                        methods = emptyList(),
+                    ),
+                ),
+                defaultInterfaceId = publicInterfaceId,
+                runtimeClassName = "test.ManagedType",
+            )
+        }
+
+        ComWrappersSupport.createCCWForObject(TestManagedType("payload"), publicInterfaceId).use { ccw ->
+            ccw.queryInterface(hiddenInterfaceId).getOrThrow().use { hidden ->
+                assertTrue(hidden.sameIdentity(ccw))
+            }
+            ccw.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
+                assertTrue(trackerTarget.sameIdentity(ccw))
+            }
+            val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
+            assertEquals(
+                listOf(
+                    publicInterfaceId,
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IUnknown,
+                ),
+                info?.interfaceIds,
+            )
+        }
+    }
+
+    @Test
     fun cast_extension_rehydrates_registered_typed_wrapper() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceType = WinRtTypeHandle("test.IFoo", Guid("55555555-5555-5555-5555-555555555555"))
