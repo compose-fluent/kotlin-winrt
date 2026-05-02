@@ -68,6 +68,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredHostManifestFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoredTargetArtifactFiles: ConfigurableFileCollection
+
     @TaskAction
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
@@ -89,6 +94,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 }
             }
         (authoredHostManifestFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests))
+            .map(Path::of)
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isRegularFile()) {
+                    copyFile(source, outputRoot.resolve(source.name))
+                }
+            }
+        (authoredTargetArtifactFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredTargetArtifacts))
             .map(Path::of)
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
@@ -297,6 +310,12 @@ internal fun readAuthoredMetadata(identityFile: java.io.File): List<String> {
 internal fun readAuthoredHostManifests(identityFile: java.io.File): List<String> {
     val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
     val match = Regex(""""authoredHostManifests"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
+    return readJsonStringArray(match.groupValues[1])
+}
+
+internal fun readAuthoredTargetArtifacts(identityFile: java.io.File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val match = Regex(""""authoredTargetArtifacts"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL).find(content) ?: return emptyList()
     return readJsonStringArray(match.groupValues[1])
 }
 

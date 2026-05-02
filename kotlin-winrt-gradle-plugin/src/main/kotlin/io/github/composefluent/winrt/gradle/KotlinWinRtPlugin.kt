@@ -95,6 +95,11 @@ private fun configureWinRtLibraryModel(
         identityElements.isCanBeConsumed = false
     }
     project.plugins.withId("java") {
+        identityTask.configure { task ->
+            task.authoredTargetArtifactFiles.from(
+                project.tasks.named("jar", Jar::class.java).flatMap { it.archiveFile },
+            )
+        }
         val generatedAuthoringDirectory = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring")
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             task.dependsOn("generateWinRtProjections")
@@ -213,6 +218,11 @@ private fun configureWinRtApplicationTasks(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
                 ),
+            )
+            task.authoredTargetArtifactFiles.from(
+                identityDependencies.elements.map { elements ->
+                    elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
+                },
             )
             task.dependsOn("generateWinRtProjections")
         },
