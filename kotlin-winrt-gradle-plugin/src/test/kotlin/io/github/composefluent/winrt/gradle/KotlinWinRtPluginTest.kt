@@ -189,6 +189,7 @@ class KotlinWinRtPluginTest {
         )
         project.tasks.named("generateWinRtApplicationIdentity", GenerateWinRtApplicationIdentityTask::class.java).get()
         project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+        project.tasks.named("buildWinRtAuthoringHost", BuildWinRtAuthoringHostTask::class.java).get()
     }
 
     @Test
@@ -280,6 +281,7 @@ class KotlinWinRtPluginTest {
         val appWinmd = project.layout.buildDirectory.file("component/AppComponent.winmd").get().asFile.toPath()
         val appHostManifest = project.layout.buildDirectory.file("component/AppComponent.host.json").get().asFile.toPath()
         val appJar = project.layout.buildDirectory.file("component/AppComponent.jar").get().asFile.toPath()
+        val appHostDll = project.layout.buildDirectory.file("component/AppComponentHost.dll").get().asFile.toPath()
         val dependencyDll = project.layout.buildDirectory.file("dependency/DependencyComponent.dll").get().asFile.toPath()
         val dependencyWinmd = project.layout.buildDirectory.file("dependency/DependencyComponent.winmd").get().asFile.toPath()
         val dependencyHostManifest = project.layout.buildDirectory.file("dependency/DependencyComponent.host.json").get().asFile.toPath()
@@ -288,6 +290,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(appWinmd.parent)
         Files.createDirectories(appHostManifest.parent)
         Files.createDirectories(appJar.parent)
+        Files.createDirectories(appHostDll.parent)
         Files.createDirectories(dependencyDll.parent)
         Files.createDirectories(dependencyWinmd.parent)
         Files.createDirectories(dependencyHostManifest.parent)
@@ -299,6 +302,7 @@ class KotlinWinRtPluginTest {
             """{"assemblyName":"AppComponent","targetArtifact":"AppComponent.jar","activatableClasses":["sample.AppComponent"],"activatableClassTargets":{"sample.AppComponent":"AppComponent.jar"}}""",
         )
         Files.writeString(appJar, "app-jar")
+        Files.writeString(appHostDll, "app-host-dll")
         Files.writeString(dependencyDll, "dependency")
         Files.writeString(dependencyWinmd, "winmd")
         Files.writeString(
@@ -323,6 +327,7 @@ class KotlinWinRtPluginTest {
             registeredTask.authoredMetadataFiles.from(appWinmd)
             registeredTask.authoredHostManifestFiles.from(appHostManifest)
             registeredTask.authoredTargetArtifactFiles.from(appJar)
+            registeredTask.authoredHostDllFiles.from(appHostDll)
             registeredTask.nugetGlobalPackagesRoots.set(emptyList())
             registeredTask.useNuGetCliGlobalPackages.set(false)
             registeredTask.nugetExecutable.set("nuget")
@@ -339,12 +344,47 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.host.json")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.jar")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponentHost.dll")))
         assertTrue(Files.readString(outputRoot.resolve("AppComponent.runtimeconfig.json")).contains("\"sample.AppComponent\": \"AppComponent.jar\""))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.host.json")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.jar")))
         assertTrue(Files.readString(outputRoot.resolve("DependencyComponent.runtimeconfig.json")).contains("\"sample.DependencyComponent\": \"DependencyComponent.jar\""))
+    }
+
+    @Test
+    fun authoring_host_task_generates_cswinrt_style_native_exports() {
+        val project = ProjectBuilder.builder().build()
+        val manifest = project.layout.buildDirectory.file("component/SampleComponent.host.json").get().asFile.toPath()
+        Files.createDirectories(manifest.parent)
+        Files.writeString(
+            manifest,
+            """{"assemblyName":"SampleComponent","targetArtifact":"SampleComponent.jar","activatableClasses":["sample.Component"],"activatableClassTargets":{"sample.Component":"SampleComponent.jar"}}""",
+        )
+        val task = project.tasks.register(
+            "buildAuthoringHost",
+            BuildWinRtAuthoringHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("authoring-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("authoring-host/src"))
+            registeredTask.authoredHostManifestFiles.from(manifest)
+            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.build()
+
+        val sourceRoot = task.generatedSourceDirectory.get().asFile.toPath()
+        val source = Files.readString(sourceRoot.resolve("kotlin_winrt_authoring_host.c"))
+        assertTrue(source.contains("DllGetActivationFactory"))
+        assertTrue(source.contains("DllCanUnloadNow"))
+        assertTrue(source.contains("JNI_GetCreatedJavaVMs"))
+        assertTrue(Files.readString(sourceRoot.resolve("kotlin_winrt_authoring_host.def")).contains("DllGetActivationFactory"))
+        if (System.getProperty("os.name").contains("Windows", ignoreCase = true) && commandExists("clang-cl.exe")) {
+            assertTrue(Files.isRegularFile(task.outputDirectory.get().asFile.toPath().resolve("SampleComponent.dll")))
+        }
     }
 
     @Test
@@ -672,6 +712,14 @@ private fun writeGradleFile(path: Path, content: String) {
     Files.createDirectories(path.parent)
     Files.writeString(path, content)
 }
+
+private fun commandExists(name: String): Boolean =
+    runCatching {
+        ProcessBuilder("cmd.exe", "/c", "where", name)
+            .redirectErrorStream(true)
+            .start()
+            .waitFor() == 0
+    }.getOrDefault(false)
 
 private fun writeWindowsAppSdkPackage(
     nugetRoot: Path,

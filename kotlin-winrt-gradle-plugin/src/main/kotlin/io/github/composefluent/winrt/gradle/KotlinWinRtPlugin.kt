@@ -104,11 +104,21 @@ private fun configureWinRtLibraryModel(
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             task.dependsOn("generateWinRtProjections")
             if (task is Copy) {
-                task.from(generatedAuthoringDirectory, Action<CopySpec> { spec ->
-                    spec.include("${project.name}.winmd")
-                    spec.include("${project.name}.host.json")
-                    spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
-                })
+                task.from(
+                    project.provider {
+                        if (extension.applicationEnabled.get()) {
+                            project.files()
+                        } else {
+                            project.fileTree(generatedAuthoringDirectory) { spec ->
+                                spec.include("${project.name}.winmd")
+                                spec.include("${project.name}.host.json")
+                            }
+                        }
+                    },
+                    Action<CopySpec> { spec ->
+                        spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
+                    },
+                )
             }
         })
     }
@@ -179,6 +189,26 @@ private fun configureWinRtApplicationTasks(
         },
     )
     val runtimeAssetsDirectory = project.layout.buildDirectory.dir("kotlin-winrt/runtime-assets")
+    val buildAuthoringHostTask = project.tasks.register(
+        "buildWinRtAuthoringHost",
+        BuildWinRtAuthoringHostTask::class.java,
+        Action<BuildWinRtAuthoringHostTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Builds cswinrt-style native JVM host DLLs for authored WinRT activation."
+            task.onlyIf { extension.applicationEnabled.get() }
+            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/bin"))
+            task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/src"))
+            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.dependencyIdentityFiles.from(identityDependencies)
+            task.authoredHostManifestFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
+                ),
+            )
+            task.dependsOn("generateWinRtProjections")
+        },
+    )
     val stageRuntimeAssetsTask = project.tasks.register(
         "stageWinRtRuntimeAssets",
         StageWinRtRuntimeAssetsTask::class.java,
@@ -224,7 +254,11 @@ private fun configureWinRtApplicationTasks(
                     elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
                 },
             )
+            task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
+                spec.include("*.dll")
+            })
             task.dependsOn("generateWinRtProjections")
+            task.dependsOn(buildAuthoringHostTask)
         },
     )
     project.plugins.withId("java") {
@@ -335,6 +369,9 @@ private fun configureWinRtGeneration(
     project.plugins.withId("java") {
         project.extensions.configure(SourceSetContainer::class.java, Action<SourceSetContainer> {
             it.getByName("main").java.srcDir(generatedSources)
+        })
+        project.tasks.matching { task -> task.name == "compileJava" }.configureEach(Action<Task> { task ->
+            task.dependsOn(generateTask)
         })
     }
 }

@@ -73,6 +73,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredTargetArtifactFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val authoredHostDllFiles: ConfigurableFileCollection
+
     @TaskAction
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
@@ -113,6 +118,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     copyFile(source, outputRoot.resolve(source.name))
                 }
             }
+        authoredHostDllFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
@@ -126,8 +137,10 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
             if (resolved.identity.isWindowsAppSdkPackage()) {
-                stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
-                stageWindowsAppSdkLiftedRegistrations(resolved.packageRoot, outputRoot)
+                if (resolved.identity.isWindowsAppSdkRootPackage()) {
+                    stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
+                    stageWindowsAppSdkLiftedRegistrations(resolved.packageRoot, outputRoot)
+                }
                 stageWindowsAppSdkFrameworkAssets(
                     resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
                     outputRoot,
@@ -332,6 +345,9 @@ private data class AuthoringHostRuntimeConfig(
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkPackage(): Boolean =
     normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
         normalizedPackageId.startsWith("Microsoft.WindowsAppSDK.", ignoreCase = true)
+
+private fun WinRtNuGetPackageIdentity.isWindowsAppSdkRootPackage(): Boolean =
+    normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true)
 
 internal fun currentWindowsRuntimeIdentifier(): String {
     val arch = System.getProperty("os.arch").lowercase()
