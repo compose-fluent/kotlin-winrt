@@ -47,6 +47,14 @@ object GuidGenerator {
             ).render()
         }
 
+        val runtimeClassName = type.registeredWinRtType()?.runtimeClassName
+            ?: Projections.findCustomAbiTypeNameForType(type)?.takeIf(Projections::isProjectedRuntimeClassName)
+        runtimeClassName
+            ?.let(Projections::tryGetDefaultInterfaceSignatureForRuntimeClassName)
+            ?.let { defaultInterfaceSignature ->
+                return "rc($runtimeClassName;$defaultInterfaceSignature)"
+            }
+
         return WinRtTypeSignature.guid(getGuid(type)).render()
     }
 

@@ -1057,6 +1057,21 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
                 )
                 .apply {
+                    plan.defaultInterfaceName?.let { defaultInterfaceName ->
+                        val defaultInterfaceSignature = abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName))
+                        if (defaultInterfaceSignature != null) {
+                            addCode(
+                                "%T.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE, %L.render())\n",
+                                PROJECTIONS_CLASS_NAME,
+                                defaultInterfaceSignature,
+                            )
+                        } else {
+                            addCode(
+                                "%T.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE)\n",
+                                PROJECTIONS_CLASS_NAME,
+                            )
+                        }
+                    }
                     plan.defaultInterfaceName
                         ?.takeUnless { defaultInterfaceName -> defaultInterfaceName.contains('<') }
                         ?.let { defaultInterfaceName ->

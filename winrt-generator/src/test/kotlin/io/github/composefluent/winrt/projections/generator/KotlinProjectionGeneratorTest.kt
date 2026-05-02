@@ -2901,6 +2901,50 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
+        assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
+        assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE"))
+    }
+
+    @Test
+    fun generator_registers_generic_default_interface_by_name_and_signature_without_kclass_literal() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                            genericParameterCount = 1,
+                            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "StringBox",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IBox<String>",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBox<String>", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .first { it.relativePath.endsWith("StringBox.kt") }
+            .contents
+
+        assertTrue(contents.contains("public const val DEFAULT_INTERFACE: String = \"Sample.Foundation.IBox<String>\""))
+        assertTrue(contents.contains("Projections.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE"))
+        assertTrue(contents.contains("WinRtTypeSignature.parameterizedInterface("))
+        assertTrue(contents.contains("IBox.Metadata.IID"))
+        assertTrue(contents.contains("WinRtTypeSignature.string()"))
+        assertFalse(contents.contains("IBox<String>::class"))
     }
 
     @Test

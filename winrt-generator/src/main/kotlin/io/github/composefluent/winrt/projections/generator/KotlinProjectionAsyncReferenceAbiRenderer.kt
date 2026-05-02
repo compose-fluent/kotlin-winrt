@@ -294,7 +294,20 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedInterface ->
         resolvedReturnClassName(binding)?.let { resultType ->
-            CodeBlock.of("%T.guid(%T.Metadata.IID)", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
+            val arguments = binding.typeArguments.mapNotNull(::abiTypeSignature)
+            if (arguments.size == binding.typeArguments.size && arguments.isNotEmpty()) {
+                CodeBlock.builder()
+                    .add("%T.parameterizedInterface(%T.Metadata.IID", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
+                    .apply {
+                        arguments.forEach { argument ->
+                            add(", %L", argument)
+                        }
+                    }
+                    .add(")")
+                    .build()
+            } else {
+                CodeBlock.of("%T.guid(%T.Metadata.IID)", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
+            }
         }
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
         resolvedReturnClassName(binding)?.let { resultType ->

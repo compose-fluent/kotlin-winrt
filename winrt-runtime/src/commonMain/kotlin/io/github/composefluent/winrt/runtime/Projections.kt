@@ -13,6 +13,8 @@ object Projections {
     private val projectedRuntimeClassNames = ConcurrentCacheSet<String>()
     private val projectedCustomTypeRuntimeClasses = ConcurrentCacheSet<KClass<*>>()
     private val runtimeClassToDefaultInterfaceMappings = ConcurrentCacheMap<KClass<*>, KClass<*>>()
+    private val runtimeClassNameToDefaultInterfaceNameMappings = ConcurrentCacheMap<String, String>()
+    private val runtimeClassNameToDefaultInterfaceSignatureMappings = ConcurrentCacheMap<String, String>()
     private val isTypeWindowsRuntimeTypeCache = ConcurrentCacheMap<KClass<*>, Boolean>()
 
     init {
@@ -82,6 +84,23 @@ object Projections {
         return runtimeClassToDefaultInterfaceMappings.putIfAbsent(runtimeClass, defaultInterface) == null
     }
 
+    fun registerDefaultInterfaceTypeName(
+        runtimeClassName: String,
+        defaultInterfaceName: String,
+        defaultInterfaceSignature: String? = null,
+    ): Boolean {
+        require(runtimeClassName.isNotBlank()) { "Runtime class name must not be blank." }
+        require(defaultInterfaceName.isNotBlank()) { "Default interface name must not be blank." }
+        ensureProjectionMappingsRegistered()
+        val nameAdded = runtimeClassNameToDefaultInterfaceNameMappings.putIfAbsent(runtimeClassName, defaultInterfaceName) == null
+        val signatureAdded = defaultInterfaceSignature
+            ?.takeIf(String::isNotBlank)
+            ?.let { signature -> runtimeClassNameToDefaultInterfaceSignatureMappings.putIfAbsent(runtimeClassName, signature) == null }
+            ?: false
+        projectedRuntimeClassNames.add(runtimeClassName)
+        return nameAdded || signatureAdded
+    }
+
     fun findCustomHelperTypeMapping(
         publicType: KClass<*>,
         filterToRuntimeClass: Boolean = false,
@@ -135,6 +154,20 @@ object Projections {
         return null
     }
 
+    fun tryGetDefaultInterfaceTypeNameForRuntimeClassName(
+        runtimeClassName: String,
+    ): String? {
+        ensureProjectionMappingsRegistered()
+        return runtimeClassNameToDefaultInterfaceNameMappings[runtimeClassName]
+    }
+
+    fun tryGetDefaultInterfaceSignatureForRuntimeClassName(
+        runtimeClassName: String,
+    ): String? {
+        ensureProjectionMappingsRegistered()
+        return runtimeClassNameToDefaultInterfaceSignatureMappings[runtimeClassName]
+    }
+
     internal fun isProjectedRuntimeClassName(
         runtimeClassName: String,
     ): Boolean {
@@ -150,6 +183,8 @@ object Projections {
         projectedRuntimeClassNames.clear()
         projectedCustomTypeRuntimeClasses.clear()
         runtimeClassToDefaultInterfaceMappings.clear()
+        runtimeClassNameToDefaultInterfaceNameMappings.clear()
+        runtimeClassNameToDefaultInterfaceSignatureMappings.clear()
         isTypeWindowsRuntimeTypeCache.clear()
         WinRtTypeRegistry.clearForTests()
         ValueBoxingMetadata.clearDynamicDescriptorsForTests()

@@ -113,6 +113,37 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun guid_generator_uses_registered_default_interface_signature_when_kclass_cannot_represent_it() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinRtTypeRegistry.register<SampleGenericRuntimeClass>(
+            projectedTypeName = "Contoso.SampleGenericRuntimeClass",
+            runtimeClassName = "Contoso.SampleGenericRuntimeClass",
+            isRuntimeClass = true,
+            isWindowsRuntimeType = true,
+        )
+        Projections.registerCustomAbiTypeMapping(
+            publicType = SampleGenericRuntimeClass::class,
+            helperType = SampleRuntimeClassHelper::class,
+            abiTypeName = "Contoso.SampleGenericRuntimeClass",
+            isRuntimeClass = true,
+        )
+        Projections.registerDefaultInterfaceTypeName(
+            runtimeClassName = "Contoso.SampleGenericRuntimeClass",
+            defaultInterfaceName = "Contoso.IVector<String>",
+            defaultInterfaceSignature = "pinterface({aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa};string)",
+        )
+
+        assertEquals(
+            "rc(Contoso.SampleGenericRuntimeClass;pinterface({aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa};string))",
+            GuidGenerator.getSignature(SampleGenericRuntimeClass::class),
+        )
+        assertEquals(
+            "Contoso.IVector<String>",
+            Projections.tryGetDefaultInterfaceTypeNameForRuntimeClassName("Contoso.SampleGenericRuntimeClass"),
+        )
+    }
+
+    @Test
     fun intrinsic_type_classification_is_shared_across_runtime_helpers() {
         ComWrappersSupport.clearRegistriesForTests()
 
@@ -207,6 +238,8 @@ class ProjectionRegistryTest {
     private interface SampleDefaultInterface
 
     private class SampleRuntimeClass
+
+    private class SampleGenericRuntimeClass
 
     private class SampleMappedTypeHelper
 
