@@ -70,12 +70,13 @@ class KotlinWinRtCompilerPluginTest {
                     qualifiedName = "Microsoft.UI.Xaml.Window",
                     kind = "RuntimeClass",
                     overridableInterfaces = emptyList(),
+                    baseTypeName = "Microsoft.UI.Xaml.Controls.ContentControl",
                 ),
             ),
         )
 
         assertEquals(
-            "microsoft.ui.xaml.Window\tMicrosoft.UI.Xaml.Window\tRuntimeClass",
+            "microsoft.ui.xaml.Window\tMicrosoft.UI.Xaml.Window\tRuntimeClass\tMicrosoft.UI.Xaml.Controls.ContentControl",
             record?.render(),
         )
     }

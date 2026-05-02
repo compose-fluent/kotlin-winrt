@@ -23,6 +23,7 @@ private fun registerProjectionTypeIndexLine(
     val kotlinTypeName = parts.getOrElse(0) { "" }
     val projectedTypeName = parts.getOrElse(1) { "" }
     val kind = parts.getOrElse(2) { "" }
+    val baseTypeName = parts.getOrElse(3) { "" }
     if (kotlinTypeName.isBlank() || projectedTypeName.isBlank()) {
         return
     }
@@ -35,6 +36,7 @@ private fun registerProjectionTypeIndexLine(
         kClass = kClass,
         projectedTypeName = projectedTypeName,
         kind = kind,
+        baseTypeName = baseTypeName,
     )
 }
 
@@ -55,6 +57,7 @@ private fun registerProjectionTypeIndex(
     kClass: KClass<*>,
     projectedTypeName: String,
     kind: String,
+    baseTypeName: String,
 ) {
     val typedClass = kClass as KClass<Any>
     val isRuntimeClass = kind == "RuntimeClass"
@@ -83,4 +86,10 @@ private fun registerProjectionTypeIndex(
         type = kClass,
         runtimeClassName = projectedTypeName.takeIf { isRuntimeClass },
     )
+    if (isRuntimeClass && baseTypeName.isMeaningfulBaseTypeName()) {
+        TypeNameSupport.registerProjectionTypeBaseTypeMapping(mapOf(projectedTypeName to baseTypeName))
+    }
 }
+
+private fun String.isMeaningfulBaseTypeName(): Boolean =
+    isNotBlank() && this != "System.Object" && this != "Any"

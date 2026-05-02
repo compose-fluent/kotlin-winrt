@@ -322,6 +322,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                         .distinct()
                         .sorted()
                         .joinToString(";"),
+                    type.baseTypeName.orEmpty(),
                 ).joinToString("\t")
             }
         Files.write(output, lines)

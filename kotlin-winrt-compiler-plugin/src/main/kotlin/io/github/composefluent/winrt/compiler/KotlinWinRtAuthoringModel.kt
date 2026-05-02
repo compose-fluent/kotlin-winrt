@@ -7,6 +7,7 @@ internal data class IndexedWinRtType(
     val qualifiedName: String,
     val kind: String,
     val overridableInterfaces: List<String>,
+    val baseTypeName: String,
 )
 
 internal data class KotlinWinRtAuthoredTypeCandidate(
@@ -22,9 +23,10 @@ internal data class KotlinWinRtProjectionTypeIndexRecord(
     val sourceTypeName: String,
     val winRtTypeName: String,
     val kind: String,
+    val baseTypeName: String,
 ) {
     fun render(): String =
-        listOf(sourceTypeName, winRtTypeName, kind).joinToString("\t")
+        listOf(sourceTypeName, winRtTypeName, kind, baseTypeName).joinToString("\t")
 }
 
 internal data class KotlinImports(
@@ -49,6 +51,7 @@ internal fun projectionTypeIndexRecordForSourceType(
         sourceTypeName = sourceTypeName,
         winRtTypeName = winRtType.qualifiedName,
         kind = winRtType.kind,
+        baseTypeName = winRtType.baseTypeName,
     )
 }
 
@@ -66,6 +69,7 @@ internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtTyp
                     overridableInterfaces = parts.getOrElse(2) { "" }
                         .split(';')
                         .filter(String::isNotBlank),
+                    baseTypeName = parts.getOrElse(3) { "" },
                 )
             }
             .associateBy(IndexedWinRtType::qualifiedName)
