@@ -78,6 +78,18 @@
 - [x] Server/host activation: JVM host bridge mirrors `.cswinrt/src/Authoring` `DllGetActivationFactory`/`DllCanUnloadNow` HRESULT semantics, generated support exposes stable host-shim address entrypoints for both exports, library identity/staging handles authored WinMD and cswinrt-style activatable-class target host manifests, staged/plugin-runtime-assets directory or jar manifests install as activation-factory fallbacks, host loading uses manifest target artifacts like cswinrt shim target-assembly loading, target artifact names follow the real Gradle jar archive, and `buildWinRtAuthoringHost` now generates/builds per-assembly native DLLs exporting `DllGetActivationFactory`/`DllCanUnloadNow` through the JVM host bridge.
 - [ ] `mingwX64` authoring frozen: keep shared contracts native-viable, but defer native CCW/host implementation until JVM authoring stabilizes.
 
+## Compiler Plugin Reflection Replacement Plan
+
+- [x] K2/IR compiler-plugin foundation exists as `kotlin-winrt-compiler-plugin`, separate from the Gradle plugin and generator modules, so authoring/source analysis can move out of runtime reflection and into compilation.
+- [x] Compiler-plugin type-index foundation: K2/IR plugin writes `kotlin-winrt/type-index.tsv` for projection classes, Gradle routes the output into the Kotlin classpath root, and JVM runtime loads the index into `WinRtTypeRegistry`/`TypeNameSupport` as the first replacement for cswinrt assembly/type reflection.
+- [x] Generated runtime-class metadata self-registration: runtime-class `Metadata` companions self-register during class initialization, so the type-index loader no longer reflects over `Metadata.register()`.
+- [ ] Generated projection registrar 正在做: replace string-based `Class.forName` loading in the type-index path with a compiler/generated registrar entrypoint that directly calls generated `Metadata.register()` and `WinRtTypeRegistry` registration using class literals on JVM, with an `expect/actual` shape that can later map to `mingwX64`.
+- [ ] Generated authoring type-details registrar: replace JVM `Class.forName("WinRT_<Type>_TypeDetails")` lookup with compiler/plugin-generated registration of authored type-details factories, matching cswinrt source-generator handoff without runtime class-name probing.
+- [ ] K2 symbol model extraction: move effective-public authored type discovery, WinRT base/interface discovery, member signature capture, and diagnostics onto K2/IR symbols instead of light-tree/string parsing where semantic data is required.
+- [ ] Generated runtime metadata tables: have the compiler/plugin or generator emit deterministic tables for runtime-class name, default-interface name/signature, base type, helper/ABI mapping, delegate/struct/enum/value-boxing metadata, and projection aliases so `TypeNameSupport` and `TypeExtensions` no longer need reflection-style fallbacks for generated projections.
+- [ ] Runtime loader boundary: keep the runtime responsible only for consuming generated registrar resources/tables and installing mappings; do not let runtime scan source packages, infer metadata from samples, or duplicate generator/type-category branch tables.
+- [ ] Validation path: after each registrar slice, run targeted compiler-plugin tests, generator registration tests, runtime registry tests, and `winrt-samples:compileKotlin`; use WinUI smoke only after the upstream registration path is coherent.
+
 ## Frozen
 
 - [ ] `winrt-samples`: only validate completed runtime/generator/authoring slices; no sample-local runtime workarounds.
