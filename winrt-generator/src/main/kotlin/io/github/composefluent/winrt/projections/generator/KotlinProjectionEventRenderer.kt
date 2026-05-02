@@ -1056,6 +1056,12 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                     "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
                 )
+                .addCode(
+                    "%T.registerCustomAbiTypeMapping(%T::class, %T::class, TYPE_NAME, isRuntimeClass = true)\n",
+                    PROJECTIONS_CLASS_NAME,
+                    projectedClassName,
+                    projectedClassName,
+                )
                 .apply {
                     plan.defaultInterfaceName?.let { defaultInterfaceName ->
                         val defaultInterfaceSignature = abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName))
