@@ -96,12 +96,40 @@ class WinRtCollectionInteropTest {
             assertEquals(listOf(6 to 0u), vector.uintArgSlots)
             assertEquals(listOf(8), vector.objectSlots)
             assertEquals(listOf(9 to element), vector.indexOfSlots)
-            assertEquals(listOf(10 to (1u to replacement), 11 to (2u to replacement)), vector.uintObjectSlots)
+            assertEquals(listOf(10 to (1u to replacement.pointer.asRawAddress()), 11 to (2u to replacement.pointer.asRawAddress())), vector.uintObjectSlots)
             assertEquals(listOf(12 to 4u), vector.removeAtSlots)
-            assertEquals(listOf(13 to replacement), vector.appendSlots)
+            assertEquals(listOf(13 to replacement.pointer.asRawAddress()), vector.appendSlots)
             assertEquals(listOf(14, 15), vector.unitSlots)
             assertEquals(listOf(listOf(element, replacement)), vector.replaceAllSlots)
             assertEquals(listOf(16 to (1u to 2)), vector.getManySlots)
+        }
+    }
+
+    @Test
+    fun object_vector_input_marshaling_accepts_null_values() {
+        Arena.ofConfined().use { arena ->
+            val vector = FakeVectorReference(
+                arena = arena,
+                getAtResult = null,
+                sizeResult = 0u,
+                indexOfResult = false to 0u,
+                getManyResults = emptyList(),
+                vectorViewResult = FakeVectorViewReference(
+                    arena = arena,
+                    getAtResult = null,
+                    sizeResult = 0u,
+                    indexOfResult = false to 0u,
+                    getManyResults = emptyList(),
+                ),
+            )
+
+            WinRtVectorListAdapter(
+                vector = vector,
+                elementProjector = WinRtReferenceValueAdapters.object_.projector,
+                elementMarshaller = WinRtReferenceValueAdapters.object_::createInputMarshaler,
+            ).add(null)
+
+            assertEquals(listOf(13 to PlatformAbi.nullPointer), vector.appendSlots)
         }
     }
 
@@ -197,11 +225,16 @@ class WinRtCollectionInteropTest {
             WinRtVectorListAdapter(
                 vector = vector,
                 elementProjector = { (it as FakeReference?)?.label ?: "<null>" },
-                elementMarshaller = { label -> FakeReference(arena, label) },
+                elementMarshaller = { label ->
+                    FakeReference(arena, label).let { reference ->
+                        WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
+                    }
+                },
             ).use { list ->
                 assertEquals(listOf("one", "two"), list.toList())
                 list.add("three")
-                assertEquals(listOf(13 to "three"), vector.appendSlots.map { it.first to (it.second as FakeReference).label })
+                assertEquals(13, vector.appendSlots.single().first)
+                assertFalse(PlatformAbi.isNull(vector.appendSlots.single().second))
                 assertEquals("one", list.removeAt(0))
                 assertEquals(listOf(12 to 0u), vector.removeAtSlots)
             }
@@ -364,9 +397,9 @@ class WinRtCollectionInteropTest {
         val uintArgSlots = mutableListOf<Pair<Int, UInt>>()
         val objectSlots = mutableListOf<Int>()
         val indexOfSlots = mutableListOf<Pair<Int, ComObjectReference>>()
-        val uintObjectSlots = mutableListOf<Pair<Int, Pair<UInt, ComObjectReference>>>()
+        val uintObjectSlots = mutableListOf<Pair<Int, Pair<UInt, RawAddress>>>()
         val removeAtSlots = mutableListOf<Pair<Int, UInt>>()
-        val appendSlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val appendSlots = mutableListOf<Pair<Int, RawAddress>>()
         val unitSlots = mutableListOf<Int>()
         val getManySlots = mutableListOf<Pair<Int, Pair<UInt, Int>>>()
         val replaceAllSlots = mutableListOf<List<ComObjectReference>>()
@@ -391,20 +424,20 @@ class WinRtCollectionInteropTest {
             return indexOfResult
         }
 
-        override fun setAt(index: UInt, value: ComObjectReference) {
-            uintObjectSlots += 10 to (index to value)
+        override fun setAt(index: UInt, valuePointer: RawAddress) {
+            uintObjectSlots += 10 to (index to valuePointer)
         }
 
-        override fun insertAt(index: UInt, value: ComObjectReference) {
-            uintObjectSlots += 11 to (index to value)
+        override fun insertAt(index: UInt, valuePointer: RawAddress) {
+            uintObjectSlots += 11 to (index to valuePointer)
         }
 
         override fun removeAt(index: UInt) {
             removeAtSlots += 12 to index
         }
 
-        override fun append(value: ComObjectReference) {
-            appendSlots += 13 to value
+        override fun append(valuePointer: RawAddress) {
+            appendSlots += 13 to valuePointer
         }
 
         override fun removeAtEnd() {

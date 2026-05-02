@@ -25,7 +25,7 @@ class WinRtVectorViewListAdapter<T>(
 class WinRtVectorListAdapter<T>(
     private val vector: WinRtVectorReference,
     private val elementProjector: (IUnknownReference?) -> T,
-    private val elementMarshaller: (T) -> ComObjectReference,
+    private val elementMarshaller: (T) -> WinRtObjectMarshaler,
 ) : AbstractMutableList<T>(), AutoCloseable {
     override val size: Int
         get() = vector.size().toIntChecked("IVector.Size")
@@ -37,19 +37,19 @@ class WinRtVectorListAdapter<T>(
 
     override fun set(index: Int, element: T): T {
         val previous = get(index)
-        elementMarshaller(element).use { value ->
-            vector.setAt(index.toUInt(), value)
+        elementMarshaller(element).use { marshaler ->
+            vector.setAt(index.toUInt(), marshaler.abi)
         }
         return previous
     }
 
     override fun add(index: Int, element: T) {
         require(index >= 0) { "index must be non-negative." }
-        elementMarshaller(element).use { value ->
+        elementMarshaller(element).use { marshaler ->
             if (index == size) {
-                vector.append(value)
+                vector.append(marshaler.abi)
             } else {
-                vector.insertAt(index.toUInt(), value)
+                vector.insertAt(index.toUInt(), marshaler.abi)
             }
         }
     }

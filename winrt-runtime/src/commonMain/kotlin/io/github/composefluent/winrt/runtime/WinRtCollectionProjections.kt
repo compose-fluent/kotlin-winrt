@@ -15,12 +15,17 @@ import kotlin.reflect.KClass
  * `Marshalers.cs` parity work, so the helper layer is parameterized by reference-style projector/marshaller
  * lambdas instead of inventing a second marshaling model here.
  */
-class WinRtReferenceValueAdapter<T>(
+open class WinRtReferenceValueAdapter<T>(
     val projectedTypeName: String,
     val typeSignature: WinRtTypeSignature,
     val projector: (IUnknownReference?) -> T,
     val marshaller: (T) -> ComObjectReference,
-)
+) {
+    open fun createInputMarshaler(value: T): WinRtObjectMarshaler =
+        marshaller(value).let { reference ->
+            WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
+        }
+}
 
 object WinRtReferenceValueAdapters {
     val string: WinRtReferenceValueAdapter<String> =
@@ -54,7 +59,7 @@ object WinRtReferenceValueAdapters {
         )
 
     val object_: WinRtReferenceValueAdapter<Any?> =
-        WinRtReferenceValueAdapter(
+        object : WinRtReferenceValueAdapter<Any?>(
             projectedTypeName = "Any?",
             typeSignature = WinRtTypeSignature.object_(),
             projector = { reference ->
@@ -64,7 +69,10 @@ object WinRtReferenceValueAdapters {
                 check(value != null) { "Null System.Object collection values are not supported by this adapter yet." }
                 ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
             },
-        )
+        ) {
+            override fun createInputMarshaler(value: Any?): WinRtObjectMarshaler =
+                WinRtObjectMarshaller.createMarshaler(value)
+        }
 
     fun <T : Any> valueType(
         projectedType: KClass<T>,
@@ -529,7 +537,7 @@ object WinRtListProjection {
                     preventReleaseOnDispose = true,
                 ),
                 elementProjector = elementAdapter.projector,
-                elementMarshaller = elementAdapter.marshaller,
+                elementMarshaller = elementAdapter::createInputMarshaler,
             )
         }
 

@@ -304,12 +304,20 @@ open class WinRtVectorReference(
         invokeIndexOfMethodWithObjectArg(slot = 9, value = value)
 
     open fun setAt(index: UInt, value: ComObjectReference) {
-        val hr = invokeSlot(10, index, value.pointer.asRawAddress())
+        setAt(index, value.pointer.asRawAddress())
+    }
+
+    open fun setAt(index: UInt, valuePointer: RawAddress) {
+        val hr = invokeSlot(10, index, valuePointer)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
     open fun insertAt(index: UInt, value: ComObjectReference) {
-        val hr = invokeSlot(11, index, value.pointer.asRawAddress())
+        insertAt(index, value.pointer.asRawAddress())
+    }
+
+    open fun insertAt(index: UInt, valuePointer: RawAddress) {
+        val hr = invokeSlot(11, index, valuePointer)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
@@ -319,7 +327,11 @@ open class WinRtVectorReference(
     }
 
     open fun append(value: ComObjectReference) {
-        val hr = invokeSlot(WinRtCollectionSlots.VectorAppend, value.pointer.asRawAddress())
+        append(value.pointer.asRawAddress())
+    }
+
+    open fun append(valuePointer: RawAddress) {
+        val hr = invokeSlot(WinRtCollectionSlots.VectorAppend, valuePointer)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 
