@@ -101,6 +101,10 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     copyFile(source, outputRoot.resolve(source.name))
                 }
             }
+        stageAuthoringHostRuntimeConfigs(
+            sources = authoredHostManifestFiles.files + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map { java.io.File(it) },
+            outputRoot = outputRoot,
+        )
         (authoredTargetArtifactFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredTargetArtifacts))
             .map(Path::of)
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
@@ -242,6 +246,61 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }
 
+    private fun stageAuthoringHostRuntimeConfigs(
+        sources: Collection<java.io.File>,
+        outputRoot: Path,
+    ) {
+        sources
+            .mapNotNull { source -> readAuthoringHostRuntimeConfig(source) }
+            .groupBy { it.assemblyName }
+            .forEach { (assemblyName, configs) ->
+                val activatableClasses = configs
+                    .flatMap { it.activatableClasses.entries }
+                    .associate { it.key to it.value }
+                if (activatableClasses.isNotEmpty()) {
+                    writeAuthoringHostRuntimeConfig(
+                        output = outputRoot.resolve("$assemblyName.runtimeconfig.json"),
+                        activatableClasses = activatableClasses,
+                    )
+                }
+            }
+    }
+
+    private fun readAuthoringHostRuntimeConfig(source: java.io.File): AuthoringHostRuntimeConfig? {
+        val content = source.takeIf { it.isFile }?.readText().orEmpty()
+        val assemblyName = readJsonString(content, "assemblyName") ?: return null
+        if (assemblyName.isBlank()) {
+            return null
+        }
+        val targetArtifact = readJsonString(content, "targetArtifact").orEmpty()
+        val explicitTargets = readJsonStringMap(content, "activatableClassTargets")
+        val defaultTargets = readJsonStringArray(content, "activatableClasses")
+            .filter { it.isNotBlank() && targetArtifact.isNotBlank() }
+            .associateWith { targetArtifact }
+        val activatableClasses = defaultTargets + explicitTargets
+        return AuthoringHostRuntimeConfig(
+            assemblyName = assemblyName,
+            activatableClasses = activatableClasses,
+        )
+    }
+
+    private fun writeAuthoringHostRuntimeConfig(
+        output: Path,
+        activatableClasses: Map<String, String>,
+    ) {
+        Files.createDirectories(output.parent)
+        Files.writeString(
+            output,
+            buildString {
+                appendLine("{")
+                appendLine("  \"schemaVersion\": 1,")
+                appendLine("  \"model\": \"jvm-authoring-host-runtime-config\",")
+                appendLine("  \"activatableClasses\": ${activatableClasses.toJsonObject()}")
+                appendLine("}")
+            },
+        )
+    }
+
     private fun nugetCliGlobalPackagesOutput(): String? {
         if (!useNuGetCliGlobalPackages.get()) {
             return null
@@ -264,6 +323,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         logger = logger,
     )
 }
+
+private data class AuthoringHostRuntimeConfig(
+    val assemblyName: String,
+    val activatableClasses: Map<String, String>,
+)
 
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkPackage(): Boolean =
     normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
@@ -319,8 +383,40 @@ internal fun readAuthoredTargetArtifacts(identityFile: java.io.File): List<Strin
     return readJsonStringArray(match.groupValues[1])
 }
 
+private fun readJsonString(content: String, name: String): String? =
+    Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .find(content)
+        ?.groupValues
+        ?.get(1)
+        ?.decodeJsonString()
+
+private fun readJsonStringMap(content: String, name: String): Map<String, String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\{(.*?)\}""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyMap()
+    return Regex(""""((?:\\.|[^"\\])*)"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .associate { it.groupValues[1].decodeJsonString() to it.groupValues[2].decodeJsonString() }
+}
+
+private fun readJsonStringArray(content: String, name: String): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return readJsonStringArray(match.groupValues[1])
+}
+
 private fun readJsonStringArray(content: String): List<String> =
     Regex(""""((?:\\.|[^"\\])*)"""")
         .findAll(content)
-        .map { it.groupValues[1].replace("\\\"", "\"").replace("\\\\", "\\") }
+        .map { it.groupValues[1].decodeJsonString() }
         .toList()
+
+private fun String.decodeJsonString(): String =
+    replace("\\\"", "\"").replace("\\\\", "\\")
+
+private fun Map<String, String>.toJsonObject(): String =
+    entries
+        .toList()
+        .sortedBy { it.key }
+        .joinToString(prefix = "{", postfix = "}") { (key, value) ->
+            "${key.toJsonString()}: ${value.toJsonString()}"
+        }

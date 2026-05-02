@@ -294,11 +294,17 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(dependencyJar.parent)
         Files.writeString(appDll, "app")
         Files.writeString(appWinmd, "app-winmd")
-        Files.writeString(appHostManifest, "app-host")
+        Files.writeString(
+            appHostManifest,
+            """{"assemblyName":"AppComponent","targetArtifact":"AppComponent.jar","activatableClasses":["sample.AppComponent"],"activatableClassTargets":{"sample.AppComponent":"AppComponent.jar"}}""",
+        )
         Files.writeString(appJar, "app-jar")
         Files.writeString(dependencyDll, "dependency")
         Files.writeString(dependencyWinmd, "winmd")
-        Files.writeString(dependencyHostManifest, "host")
+        Files.writeString(
+            dependencyHostManifest,
+            """{"assemblyName":"DependencyComponent","targetArtifact":"DependencyComponent.jar","activatableClasses":["sample.DependencyComponent"],"activatableClassTargets":{"sample.DependencyComponent":"DependencyComponent.jar"}}""",
+        )
         Files.writeString(dependencyJar, "dependency-jar")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
         Files.createDirectories(dependencyIdentity.toPath().parent)
@@ -333,10 +339,12 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.host.json")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("AppComponent.jar")))
+        assertTrue(Files.readString(outputRoot.resolve("AppComponent.runtimeconfig.json")).contains("\"sample.AppComponent\": \"AppComponent.jar\""))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.winmd")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.host.json")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("DependencyComponent.jar")))
+        assertTrue(Files.readString(outputRoot.resolve("DependencyComponent.runtimeconfig.json")).contains("\"sample.DependencyComponent\": \"DependencyComponent.jar\""))
     }
 
     @Test
