@@ -360,6 +360,7 @@ private fun configureWinRtGeneration(
             metadataIndex = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
             },
+            typeIndexOutput = project.layout.buildDirectory.file("classes/kotlin/main/kotlin-winrt/type-index.tsv"),
         )
         project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
             task.dependsOn(generateTask)
@@ -431,6 +432,7 @@ private fun addGeneratedSourcesToKotlinMain(
 private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+    typeIndexOutput: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
     project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
         val compilerOptions = task.callNoArg("getCompilerOptions") ?: return@Action
@@ -440,6 +442,12 @@ private fun configureKotlinWinRtCompilerPluginOptions(
         freeCompilerArgs.callOneArg(
             "add",
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:metadataIndex=$metadataIndexPath",
+        )
+        val typeIndexOutputPath = typeIndexOutput.get().asFile.absolutePath
+        freeCompilerArgs.callOneArg("add", "-P")
+        freeCompilerArgs.callOneArg(
+            "add",
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:typeIndexOutput=$typeIndexOutputPath",
         )
     })
 }

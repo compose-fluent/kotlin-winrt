@@ -79,6 +79,7 @@ internal fun ensureProjectionMappingsRegistered() {
     projectionMappingsRegistering = true
     try {
         WinRtBuiltInProjectionMappings.register()
+        registerCompilerGeneratedProjectionTypeIndexes()
         projectionMappingsRegistered = true
     } finally {
         projectionMappingsRegistering = false

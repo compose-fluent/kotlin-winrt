@@ -18,6 +18,15 @@ internal data class KotlinWinRtAuthoredTypeCandidate(
     val overridableInterfaceNames: List<String>,
 )
 
+internal data class KotlinWinRtProjectionTypeIndexRecord(
+    val sourceTypeName: String,
+    val winRtTypeName: String,
+    val kind: String,
+) {
+    fun render(): String =
+        listOf(sourceTypeName, winRtTypeName, kind).joinToString("\t")
+}
+
 internal data class KotlinImports(
     val explicit: Map<String, String>,
     val wildcards: List<String>,
@@ -25,6 +34,22 @@ internal data class KotlinImports(
     companion object {
         val Empty: KotlinImports = KotlinImports(emptyMap(), emptyList())
     }
+}
+
+internal fun projectionTypeIndexRecordForSourceType(
+    sourceTypeName: String,
+    winRtTypes: Map<String, IndexedWinRtType>,
+): KotlinWinRtProjectionTypeIndexRecord? {
+    if (sourceTypeName.startsWith(PROJECTION_PACKAGE_PREFIX)) {
+        return null
+    }
+    val winRtTypeName = projectionPackageToMetadataName(sourceTypeName)
+    val winRtType = winRtTypes[winRtTypeName] ?: return null
+    return KotlinWinRtProjectionTypeIndexRecord(
+        sourceTypeName = sourceTypeName,
+        winRtTypeName = winRtType.qualifiedName,
+        kind = winRtType.kind,
+    )
 }
 
 internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtType> =
@@ -66,8 +91,9 @@ internal fun resolveWinRtTypeName(
 }
 
 internal fun projectionPackageToMetadataName(typeName: String): String {
-    val prefix = "io.github.composefluent.winrt.projections."
-    return typeName.removePrefix(prefix)
+    return typeName.removePrefix(PROJECTION_PACKAGE_PREFIX)
         .split('.')
         .joinToString(".") { segment -> if (segment == "ui") "UI" else segment.replaceFirstChar(Char::uppercaseChar) }
 }
+
+internal const val PROJECTION_PACKAGE_PREFIX: String = "io.github.composefluent.winrt.projections."

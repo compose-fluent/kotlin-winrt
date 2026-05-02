@@ -30,6 +30,20 @@ class KotlinWinRtCompilerPluginTest {
             "build/kotlin-winrt/metadata-index.tsv",
             configuration.get(KotlinWinRtCommandLineProcessor.METADATA_INDEX_KEY),
         )
+        processor.processOption(
+            CliOption(
+                optionName = "typeIndexOutput",
+                valueDescription = "<path>",
+                description = "",
+                required = false,
+            ),
+            "build/classes/kotlin/main/kotlin-winrt/type-index.tsv",
+            configuration,
+        )
+        assertEquals(
+            "build/classes/kotlin/main/kotlin-winrt/type-index.tsv",
+            configuration.get(KotlinWinRtCommandLineProcessor.TYPE_INDEX_OUTPUT_KEY),
+        )
     }
 
     @Test
@@ -45,5 +59,24 @@ class KotlinWinRtCompilerPluginTest {
         assertTrue(storage.registeredExtensions[IrGenerationExtension].orEmpty().any { extension ->
             extension is KotlinWinRtIrGenerationExtension
         })
+    }
+
+    @Test
+    fun projection_type_index_records_map_kotlin_projection_names_to_winrt_metadata() {
+        val record = projectionTypeIndexRecordForSourceType(
+            sourceTypeName = "microsoft.ui.xaml.Window",
+            winRtTypes = mapOf(
+                "Microsoft.UI.Xaml.Window" to IndexedWinRtType(
+                    qualifiedName = "Microsoft.UI.Xaml.Window",
+                    kind = "RuntimeClass",
+                    overridableInterfaces = emptyList(),
+                ),
+            ),
+        )
+
+        assertEquals(
+            "microsoft.ui.xaml.Window\tMicrosoft.UI.Xaml.Window\tRuntimeClass",
+            record?.render(),
+        )
     }
 }

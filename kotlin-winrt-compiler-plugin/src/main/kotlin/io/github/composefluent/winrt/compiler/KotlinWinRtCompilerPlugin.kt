@@ -19,6 +19,7 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import java.nio.file.Files
 import java.nio.file.Path
 
 @OptIn(ExperimentalCompilerApi::class)
@@ -31,6 +32,12 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             description = "Path to the kotlin-winrt metadata index used by authoring analysis.",
             required = false,
         ),
+        CliOption(
+            optionName = "typeIndexOutput",
+            valueDescription = "<path>",
+            description = "Path to the compiler-generated kotlin-winrt projection type index resource.",
+            required = false,
+        ),
     )
 
     override fun processOption(
@@ -40,6 +47,8 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
     ) {
         if (option.optionName == "metadataIndex") {
             configuration.put(METADATA_INDEX_KEY, value)
+        } else if (option.optionName == "typeIndexOutput") {
+            configuration.put(TYPE_INDEX_OUTPUT_KEY, value)
         }
     }
 
@@ -47,6 +56,8 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
         const val PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
         val METADATA_INDEX_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt metadata index")
+        val TYPE_INDEX_OUTPUT_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt type index output")
     }
 }
 
@@ -59,6 +70,7 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
         IrGenerationExtension.registerExtension(
             KotlinWinRtIrGenerationExtension(
                 metadataIndexPath = configuration.get(KotlinWinRtCommandLineProcessor.METADATA_INDEX_KEY),
+                typeIndexOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.TYPE_INDEX_OUTPUT_KEY),
             ),
         )
     }
@@ -66,6 +78,7 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
 
 class KotlinWinRtIrGenerationExtension(
     private val metadataIndexPath: String?,
+    private val typeIndexOutputPath: String?,
 ) : IrGenerationExtension {
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
@@ -80,18 +93,36 @@ class KotlinWinRtIrGenerationExtension(
             return
         }
         val messageCollector = pluginContext.messageCollector
-        moduleFragment.files
+        val classContexts = moduleFragment.files
             .flatMap { file -> file.declarations.flatMap(::classContextsIn) }
-            .forEach { context ->
-                val klass = context.klass
-                if (klass.visibility != DescriptorVisibilities.PUBLIC || !context.containingTypesPublic) {
-                    return@forEach
-                }
-                val authoredType = authoredTypeFor(klass, winRtTypes) ?: return@forEach
-                validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
-                    messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
-                }
+        writeProjectionTypeIndex(classContexts, winRtTypes)
+        classContexts.forEach { context ->
+            val klass = context.klass
+            if (klass.visibility != DescriptorVisibilities.PUBLIC || !context.containingTypesPublic) {
+                return@forEach
             }
+            val authoredType = authoredTypeFor(klass, winRtTypes) ?: return@forEach
+            validateAuthoredType(klass, authoredType, pluginContext.afterK2) { message ->
+                messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
+            }
+        }
+    }
+
+    private fun writeProjectionTypeIndex(
+        classContexts: List<AuthoredIrClassContext>,
+        winRtTypes: Map<String, IndexedWinRtType>,
+    ) {
+        val outputPath = typeIndexOutputPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
+        val records = classContexts
+            .mapNotNull { context -> context.klass.fqNameWhenAvailable?.asString() }
+            .mapNotNull { sourceTypeName -> projectionTypeIndexRecordForSourceType(sourceTypeName, winRtTypes) }
+            .distinctBy(KotlinWinRtProjectionTypeIndexRecord::sourceTypeName)
+            .sortedBy(KotlinWinRtProjectionTypeIndexRecord::sourceTypeName)
+        outputPath.parent?.let(Files::createDirectories)
+        Files.writeString(
+            outputPath,
+            records.joinToString(separator = "\n", postfix = if (records.isEmpty()) "" else "\n") { it.render() },
+        )
     }
 
     private fun authoredTypeFor(
@@ -166,8 +197,4 @@ class KotlinWinRtIrGenerationExtension(
         val klass: IrClass,
         val containingTypesPublic: Boolean,
     )
-
-    private companion object {
-        const val PROJECTION_PACKAGE_PREFIX: String = "io.github.composefluent.winrt.projections."
-    }
 }
