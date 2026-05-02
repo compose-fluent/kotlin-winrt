@@ -15,5 +15,5 @@ dependencies {
 }
 
 application {
-    mainClass.set("io.github.kitectlab.winrt.projections.generator.KotlinProjectionGeneratorCliKt")
+    mainClass.set("io.github.composefluent.winrt.projections.generator.KotlinProjectionGeneratorCliKt")
 }

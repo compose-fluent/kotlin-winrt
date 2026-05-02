@@ -35,8 +35,8 @@ tasks.withType<Test>().configureEach {
 gradlePlugin {
     plugins {
         create("kotlinWinRt") {
-            id = "io.github.kitectlab.winrt"
-            implementationClass = "io.github.kitectlab.winrt.gradle.KotlinWinRtPlugin"
+            id = "io.github.composefluent.winrt"
+            implementationClass = "io.github.composefluent.winrt.gradle.KotlinWinRtPlugin"
         }
     }
 }

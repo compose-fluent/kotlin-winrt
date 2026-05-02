@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
-    id("io.github.kitectlab.winrt")
+    id("io.github.composefluent.winrt")
     application
 }
 
@@ -54,7 +54,7 @@ winRt {
 }
 
 application {
-    mainClass = "io.github.kitectlab.winrt.samples.MainKt"
+    mainClass = "io.github.composefluent.winrt.samples.MainKt"
 }
 
 tasks.named<JavaExec>("run") {

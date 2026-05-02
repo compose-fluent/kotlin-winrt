@@ -6,7 +6,7 @@ plugins {
 }
 
 allprojects {
-    group = "io.github.kitectlab.winrt"
+    group = "io.github.composefluent.winrt"
     version = "0.1.0-SNAPSHOT"
 
     tasks.withType<Test>().configureEach {
@@ -15,24 +15,24 @@ allprojects {
         maxHeapSize = "128m"
         jvmArgs("-XX:+UseSerialGC")
         systemProperty(
-            "io.github.kitectlab.winrt.enableProbe",
-            providers.gradleProperty("io.github.kitectlab.winrt.enableProbe").orNull ?: "false",
+            "io.github.composefluent.winrt.enableProbe",
+            providers.gradleProperty("io.github.composefluent.winrt.enableProbe").orNull ?: "false",
         )
         systemProperty(
-            "io.github.kitectlab.winrt.probeTarget",
-            providers.gradleProperty("io.github.kitectlab.winrt.probeTarget").orNull ?: "",
+            "io.github.composefluent.winrt.probeTarget",
+            providers.gradleProperty("io.github.composefluent.winrt.probeTarget").orNull ?: "",
         )
         systemProperty(
-            "io.github.kitectlab.winrt.probeMode",
-            providers.gradleProperty("io.github.kitectlab.winrt.probeMode").orNull ?: "",
+            "io.github.composefluent.winrt.probeMode",
+            providers.gradleProperty("io.github.composefluent.winrt.probeMode").orNull ?: "",
         )
         systemProperty(
-            "io.github.kitectlab.winrt.bootstrapDll",
-            providers.systemProperty("io.github.kitectlab.winrt.bootstrapDll").orNull ?: "",
+            "io.github.composefluent.winrt.bootstrapDll",
+            providers.systemProperty("io.github.composefluent.winrt.bootstrapDll").orNull ?: "",
         )
         systemProperty(
-            "io.github.kitectlab.winrt.windowsAppSdkRoot",
-            providers.systemProperty("io.github.kitectlab.winrt.windowsAppSdkRoot").orNull ?: "",
+            "io.github.composefluent.winrt.windowsAppSdkRoot",
+            providers.systemProperty("io.github.composefluent.winrt.windowsAppSdkRoot").orNull ?: "",
         )
     }
 }

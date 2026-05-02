@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
-    id("io.github.kitectlab.winrt")
+    id("io.github.composefluent.winrt")
 }
 
 kotlin {

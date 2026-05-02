@@ -130,9 +130,9 @@ Do not claim that Kotlin modules are aligned with `.cswinrt` unless the top-leve
 
 ## Package Naming
 
-1. Use `io.github.kitectlab.winrt` as the base package for shared Kotlin projection code.
+1. Use `io.github.composefluent.winrt` as the base package for shared Kotlin projection code.
 2. Keep module-specific packages underneath that root instead of introducing unrelated top-level package prefixes.
-3. Generated projection code, runtime support code, metadata tooling, and samples should follow a consistent package layout derived from `io.github.kitectlab.winrt` unless external API compatibility requires a narrower exception.
+3. Generated projection code, runtime support code, metadata tooling, and samples should follow a consistent package layout derived from `io.github.composefluent.winrt` unless external API compatibility requires a narrower exception.
 4. Any required exception to the package root must be explicit, minimal, and documented in the relevant module or generator rule.
 
 ## Platform Support Rules
