@@ -1056,6 +1056,18 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                     "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
                 )
+                .apply {
+                    plan.defaultInterfaceName
+                        ?.takeUnless { defaultInterfaceName -> defaultInterfaceName.contains('<') }
+                        ?.let { defaultInterfaceName ->
+                        addCode(
+                            "%T.registerDefaultInterfaceType(%T::class, %T::class)\n",
+                            PROJECTIONS_CLASS_NAME,
+                            projectedClassName,
+                            resolveTypeName(defaultInterfaceName),
+                        )
+                    }
+                }
                 .build(),
         )
         builder.addFunction(

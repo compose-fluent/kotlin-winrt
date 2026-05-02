@@ -58,6 +58,7 @@ import io.github.composefluent.winrt.runtime.Marshaler
 import io.github.composefluent.winrt.runtime.NativeStringMarshaller
 import io.github.composefluent.winrt.runtime.PlatformAbi
 import io.github.composefluent.winrt.runtime.ParameterizedInterfaceId
+import io.github.composefluent.winrt.runtime.Projections
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRtAbiArray
 import io.github.composefluent.winrt.runtime.NativeNestedStructFieldSpec
@@ -163,6 +164,7 @@ internal val WINRT_ABI_ARRAY_CLASS_NAME = WinRtAbiArray::class.asClassName()
 internal val NATIVE_STRING_MARSHALER_CLASS_NAME = NativeStringMarshaller::class.asClassName()
 internal val PLATFORM_ABI_CLASS_NAME = PlatformAbi::class.asClassName()
 internal val PARAMETERIZED_INTERFACE_ID_CLASS_NAME = ParameterizedInterfaceId::class.asClassName()
+internal val PROJECTIONS_CLASS_NAME = Projections::class.asClassName()
 internal val WINRT_BINDABLE_ITERABLE_PROJECTION_CLASS_NAME = WinRtBindableIterableProjection::class.asClassName()
 internal val WINRT_BINDABLE_VECTOR_PROJECTION_CLASS_NAME = WinRtBindableVectorProjection::class.asClassName()
 internal val WINRT_BINDABLE_VECTOR_VIEW_PROJECTION_CLASS_NAME = WinRtBindableVectorViewProjection::class.asClassName()
