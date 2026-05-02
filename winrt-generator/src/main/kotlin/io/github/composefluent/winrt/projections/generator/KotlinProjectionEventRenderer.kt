@@ -1107,6 +1107,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addCode("return wrap(instance.asInspectable())\n")
                 .build(),
         )
+        builder.addInitializerBlock(CodeBlock.of("register()\n"))
     }
     if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
         builder.addFunction(

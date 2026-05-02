@@ -887,6 +887,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
+        assertTrue(widgetContents.contains("init {\n        register()\n    }"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
         assertTrue(widgetContents.contains("ComWrappersSupport.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }"))
         assertTrue(widgetContents.contains("Projections.registerCustomAbiTypeMapping("))
