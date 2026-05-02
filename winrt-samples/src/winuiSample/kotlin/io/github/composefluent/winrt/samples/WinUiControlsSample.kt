@@ -102,10 +102,18 @@ class WinUiControlsApp : Application() {
         })
         root.children.add(ComboBox().apply {
             width = 320.0
+            items.add("Compact")
+            items.add("Comfortable")
+            items.add("Expanded")
         })
         root.children.add(ListView().apply {
             width = 320.0
             height = 140.0
+            items.add("TextBox")
+            items.add("ToggleSwitch")
+            items.add("Slider")
+            items.add("ComboBox")
+            items.add("ListView")
         })
         root.children.add(Button().apply {
             content = "Apply"

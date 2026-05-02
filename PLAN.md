@@ -11,7 +11,7 @@
 
 - [ ] CCW/object marshaling parity 正在做: close remaining cswinrt `GetInterfaceTableEntries` differences for boxed values/delegates and keep WinUI smoke as validation only.
 - [ ] Generator audit closure 正在做: keep non-authoring gaps explicit instead of claiming full parity; authoring writer output is closed and remaining active authoring work is host packaging.
-- [ ] WinUI object collection insertion 正在做: map cswinrt collection/object marshaling for `ItemCollection<Any?>.add(string)` before using populated ComboBox/ListView item collections in samples.
+- [x] WinUI object collection insertion: populated ComboBox/ListView `ItemCollection<Any?>` through generated `items.add(string)`, validating the cswinrt `MarshalInspectable<object>`/`IBindableVector`-style object input path instead of keeping samples empty.
 - [ ] Compiler-plugin reflection replacement 正在做: move cswinrt runtime-reflection surfaces into compiler-generated indexes and generated registration code.
 
 ## Completed Baseline
