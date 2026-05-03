@@ -386,12 +386,12 @@ private fun kotlinWinRtCompilerPluginClasspath(project: Project) =
         }
 
 private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
-    val localCompilerPlugin = project.rootProject.findProject(":kotlin-winrt-compiler-plugin")
+    val localCompilerPlugin = project.rootProject.findProject(":winrt-compiler-plugin")
     return if (localCompilerPlugin != null) {
         project.dependencies.project(mapOf("path" to localCompilerPlugin.path))
     } else {
         kotlinWinRtCompilerPluginClasspathJar(project)
-            ?: "io.github.composefluent.winrt:kotlin-winrt-compiler-plugin:${kotlinWinRtPluginVersion()}"
+            ?: "io.github.composefluent.winrt:winrt-compiler-plugin:${kotlinWinRtPluginVersion()}"
     }
 }
 

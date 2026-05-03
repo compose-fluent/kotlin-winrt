@@ -47,7 +47,7 @@ val validateWinRtPluginGraph by tasks.registering {
     group = "verification"
     description = "Runs Gradle plugin graph validation, including TestKit and identity/resource wiring tests."
     dependsOn(validateWinRtGenerator)
-    dependsOn(gradle.includedBuild("kotlin-winrt-gradle-plugin").task(":test"))
+    dependsOn(gradle.includedBuild("winrt-gradle-plugin").task(":test"))
 }
 
 val validateWinRtProjectionCompile by tasks.registering {
