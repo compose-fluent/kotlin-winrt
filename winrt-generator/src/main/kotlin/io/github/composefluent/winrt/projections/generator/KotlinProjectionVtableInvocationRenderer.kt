@@ -114,6 +114,23 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
     invokeTargetExpression: String,
     slotExpression: CodeBlock,
     callPlan: KotlinProjectionAbiCallPlan,
+): CodeBlock? =
+    renderInlineAbiInvocation(
+        invokeTargetExpression = invokeTargetExpression,
+        slotExpression = slotExpression,
+        callPlan = callPlan,
+        renderInvocation = { target, slot, args -> renderComVtableInvocation(target, slot, args) },
+    )
+
+internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    callPlan: KotlinProjectionAbiCallPlan,
+    renderInvocation: (
+        invokeTargetExpression: String,
+        slotExpression: CodeBlock,
+        abiArguments: List<KotlinProjectionComArgument>,
+    ) -> CodeBlock,
 ): CodeBlock? {
     val resultMarshaler = callPlan.returnMarshaler
     val code = CodeBlock.builder()
@@ -151,11 +168,7 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
     }
     code.add("val __hr = ")
     code.add(
-        renderComVtableInvocation(
-            invokeTargetExpression = invokeTargetExpression,
-            slotExpression = slotExpression,
-            abiArguments = abiArguments,
-        ),
+        renderInvocation(invokeTargetExpression, slotExpression, abiArguments),
     )
     code.add("\n")
     if (!callPlan.suppressHResultCheck) {

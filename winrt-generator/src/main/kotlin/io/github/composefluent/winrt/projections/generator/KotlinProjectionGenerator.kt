@@ -111,6 +111,7 @@ class KotlinProjectionGenerator(
     private val emitSupportFiles: Boolean = false,
     private val projectionContext: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
     private val suppressedProjectionTypeNames: Set<String> = emptySet(),
+    private val generationLayout: KotlinProjectionGenerationLayout = KotlinProjectionGenerationLayout.SingleSourceSet,
 ) {
     init {
         require(emitSupportFiles || projectionContext.sources.isEmpty()) {
@@ -121,9 +122,10 @@ class KotlinProjectionGenerator(
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
+        val projectionRenderer = projectionFileRenderer()
         val projectionFiles = plans
             .filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
-            .map(renderer::render)
+            .flatMap(projectionRenderer::render)
         if (!emitSupportFiles) {
             return projectionFiles
         }
@@ -134,6 +136,7 @@ class KotlinProjectionGenerator(
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
+        val projectionRenderer = projectionFileRenderer()
         var rendered = 0
         var written = 0
         val expectedPaths = mutableSetOf<String>()
@@ -145,7 +148,7 @@ class KotlinProjectionGenerator(
             }
         }
         plans.filterNot { it.type.qualifiedName in authoredTypeNames }.forEach { plan ->
-            write(renderer.render(plan))
+            projectionRenderer.render(plan).forEach(::write)
         }
         if (emitSupportFiles) {
             supportRenderer.render(normalizedModel, plans, projectionContext).forEach { file ->
@@ -170,6 +173,14 @@ class KotlinProjectionGenerator(
                 .mapTo(suppressedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
         }
 
+    private fun projectionFileRenderer(): KotlinProjectionFileRenderer =
+        when (generationLayout) {
+            KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
+                listOf(renderer.render(plan))
+            }
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinExpectActualProjectionRenderer(renderer)
+        }
+
     private fun deleteStaleKotlinFiles(outputRoot: Path, expectedPaths: Set<String>): Int {
         if (!Files.isDirectory(outputRoot)) {
             return 0
@@ -186,4 +197,8 @@ class KotlinProjectionGenerator(
         }
         return deleted
     }
+}
+
+internal fun interface KotlinProjectionFileRenderer {
+    fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile>
 }

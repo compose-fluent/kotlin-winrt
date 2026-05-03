@@ -49,6 +49,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_can_emit_expect_common_and_jvm_actual_interface_slice() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public expect interface IWidget"))
+        assertTrue(common, common.contains("public fun rename(`value`: String): String"))
+        assertTrue(common, common.contains("public val count: Int"))
+        assertFalse(common, common.contains("NativeProjection"))
+        assertTrue(jvm, jvm.contains("public actual interface IWidget"))
+        assertTrue(jvm, jvm.contains("public actual fun rename(`value`: String): String"))
+        assertTrue(jvm, jvm.contains("public actual val count: Int"))
+        assertTrue(jvm, jvm.contains("private class NativeProjection"))
+        assertTrue(jvm, jvm.contains("private object JvmAbi"))
+        assertTrue(jvm, jvm.contains("FunctionDescriptor.of(ValueLayout.JAVA_INT"))
+        assertTrue(jvm, jvm.contains("Linker.nativeLinker()"))
+        assertTrue(jvm, jvm.contains("JvmAbi.invoke_p_p"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun generator_projects_method_generic_parameters_like_cswinrt_method_generic_signature_branch() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_signature MethodDef.GenericParam() handling.
         val model = WinRtMetadataModel(

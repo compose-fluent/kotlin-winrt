@@ -307,6 +307,11 @@ enum class KotlinProjectionSpecializationKind {
     StaticClass,
 }
 
+enum class KotlinProjectionGenerationLayout {
+    SingleSourceSet,
+    ExpectActualJvm,
+}
+
 enum class KotlinProjectionModifier {
     Sealed,
     Static,
