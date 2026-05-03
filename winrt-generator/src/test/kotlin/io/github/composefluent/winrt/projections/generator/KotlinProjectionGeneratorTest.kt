@@ -211,6 +211,37 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_layout_places_support_files_in_common_source_set() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model)
+
+        val paths = files.map(KotlinProjectionFile::relativePath)
+        assertTrue(paths.contains("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(paths.contains("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(paths.any { it.startsWith("commonMain/kotlin/io/github/composefluent/winrt/projections/support/") })
+        assertFalse(paths.any { it.startsWith("io/github/composefluent/winrt/projections/support/") })
+        assertFalse(paths.any { it.startsWith("jvmMain/kotlin/io/github/composefluent/winrt/projections/support/") })
+    }
+
+    @Test
     fun generator_projects_method_generic_parameters_like_cswinrt_method_generic_signature_branch() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_signature MethodDef.GenericParam() handling.
         val model = WinRtMetadataModel(

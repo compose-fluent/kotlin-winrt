@@ -129,7 +129,7 @@ class KotlinProjectionGenerator(
         if (!emitSupportFiles) {
             return projectionFiles
         }
-        return projectionFiles + supportRenderer.render(normalizedModel, plans, projectionContext)
+        return projectionFiles + supportFiles(normalizedModel, plans)
     }
 
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
@@ -151,9 +151,7 @@ class KotlinProjectionGenerator(
             projectionRenderer.render(plan).forEach(::write)
         }
         if (emitSupportFiles) {
-            supportRenderer.render(normalizedModel, plans, projectionContext).forEach { file ->
-                write(file)
-            }
+            supportFiles(normalizedModel, plans).forEach(::write)
         }
         val deleted = deleteStaleKotlinFiles(outputRoot, expectedPaths)
         return KotlinProjectionWriteSummary(
@@ -180,6 +178,23 @@ class KotlinProjectionGenerator(
             }
             KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinExpectActualProjectionRenderer(renderer)
         }
+
+    private fun supportFiles(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ): List<KotlinProjectionFile> {
+        val files = supportRenderer.render(model, plans, projectionContext)
+        return when (generationLayout) {
+            KotlinProjectionGenerationLayout.SingleSourceSet -> files
+            KotlinProjectionGenerationLayout.ExpectActualJvm -> files.map { file ->
+                KotlinProjectionFile(
+                    relativePath = "commonMain/kotlin/${file.relativePath}",
+                    packageName = file.packageName,
+                    contents = file.contents,
+                )
+            }
+        }
+    }
 
     private fun deleteStaleKotlinFiles(outputRoot: Path, expectedPaths: Set<String>): Int {
         if (!Files.isDirectory(outputRoot)) {
