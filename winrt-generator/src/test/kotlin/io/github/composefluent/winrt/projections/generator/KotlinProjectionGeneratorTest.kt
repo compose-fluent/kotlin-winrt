@@ -152,7 +152,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains("public expect class Widget internal constructor("))
         assertTrue(common, common.contains(") : IWidget,\n    IWinRTObject"))
         assertFalse(common, common.contains("ComVtableInvoker"))
-        assertTrue(jvm, jvm.contains("public actual class Widget internal constructor("))
+        assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
         assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(jvm, jvm.contains("override fun rename(`value`: String): String"))
         assertTrue(jvm, jvm.contains("= _iWidget.rename("))

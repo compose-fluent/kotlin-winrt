@@ -152,6 +152,7 @@ internal class KotlinExpectActualProjectionRenderer(
         builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
         builder.primaryConstructor(
             FunSpec.constructorBuilder()
+                .addModifiers(KModifier.ACTUAL)
                 .addModifiers(KModifier.INTERNAL)
                 .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .addParameter("__winrtWrapper", UNIT)
