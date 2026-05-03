@@ -92,24 +92,24 @@ internal class KotlinExpectActualProjectionRenderer(
         if (interfaceTypes.isEmpty()) {
             return false
         }
-        val interfaceMethodSignatures = interfaceTypes.flatMap { interfaceType ->
+        val interfaceMethodReturnTypes = interfaceTypes.flatMap { interfaceType ->
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-                .map(::projectedMethodSignatureKey)
-        }.toSet()
-        val interfacePropertyNames = interfaceTypes.flatMap { interfaceType ->
+                .map { method -> projectedMethodSignatureKey(method) to method.returnTypeName }
+        }.toMap()
+        val interfacePropertyTypes = interfaceTypes.flatMap { interfaceType ->
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
-                .map { it.name.replaceFirstChar(Char::lowercase) }
-        }.toSet()
+                .map { property -> property.name.replaceFirstChar(Char::lowercase) to property.typeName }
+        }.toMap()
         val classMethodsCovered = plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-            .all { projectedMethodSignatureKey(it) in interfaceMethodSignatures }
+            .all { method -> interfaceMethodReturnTypes[projectedMethodSignatureKey(method)] == method.returnTypeName }
         val classPropertiesCovered = plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
             .filter { it.getterMethodName != null }
-            .all { it.name.replaceFirstChar(Char::lowercase) in interfacePropertyNames }
+            .all { property -> interfacePropertyTypes[property.name.replaceFirstChar(Char::lowercase)] == property.typeName }
         return classMethodsCovered && classPropertiesCovered
     }
 
