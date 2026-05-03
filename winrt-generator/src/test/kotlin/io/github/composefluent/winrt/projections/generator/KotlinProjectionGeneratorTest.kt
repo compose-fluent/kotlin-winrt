@@ -102,6 +102,72 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_native_projection_implements_inherited_interface_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetBase",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public expect interface IWidget : IWidgetBase"))
+        assertTrue(jvm, jvm.contains("override fun reset()"))
+        assertTrue(jvm, jvm.contains("IWidgetBase.Metadata.RESET_SLOT"))
+        assertTrue(jvm, jvm.contains("override val count: Int"))
+        assertTrue(jvm, jvm.contains("IWidgetBase.Metadata.COUNT_GETTER_SLOT"))
+        assertTrue(jvm, jvm.contains("override fun rename(`value`: String): String"))
+        assertTrue(jvm, jvm.contains("IWidget.Metadata.RENAME_SLOT"))
+        assertTrue(jvm, jvm.contains("JvmAbi.invoke_none"))
+        assertTrue(jvm, jvm.contains("JvmAbi.invoke_p"))
+        assertTrue(jvm, jvm.contains("JvmAbi.invoke_p_p"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_runtime_class_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

@@ -382,7 +382,7 @@ class KotlinProjectionRenderer {
                 }
         }
 
-    private fun collectInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<WinRtTypeDefinition> =
+    internal fun collectInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<WinRtTypeDefinition> =
         collectInterfaceProxyTypes(plan.type, plan, linkedSetOf(), emptyList())
 
     private fun collectInterfaceProxyTypes(

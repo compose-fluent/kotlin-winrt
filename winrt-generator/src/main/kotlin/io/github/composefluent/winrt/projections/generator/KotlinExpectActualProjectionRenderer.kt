@@ -37,8 +37,7 @@ internal class KotlinExpectActualProjectionRenderer(
         plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
             plan.type.kind == WinRtTypeKind.Interface &&
             plan.type.genericParameterCount == 0 &&
-            plan.type.methods.all { it.genericParameterCount == 0 } &&
-            plan.type.events.none { !it.isStatic } &&
+            baseRenderer.collectInterfaceProxyTypes(plan).all(::canRenderExpectActualInterfaceType) &&
             plan.mutableCollectionBindings.isEmpty() &&
             plan.readOnlyCollectionBindings.isEmpty()
 
@@ -343,11 +342,13 @@ internal class KotlinExpectActualProjectionRenderer(
                     .build(),
             )
 
-        plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
-            builder.addFunction(renderJvmInterfaceProxyMethod(plan.type, method, plan.typesByQualifiedName, abiShapes))
-        }
-        plan.type.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.getterMethodName != null }.forEach { property ->
-            builder.addProperty(renderJvmInterfaceProxyProperty(plan.type, property, plan.typesByQualifiedName, abiShapes))
+        baseRenderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
+            interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
+                builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
+            }
+            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.getterMethodName != null }.forEach { property ->
+                builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
+            }
         }
         if (abiShapes.isNotEmpty()) {
             builder.addType(renderJvmAbiHelper(abiShapes))
