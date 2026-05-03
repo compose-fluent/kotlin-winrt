@@ -13,28 +13,80 @@ import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
 
 internal class KotlinExpectActualProjectionRenderer(
     private val baseRenderer: KotlinProjectionRenderer,
 ) : KotlinProjectionFileRenderer {
     override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> {
-        if (!canRenderExpectActualSlice(plan)) {
-            return listOf(prefixFile("commonMain/kotlin", baseRenderer.render(plan)))
+        return when {
+            canRenderExpectActualInterfaceSlice(plan) -> listOf(
+                renderCommonExpectInterface(plan),
+                renderJvmActualInterface(plan),
+            )
+            canRenderExpectActualRuntimeClassSlice(plan) -> listOf(
+                renderCommonExpectRuntimeClass(plan),
+                renderJvmActualRuntimeClass(plan),
+            )
+            else -> listOf(prefixFile("commonMain/kotlin", baseRenderer.render(plan)))
         }
-        return listOf(
-            renderCommonExpectInterface(plan),
-            renderJvmActualInterface(plan),
-        )
     }
 
-    private fun canRenderExpectActualSlice(plan: KotlinTypeProjectionPlan): Boolean =
+    private fun canRenderExpectActualInterfaceSlice(plan: KotlinTypeProjectionPlan): Boolean =
         plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
             plan.type.kind == WinRtTypeKind.Interface &&
             plan.type.genericParameterCount == 0 &&
+            plan.type.methods.all { it.genericParameterCount == 0 } &&
             plan.type.events.none { !it.isStatic } &&
             plan.mutableCollectionBindings.isEmpty() &&
             plan.readOnlyCollectionBindings.isEmpty()
+
+    private fun canRenderExpectActualRuntimeClassSlice(plan: KotlinTypeProjectionPlan): Boolean =
+        plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
+            plan.type.kind == WinRtTypeKind.RuntimeClass &&
+            plan.type.genericParameterCount == 0 &&
+            plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } != true &&
+            plan.type.methods.none(WinRtMethodDefinition::isOrdinaryProjectedMethod) &&
+            plan.type.properties.none { !it.isStatic } &&
+            plan.type.events.none { !it.isStatic } &&
+            plan.staticInterfaceNames.isEmpty() &&
+            plan.activatableFactoryInterfaceName == null &&
+            plan.composableFactoryInterfaceName == null &&
+            KotlinProjectionCompanionKind.ActivationFactory !in plan.companionKinds &&
+            KotlinProjectionCompanionKind.StaticInterfaces !in plan.companionKinds &&
+            KotlinProjectionCompanionKind.ComposableFactory !in plan.companionKinds &&
+            KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
+            KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds &&
+            plan.mutableCollectionBindings.isEmpty() &&
+            plan.readOnlyCollectionBindings.isEmpty() &&
+            publicRuntimeClassInterfaces(plan).size == 1 &&
+            publicRuntimeClassInterfaces(plan).all { interfaceType ->
+                canRenderExpectActualInterfaceType(interfaceType)
+            }
+
+    private fun canRenderExpectActualInterfaceType(type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition): Boolean =
+        type.kind == WinRtTypeKind.Interface &&
+            type.genericParameterCount == 0 &&
+            type.methods.all { it.genericParameterCount == 0 } &&
+            type.events.none { !it.isStatic }
+
+    private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
+        plan.type.implementedInterfaces
+            .filter { implemented -> isPublicRuntimeClassInterface(plan, implemented.interfaceName) }
+            .mapNotNull { implemented -> plan.typesByQualifiedName[implemented.interfaceName.substringBefore('<')] }
+            .distinctBy { it.qualifiedName }
+
+    private fun isPublicRuntimeClassInterface(
+        plan: KotlinTypeProjectionPlan,
+        interfaceName: String,
+    ): Boolean {
+        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        val descriptor = plan.classMemberMergeDescriptor
+            ?.interfaceDescriptors
+            ?.firstOrNull { it.interfaceTypeName == rawName }
+        return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
+    }
 
     private fun renderCommonExpectInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
@@ -70,6 +122,140 @@ internal class KotlinExpectActualProjectionRenderer(
         builder.addType(renderJvmInterfaceNativeProjection(plan))
         baseRenderer.appendCompanionShells(builder, plan)
         return renderSourceSetFile("jvmMain/kotlin", plan, builder.build())
+    }
+
+    private fun renderCommonExpectRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+        val builder = TypeSpec.classBuilder(plan.type.name)
+            .addModifiers(KModifier.EXPECT)
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addModifiers(KModifier.INTERNAL)
+                    .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                    .addParameter("__winrtWrapper", UNIT)
+                    .build(),
+            )
+        baseRenderer.applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
+        publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
+            builder.addSuperinterface(baseRenderer.resolveTypeName(interfaceType.qualifiedName))
+        }
+        builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
+        return renderSourceSetFile("commonMain/kotlin", plan, builder.build())
+    }
+
+    private fun renderJvmActualRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+        val builder = TypeSpec.classBuilder(plan.type.name)
+            .addModifiers(KModifier.ACTUAL)
+        baseRenderer.applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
+        publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
+            builder.addSuperinterface(baseRenderer.resolveTypeName(interfaceType.qualifiedName))
+        }
+        builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
+        builder.primaryConstructor(
+            FunSpec.constructorBuilder()
+                .addModifiers(KModifier.INTERNAL)
+                .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                .addParameter("__winrtWrapper", UNIT)
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
+                .addModifiers(KModifier.PRIVATE)
+                .initializer("_inner")
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("nativeObject", COM_OBJECT_REFERENCE_CLASS_NAME)
+                .addModifiers(KModifier.OVERRIDE)
+                .getter(FunSpec.getterBuilder().addCode("return _inner\n").build())
+                .build(),
+        )
+        addJvmRuntimeClassInterfaceForwards(builder, plan)
+        builder.addType(baseRenderer.buildMetadataCompanionShell(plan, emptyList(), emptyList(), emptyList()))
+        baseRenderer.appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
+        return renderSourceSetFile("jvmMain/kotlin", plan, builder.build())
+    }
+
+    private fun addJvmRuntimeClassInterfaceForwards(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        val emittedMethods = mutableSetOf<String>()
+        val emittedProperties = mutableSetOf<String>()
+        publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
+            val cacheName = "_${interfaceType.name.replaceFirstChar(Char::lowercase)}"
+            builder.addProperty(
+                PropertySpec.builder(cacheName, baseRenderer.resolveTypeName(interfaceType.qualifiedName))
+                    .addModifiers(KModifier.PRIVATE)
+                    .delegate(
+                        CodeBlock.of(
+                            "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
+                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                            baseRenderer.resolveTypeName(interfaceType.qualifiedName),
+                            baseRenderer.resolveTypeName(interfaceType.qualifiedName),
+                        ),
+                    )
+                    .build(),
+            )
+            interfaceType.methods
+                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .forEach { method ->
+                    val key = "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
+                    if (emittedMethods.add(key)) {
+                        builder.addFunction(renderJvmRuntimeClassForwardMethod(cacheName, method))
+                    }
+                }
+            interfaceType.properties
+                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filter { it.getterMethodName != null }
+                .forEach { property ->
+                    val propertyName = property.name.replaceFirstChar(Char::lowercase)
+                    if (emittedProperties.add(propertyName)) {
+                        builder.addProperty(renderJvmRuntimeClassForwardProperty(cacheName, property))
+                    }
+                }
+        }
+    }
+
+    private fun renderJvmRuntimeClassForwardMethod(
+        cacheName: String,
+        method: WinRtMethodDefinition,
+    ): FunSpec {
+        val objectShape = runtimeObjectMethodShape(method)
+        return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
+            .addModifiers(KModifier.OVERRIDE)
+            .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, baseRenderer.resolveTypeName(it.typeName)).build() })
+            .returns(objectShape?.returnType ?: baseRenderer.resolveTypeName(method.returnTypeName))
+            .addCode(
+                if ((objectShape?.returnType ?: baseRenderer.resolveTypeName(method.returnTypeName)) == UNIT) {
+                    "%L.%L(%L)\n"
+                } else {
+                    "return %L.%L(%L)\n"
+                },
+                cacheName,
+                objectShape?.name ?: method.projectedMethodName(),
+                (objectShape?.parameters?.map { it.name } ?: method.parameters.map { it.name }).joinToString(", ") { "`$it`" },
+            )
+            .build()
+    }
+
+    private fun renderJvmRuntimeClassForwardProperty(
+        cacheName: String,
+        property: WinRtPropertyDefinition,
+    ): PropertySpec {
+        val propertyName = property.name.replaceFirstChar(Char::lowercase)
+        val builder = PropertySpec.builder(propertyName, baseRenderer.resolveTypeName(property.typeName))
+            .mutable(!property.isReadOnly)
+            .addModifiers(KModifier.OVERRIDE)
+            .getter(FunSpec.getterBuilder().addCode("return %L.%L\n", cacheName, propertyName).build())
+        if (!property.isReadOnly) {
+            builder.setter(
+                FunSpec.setterBuilder()
+                    .addParameter("value", baseRenderer.resolveTypeName(property.typeName))
+                    .addCode("%L.%L = value\n", cacheName, propertyName)
+                    .build(),
+            )
+        }
+        return builder.build()
     }
 
     private fun renderJvmInterfaceNativeProjection(plan: KotlinTypeProjectionPlan): TypeSpec {
