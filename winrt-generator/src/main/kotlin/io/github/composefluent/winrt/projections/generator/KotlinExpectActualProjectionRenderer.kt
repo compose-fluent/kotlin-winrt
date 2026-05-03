@@ -43,12 +43,10 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.readOnlyCollectionBindings.isEmpty()
 
     private fun canRenderExpectActualRuntimeClassSlice(plan: KotlinTypeProjectionPlan): Boolean =
-        plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
+            plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
             plan.type.kind == WinRtTypeKind.RuntimeClass &&
             plan.type.genericParameterCount == 0 &&
             plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } != true &&
-            plan.type.methods.none(WinRtMethodDefinition::isOrdinaryProjectedMethod) &&
-            plan.type.properties.none { !it.isStatic } &&
             plan.type.events.none { !it.isStatic } &&
             plan.staticInterfaceNames.isEmpty() &&
             plan.activatableFactoryInterfaceName == null &&
@@ -63,7 +61,8 @@ internal class KotlinExpectActualProjectionRenderer(
             publicRuntimeClassInterfaces(plan).size == 1 &&
             publicRuntimeClassInterfaces(plan).all { interfaceType ->
                 canRenderExpectActualInterfaceType(interfaceType)
-            }
+            } &&
+            runtimeClassMembersAreCoveredByPublicInterface(plan)
 
     private fun canRenderExpectActualInterfaceType(type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition): Boolean =
         type.kind == WinRtTypeKind.Interface &&
@@ -87,6 +86,28 @@ internal class KotlinExpectActualProjectionRenderer(
             ?.firstOrNull { it.interfaceTypeName == rawName }
         return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
     }
+
+    private fun runtimeClassMembersAreCoveredByPublicInterface(plan: KotlinTypeProjectionPlan): Boolean {
+        val interfaceType = publicRuntimeClassInterfaces(plan).singleOrNull() ?: return false
+        val interfaceMethodSignatures = interfaceType.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .mapTo(mutableSetOf(), ::projectedMethodSignatureKey)
+        val interfacePropertyNames = interfaceType.properties
+            .filterNot(WinRtPropertyDefinition::isStatic)
+            .filter { it.getterMethodName != null }
+            .mapTo(mutableSetOf()) { it.name.replaceFirstChar(Char::lowercase) }
+        val classMethodsCovered = plan.type.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .all { projectedMethodSignatureKey(it) in interfaceMethodSignatures }
+        val classPropertiesCovered = plan.type.properties
+            .filterNot(WinRtPropertyDefinition::isStatic)
+            .filter { it.getterMethodName != null }
+            .all { it.name.replaceFirstChar(Char::lowercase) in interfacePropertyNames }
+        return classMethodsCovered && classPropertiesCovered
+    }
+
+    private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =
+        "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
 
     private fun renderCommonExpectInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)

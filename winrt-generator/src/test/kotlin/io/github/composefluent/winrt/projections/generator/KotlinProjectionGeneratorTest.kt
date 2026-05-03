@@ -163,6 +163,77 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_runtime_class_slice_allows_members_covered_by_default_interface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
+        assertTrue(common, common.contains("public expect class Widget internal constructor("))
+        assertTrue(common, common.contains(") : IWidget,\n    IWinRTObject"))
+        assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
+        assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
+        assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jvm, jvm.contains("override fun rename(`value`: String): String = _iWidget.rename("))
+        assertTrue(jvm, jvm.contains("override val count: Int"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun generator_emits_jvm_ffm_for_scalar_shape_without_comvtable_overload() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
