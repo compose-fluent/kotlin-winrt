@@ -342,12 +342,20 @@ internal class KotlinExpectActualProjectionRenderer(
                     .build(),
             )
 
+        val emittedMethods = mutableSetOf<String>()
+        val emittedProperties = mutableSetOf<String>()
         baseRenderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
-                builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
+                val key = projectedMethodSignatureKey(method)
+                if (emittedMethods.add(key)) {
+                    builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
+                }
             }
             interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.getterMethodName != null }.forEach { property ->
-                builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
+                val propertyName = property.name.replaceFirstChar(Char::lowercase)
+                if (emittedProperties.add(propertyName)) {
+                    builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
+                }
             }
         }
         if (abiShapes.isNotEmpty()) {
