@@ -163,6 +163,54 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_jvm_ffm_for_scalar_shape_without_comvtable_overload() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "TryUpdate",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("enabled", "Boolean"),
+                                        WinRtParameterDefinition("index", "UInt"),
+                                        WinRtParameterDefinition("opacity", "Float"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val jvm = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model)
+            .single { it.relativePath == "jvmMain/kotlin/sample/foundation/IWidget.kt" }
+            .contents
+
+        assertTrue(jvm, jvm.contains("private val descriptor_i8_i32_f32_p: FunctionDescriptor"))
+        assertTrue(jvm, jvm.contains("FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_BYTE,"))
+        assertTrue(jvm, jvm.contains("ValueLayout.JAVA_INT, ValueLayout.JAVA_FLOAT, ValueLayout.ADDRESS)"))
+        assertTrue(jvm, jvm.contains("fun invoke_i8_i32_f32_p("))
+        assertTrue(jvm, jvm.contains("arg0: Byte"))
+        assertTrue(jvm, jvm.contains("arg1: Int"))
+        assertTrue(jvm, jvm.contains("arg2: Float"))
+        assertTrue(jvm, jvm.contains("arg3: RawAddress"))
+        assertTrue(jvm, jvm.contains("JvmAbi.invoke_i8_i32_f32_p"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_projects_method_generic_parameters_like_cswinrt_method_generic_signature_branch() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_signature MethodDef.GenericParam() handling.
         val model = WinRtMetadataModel(
