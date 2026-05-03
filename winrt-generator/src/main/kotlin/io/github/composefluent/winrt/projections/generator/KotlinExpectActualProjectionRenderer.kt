@@ -34,10 +34,12 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun canRenderExpectActualInterfaceSlice(plan: KotlinTypeProjectionPlan): Boolean =
-        plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
+            plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
             plan.type.kind == WinRtTypeKind.Interface &&
             plan.type.genericParameterCount == 0 &&
-            baseRenderer.collectInterfaceProxyTypes(plan).all(::canRenderExpectActualInterfaceType) &&
+            baseRenderer.collectInterfaceProxyTypes(plan).all { interfaceType ->
+                canRenderExpectActualInterfaceType(plan, interfaceType)
+            } &&
             plan.mutableCollectionBindings.isEmpty() &&
             plan.readOnlyCollectionBindings.isEmpty()
 
@@ -59,16 +61,62 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.readOnlyCollectionBindings.isEmpty() &&
             publicRuntimeClassInterfaces(plan).isNotEmpty() &&
             publicRuntimeClassInterfaces(plan).all { interfaceType ->
-                canRenderExpectActualInterfaceType(interfaceType)
+                canRenderExpectActualInterfaceType(plan, interfaceType)
             } &&
             publicRuntimeClassInterfaceMembersAreConflictFree(plan) &&
             runtimeClassMembersAreCoveredByPublicInterface(plan)
 
-    private fun canRenderExpectActualInterfaceType(type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition): Boolean =
+    private fun canRenderExpectActualInterfaceType(
+        plan: KotlinTypeProjectionPlan,
+        type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
+    ): Boolean =
         type.kind == WinRtTypeKind.Interface &&
             type.genericParameterCount == 0 &&
             type.methods.all { it.genericParameterCount == 0 } &&
-            type.events.none { !it.isStatic }
+            type.events.none { !it.isStatic } &&
+            type.methods
+                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .all { method ->
+                    canBuildAbiCallPlan(
+                        returnTypeName = method.returnTypeName,
+                        parameters = method.parameters.map { it.name to it.typeName },
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                    )
+                } &&
+            type.properties
+                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filter { it.getterMethodName != null }
+                .all { property ->
+                    canBuildAbiCallPlan(
+                        returnTypeName = property.typeName,
+                        parameters = emptyList(),
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                    ) && (
+                        property.isReadOnly ||
+                            canBuildAbiCallPlan(
+                                returnTypeName = "Unit",
+                                parameters = listOf("value" to property.typeName),
+                                typesByQualifiedName = plan.typesByQualifiedName,
+                            )
+                        )
+                }
+
+    private fun canBuildAbiCallPlan(
+        returnTypeName: String,
+        parameters: List<Pair<String, String>>,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): Boolean =
+        runCatching {
+            baseRenderer.buildAbiCallPlan(
+                returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName),
+                parameterBindings = parameters.map { (name, typeName) ->
+                    KotlinProjectionAbiParameterBinding(
+                        name = name,
+                        typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName),
+                    )
+                },
+            ) != null
+        }.getOrDefault(false)
 
     private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
         plan.type.implementedInterfaces

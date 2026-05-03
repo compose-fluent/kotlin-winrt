@@ -235,6 +235,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_slice_falls_back_when_abi_call_plan_is_unavailable() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Accept",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "Sample.Foundation.MissingType"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public interface IWidget"))
+        assertFalse(common, common.contains("public expect interface IWidget"))
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_runtime_class_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
