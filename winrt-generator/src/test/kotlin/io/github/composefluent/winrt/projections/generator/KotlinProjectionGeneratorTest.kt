@@ -234,6 +234,133 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_runtime_class_slice_allows_multiple_non_conflicting_public_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameReader",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IEnabledReader",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "IsEnabled",
+                                    returnTypeName = "Boolean",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameReader",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.INameReader", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IEnabledReader"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
+        assertTrue(common, common.contains("INameReader"))
+        assertTrue(common, common.contains("IEnabledReader"))
+        assertTrue(common, common.contains("IWinRTObject"))
+        assertTrue(jvm, jvm.contains("private val _iNameReader: INameReader by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jvm, jvm.contains("private val _iEnabledReader: IEnabledReader by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jvm, jvm.contains("override val name: String"))
+        assertTrue(jvm, jvm.contains("override fun isEnabled(): Boolean = _iEnabledReader.isEnabled()"))
+        assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
+    }
+
+    @Test
+    fun expect_actual_runtime_class_slice_rejects_conflicting_public_interface_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameReader",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValue",
+                                    returnTypeName = "String",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICountReader",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValue",
+                                    returnTypeName = "Int",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INameReader",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.INameReader", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ICountReader"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/INameReader.kt"))
+        assertTrue(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/INameReader.kt"))
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/Widget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/Widget.kt"))
+        assertTrue(filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents.contains("public class Widget"))
+    }
+
+    @Test
     fun generator_emits_jvm_ffm_for_scalar_shape_without_comvtable_overload() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

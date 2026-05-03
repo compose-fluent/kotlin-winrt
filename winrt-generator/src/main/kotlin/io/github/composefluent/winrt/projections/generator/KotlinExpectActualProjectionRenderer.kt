@@ -58,10 +58,11 @@ internal class KotlinExpectActualProjectionRenderer(
             KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds &&
             plan.mutableCollectionBindings.isEmpty() &&
             plan.readOnlyCollectionBindings.isEmpty() &&
-            publicRuntimeClassInterfaces(plan).size == 1 &&
+            publicRuntimeClassInterfaces(plan).isNotEmpty() &&
             publicRuntimeClassInterfaces(plan).all { interfaceType ->
                 canRenderExpectActualInterfaceType(interfaceType)
             } &&
+            publicRuntimeClassInterfaceMembersAreConflictFree(plan) &&
             runtimeClassMembersAreCoveredByPublicInterface(plan)
 
     private fun canRenderExpectActualInterfaceType(type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition): Boolean =
@@ -88,14 +89,21 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun runtimeClassMembersAreCoveredByPublicInterface(plan: KotlinTypeProjectionPlan): Boolean {
-        val interfaceType = publicRuntimeClassInterfaces(plan).singleOrNull() ?: return false
-        val interfaceMethodSignatures = interfaceType.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-            .mapTo(mutableSetOf(), ::projectedMethodSignatureKey)
-        val interfacePropertyNames = interfaceType.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
-            .filter { it.getterMethodName != null }
-            .mapTo(mutableSetOf()) { it.name.replaceFirstChar(Char::lowercase) }
+        val interfaceTypes = publicRuntimeClassInterfaces(plan)
+        if (interfaceTypes.isEmpty()) {
+            return false
+        }
+        val interfaceMethodSignatures = interfaceTypes.flatMap { interfaceType ->
+            interfaceType.methods
+                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .map(::projectedMethodSignatureKey)
+        }.toSet()
+        val interfacePropertyNames = interfaceTypes.flatMap { interfaceType ->
+            interfaceType.properties
+                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filter { it.getterMethodName != null }
+                .map { it.name.replaceFirstChar(Char::lowercase) }
+        }.toSet()
         val classMethodsCovered = plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .all { projectedMethodSignatureKey(it) in interfaceMethodSignatures }
@@ -104,6 +112,33 @@ internal class KotlinExpectActualProjectionRenderer(
             .filter { it.getterMethodName != null }
             .all { it.name.replaceFirstChar(Char::lowercase) in interfacePropertyNames }
         return classMethodsCovered && classPropertiesCovered
+    }
+
+    private fun publicRuntimeClassInterfaceMembersAreConflictFree(plan: KotlinTypeProjectionPlan): Boolean {
+        val methodReturnTypes = mutableMapOf<String, String>()
+        val propertyTypes = mutableMapOf<String, String>()
+        publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
+            interfaceType.methods
+                .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+                .forEach { method ->
+                    val key = projectedMethodSignatureKey(method)
+                    val previous = methodReturnTypes.putIfAbsent(key, method.returnTypeName)
+                    if (previous != null && previous != method.returnTypeName) {
+                        return false
+                    }
+                }
+            interfaceType.properties
+                .filterNot(WinRtPropertyDefinition::isStatic)
+                .filter { it.getterMethodName != null }
+                .forEach { property ->
+                    val key = property.name.replaceFirstChar(Char::lowercase)
+                    val previous = propertyTypes.putIfAbsent(key, property.typeName)
+                    if (previous != null && previous != property.typeName) {
+                        return false
+                    }
+                }
+        }
+        return true
     }
 
     private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =
