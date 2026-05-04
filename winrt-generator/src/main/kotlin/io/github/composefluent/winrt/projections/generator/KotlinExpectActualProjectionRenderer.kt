@@ -22,8 +22,8 @@ internal class KotlinExpectActualProjectionRenderer(
     override fun render(plan: KotlinTypeProjectionPlan): List<KotlinProjectionFile> {
         return when {
             canRenderExpectActualInterfaceSlice(plan) -> listOf(
-                renderCommonExpectInterface(plan),
-                renderJvmActualInterface(plan),
+                renderCommonInterface(plan),
+                renderJvmInterfaceProjectionSupport(plan),
             )
             canRenderExpectActualRuntimeClassSlice(plan) -> listOf(
                 renderCommonExpectRuntimeClass(plan),
@@ -129,14 +129,22 @@ internal class KotlinExpectActualProjectionRenderer(
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
     ): Boolean =
         runCatching {
+            val returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName)
+            val parameterBindings = parameters.map { (name, typeName) ->
+                KotlinProjectionAbiParameterBinding(
+                    name = name,
+                    typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName),
+                )
+            }
+            if (
+                !returnBinding.isSupportedExpectActualJvmMemberAbiKind() ||
+                parameterBindings.any { !it.typeBinding.isSupportedExpectActualJvmMemberAbiKind() }
+            ) {
+                return@runCatching false
+            }
             baseRenderer.buildAbiCallPlan(
-                returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName),
-                parameterBindings = parameters.map { (name, typeName) ->
-                    KotlinProjectionAbiParameterBinding(
-                        name = name,
-                        typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName),
-                    )
-                },
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
             )?.jvmFfmShapeOrNull() != null
         }.getOrDefault(false)
 
@@ -273,9 +281,8 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =
         "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
 
-    private fun renderCommonExpectInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
+    private fun renderCommonInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val builder = TypeSpec.interfaceBuilder(plan.type.name)
-            .addModifiers(KModifier.EXPECT)
         baseRenderer.applyCommonTypeShape(builder, plan)
         plan.type.implementedInterfaces.forEach { implemented ->
             builder.addSuperinterface(baseRenderer.resolveTypeName(implemented.interfaceName))
@@ -287,27 +294,58 @@ internal class KotlinExpectActualProjectionRenderer(
             .filterNot(WinRtPropertyDefinition::isStatic)
             .filter { it.getterMethodName != null }
             .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(property)) }
+        builder.addType(renderCommonInterfaceMetadata(plan))
         return renderSourceSetFile("commonMain/kotlin", plan, builder.build())
     }
 
-    private fun renderJvmActualInterface(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
-        val builder = TypeSpec.interfaceBuilder(plan.type.name)
-            .addModifiers(KModifier.ACTUAL)
-        baseRenderer.applyCommonTypeShape(builder, plan)
-        plan.type.implementedInterfaces.forEach { implemented ->
-            builder.addSuperinterface(baseRenderer.resolveTypeName(implemented.interfaceName))
-        }
-        plan.type.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-            .forEach { method -> builder.addFunction(baseRenderer.renderInterfaceMethod(method).withModifier(KModifier.ACTUAL)) }
-        plan.type.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
-            .filter { it.getterMethodName != null }
-            .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(property).withModifier(KModifier.ACTUAL)) }
-        builder.addType(renderJvmInterfaceNativeProjection(plan))
-        baseRenderer.appendCompanionShells(builder, plan)
-        return renderSourceSetFile("jvmMain/kotlin", plan, builder.build())
-    }
+    private fun renderJvmInterfaceProjectionSupport(plan: KotlinTypeProjectionPlan): KotlinProjectionFile =
+        renderSourceSetFile(
+            "jvmMain/kotlin",
+            plan,
+            TypeSpec.objectBuilder(jvmInterfaceProjectionSupportClassName(plan).simpleName)
+                .addModifiers(KModifier.INTERNAL)
+                .addFunction(
+                    FunSpec.builder("wrap")
+                        .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
+                        .returns(baseRenderer.resolveTypeName(plan.type.qualifiedName))
+                        .addCode("return NativeProjection(instance)\n")
+                        .build(),
+                )
+                .addType(renderJvmInterfaceNativeProjection(plan))
+                .build(),
+        )
+
+    private fun renderCommonInterfaceMetadata(plan: KotlinTypeProjectionPlan): TypeSpec =
+        TypeSpec.companionObjectBuilder("Metadata")
+            .addProperty(
+                PropertySpec.builder("TYPE_NAME", String::class)
+                    .addModifiers(KModifier.CONST)
+                    .initializer("%S", plan.type.qualifiedName)
+                    .build(),
+            )
+            .apply {
+                plan.interfaceIid?.let { iid ->
+                    addProperty(
+                        PropertySpec.builder("IID", GUID_CLASS_NAME)
+                            .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
+                            .build(),
+                    )
+                    addProperty(
+                        PropertySpec.builder("TYPE_HANDLE", WINRT_TYPE_HANDLE_CLASS_NAME)
+                            .initializer("%T(%S, IID)", WINRT_TYPE_HANDLE_CLASS_NAME, ClassName(plan.packageName, plan.type.name).canonicalName)
+                            .build(),
+                    )
+                }
+                plan.abiSlotBindings.forEach { binding ->
+                    addProperty(
+                        PropertySpec.builder(binding.constantName, Int::class)
+                            .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                            .initializer("%L", binding.slot)
+                            .build(),
+                    )
+                }
+            }
+            .build()
 
     private fun renderCommonExpectRuntimeClass(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val builder = TypeSpec.classBuilder(plan.type.name)
@@ -374,9 +412,9 @@ internal class KotlinExpectActualProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
+                            "lazy(%T.PUBLICATION) { %T.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            baseRenderer.resolveTypeName(interfaceType.qualifiedName),
+                            jvmInterfaceProjectionSupportClassName(plan, interfaceType),
                             baseRenderer.resolveTypeName(interfaceType.qualifiedName),
                         ),
                     )
@@ -466,7 +504,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     .addModifiers(KModifier.OVERRIDE)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addCode("return Metadata.TYPE_HANDLE\n")
+                            .addCode("return %T.Metadata.TYPE_HANDLE\n", ClassName(plan.packageName, plan.type.name))
                             .build(),
                     )
                     .build(),
@@ -755,11 +793,13 @@ internal class KotlinExpectActualProjectionRenderer(
             contents = file.contents,
         )
 
-    private fun FunSpec.withModifier(modifier: KModifier): FunSpec =
-        toBuilder().addModifiers(modifier).build()
-
-    private fun PropertySpec.withModifier(modifier: KModifier): PropertySpec =
-        toBuilder().addModifiers(modifier).build()
+    private fun jvmInterfaceProjectionSupportClassName(
+        plan: KotlinTypeProjectionPlan,
+        interfaceType: io.github.composefluent.winrt.metadata.WinRtTypeDefinition = plan.type,
+    ): ClassName =
+        (baseRenderer.resolveTypeName(interfaceType.qualifiedName) as? ClassName)
+            ?.let { ClassName(it.packageName, "${interfaceType.name}JvmProjection") }
+            ?: ClassName(plan.packageName, "${interfaceType.name}JvmProjection")
 }
 
 private val ClassName_FUNCTION_DESCRIPTOR = ClassName("java.lang.foreign", "FunctionDescriptor")
@@ -791,6 +831,32 @@ private fun KotlinProjectionAbiCallPlan.jvmFfmShapeOrNull(): List<KotlinProjecti
             addAll(marshaler.extraAbiArgumentKinds)
         }
     }.jvmFfmShapeOrNull()
+
+private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKind(): Boolean =
+    customObjectAbi(this) == null && kind in supportedExpectActualJvmMemberAbiKinds
+
+private val supportedExpectActualJvmMemberAbiKinds = setOf(
+    KotlinProjectionAbiValueKind.Unit,
+    KotlinProjectionAbiValueKind.String,
+    KotlinProjectionAbiValueKind.Boolean,
+    KotlinProjectionAbiValueKind.Int8,
+    KotlinProjectionAbiValueKind.UInt8,
+    KotlinProjectionAbiValueKind.Int16,
+    KotlinProjectionAbiValueKind.UInt16,
+    KotlinProjectionAbiValueKind.Int32,
+    KotlinProjectionAbiValueKind.UInt32,
+    KotlinProjectionAbiValueKind.Int64,
+    KotlinProjectionAbiValueKind.UInt64,
+    KotlinProjectionAbiValueKind.Float,
+    KotlinProjectionAbiValueKind.Double,
+    KotlinProjectionAbiValueKind.Char16,
+    KotlinProjectionAbiValueKind.GuidValue,
+    KotlinProjectionAbiValueKind.Enum,
+    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+    KotlinProjectionAbiValueKind.Object,
+    KotlinProjectionAbiValueKind.UnknownReference,
+    KotlinProjectionAbiValueKind.InspectableReference,
+)
 
 private fun List<KotlinProjectionComArgumentKind?>.jvmFfmShapeOrNull(): List<KotlinProjectionComArgumentKind>? {
     val shape = filterNotNull()

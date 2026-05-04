@@ -86,13 +86,14 @@ class KotlinProjectionGeneratorTest {
 
         val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
         val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
-        assertTrue(common, common.contains("public expect interface IWidget"))
+        assertTrue(common, common.contains("public interface IWidget"))
+        assertFalse(common, common.contains("public expect interface IWidget"))
         assertTrue(common, common.contains("public fun rename(`value`: String): String"))
         assertTrue(common, common.contains("public val count: Int"))
         assertFalse(common, common.contains("NativeProjection"))
-        assertTrue(jvm, jvm.contains("public actual interface IWidget"))
-        assertTrue(jvm, jvm.contains("public actual fun rename(`value`: String): String"))
-        assertTrue(jvm, jvm.contains("public actual val count: Int"))
+        assertTrue(jvm, jvm.contains("internal object IWidgetJvmProjection"))
+        assertTrue(jvm, jvm.contains("fun wrap(instance: IUnknownReference): IWidget"))
+        assertFalse(jvm, jvm.contains("public actual interface IWidget"))
         assertTrue(jvm, jvm.contains("private class NativeProjection"))
         assertTrue(jvm, jvm.contains("private object JvmAbi"))
         assertTrue(jvm, jvm.contains("FunctionDescriptor.of(ValueLayout.JAVA_INT"))
@@ -154,7 +155,8 @@ class KotlinProjectionGeneratorTest {
 
         val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
         val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
-        assertTrue(common, common.contains("public expect interface IWidget : IWidgetBase"))
+        assertTrue(common, common.contains("public interface IWidget : IWidgetBase"))
+        assertFalse(common, common.contains("public expect interface IWidget"))
         assertTrue(jvm, jvm.contains("override fun reset()"))
         assertTrue(jvm, jvm.contains("IWidgetBase.Metadata.RESET_SLOT"))
         assertTrue(jvm, jvm.contains("override val count: Int"))
@@ -328,6 +330,45 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("value", "Sample.Foundation.MissingType"),
                                     ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public interface IWidget"))
+        assertFalse(common, common.contains("public expect interface IWidget"))
+    }
+
+    @Test
+    fun expect_actual_interface_slice_falls_back_for_async_and_collection_shapes() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "RefreshAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncAction",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetNames",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<String>",
                                 ),
                             ),
                         ),
@@ -522,6 +563,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(common, common.contains("ComVtableInvoker"))
         assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
         assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jvm, jvm.contains("IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
         assertTrue(jvm, jvm.contains("override fun rename(`value`: String): String"))
         assertTrue(jvm, jvm.contains("= _iWidget.rename("))
         assertTrue(jvm, jvm.contains("override val count: Int"))
@@ -1344,6 +1386,53 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
         assertTrue(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/Widget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/Widget.kt"))
+    }
+
+    @Test
+    fun expect_actual_runtime_class_slice_falls_back_when_public_interface_uses_async_or_collections() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "RefreshAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncAction",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetNames",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<String>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
         assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/Widget.kt"))
         assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/Widget.kt"))
     }
