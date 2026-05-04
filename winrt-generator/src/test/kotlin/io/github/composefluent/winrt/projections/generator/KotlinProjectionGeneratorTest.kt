@@ -273,6 +273,52 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_slice_falls_back_for_static_events() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("99999999-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    isStatic = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents.contains("public interface IWidget"))
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_runtime_class_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -732,6 +778,59 @@ class KotlinProjectionGeneratorTest {
                                     typeName = "String",
                                     getterMethodName = "get_Name",
                                     setterMethodName = "put_Name",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/Widget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/Widget.kt"))
+    }
+
+    @Test
+    fun expect_actual_runtime_class_slice_falls_back_for_static_events() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    isStatic = true,
                                 ),
                             ),
                         ),
