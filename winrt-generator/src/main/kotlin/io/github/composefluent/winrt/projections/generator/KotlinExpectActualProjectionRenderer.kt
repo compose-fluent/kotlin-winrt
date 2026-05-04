@@ -161,10 +161,10 @@ internal class KotlinExpectActualProjectionRenderer(
         if (interfaceTypes.isEmpty()) {
             return false
         }
-        val interfaceMethodReturnTypes = interfaceTypes.flatMap { interfaceType ->
+        val interfaceMethods = interfaceTypes.flatMap { interfaceType ->
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-                .map { method -> projectedMethodSignatureKey(method) to method.returnTypeName }
+                .map { method -> projectedMethodSignatureKey(method) to methodCoverage(method) }
         }.toMap()
         val interfaceProperties = interfaceTypes.flatMap { interfaceType ->
             interfaceType.properties
@@ -174,7 +174,7 @@ internal class KotlinExpectActualProjectionRenderer(
         }.toMap()
         val classMethodsCovered = plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-            .all { method -> interfaceMethodReturnTypes[projectedMethodSignatureKey(method)] == method.returnTypeName }
+            .all { method -> interfaceMethods[projectedMethodSignatureKey(method)] == methodCoverage(method) }
         val classPropertiesCovered = plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
             .filter { it.getterMethodName != null }
@@ -186,15 +186,16 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun publicRuntimeClassInterfaceMembersAreConflictFree(plan: KotlinTypeProjectionPlan): Boolean {
-        val methodReturnTypes = mutableMapOf<String, String>()
+        val methods = mutableMapOf<String, RuntimeClassMethodCoverage>()
         val properties = mutableMapOf<String, RuntimeClassPropertyCoverage>()
         publicRuntimeClassInterfaceProxyTypes(plan).forEach { interfaceType ->
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .forEach { method ->
                     val key = projectedMethodSignatureKey(method)
-                    val previous = methodReturnTypes.putIfAbsent(key, method.returnTypeName)
-                    if (previous != null && previous != method.returnTypeName) {
+                    val coverage = methodCoverage(method)
+                    val previous = methods.putIfAbsent(key, coverage)
+                    if (previous != null && previous != coverage) {
                         return false
                     }
                 }
@@ -213,10 +214,21 @@ internal class KotlinExpectActualProjectionRenderer(
         return true
     }
 
+    private data class RuntimeClassMethodCoverage(
+        val returnTypeName: String,
+        val parameters: List<Pair<String, String>>,
+    )
+
     private data class RuntimeClassPropertyCoverage(
         val typeName: String,
         val isReadOnly: Boolean,
     )
+
+    private fun methodCoverage(method: WinRtMethodDefinition): RuntimeClassMethodCoverage =
+        RuntimeClassMethodCoverage(
+            returnTypeName = method.returnTypeName,
+            parameters = method.parameters.map { it.name to it.typeName },
+        )
 
     private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =
         "${method.projectedMethodName()}:${method.parameters.joinToString(",") { it.typeName }}"
