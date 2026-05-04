@@ -170,7 +170,7 @@ internal class KotlinExpectActualProjectionRenderer(
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
-                .map { property -> property.name.replaceFirstChar(Char::lowercase) to RuntimeClassPropertyCoverage(property.typeName, property.isReadOnly) }
+                .map { property -> property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(property) }
         }.toMap()
         val classMethodsCovered = plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
@@ -180,7 +180,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .filter { it.getterMethodName != null }
             .all { property ->
                 interfaceProperties[property.name.replaceFirstChar(Char::lowercase)] ==
-                    RuntimeClassPropertyCoverage(property.typeName, property.isReadOnly)
+                    propertyCoverage(property)
             }
         return classMethodsCovered && classPropertiesCovered
     }
@@ -204,7 +204,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filter { it.getterMethodName != null }
                 .forEach { property ->
                     val key = property.name.replaceFirstChar(Char::lowercase)
-                    val coverage = RuntimeClassPropertyCoverage(property.typeName, property.isReadOnly)
+                    val coverage = propertyCoverage(property)
                     val previous = properties.putIfAbsent(key, coverage)
                     if (previous != null && previous != coverage) {
                         return false
@@ -222,12 +222,22 @@ internal class KotlinExpectActualProjectionRenderer(
     private data class RuntimeClassPropertyCoverage(
         val typeName: String,
         val isReadOnly: Boolean,
+        val getterMethodName: String?,
+        val setterMethodName: String?,
     )
 
     private fun methodCoverage(method: WinRtMethodDefinition): RuntimeClassMethodCoverage =
         RuntimeClassMethodCoverage(
             returnTypeName = method.returnTypeName,
             parameters = method.parameters.map { it.name to it.typeName },
+        )
+
+    private fun propertyCoverage(property: WinRtPropertyDefinition): RuntimeClassPropertyCoverage =
+        RuntimeClassPropertyCoverage(
+            typeName = property.typeName,
+            isReadOnly = property.isReadOnly,
+            getterMethodName = property.getterMethodName,
+            setterMethodName = property.setterMethodName,
         )
 
     private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =
