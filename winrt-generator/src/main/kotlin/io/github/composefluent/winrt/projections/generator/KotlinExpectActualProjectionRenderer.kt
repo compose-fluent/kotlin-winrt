@@ -217,6 +217,7 @@ internal class KotlinExpectActualProjectionRenderer(
     private data class RuntimeClassMethodCoverage(
         val returnTypeName: String,
         val parameters: List<Pair<String, String>>,
+        val isNoException: Boolean,
     )
 
     private data class RuntimeClassPropertyCoverage(
@@ -224,12 +225,14 @@ internal class KotlinExpectActualProjectionRenderer(
         val isReadOnly: Boolean,
         val getterMethodName: String?,
         val setterMethodName: String?,
+        val isNoException: Boolean,
     )
 
     private fun methodCoverage(method: WinRtMethodDefinition): RuntimeClassMethodCoverage =
         RuntimeClassMethodCoverage(
             returnTypeName = method.returnTypeName,
             parameters = method.parameters.map { it.name to it.typeName },
+            isNoException = method.isNoException,
         )
 
     private fun propertyCoverage(property: WinRtPropertyDefinition): RuntimeClassPropertyCoverage =
@@ -238,6 +241,7 @@ internal class KotlinExpectActualProjectionRenderer(
             isReadOnly = property.isReadOnly,
             getterMethodName = property.getterMethodName,
             setterMethodName = property.setterMethodName,
+            isNoException = property.isNoException,
         )
 
     private fun projectedMethodSignatureKey(method: WinRtMethodDefinition): String =

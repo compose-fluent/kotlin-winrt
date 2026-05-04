@@ -831,6 +831,65 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_runtime_class_slice_rejects_conflicting_public_interface_noexception_shape() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IRetryingWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "TryRefresh",
+                                    returnTypeName = "Boolean",
+                                    isNoException = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IThrowingWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "TryRefresh",
+                                    returnTypeName = "Boolean",
+                                    isNoException = false,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IRetryingWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IRetryingWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IThrowingWidget"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IRetryingWidget.kt"))
+        assertTrue(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IRetryingWidget.kt"))
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/Widget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/Widget.kt"))
+        assertTrue(filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents.contains("public class Widget"))
+    }
+
+    @Test
     fun expect_actual_runtime_class_slice_rejects_conflicting_public_interface_property_accessors() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -971,6 +1030,73 @@ class KotlinProjectionGeneratorTest {
                                     name = "Rename",
                                     returnTypeName = "String",
                                     parameters = listOf(WinRtParameterDefinition("text", "String")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/Widget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/Widget.kt"))
+    }
+
+    @Test
+    fun expect_actual_runtime_class_slice_rejects_class_member_noexception_mismatch() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "TryRefresh",
+                                    returnTypeName = "Boolean",
+                                    isNoException = true,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Status",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Status",
+                                    isNoException = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "TryRefresh",
+                                    returnTypeName = "Boolean",
+                                    isNoException = false,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Status",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Status",
+                                    isNoException = false,
                                 ),
                             ),
                         ),
