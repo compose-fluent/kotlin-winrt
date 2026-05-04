@@ -742,7 +742,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("private val descriptor_i8_i32_f32_p: FunctionDescriptor"))
         assertTrue(jvm, jvm.contains("FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_BYTE,"))
         assertTrue(jvm, jvm.contains("ValueLayout.JAVA_INT, ValueLayout.JAVA_FLOAT, ValueLayout.ADDRESS)"))
-        assertTrue(jvm, jvm.contains("fun invoke_i8_i32_f32_p("))
+        assertTrue(jvm, jvm.contains("private fun invoke_i8_i32_f32_p("))
         assertTrue(jvm, jvm.contains("arg0: Byte"))
         assertTrue(jvm, jvm.contains("arg1: Int"))
         assertTrue(jvm, jvm.contains("arg2: Float"))

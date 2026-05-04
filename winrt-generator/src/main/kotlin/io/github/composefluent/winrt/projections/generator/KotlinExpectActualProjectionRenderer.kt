@@ -581,6 +581,7 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun jvmInvokeFunction(shape: List<KotlinProjectionComArgumentKind>): FunSpec =
         FunSpec.builder(jvmAbiInvokeFunctionName(shape))
+            .addModifiers(KModifier.PRIVATE)
             .addParameter("instance", RAW_COM_PTR_CLASS_NAME)
             .addParameter("slot", Int::class)
             .apply {
