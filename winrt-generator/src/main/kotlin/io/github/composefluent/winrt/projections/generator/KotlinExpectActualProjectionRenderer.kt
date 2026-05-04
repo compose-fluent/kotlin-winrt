@@ -84,7 +84,7 @@ internal class KotlinExpectActualProjectionRenderer(
             type.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .all { method ->
-                    canBuildAbiCallPlan(
+                    canBuildJvmFfmCallPlan(
                         returnTypeName = method.returnTypeName,
                         parameters = method.parameters.map { it.name to it.typeName },
                         typesByQualifiedName = plan.typesByQualifiedName,
@@ -94,13 +94,13 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
                 .all { property ->
-                    canBuildAbiCallPlan(
+                    canBuildJvmFfmCallPlan(
                         returnTypeName = property.typeName,
                         parameters = emptyList(),
                         typesByQualifiedName = plan.typesByQualifiedName,
                     ) && (
                         property.isReadOnly ||
-                            canBuildAbiCallPlan(
+                            canBuildJvmFfmCallPlan(
                                 returnTypeName = "Unit",
                                 parameters = listOf("value" to property.typeName),
                                 typesByQualifiedName = plan.typesByQualifiedName,
@@ -108,7 +108,7 @@ internal class KotlinExpectActualProjectionRenderer(
                         )
                 }
 
-    private fun canBuildAbiCallPlan(
+    private fun canBuildJvmFfmCallPlan(
         returnTypeName: String,
         parameters: List<Pair<String, String>>,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
@@ -122,7 +122,7 @@ internal class KotlinExpectActualProjectionRenderer(
                         typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName),
                     )
                 },
-            ) != null
+            )?.jvmFfmShapeOrNull() != null
         }.getOrDefault(false)
 
     private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
@@ -569,10 +569,8 @@ internal class KotlinExpectActualProjectionRenderer(
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): CodeBlock {
         val kinds = abiArguments.map { it.kind }
-        val shape = kinds.filterNotNull()
-        if (shape.size != kinds.size || shape.any { it !in supportedJvmFfmKinds }) {
-            return baseRenderer.renderComVtableInvocation(invokeTargetExpression, slotExpression, abiArguments)
-        }
+        val shape = kinds.jvmFfmShapeOrNull()
+            ?: error("Expect/actual JVM projection was selected for a non-FFM ABI shape: $kinds")
         abiShapes += shape
         return CodeBlock.builder()
             .add("JvmAbi.%L(instance = %L.pointer, slot = %L", jvmAbiInvokeFunctionName(shape), invokeTargetExpression, slotExpression)
@@ -758,6 +756,23 @@ private val supportedJvmFfmKinds = setOf(
     KotlinProjectionComArgumentKind.Float,
     KotlinProjectionComArgumentKind.Double,
 )
+
+private fun KotlinProjectionAbiCallPlan.jvmFfmShapeOrNull(): List<KotlinProjectionComArgumentKind>? =
+    buildList<KotlinProjectionComArgumentKind?> {
+        parameterMarshalers.forEach { marshaler ->
+            add(marshaler.abiArgumentKind)
+            addAll(marshaler.extraAbiArgumentKinds)
+        }
+        returnMarshaler?.let { marshaler ->
+            add(marshaler.abiArgumentKind)
+            addAll(marshaler.extraAbiArgumentKinds)
+        }
+    }.jvmFfmShapeOrNull()
+
+private fun List<KotlinProjectionComArgumentKind?>.jvmFfmShapeOrNull(): List<KotlinProjectionComArgumentKind>? {
+    val shape = filterNotNull()
+    return shape.takeIf { it.size == size && it.all(supportedJvmFfmKinds::contains) }
+}
 
 private fun jvmAbiDescriptorName(shape: List<KotlinProjectionComArgumentKind>): String =
     "descriptor_${shape.jvmShapeSuffix()}"
