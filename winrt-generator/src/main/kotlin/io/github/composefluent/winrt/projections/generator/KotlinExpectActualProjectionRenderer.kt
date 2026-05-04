@@ -48,6 +48,8 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.type.kind == WinRtTypeKind.RuntimeClass &&
             plan.type.genericParameterCount == 0 &&
             plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } != true &&
+            plan.type.methods.none(WinRtMethodDefinition::isStatic) &&
+            plan.type.properties.none(WinRtPropertyDefinition::isStatic) &&
             plan.type.events.isEmpty() &&
             plan.staticInterfaceNames.isEmpty() &&
             plan.activatableFactoryInterfaceName == null &&
@@ -70,9 +72,11 @@ internal class KotlinExpectActualProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         type: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
     ): Boolean =
-        type.kind == WinRtTypeKind.Interface &&
+            type.kind == WinRtTypeKind.Interface &&
             type.genericParameterCount == 0 &&
             type.methods.all { it.genericParameterCount == 0 } &&
+            type.methods.none(WinRtMethodDefinition::isStatic) &&
+            type.properties.none(WinRtPropertyDefinition::isStatic) &&
             type.events.isEmpty() &&
             type.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
