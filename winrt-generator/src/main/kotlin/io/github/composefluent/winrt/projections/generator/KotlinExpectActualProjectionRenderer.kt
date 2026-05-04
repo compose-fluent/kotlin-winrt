@@ -121,7 +121,7 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun publicRuntimeClassInterfaces(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
         plan.type.implementedInterfaces
             .filter { implemented -> isPublicRuntimeClassInterface(plan, implemented.interfaceName) }
-            .mapNotNull { implemented -> plan.typesByQualifiedName[implemented.interfaceName.substringBefore('<')] }
+            .mapNotNull { implemented -> plan.typesByQualifiedName[implemented.interfaceName.rawWinRtTypeName()] }
             .distinctBy { it.qualifiedName }
 
     private fun publicRuntimeClassInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
@@ -140,12 +140,15 @@ internal class KotlinExpectActualProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
         interfaceName: String,
     ): Boolean {
-        val rawName = interfaceName.substringBefore('<').removeSuffix("?")
+        val rawName = interfaceName.rawWinRtTypeName()
         val descriptor = plan.classMemberMergeDescriptor
             ?.interfaceDescriptors
             ?.firstOrNull { it.interfaceTypeName == rawName }
         return descriptor?.let { !it.isOverridableInterface && !it.isProtectedInterface } ?: true
     }
+
+    private fun String.rawWinRtTypeName(): String =
+        substringBefore('<').removeSuffix("?")
 
     private fun runtimeClassMembersAreCoveredByPublicInterface(plan: KotlinTypeProjectionPlan): Boolean {
         val interfaceTypes = publicRuntimeClassInterfaceProxyTypes(plan)
