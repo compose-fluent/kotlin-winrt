@@ -50,6 +50,7 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } != true &&
             plan.type.methods.none(WinRtMethodDefinition::isStatic) &&
             plan.type.properties.none(WinRtPropertyDefinition::isStatic) &&
+            plan.type.properties.all { it.getterMethodName != null } &&
             plan.type.events.isEmpty() &&
             plan.staticInterfaceNames.isEmpty() &&
             plan.activatableFactoryInterfaceName == null &&
@@ -77,6 +78,7 @@ internal class KotlinExpectActualProjectionRenderer(
             type.methods.all { it.genericParameterCount == 0 } &&
             type.methods.none(WinRtMethodDefinition::isStatic) &&
             type.properties.none(WinRtPropertyDefinition::isStatic) &&
+            type.properties.all { it.getterMethodName != null } &&
             type.events.isEmpty() &&
             type.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
