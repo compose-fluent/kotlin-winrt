@@ -60,7 +60,7 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.mutableCollectionBindings.isEmpty() &&
             plan.readOnlyCollectionBindings.isEmpty() &&
             publicRuntimeClassInterfaces(plan).isNotEmpty() &&
-            publicRuntimeClassInterfaces(plan).all { interfaceType ->
+            publicRuntimeClassInterfaceProxyTypes(plan).all { interfaceType ->
                 canRenderExpectActualInterfaceType(plan, interfaceType)
             } &&
             publicRuntimeClassInterfaceMembersAreConflictFree(plan) &&
@@ -124,6 +124,18 @@ internal class KotlinExpectActualProjectionRenderer(
             .mapNotNull { implemented -> plan.typesByQualifiedName[implemented.interfaceName.substringBefore('<')] }
             .distinctBy { it.qualifiedName }
 
+    private fun publicRuntimeClassInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
+        publicRuntimeClassInterfaces(plan)
+            .flatMap { interfaceType ->
+                baseRenderer.collectInterfaceProxyTypes(
+                    plan.copy(
+                        type = interfaceType,
+                        declarationKind = KotlinProjectionDeclarationKind.Interface,
+                    ),
+                )
+            }
+            .distinctBy { it.qualifiedName }
+
     private fun isPublicRuntimeClassInterface(
         plan: KotlinTypeProjectionPlan,
         interfaceName: String,
@@ -136,7 +148,7 @@ internal class KotlinExpectActualProjectionRenderer(
     }
 
     private fun runtimeClassMembersAreCoveredByPublicInterface(plan: KotlinTypeProjectionPlan): Boolean {
-        val interfaceTypes = publicRuntimeClassInterfaces(plan)
+        val interfaceTypes = publicRuntimeClassInterfaceProxyTypes(plan)
         if (interfaceTypes.isEmpty()) {
             return false
         }
@@ -164,7 +176,7 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun publicRuntimeClassInterfaceMembersAreConflictFree(plan: KotlinTypeProjectionPlan): Boolean {
         val methodReturnTypes = mutableMapOf<String, String>()
         val propertyTypes = mutableMapOf<String, String>()
-        publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
+        publicRuntimeClassInterfaceProxyTypes(plan).forEach { interfaceType ->
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .forEach { method ->
@@ -285,7 +297,7 @@ internal class KotlinExpectActualProjectionRenderer(
     ) {
         val emittedMethods = mutableSetOf<String>()
         val emittedProperties = mutableSetOf<String>()
-        publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
+        publicRuntimeClassInterfaceProxyTypes(plan).forEach { interfaceType ->
             val cacheName = "_${interfaceType.name.replaceFirstChar(Char::lowercase)}"
             builder.addProperty(
                 PropertySpec.builder(cacheName, baseRenderer.resolveTypeName(interfaceType.qualifiedName))

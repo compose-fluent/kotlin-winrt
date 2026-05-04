@@ -475,6 +475,78 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_runtime_class_slice_forwards_inherited_public_interface_members() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBaseWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBaseWidget"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
+        assertTrue(common, common.contains("public expect class Widget internal constructor("))
+        assertTrue(common, common.contains("IWidget"))
+        assertTrue(common, common.contains("IWinRTObject"))
+        assertTrue(jvm, jvm.contains("private val _iBaseWidget: IBaseWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertTrue(jvm, jvm.contains("override fun reset()"))
+        assertTrue(jvm, jvm.contains("_iBaseWidget.reset()"))
+        assertTrue(jvm, jvm.contains("override val name: String"))
+        assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
+    }
+
+    @Test
     fun expect_actual_runtime_class_slice_rejects_conflicting_public_interface_members() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
