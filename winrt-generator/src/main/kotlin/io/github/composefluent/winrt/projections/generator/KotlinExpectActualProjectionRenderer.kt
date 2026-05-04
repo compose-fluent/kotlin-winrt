@@ -37,6 +37,7 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
             plan.type.kind == WinRtTypeKind.Interface &&
             plan.type.genericParameterCount == 0 &&
+            interfaceProxyMembersAreConflictFree(baseRenderer.collectInterfaceProxyTypes(plan)) &&
             baseRenderer.collectInterfaceProxyTypes(plan).all { interfaceType ->
                 canRenderExpectActualInterfaceType(plan, interfaceType)
             } &&
@@ -66,7 +67,7 @@ internal class KotlinExpectActualProjectionRenderer(
             publicRuntimeClassInterfaceProxyTypes(plan).all { interfaceType ->
                 canRenderExpectActualInterfaceType(plan, interfaceType)
             } &&
-            publicRuntimeClassInterfaceMembersAreConflictFree(plan) &&
+            interfaceProxyMembersAreConflictFree(publicRuntimeClassInterfaceProxyTypes(plan)) &&
             runtimeClassMembersAreCoveredByPublicInterface(plan)
 
     private fun canRenderExpectActualInterfaceType(
@@ -185,10 +186,12 @@ internal class KotlinExpectActualProjectionRenderer(
         return classMethodsCovered && classPropertiesCovered
     }
 
-    private fun publicRuntimeClassInterfaceMembersAreConflictFree(plan: KotlinTypeProjectionPlan): Boolean {
+    private fun interfaceProxyMembersAreConflictFree(
+        interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): Boolean {
         val methods = mutableMapOf<String, RuntimeClassMethodCoverage>()
         val properties = mutableMapOf<String, RuntimeClassPropertyCoverage>()
-        publicRuntimeClassInterfaceProxyTypes(plan).forEach { interfaceType ->
+        interfaceTypes.forEach { interfaceType ->
             interfaceType.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .forEach { method ->
