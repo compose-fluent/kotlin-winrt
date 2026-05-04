@@ -33,42 +33,57 @@ internal class KotlinExpectActualProjectionRenderer(
         }
     }
 
-    private fun canRenderExpectActualInterfaceSlice(plan: KotlinTypeProjectionPlan): Boolean =
-            plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
-            plan.type.kind == WinRtTypeKind.Interface &&
-            plan.type.genericParameterCount == 0 &&
-            interfaceProxyMembersAreConflictFree(baseRenderer.collectInterfaceProxyTypes(plan)) &&
-            baseRenderer.collectInterfaceProxyTypes(plan).all { interfaceType ->
+    private fun canRenderExpectActualInterfaceSlice(plan: KotlinTypeProjectionPlan): Boolean {
+        if (
+            plan.declarationKind != KotlinProjectionDeclarationKind.Interface ||
+            plan.type.kind != WinRtTypeKind.Interface ||
+            plan.type.genericParameterCount != 0 ||
+            plan.mutableCollectionBindings.isNotEmpty() ||
+            plan.readOnlyCollectionBindings.isNotEmpty()
+        ) {
+            return false
+        }
+        val interfaceProxyTypes = baseRenderer.collectInterfaceProxyTypes(plan)
+        return interfaceProxyMembersAreConflictFree(interfaceProxyTypes) &&
+            interfaceProxyTypes.all { interfaceType ->
                 canRenderExpectActualInterfaceType(plan, interfaceType)
-            } &&
-            plan.mutableCollectionBindings.isEmpty() &&
-            plan.readOnlyCollectionBindings.isEmpty()
+            }
+    }
 
-    private fun canRenderExpectActualRuntimeClassSlice(plan: KotlinTypeProjectionPlan): Boolean =
-            plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
-            plan.type.kind == WinRtTypeKind.RuntimeClass &&
-            plan.type.genericParameterCount == 0 &&
-            plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } != true &&
-            plan.type.methods.none(WinRtMethodDefinition::isStatic) &&
-            plan.type.properties.none(WinRtPropertyDefinition::isStatic) &&
-            plan.type.properties.all { it.getterMethodName != null } &&
-            plan.type.events.isEmpty() &&
-            plan.staticInterfaceNames.isEmpty() &&
-            plan.activatableFactoryInterfaceName == null &&
-            plan.composableFactoryInterfaceName == null &&
-            KotlinProjectionCompanionKind.ActivationFactory !in plan.companionKinds &&
-            KotlinProjectionCompanionKind.StaticInterfaces !in plan.companionKinds &&
-            KotlinProjectionCompanionKind.ComposableFactory !in plan.companionKinds &&
-            KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
-            KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds &&
-            plan.mutableCollectionBindings.isEmpty() &&
-            plan.readOnlyCollectionBindings.isEmpty() &&
-            publicRuntimeClassInterfaces(plan).isNotEmpty() &&
-            publicRuntimeClassInterfaceProxyTypes(plan).all { interfaceType ->
-                canRenderExpectActualInterfaceType(plan, interfaceType)
-            } &&
-            interfaceProxyMembersAreConflictFree(publicRuntimeClassInterfaceProxyTypes(plan)) &&
-            runtimeClassMembersAreCoveredByPublicInterface(plan)
+    private fun canRenderExpectActualRuntimeClassSlice(plan: KotlinTypeProjectionPlan): Boolean {
+        if (
+            plan.declarationKind != KotlinProjectionDeclarationKind.Class ||
+            plan.type.kind != WinRtTypeKind.RuntimeClass ||
+            plan.type.genericParameterCount != 0 ||
+            plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } == true ||
+            plan.type.methods.any(WinRtMethodDefinition::isStatic) ||
+            plan.type.properties.any(WinRtPropertyDefinition::isStatic) ||
+            plan.type.properties.any { it.getterMethodName == null } ||
+            plan.type.events.isNotEmpty() ||
+            plan.staticInterfaceNames.isNotEmpty() ||
+            plan.activatableFactoryInterfaceName != null ||
+            plan.composableFactoryInterfaceName != null ||
+            KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds ||
+            KotlinProjectionCompanionKind.StaticInterfaces in plan.companionKinds ||
+            KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds ||
+            KotlinProjectionSpecializationKind.StaticClass in plan.specializationKinds ||
+            KotlinProjectionSpecializationKind.AttributeClass in plan.specializationKinds ||
+            plan.mutableCollectionBindings.isNotEmpty() ||
+            plan.readOnlyCollectionBindings.isNotEmpty()
+        ) {
+            return false
+        }
+        val publicInterfaces = publicRuntimeClassInterfaces(plan)
+        if (publicInterfaces.isEmpty()) {
+            return false
+        }
+        val interfaceProxyTypes = publicRuntimeClassInterfaceProxyTypes(plan, publicInterfaces)
+        return interfaceProxyTypes.all { interfaceType ->
+            canRenderExpectActualInterfaceType(plan, interfaceType)
+        } &&
+            interfaceProxyMembersAreConflictFree(interfaceProxyTypes) &&
+            runtimeClassMembersAreCoveredByPublicInterface(plan, interfaceProxyTypes)
+    }
 
     private fun canRenderExpectActualInterfaceType(
         plan: KotlinTypeProjectionPlan,
@@ -132,7 +147,13 @@ internal class KotlinExpectActualProjectionRenderer(
             .distinctBy { it.qualifiedName }
 
     private fun publicRuntimeClassInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
-        publicRuntimeClassInterfaces(plan)
+        publicRuntimeClassInterfaceProxyTypes(plan, publicRuntimeClassInterfaces(plan))
+
+    private fun publicRuntimeClassInterfaceProxyTypes(
+        plan: KotlinTypeProjectionPlan,
+        publicInterfaces: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition> =
+        publicInterfaces
             .flatMap { interfaceType ->
                 baseRenderer.collectInterfaceProxyTypes(
                     plan.copy(
@@ -157,8 +178,10 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun String.rawWinRtTypeName(): String =
         substringBefore('<').removeSuffix("?")
 
-    private fun runtimeClassMembersAreCoveredByPublicInterface(plan: KotlinTypeProjectionPlan): Boolean {
-        val interfaceTypes = publicRuntimeClassInterfaceProxyTypes(plan)
+    private fun runtimeClassMembersAreCoveredByPublicInterface(
+        plan: KotlinTypeProjectionPlan,
+        interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): Boolean {
         if (interfaceTypes.isEmpty()) {
             return false
         }
