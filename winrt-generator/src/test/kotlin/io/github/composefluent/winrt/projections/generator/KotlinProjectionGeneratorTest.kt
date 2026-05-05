@@ -1765,7 +1765,6 @@ class KotlinProjectionGeneratorTest {
         val paths = files.map(KotlinProjectionFile::relativePath)
         assertTrue(paths.contains("commonMain/kotlin/sample/foundation/IWidget.kt"))
         assertTrue(paths.contains("jvmMain/kotlin/sample/foundation/IWidget.kt"))
-        assertTrue(paths.any { it.startsWith("commonMain/kotlin/io/github/composefluent/winrt/projections/support/") })
         assertFalse(paths.any { it.startsWith("io/github/composefluent/winrt/projections/support/") })
         assertFalse(paths.any { it.startsWith("jvmMain/kotlin/io/github/composefluent/winrt/projections/support/") })
     }
@@ -1801,11 +1800,6 @@ class KotlinProjectionGeneratorTest {
         assertFalse(Files.exists(staleSupportFile))
         assertTrue(outputRoot.resolve("commonMain/kotlin/sample/foundation/IWidget.kt").isRegularFile())
         assertTrue(outputRoot.resolve("jvmMain/kotlin/sample/foundation/IWidget.kt").isRegularFile())
-        assertTrue(
-            Files.walk(outputRoot.resolve("commonMain/kotlin/io/github/composefluent/winrt/projections/support")).use { stream ->
-                stream.anyMatch { it.isRegularFile() && it.fileName.toString().endsWith(".kt") }
-            },
-        )
     }
 
     @Test
@@ -5139,7 +5133,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_hands_custom_mapped_member_call_modes_to_companions_and_support_plan() {
+    fun generator_hands_custom_mapped_member_call_modes_to_companions_without_source_plan_table() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -5161,15 +5155,12 @@ class KotlinProjectionGeneratorTest {
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
         val iterableContents = filesByName.getValue("IIterable.kt").contents
-        val shapePlanContents = filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents
 
         assertTrue(iterableContents, iterableContents.contains("internal val CUSTOM_MAPPED_MEMBER_PLANS: List<String>"))
         assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_CALL_MODE: String = \"static-abi\""))
         assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_EXPLICIT: Boolean = true"))
         assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_PRIVATE: Boolean = false"))
-        assertTrue(shapePlanContents, shapePlanContents.contains("mappedCallMode = \"static-abi\""))
-        assertTrue(shapePlanContents, shapePlanContents.contains("mappedExplicit = true"))
-        assertTrue(shapePlanContents, shapePlanContents.contains("mappedPrivate = false"))
+        assertFalse(filesByName.containsKey("WinRTTypeShapeWriterPlan.kt"))
     }
 
     @Test
@@ -7018,18 +7009,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("fun installEventSources("))
         assertTrue(eventProjectionHelpers.contains("install:"))
         assertTrue(eventProjectionHelpers.contains("EventSourceEntry"))
-        assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("Sample.Foundation.IWidget"))
-        assertTrue(filesByName.getValue("WinRTAbiImplementationPlan.kt").contents.contains("fun installAbiImplementations"))
-        val typeShapeWriterPlan = filesByName.getValue("WinRTTypeShapeWriterPlan.kt").contents
-        assertTrue(typeShapeWriterPlan.contains("HELPER_OUTPUTS"))
-        assertTrue(typeShapeWriterPlan.contains("WinRTNamespaceAdditions.kt"))
-        assertTrue(typeShapeWriterPlan.contains("fun registerBaseTypeMappings"))
-        assertTrue(typeShapeWriterPlan.contains("deferredAuthoringFactoryMembers = listOf(\"Sample.Foundation.IWidgetFactory\")"))
-        assertTrue(typeShapeWriterPlan.contains("deferredModuleActivationEntries = listOf(\"Sample.Foundation.Widget\")"))
-        assertTrue(typeShapeWriterPlan.contains("fun deferredAuthoringFactoryEntries("))
-        assertTrue(typeShapeWriterPlan.contains("List<Pair<String, String>>"))
-        assertFalse(typeShapeWriterPlan.contains("installModuleActivationFactories"))
-        assertFalse(typeShapeWriterPlan.contains("moduleActivationEntries"))
+        assertFalse(filesByName.containsKey("WinRTAbiImplementationPlan.kt"))
+        assertFalse(filesByName.containsKey("WinRTTypeShapeWriterPlan.kt"))
         val authoringMetadataMappingHelper = filesByName.getValue("AuthoringMetadataTypeMappingHelper.kt").contents
         assertTrue(authoringMetadataMappingHelper.contains("object AuthoringMetadataTypeMappingHelper"))
         assertTrue(authoringMetadataMappingHelper.contains("Sample.Foundation.Widget->ABI.Sample.Foundation.Widget"))

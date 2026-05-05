@@ -14,6 +14,7 @@
 - [x] WinUI object collection insertion: populated ComboBox/ListView `ItemCollection<Any?>` through generated `items.add(string)`, validating the cswinrt `MarshalInspectable<object>`/`IBindableVector`-style object input path instead of keeping samples empty.
 - [ ] Compiler-plugin reflection replacement 正在做: move cswinrt runtime-reflection surfaces into compiler-generated indexes and generated registration code.
 - [ ] Expect/actual projection ABI migration 正在做: generator emits common `expect` WinRT APIs and JVM `actual` ABI-owning projection implementations for a narrow non-generic interface/member slice before broad projection rollout.
+- [ ] Generated support compile-surface reduction 正在做: keep public projection source complete, remove non-runtime support source first, and move registrar/event support toward compiler-plugin generated artifacts so app/sample compilation does not parse giant Kotlin tables.
 
 ## Completed Baseline
 
@@ -88,6 +89,8 @@
 - [x] Generated authoring type-details registrar: JVM runtime now consumes explicitly registered authored type-details factories instead of probing `WinRT_<Type>_TypeDetails` by `Class.forName`; Gradle-generated type-details objects emit `register()` entrypoints that hand factories to `ComWrappersSupport`, matching cswinrt source-generator handoff without runtime class-name probing.
 - [ ] K2 symbol model extraction: move effective-public authored type discovery, WinRT base/interface discovery, member signature capture, and diagnostics onto K2/IR symbols instead of light-tree/string parsing where semantic data is required.
 - [ ] Generated runtime metadata tables: have the compiler/plugin or generator emit deterministic tables for runtime-class name, default-interface name/signature, base type, helper/ABI mapping, delegate/struct/enum/value-boxing metadata, and projection aliases so `TypeNameSupport` and `TypeExtensions` no longer need reflection-style fallbacks for generated projections.
+- [x] Generated support plan/audit source removal: generator no longer emits non-runtime `WinRTAbiImplementationPlan.kt` or `WinRTTypeShapeWriterPlan.kt` into app/sample Kotlin sources; custom mapped/member metadata remains on the generated public/helper surfaces that consume it.
+- [ ] Registrar/event support compile-surface reduction 正在做: move remaining `WinRTProjectionRegistrar` and event-helper tables toward compiler-plugin generated class artifacts from lightweight generator manifests; current sample compile reaches `WinRTProjectionRegistrar.register()` and fails with JVM `MethodTooLargeException`, confirming this is the next compile-surface blocker.
 - [x] Runtime loader boundary: runtime now exposes a structured compiler-generated projection type-index registration helper and keeps the JVM resource loader limited to reading generated index rows and resolving the already-named class token; mapping installation is centralized in common runtime, with no source/package scanning or sample inference.
 - [x] Validation path: after the registrar slice, targeted compiler-plugin, generator registration, and runtime registry tests run through Windows Gradle on the required JDK 22 JVM target; `winrt-samples:compileKotlin` exposed and drove the authored-type registrar fix, with remaining sample rerun blocked by Windows Gradle/JDK 22 daemon native crashes rather than Kotlin source diagnostics.
 
@@ -113,8 +116,8 @@
 
 - [ ] Expect/actual next slice: choose the next target-specific ABI surface after the completed non-generic method/property slice; keep validation targeted and do not expand `PLAN.md` with command history.
 - [x] Generator regression sweep: full `KotlinProjectionGeneratorTest` passes on Windows/JDK 22 with generator-local test JVM memory settings after registrar ownership changes.
-- [ ] Sample compile smoke: run `./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -PkotlinWinRt.samples.windowsAppSdkVersion=1.8.260416003 :winrt-samples:compileKotlin` only after generator/runtime registration changes that can affect generated projection consumption.
-- [ ] Windows memory note: JVM target validation requires JDK 22; if the Windows Gradle/Kotlin daemon disappears with native OOM, rerun on JDK 22 with lower pressure, for example `GRADLE_OPTS='-Xmx2048m -XX:+UseSerialGC' ./.agent_scripts/run_windows_gradle.sh --no-daemon --no-build-cache --no-configuration-cache -Dorg.gradle.workers.max=2 ...`.
+- [ ] Sample compile smoke: blocked by generated `WinRTProjectionRegistrar.register()` exceeding the JVM method-size limit; rerun after registrar source is removed or split out of normal Kotlin compilation.
+- [ ] Windows memory note: JVM target validation requires JDK 22; for large sample compile observation, include `-XX:HeapBaseMinAddress=8g` and sufficient code cache before interpreting daemon failures.
 
 ### Validation History Summary
 

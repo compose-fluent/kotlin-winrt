@@ -146,8 +146,6 @@ class KotlinProjectionSupportRenderer {
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans, inventory),
-            renderAbiImplementationPlan(plans),
-            renderTypeShapeWriterPlan(inventory, plans),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
