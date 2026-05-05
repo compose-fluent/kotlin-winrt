@@ -108,6 +108,7 @@ import kotlin.io.path.extension
 class KotlinProjectionRenderer {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
+            .addGeneratedProjectionSuppressions()
             .apply { addType(renderType(plan)) }
             .build()
             .toString()

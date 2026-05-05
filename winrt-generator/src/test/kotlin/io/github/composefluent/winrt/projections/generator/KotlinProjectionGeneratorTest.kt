@@ -209,6 +209,8 @@ class KotlinProjectionGeneratorTest {
 
         val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
         val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertGeneratedProjectionSuppressions(common)
+        assertGeneratedProjectionSuppressions(jvm)
         assertTrue(common, common.contains("public interface IWidget"))
         assertFalse(common, common.contains("public expect interface IWidget"))
         assertTrue(common, common.contains("public fun rename(`value`: String): String"))
@@ -2004,6 +2006,8 @@ class KotlinProjectionGeneratorTest {
         val iJsonObject = filesByName.getValue("IJsonObject.kt").contents
         val iJsonValueStatics = filesByName.getValue("IJsonValueStatics.kt").contents
 
+        assertGeneratedProjectionSuppressions(jsonObject)
+        assertGeneratedProjectionSuppressions(iJsonObject)
         assertTrue(jsonObject, jsonObject.contains("public class JsonObject internal constructor("))
         assertTrue(jsonObject, jsonObject.contains("IJsonObject"))
         assertTrue(jsonObject, jsonObject.contains("IWinRTObject"))
@@ -8640,5 +8644,14 @@ class KotlinProjectionGeneratorTest {
 
     private fun WinRtMetadataModel.filterToWindowsDataJson(): WinRtMetadataModel =
         WinRtMetadataModel(namespaces.filter { it.name == "Windows.Data.Json" }).normalized()
+
+    private fun assertGeneratedProjectionSuppressions(contents: String) {
+        assertTrue(contents, contents.contains("@file:Suppress("))
+        assertTrue(contents, contents.contains("\"USELESS_IS_CHECK\""))
+        assertTrue(contents, contents.contains("\"USELESS_CAST\""))
+        assertTrue(contents, contents.contains("\"UNCHECKED_CAST\""))
+        assertTrue(contents, contents.contains("\"REDUNDANT_CALL_OF_CONVERSION_METHOD\""))
+        assertTrue(contents, contents.contains("\"REDUNDANT_NULLABLE\""))
+    }
 
 }

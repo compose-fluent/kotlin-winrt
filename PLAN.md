@@ -14,7 +14,7 @@
 - [x] WinUI object collection insertion: populated ComboBox/ListView `ItemCollection<Any?>` through generated `items.add(string)`, validating the cswinrt `MarshalInspectable<object>`/`IBindableVector`-style object input path instead of keeping samples empty.
 - [ ] Compiler-plugin reflection replacement 正在做: move cswinrt runtime-reflection surfaces into compiler-generated indexes and generated registration code.
 - [ ] Expect/actual projection ABI migration 正在做: generator emits common `expect` WinRT APIs and JVM `actual` ABI-owning projection implementations for a narrow non-generic interface/member slice before broad projection rollout.
-- [ ] Generated support compile-surface reduction 正在做: keep public projection source complete, remove non-runtime support source first, and move registrar/event support toward compiler-plugin generated artifacts so app/sample compilation does not parse giant Kotlin tables.
+- [ ] Generated support compile-surface reduction 正在做: keep public projection source complete, reduce generated Kotlin parse/diagnostic hot spots first, and only move support tables to compiler artifacts when the same slice removes the equivalent Kotlin source.
 
 ## Completed Baseline
 
@@ -94,7 +94,8 @@
 - [x] Event support compile-surface reduction: `WinRTEventProjectionHelpers` now suppresses expected generated-code cast/check diagnostics and initializes event-source rows through deterministic chunk methods, removing the sample compile warning flood while preserving event-source registration behavior.
 - [x] Compiler support manifest handoff: generator emits `kotlin-winrt-support/compiler-support.tsv` with deterministic registrar/event/generic support table ownership and entry counts, Gradle passes it to the compiler plugin, and the compiler plugin parses it as the input contract for later class artifact generation.
 - [x] Compiler support class artifact foundation: compiler plugin writes `WinRTCompilerSupportManifest.class` into the Kotlin main class output from `compiler-support.tsv`, proving the generated class artifact path before moving behavior-bearing registrar/event/generic tables out of Kotlin source.
-- [ ] Support table artifact migration 正在做: extend the compiler support manifest with behavior-bearing registrar/event/generic entries, generate those support class artifacts, then remove the migrated non-public support tables from normal Kotlin source.
+- [ ] Support table artifact migration 正在做: extend the compiler support manifest with behavior-bearing registrar/event/generic entries only in slices that also remove the migrated non-public Kotlin support table from normal source, so compiler artifacts do not duplicate data.
+- [x] Projection source diagnostic suppression: ordinary projection files and opt-in expect/actual source-set files now emit shared generated-code file suppressions, reducing Kotlin diagnostic work over complete projection source without adding runtime resources or filtering referenced types.
 - [x] Runtime loader boundary: runtime now exposes a structured compiler-generated projection type-index registration helper and keeps the JVM resource loader limited to reading generated index rows and resolving the already-named class token; mapping installation is centralized in common runtime, with no source/package scanning or sample inference.
 - [x] Validation path: after the registrar slice, targeted compiler-plugin, generator registration, and runtime registry tests run through Windows Gradle on the required JDK 22 JVM target; `winrt-samples:compileKotlin` exposed and drove the authored-type registrar fix, with remaining sample rerun blocked by Windows Gradle/JDK 22 daemon native crashes rather than Kotlin source diagnostics.
 
@@ -121,7 +122,7 @@
 - [ ] Expect/actual next slice: choose the next target-specific ABI surface after the completed non-generic method/property slice; keep validation targeted and do not expand `PLAN.md` with command history.
 - [x] Generator regression sweep: full `KotlinProjectionGeneratorTest` passes on Windows/JDK 22 with generator-local test JVM memory settings after registrar ownership changes.
 - [x] Sample compile smoke after registrar chunking: `winrt-samples:compileKotlin` passes on Windows/JDK 22 with large-sample JVM settings; compile time is still several minutes and the next visible support-source hotspot is `WinRTEventProjectionHelpers.kt`.
-- [ ] Windows memory note: JVM target validation requires JDK 22; for large sample compile observation, include `-XX:HeapBaseMinAddress=8g` and sufficient code cache before interpreting daemon failures.
+- [ ] Compile-surface observation: JVM target validation requires JDK 22; treat OOM or native compiler pressure as evidence of excessive generated compile surface, duplicated data, or diagnostic/source hot spots before considering environment tuning.
 
 ### Validation History Summary
 

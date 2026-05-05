@@ -81,7 +81,6 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateDescriptor
 import io.github.composefluent.winrt.runtime.WinRtDelegateReference
 import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRtEvent
-import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
@@ -560,7 +559,7 @@ class KotlinProjectionSupportRenderer {
             .addFunctions(eventSourceEntryChunkFunctions)
             .addFunctions(eventProjectionHelperFunctions(entryClass, eventSourceFactoryDescriptors, plansByType, typesByQualifiedName))
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
-            .addAnnotation(generatedEventHelperSuppressAnnotation())
+            .addGeneratedProjectionSuppressions()
             .addType(
                 dataClass(
                     className = "EventSourceEntry",
@@ -588,14 +587,6 @@ class KotlinProjectionSupportRenderer {
             .build()
         return supportFile("WinRTEventProjectionHelpers.kt", fileSpec)
     }
-
-    private fun generatedEventHelperSuppressAnnotation(): AnnotationSpec =
-        AnnotationSpec.builder(Suppress::class)
-            .addMember("%S", "USELESS_IS_CHECK")
-            .addMember("%S", "USELESS_CAST")
-            .addMember("%S", "UNCHECKED_CAST")
-            .addMember("%S", "REDUNDANT_CALL_OF_CONVERSION_METHOD")
-            .build()
 
     private fun renderAbiImplementationPlan(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
         val abiPlans = plans.filter { plan ->

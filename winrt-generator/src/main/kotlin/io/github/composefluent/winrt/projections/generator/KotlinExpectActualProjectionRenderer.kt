@@ -778,6 +778,7 @@ internal class KotlinExpectActualProjectionRenderer(
         type: TypeSpec,
     ): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
+            .addGeneratedProjectionSuppressions()
             .addType(type)
             .build()
             .toString()
