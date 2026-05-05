@@ -93,6 +93,45 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_omits_suppressed_authored_types_from_projection_registrar() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "AuthoredWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Foundation.WidgetBase",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ProjectedWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Foundation.WidgetBase",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val registrar = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            suppressedProjectionTypeNames = setOf("Sample.Foundation.AuthoredWidget"),
+        )
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("WinRTProjectionRegistrar.kt")
+            .contents
+
+        assertFalse(registrar, registrar.contains("AuthoredWidget.Metadata.register()"))
+        assertFalse(registrar, registrar.contains("AuthoredWidget::class"))
+        assertTrue(registrar, registrar.contains("ProjectedWidget.Metadata.register()"))
+        assertTrue(registrar, registrar.contains("ProjectedWidget::class"))
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_interface_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

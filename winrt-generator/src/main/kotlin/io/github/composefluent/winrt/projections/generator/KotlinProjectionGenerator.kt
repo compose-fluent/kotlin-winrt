@@ -188,6 +188,7 @@ class KotlinProjectionGenerator(
             plans,
             projectionContext,
             emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
+            excludedProjectionTypeNames = authoredProjectedTypeNames(model),
         )
         return when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> files

@@ -136,12 +136,13 @@ class KotlinProjectionSupportRenderer {
         plans: List<KotlinTypeProjectionPlan>,
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
         emitProjectionRegistrar: Boolean = true,
+        excludedProjectionTypeNames: Set<String> = emptySet(),
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         return listOfNotNull(
-            renderProjectionRegistrar(plans, inventory).takeIf { emitProjectionRegistrar },
+            renderProjectionRegistrar(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans, inventory),
@@ -165,8 +166,10 @@ class KotlinProjectionSupportRenderer {
     private fun renderProjectionRegistrar(
         plans: List<KotlinTypeProjectionPlan>,
         inventory: WinRtMetadataProjectionInventory,
+        excludedProjectionTypeNames: Set<String>,
     ): KotlinProjectionFile? {
-        val authoredTypes = inventory.authoredMetadataTypeMappings.mapTo(linkedSetOf()) { it.projectedTypeName }
+        val authoredTypes = inventory.authoredMetadataTypeMappings
+            .mapTo(excludedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
         val registrationPlans = plans
             .asSequence()
             .filterNot { it.type.qualifiedName in authoredTypes }
