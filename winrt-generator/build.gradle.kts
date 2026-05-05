@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     alias(libs.plugins.kotlinJvm)
     application
@@ -16,4 +18,15 @@ dependencies {
 
 application {
     mainClass.set("io.github.composefluent.winrt.projections.generator.KotlinProjectionGeneratorCliKt")
+}
+
+tasks.withType<Test>().configureEach {
+    minHeapSize = "128m"
+    maxHeapSize = "768m"
+    jvmArgs(
+        "-XX:+UseSerialGC",
+        "-XX:TieredStopAtLevel=1",
+        "-XX:CICompilerCount=1",
+        "-XX:HeapBaseMinAddress=8g",
+    )
 }

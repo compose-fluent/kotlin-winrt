@@ -2647,7 +2647,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
         assertTrue(widgetContents.contains("val name: String"))
         assertTrue(widgetContents.contains("companion object Metadata"))
-        assertTrue(widgetContents.contains("init {\n        register()\n    }"))
+        assertFalse(widgetContents.contains("init {\n        register()\n    }"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
         assertTrue(widgetContents.contains("ComWrappersSupport.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }"))
         assertTrue(widgetContents.contains("Projections.registerCustomAbiTypeMapping("))
@@ -5698,7 +5698,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_covers_short_abi_argument_lists_without_sample_specific_overloads() {
+    fun generator_keeps_legacy_short_abi_argument_lists_on_generic_fallback_after_overload_shrink() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -5791,15 +5791,16 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.endsWith("/Shape.kt") }
             .contents
 
-        assertTrue(shapeContents, shapeContents.contains("arg0 = if (enabled) 1.toByte() else 0.toByte()"))
-        assertTrue(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
+        assertTrue(shapeContents, shapeContents.contains("invokeGenericArgs(instance = _defaultInterface.pointer"))
+        assertTrue(shapeContents, shapeContents.contains("if (enabled) 1.toByte() else"))
+        assertTrue(shapeContents, shapeContents.contains("0.toByte()"))
         assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT"))
         assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT"))
         assertTrue(shapeContents, shapeContents.contains("Metadata.CONFIGURE_SLOT"))
-        assertTrue(shapeContents, shapeContents.contains("arg0 = offset"))
-        assertTrue(shapeContents, shapeContents.contains("arg0 = opacity"))
-        assertTrue(shapeContents, shapeContents.contains("arg1 = offset"))
-        assertFalse(shapeContents, shapeContents.contains("invokeGenericArgs"))
+        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT, offset"))
+        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT, opacity"))
+        assertTrue(shapeContents, shapeContents.contains("offset, opacity"))
+        assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
     }
 
     @Test
