@@ -49,6 +49,50 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_projection_registrar_with_class_literal_type_index_entries() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Sample.Foundation.WidgetBase",
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val registrar = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("WinRTProjectionRegistrar.kt")
+            .contents
+
+        assertTrue(registrar, registrar.contains("object WinRTProjectionRegistrar"))
+        assertTrue(registrar, registrar.contains("fun register()"))
+        assertTrue(registrar, registrar.contains("Widget.Metadata.register()"))
+        assertTrue(registrar, registrar.contains("IWidget::class"))
+        assertTrue(registrar, registrar.contains("Widget::class"))
+        assertTrue(registrar, registrar.contains("registerGeneratedProjectionTypeIndex("))
+        assertTrue(registrar, registrar.contains("\"Sample.Foundation.WidgetBase\""))
+        assertFalse(registrar, registrar.contains("Class.forName"))
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_interface_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

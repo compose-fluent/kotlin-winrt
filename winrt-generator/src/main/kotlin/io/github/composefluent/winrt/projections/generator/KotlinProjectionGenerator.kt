@@ -183,7 +183,12 @@ class KotlinProjectionGenerator(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
     ): List<KotlinProjectionFile> {
-        val files = supportRenderer.render(model, plans, projectionContext)
+        val files = supportRenderer.render(
+            model,
+            plans,
+            projectionContext,
+            emitProjectionRegistrar = generationLayout == KotlinProjectionGenerationLayout.SingleSourceSet,
+        )
         return when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> files
             KotlinProjectionGenerationLayout.ExpectActualJvm -> files.map { file ->

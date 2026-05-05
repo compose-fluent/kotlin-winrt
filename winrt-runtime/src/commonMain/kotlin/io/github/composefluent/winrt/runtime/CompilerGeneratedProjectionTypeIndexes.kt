@@ -7,7 +7,7 @@ internal const val WINRT_PROJECTION_TYPE_INDEX_RESOURCE: String = "kotlin-winrt/
 internal expect fun registerCompilerGeneratedProjectionTypeIndexes()
 
 @Suppress("UNCHECKED_CAST")
-internal fun registerCompilerGeneratedProjectionTypeIndex(
+public fun registerGeneratedProjectionTypeIndex(
     kClass: KClass<*>,
     projectedTypeName: String,
     kind: String,
@@ -46,6 +46,15 @@ internal fun registerCompilerGeneratedProjectionTypeIndex(
     if (isRuntimeClass && baseTypeName.isMeaningfulProjectionBaseTypeName()) {
         TypeNameSupport.registerProjectionTypeBaseTypeMapping(mapOf(projectedTypeName to baseTypeName))
     }
+}
+
+internal fun registerCompilerGeneratedProjectionTypeIndex(
+    kClass: KClass<*>,
+    projectedTypeName: String,
+    kind: String,
+    baseTypeName: String,
+) {
+    registerGeneratedProjectionTypeIndex(kClass, projectedTypeName, kind, baseTypeName)
 }
 
 private fun String.isMeaningfulProjectionBaseTypeName(): Boolean =

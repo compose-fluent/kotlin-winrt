@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
+import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -85,6 +86,29 @@ class ProjectionRegistryTest {
             mapOf("Contoso.DerivedGeneratedRuntimeClass" to "Contoso.GeneratedRuntimeClass"),
         )
         assertEquals(SampleRuntimeClass::class, TypeNameSupport.findRcwKClassByNameCached("Contoso.DerivedGeneratedRuntimeClass"))
+    }
+
+    @Test
+    fun compiler_generated_projection_registrar_registers_class_literal_type_index() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        registerCompilerGeneratedProjectionTypeIndexes()
+
+        val typeId = WinRtTypeRegistry.findByClass(GeneratedRegistrarRuntimeClass::class)
+        assertEquals("Contoso.GeneratedRegistrarRuntimeClass", typeId?.projectedTypeName)
+        assertEquals("Contoso.GeneratedRegistrarRuntimeClass", typeId?.runtimeClassName)
+        assertTrue(typeId?.isRuntimeClass == true)
+        assertEquals(
+            GeneratedRegistrarRuntimeClass::class,
+            TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarRuntimeClass"),
+        )
+        TypeNameSupport.registerProjectionTypeBaseTypeMapping(
+            mapOf("Contoso.GeneratedRegistrarDerived" to "Contoso.GeneratedRegistrarRuntimeClass"),
+        )
+        assertEquals(
+            GeneratedRegistrarRuntimeClass::class,
+            TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarDerived"),
+        )
     }
 
     @Test

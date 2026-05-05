@@ -88,6 +88,7 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
@@ -134,11 +135,13 @@ class KotlinProjectionSupportRenderer {
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
         context: WinRtMetadataProjectionContext = WinRtMetadataProjectionContext(sources = emptyList()),
+        emitProjectionRegistrar: Boolean = true,
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         return listOfNotNull(
+            renderProjectionRegistrar(plans, inventory).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans, inventory),
@@ -157,6 +160,50 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
+    }
+
+    private fun renderProjectionRegistrar(
+        plans: List<KotlinTypeProjectionPlan>,
+        inventory: WinRtMetadataProjectionInventory,
+    ): KotlinProjectionFile? {
+        val authoredTypes = inventory.authoredMetadataTypeMappings.mapTo(linkedSetOf()) { it.projectedTypeName }
+        val registrationPlans = plans
+            .asSequence()
+            .filterNot { it.type.qualifiedName in authoredTypes }
+            .filterNot { it.type.kind == WinRtTypeKind.Unknown }
+            .sortedBy { it.type.qualifiedName }
+            .toList()
+        if (registrationPlans.isEmpty()) {
+            return null
+        }
+
+        val registerTypeIndex = MemberName("io.github.composefluent.winrt.runtime", "registerGeneratedProjectionTypeIndex")
+        val registerFunction = FunSpec.builder("register")
+            .apply {
+                registrationPlans.forEach { plan ->
+                    val projectedClassName = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+                    if (plan.hasGeneratedRuntimeClassMetadataRegistration()) {
+                        addStatement("%T.Metadata.register()", projectedClassName)
+                    }
+                    addStatement(
+                        "%M(%T::class, %S, %S, %S)",
+                        registerTypeIndex,
+                        projectedClassName,
+                        plan.type.qualifiedName,
+                        plan.type.kind.name,
+                        plan.type.baseTypeName.orEmpty(),
+                    )
+                }
+            }
+            .build()
+        val fileSpec = supportFileSpec("WinRTProjectionRegistrar")
+            .addType(
+                TypeSpec.objectBuilder("WinRTProjectionRegistrar")
+                    .addFunction(registerFunction)
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTProjectionRegistrar.kt", fileSpec)
     }
 
     private fun renderGenericAbiRegistry(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
@@ -2334,6 +2381,11 @@ class KotlinProjectionSupportRenderer {
     private fun supportFileSpec(fileName: String): FileSpec.Builder =
         FileSpec.builder(SUPPORT_PACKAGE, fileName)
             .addFileComment("Deterministic generator handoff for .cswinrt %L writer parity.", fileName)
+
+    private fun KotlinTypeProjectionPlan.hasGeneratedRuntimeClassMetadataRegistration(): Boolean =
+        declarationKind == KotlinProjectionDeclarationKind.Class &&
+            KotlinProjectionSpecializationKind.StaticClass !in specializationKinds &&
+            KotlinProjectionSpecializationKind.AttributeClass !in specializationKinds
 
     private fun dataClass(
         className: String,
