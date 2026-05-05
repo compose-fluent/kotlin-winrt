@@ -84,7 +84,12 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(registrar, registrar.contains("object WinRTProjectionRegistrar"))
         assertTrue(registrar, registrar.contains("fun register()"))
-        assertTrue(registrar, registrar.contains("Widget.Metadata.register()"))
+        assertFalse(registrar, registrar.contains("Widget.Metadata.register()"))
+        assertTrue(registrar, registrar.contains("ComWrappersSupport.registerRuntimeClassFactory(\"Sample.Foundation.Widget\")"))
+        assertTrue(registrar, registrar.contains("Widget.Metadata.wrap(instance)"))
+        assertTrue(registrar, registrar.contains("Projections.registerCustomAbiTypeMapping("))
+        assertTrue(registrar, registrar.contains("Projections.registerDefaultInterfaceTypeName("))
+        assertTrue(registrar, registrar.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
         assertTrue(registrar, registrar.contains("IWidget::class"))
         assertTrue(registrar, registrar.contains("Widget::class"))
         assertTrue(registrar, registrar.contains("registerGeneratedProjectionTypeIndex("))
@@ -127,7 +132,8 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(registrar, registrar.contains("AuthoredWidget.Metadata.register()"))
         assertFalse(registrar, registrar.contains("AuthoredWidget::class"))
-        assertTrue(registrar, registrar.contains("ProjectedWidget.Metadata.register()"))
+        assertFalse(registrar, registrar.contains("ProjectedWidget.Metadata.register()"))
+        assertTrue(registrar, registrar.contains("ComWrappersSupport.registerRuntimeClassFactory(\"Sample.Foundation.ProjectedWidget\")"))
         assertTrue(registrar, registrar.contains("ProjectedWidget::class"))
     }
 

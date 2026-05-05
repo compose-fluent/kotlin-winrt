@@ -186,7 +186,7 @@ class KotlinProjectionSupportRenderer {
                 registrationPlans.forEach { plan ->
                     val projectedClassName = projectionClassNameForQualifiedName(plan.type.qualifiedName)
                     if (plan.hasGeneratedRuntimeClassMetadataRegistration()) {
-                        addStatement("%T.Metadata.register()", projectedClassName)
+                        addProjectionMetadataRegistration(plan, projectedClassName)
                     }
                     addStatement(
                         "%M(%T::class, %S, %S, %S)",
@@ -207,6 +207,53 @@ class KotlinProjectionSupportRenderer {
             )
             .build()
         return supportFile("WinRTProjectionRegistrar.kt", fileSpec)
+    }
+
+    private fun FunSpec.Builder.addProjectionMetadataRegistration(
+        plan: KotlinTypeProjectionPlan,
+        projectedClassName: ClassName,
+    ) {
+        addStatement(
+            "%T.registerRuntimeClassFactory(%S) { instance -> %T.Metadata.wrap(instance) }",
+            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+            plan.type.qualifiedName,
+            projectedClassName,
+        )
+        addStatement(
+            "%T.registerCustomAbiTypeMapping(%T::class, %T::class, %S, isRuntimeClass = true)",
+            PROJECTIONS_CLASS_NAME,
+            projectedClassName,
+            projectedClassName,
+            plan.type.qualifiedName,
+        )
+        val defaultInterfaceName = plan.defaultInterfaceName ?: return
+        val defaultInterfaceSignature = typeRenderer.abiTypeSignature(
+            typeRenderer.renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName),
+        )
+        if (defaultInterfaceSignature != null) {
+            addStatement(
+                "%T.registerDefaultInterfaceTypeName(%S, %S, %L.render())",
+                PROJECTIONS_CLASS_NAME,
+                plan.type.qualifiedName,
+                defaultInterfaceName,
+                defaultInterfaceSignature,
+            )
+        } else {
+            addStatement(
+                "%T.registerDefaultInterfaceTypeName(%S, %S)",
+                PROJECTIONS_CLASS_NAME,
+                plan.type.qualifiedName,
+                defaultInterfaceName,
+            )
+        }
+        if (!defaultInterfaceName.contains('<')) {
+            addStatement(
+                "%T.registerDefaultInterfaceType(%T::class, %T::class)",
+                PROJECTIONS_CLASS_NAME,
+                projectedClassName,
+                typeRenderer.resolveTypeName(defaultInterfaceName),
+            )
+        }
     }
 
     private fun renderGenericAbiRegistry(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
