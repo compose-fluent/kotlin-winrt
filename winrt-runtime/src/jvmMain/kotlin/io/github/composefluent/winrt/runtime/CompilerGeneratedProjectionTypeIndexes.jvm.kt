@@ -1,7 +1,5 @@
 package io.github.composefluent.winrt.runtime
 
-import kotlin.reflect.KClass
-
 internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
     val classLoader = Thread.currentThread().contextClassLoader
         ?: WinRtTypeRegistry::class.java.classLoader
@@ -31,52 +29,10 @@ private fun registerProjectionTypeIndexLine(
         Class.forName(kotlinTypeName, true, classLoader)
     }.getOrNull() ?: return
     val kClass = javaClass.kotlin
-    registerProjectionTypeIndex(
+    registerCompilerGeneratedProjectionTypeIndex(
         kClass = kClass,
         projectedTypeName = projectedTypeName,
         kind = kind,
         baseTypeName = baseTypeName,
     )
 }
-
-@Suppress("UNCHECKED_CAST")
-private fun registerProjectionTypeIndex(
-    kClass: KClass<*>,
-    projectedTypeName: String,
-    kind: String,
-    baseTypeName: String,
-) {
-    val typedClass = kClass as KClass<Any>
-    val isRuntimeClass = kind == "RuntimeClass"
-    WinRtTypeRegistry.update(typedClass) { existing ->
-        WinRtTypeId(
-            kClass = typedClass,
-            projectedTypeName = projectedTypeName,
-            guid = existing?.guid,
-            iid = existing?.iid,
-            signature = existing?.signature,
-            enumAbiValue = existing?.enumAbiValue,
-            enumEntries = existing?.enumEntries,
-            isExceptionType = existing?.isExceptionType == true,
-            helperType = existing?.helperType,
-            defaultInterface = existing?.defaultInterface,
-            boxedName = existing?.boxedName,
-            runtimeClassName = if (isRuntimeClass) projectedTypeName else existing?.runtimeClassName,
-            vftblType = existing?.vftblType,
-            isDelegate = kind == "Delegate" || existing?.isDelegate == true,
-            isRuntimeClass = isRuntimeClass || existing?.isRuntimeClass == true,
-            isWindowsRuntimeType = true,
-            aliases = existing?.aliases.orEmpty() + projectedTypeName,
-        )
-    }
-    TypeNameSupport.registerProjectionType(
-        type = kClass,
-        runtimeClassName = projectedTypeName.takeIf { isRuntimeClass },
-    )
-    if (isRuntimeClass && baseTypeName.isMeaningfulBaseTypeName()) {
-        TypeNameSupport.registerProjectionTypeBaseTypeMapping(mapOf(projectedTypeName to baseTypeName))
-    }
-}
-
-private fun String.isMeaningfulBaseTypeName(): Boolean =
-    isNotBlank() && this != "System.Object" && this != "Any"

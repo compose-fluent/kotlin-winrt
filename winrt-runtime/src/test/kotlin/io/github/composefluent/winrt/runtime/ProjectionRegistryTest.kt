@@ -63,6 +63,31 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun compiler_generated_projection_type_index_registers_structured_runtime_metadata() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        registerCompilerGeneratedProjectionTypeIndex(
+            kClass = SampleRuntimeClass::class,
+            projectedTypeName = "Contoso.GeneratedRuntimeClass",
+            kind = "RuntimeClass",
+            baseTypeName = "Contoso.SampleRuntimeClass",
+        )
+
+        val typeId = WinRtTypeRegistry.findByClass(SampleRuntimeClass::class)
+        assertEquals("Contoso.GeneratedRuntimeClass", typeId?.projectedTypeName)
+        assertEquals("Contoso.GeneratedRuntimeClass", typeId?.runtimeClassName)
+        assertTrue(typeId?.isRuntimeClass == true)
+        assertTrue(typeId?.isWindowsRuntimeType == true)
+        assertTrue(typeId?.aliases?.contains("Contoso.GeneratedRuntimeClass") == true)
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRuntimeClass"))
+
+        TypeNameSupport.registerProjectionTypeBaseTypeMapping(
+            mapOf("Contoso.DerivedGeneratedRuntimeClass" to "Contoso.GeneratedRuntimeClass"),
+        )
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findRcwKClassByNameCached("Contoso.DerivedGeneratedRuntimeClass"))
+    }
+
+    @Test
     fun type_name_support_uses_non_winrt_runtime_class_lookup_hooks() {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.registerTypeRuntimeClassNameLookup { type ->
