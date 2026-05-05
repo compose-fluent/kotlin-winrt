@@ -19,6 +19,8 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import org.jetbrains.org.objectweb.asm.ClassWriter
+import org.jetbrains.org.objectweb.asm.Opcodes
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -44,6 +46,12 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             description = "Path to the generator-emitted kotlin-winrt compiler support manifest.",
             required = false,
         ),
+        CliOption(
+            optionName = "compilerSupportClassOutputDirectory",
+            valueDescription = "<path>",
+            description = "Directory for compiler-generated kotlin-winrt support class artifacts.",
+            required = false,
+        ),
     )
 
     override fun processOption(
@@ -57,6 +65,8 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             configuration.put(TYPE_INDEX_OUTPUT_KEY, value)
         } else if (option.optionName == "compilerSupportManifest") {
             configuration.put(COMPILER_SUPPORT_MANIFEST_KEY, value)
+        } else if (option.optionName == "compilerSupportClassOutputDirectory") {
+            configuration.put(COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY, value)
         }
     }
 
@@ -68,6 +78,8 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             CompilerConfigurationKey("kotlin-winrt type index output")
         val COMPILER_SUPPORT_MANIFEST_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt compiler support manifest")
+        val COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt compiler support class output directory")
     }
 }
 
@@ -82,6 +94,7 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
                 metadataIndexPath = configuration.get(KotlinWinRtCommandLineProcessor.METADATA_INDEX_KEY),
                 typeIndexOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.TYPE_INDEX_OUTPUT_KEY),
                 compilerSupportManifestPath = configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY),
+                compilerSupportClassOutputDirectoryPath = configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY),
             ),
         )
     }
@@ -91,6 +104,7 @@ class KotlinWinRtIrGenerationExtension(
     private val metadataIndexPath: String?,
     private val typeIndexOutputPath: String?,
     private val compilerSupportManifestPath: String?,
+    private val compilerSupportClassOutputDirectoryPath: String?,
 ) : IrGenerationExtension {
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
@@ -100,7 +114,8 @@ class KotlinWinRtIrGenerationExtension(
         if (metadataIndexPath.isNullOrBlank()) {
             return
         }
-        readCompilerSupportManifest()
+        val compilerSupportEntries = readCompilerSupportManifest()
+        writeCompilerSupportManifestClass(compilerSupportEntries)
         val winRtTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
         if (winRtTypes.isEmpty()) {
             return
@@ -127,6 +142,14 @@ class KotlinWinRtIrGenerationExtension(
             return emptyList()
         }
         return readCompilerSupportManifest(manifestPath)
+    }
+
+    private fun writeCompilerSupportManifestClass(entries: List<KotlinWinRtCompilerSupportManifestEntry>) {
+        val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
+        if (entries.isEmpty()) {
+            return
+        }
+        writeCompilerSupportManifestClass(entries, outputDirectory)
     }
 
     private fun writeProjectionTypeIndex(
@@ -247,4 +270,64 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
         sourceFile = parts[2],
         entries = entries,
     )
+}
+
+private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
+    "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest"
+
+fun writeCompilerSupportManifestClass(
+    entries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    outputDirectory: Path,
+) {
+    if (entries.isEmpty()) {
+        return
+    }
+    val classWriter = ClassWriter(0)
+    classWriter.visit(
+        Opcodes.V17,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+        COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME,
+        null,
+        "java/lang/Object",
+        null,
+    )
+    classWriter.visitSource("compiler-support.tsv", null)
+    classWriter.addIntConstantField("ENTRY_COUNT", entries.size)
+    entries
+        .groupBy(KotlinWinRtCompilerSupportManifestEntry::kind)
+        .toSortedMap()
+        .forEach { (kind, kindEntries) ->
+            classWriter.addIntConstantField("${compilerSupportFieldPrefix(kind)}_ENTRIES", kindEntries.sumOf { it.entries })
+        }
+    classWriter.addDefaultConstructor()
+    classWriter.visitEnd()
+
+    val target = outputDirectory.resolve("$COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME.class")
+    Files.createDirectories(target.parent)
+    Files.write(target, classWriter.toByteArray())
+}
+
+private fun compilerSupportFieldPrefix(kind: String): String =
+    kind.uppercase()
+        .map { char -> if (char.isLetterOrDigit()) char else '_' }
+        .joinToString("")
+
+private fun ClassWriter.addIntConstantField(name: String, value: Int) {
+    visitField(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC or Opcodes.ACC_FINAL,
+        name,
+        "I",
+        null,
+        value,
+    ).visitEnd()
+}
+
+private fun ClassWriter.addDefaultConstructor() {
+    val method = visitMethod(Opcodes.ACC_PRIVATE, "<init>", "()V", null, null)
+    method.visitCode()
+    method.visitVarInsn(Opcodes.ALOAD, 0)
+    method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+    method.visitInsn(Opcodes.RETURN)
+    method.visitMaxs(1, 1)
+    method.visitEnd()
 }

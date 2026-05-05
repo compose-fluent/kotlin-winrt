@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.net.URLClassLoader
 
 @OptIn(ExperimentalCompilerApi::class)
 class KotlinWinRtCompilerPluginTest {
@@ -58,6 +59,20 @@ class KotlinWinRtCompilerPluginTest {
         assertEquals(
             "build/generated/kotlin-winrt/kotlin-winrt-support/compiler-support.tsv",
             configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY),
+        )
+        processor.processOption(
+            CliOption(
+                optionName = "compilerSupportClassOutputDirectory",
+                valueDescription = "<path>",
+                description = "",
+                required = false,
+            ),
+            "build/classes/kotlin/main",
+            configuration,
+        )
+        assertEquals(
+            "build/classes/kotlin/main",
+            configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_CLASS_OUTPUT_DIRECTORY_KEY),
         )
     }
 
@@ -116,5 +131,38 @@ class KotlinWinRtCompilerPluginTest {
         assertEquals("io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt", entries[0].sourceFile)
         assertEquals(12, entries[0].entries)
         assertEquals("event-source", entries[1].kind)
+    }
+
+    @Test
+    fun compiler_support_manifest_writes_class_artifact() {
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-support-class-")
+        writeCompilerSupportManifestClass(
+            entries = listOf(
+                KotlinWinRtCompilerSupportManifestEntry(
+                    kind = "projection-registrar",
+                    className = "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar",
+                    sourceFile = "io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt",
+                    entries = 12,
+                ),
+                KotlinWinRtCompilerSupportManifestEntry(
+                    kind = "event-source",
+                    className = "io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers",
+                    sourceFile = "io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt",
+                    entries = 3,
+                ),
+            ),
+            outputDirectory = outputDirectory,
+        )
+
+        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), null).use { classLoader ->
+            val klass = Class.forName(
+                "io.github.composefluent.winrt.projections.support.WinRTCompilerSupportManifest",
+                false,
+                classLoader,
+            )
+            assertEquals(2, klass.getField("ENTRY_COUNT").getInt(null))
+            assertEquals(12, klass.getField("PROJECTION_REGISTRAR_ENTRIES").getInt(null))
+            assertEquals(3, klass.getField("EVENT_SOURCE_ENTRIES").getInt(null))
+        }
     }
 }

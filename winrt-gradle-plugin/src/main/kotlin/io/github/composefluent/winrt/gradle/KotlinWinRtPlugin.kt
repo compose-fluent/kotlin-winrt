@@ -363,6 +363,7 @@ private fun configureWinRtGeneration(
             compilerSupportManifest = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-support/compiler-support.tsv")
             },
+            compilerSupportClassOutputDirectory = project.layout.buildDirectory.dir("classes/kotlin/main"),
             typeIndexOutput = project.layout.buildDirectory.file("classes/kotlin/main/kotlin-winrt/type-index.tsv"),
         )
         project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
@@ -436,6 +437,7 @@ private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
+    compilerSupportClassOutputDirectory: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
     typeIndexOutput: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
     project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
@@ -458,6 +460,12 @@ private fun configureKotlinWinRtCompilerPluginOptions(
         freeCompilerArgs.callOneArg(
             "add",
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportManifest=$compilerSupportManifestPath",
+        )
+        val compilerSupportClassOutputDirectoryPath = compilerSupportClassOutputDirectory.get().asFile.absolutePath
+        freeCompilerArgs.callOneArg("add", "-P")
+        freeCompilerArgs.callOneArg(
+            "add",
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportClassOutputDirectory=$compilerSupportClassOutputDirectoryPath",
         )
     })
 }
