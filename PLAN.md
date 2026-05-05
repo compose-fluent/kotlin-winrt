@@ -90,7 +90,8 @@
 - [ ] K2 symbol model extraction: move effective-public authored type discovery, WinRT base/interface discovery, member signature capture, and diagnostics onto K2/IR symbols instead of light-tree/string parsing where semantic data is required.
 - [ ] Generated runtime metadata tables: have the compiler/plugin or generator emit deterministic tables for runtime-class name, default-interface name/signature, base type, helper/ABI mapping, delegate/struct/enum/value-boxing metadata, and projection aliases so `TypeNameSupport` and `TypeExtensions` no longer need reflection-style fallbacks for generated projections.
 - [x] Generated support plan/audit source removal: generator no longer emits non-runtime `WinRTAbiImplementationPlan.kt` or `WinRTTypeShapeWriterPlan.kt` into app/sample Kotlin sources; custom mapped/member metadata remains on the generated public/helper surfaces that consume it.
-- [ ] Registrar/event support compile-surface reduction 正在做: move remaining `WinRTProjectionRegistrar` and event-helper tables toward compiler-plugin generated class artifacts from lightweight generator manifests; current sample compile reaches `WinRTProjectionRegistrar.register()` and fails with JVM `MethodTooLargeException`, confirming this is the next compile-surface blocker.
+- [x] Projection registrar method-size reduction: `WinRTProjectionRegistrar.register()` keeps the fixed runtime entrypoint but delegates deterministic registration batches to private chunk methods, removing the JVM 64KB method-size blocker while preserving direct generated registration behavior.
+- [ ] Event support compile-surface reduction 正在做: move `WinRTEventProjectionHelpers` tables/helpers toward compiler-plugin generated class artifacts or smaller deterministic support units; sample compile now passes and shows this file as the next noisy support-source hotspot.
 - [x] Runtime loader boundary: runtime now exposes a structured compiler-generated projection type-index registration helper and keeps the JVM resource loader limited to reading generated index rows and resolving the already-named class token; mapping installation is centralized in common runtime, with no source/package scanning or sample inference.
 - [x] Validation path: after the registrar slice, targeted compiler-plugin, generator registration, and runtime registry tests run through Windows Gradle on the required JDK 22 JVM target; `winrt-samples:compileKotlin` exposed and drove the authored-type registrar fix, with remaining sample rerun blocked by Windows Gradle/JDK 22 daemon native crashes rather than Kotlin source diagnostics.
 
@@ -116,7 +117,7 @@
 
 - [ ] Expect/actual next slice: choose the next target-specific ABI surface after the completed non-generic method/property slice; keep validation targeted and do not expand `PLAN.md` with command history.
 - [x] Generator regression sweep: full `KotlinProjectionGeneratorTest` passes on Windows/JDK 22 with generator-local test JVM memory settings after registrar ownership changes.
-- [ ] Sample compile smoke: blocked by generated `WinRTProjectionRegistrar.register()` exceeding the JVM method-size limit; rerun after registrar source is removed or split out of normal Kotlin compilation.
+- [x] Sample compile smoke after registrar chunking: `winrt-samples:compileKotlin` passes on Windows/JDK 22 with large-sample JVM settings; compile time is still several minutes and the next visible support-source hotspot is `WinRTEventProjectionHelpers.kt`.
 - [ ] Windows memory note: JVM target validation requires JDK 22; for large sample compile observation, include `-XX:HeapBaseMinAddress=8g` and sufficient code cache before interpreting daemon failures.
 
 ### Validation History Summary

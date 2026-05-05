@@ -179,9 +179,41 @@ class KotlinProjectionSupportRenderer {
         }
 
         val registerTypeIndex = MemberName("io.github.composefluent.winrt.runtime", "registerGeneratedProjectionTypeIndex")
+        val registrationChunks = registrationPlans.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
+        val chunkFunctions = registrationChunks.mapIndexed { index, chunk ->
+            projectionRegistrarChunkFunction(
+                name = projectionRegistrarChunkName(index),
+                plans = chunk,
+                registerTypeIndex = registerTypeIndex,
+            )
+        }
         val registerFunction = FunSpec.builder("register")
             .apply {
-                registrationPlans.forEach { plan ->
+                chunkFunctions.forEach { chunkFunction ->
+                    addStatement("%N()", chunkFunction)
+                }
+            }
+            .build()
+        val fileSpec = supportFileSpec("WinRTProjectionRegistrar")
+            .addType(
+                TypeSpec.objectBuilder("WinRTProjectionRegistrar")
+                    .addFunction(registerFunction)
+                    .addFunctions(chunkFunctions)
+                    .build(),
+            )
+            .build()
+        return supportFile("WinRTProjectionRegistrar.kt", fileSpec)
+    }
+
+    private fun projectionRegistrarChunkFunction(
+        name: String,
+        plans: List<KotlinTypeProjectionPlan>,
+        registerTypeIndex: MemberName,
+    ): FunSpec =
+        FunSpec.builder(name)
+            .addModifiers(KModifier.PRIVATE)
+            .apply {
+                plans.forEach { plan ->
                     val projectedClassName = projectionClassNameForQualifiedName(plan.type.qualifiedName)
                     if (plan.hasGeneratedRuntimeClassMetadataRegistration()) {
                         addProjectionMetadataRegistration(plan, projectedClassName)
@@ -197,15 +229,9 @@ class KotlinProjectionSupportRenderer {
                 }
             }
             .build()
-        val fileSpec = supportFileSpec("WinRTProjectionRegistrar")
-            .addType(
-                TypeSpec.objectBuilder("WinRTProjectionRegistrar")
-                    .addFunction(registerFunction)
-                    .build(),
-            )
-            .build()
-        return supportFile("WinRTProjectionRegistrar.kt", fileSpec)
-    }
+
+    private fun projectionRegistrarChunkName(index: Int): String =
+        "registerChunk${index.toString().padStart(3, '0')}"
 
     private fun FunSpec.Builder.addProjectionMetadataRegistration(
         plan: KotlinTypeProjectionPlan,
@@ -3451,5 +3477,6 @@ class KotlinProjectionSupportRenderer {
 
     private companion object {
         const val SUPPORT_PACKAGE = "io.github.composefluent.winrt.projections.support"
+        const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
     }
 }

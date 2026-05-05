@@ -138,6 +138,40 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_chunks_projection_registrar_to_keep_register_method_small() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = (0 until 130).map { index ->
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget$index",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        )
+                    },
+                ),
+            ),
+        )
+
+        val registrar = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("WinRTProjectionRegistrar.kt")
+            .contents
+
+        assertTrue(registrar, registrar.contains("fun register()"))
+        assertTrue(registrar, registrar.contains("registerChunk000()"))
+        assertTrue(registrar, registrar.contains("registerChunk001()"))
+        assertTrue(registrar, registrar.contains("registerChunk002()"))
+        assertTrue(registrar, registrar.contains("private fun registerChunk000()"))
+        assertTrue(registrar, registrar.contains("private fun registerChunk001()"))
+        assertTrue(registrar, registrar.contains("private fun registerChunk002()"))
+        assertTrue(registrar, registrar.contains("Widget0::class"))
+        assertTrue(registrar, registrar.contains("Widget129::class"))
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_interface_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
