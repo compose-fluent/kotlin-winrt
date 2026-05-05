@@ -247,30 +247,15 @@ internal fun hasDirectVtableInvokeOverload(kinds: List<KotlinProjectionComArgume
     kinds.all { it != null } && DIRECT_VTABLE_INVOKE_OVERLOADS.contains(kinds)
 
 private val P = KotlinProjectionComArgumentKind.Pointer
-private val I8 = KotlinProjectionComArgumentKind.Int8
-private val I16 = KotlinProjectionComArgumentKind.Int16
 private val I32 = KotlinProjectionComArgumentKind.Int32
-private val I64 = KotlinProjectionComArgumentKind.Int64
-private val F = KotlinProjectionComArgumentKind.Float
-private val D = KotlinProjectionComArgumentKind.Double
 
 private val DIRECT_VTABLE_INVOKE_OVERLOADS: Set<List<KotlinProjectionComArgumentKind>> = setOf(
     listOf(P),
-    listOf(I8),
-    listOf(I16),
     listOf(I32),
-    listOf(I64),
-    listOf(F),
-    listOf(D),
     listOf(P, P),
-    listOf(I8, P),
     listOf(I32, P),
     listOf(I32, I32),
-    listOf(D, P),
-    listOf(D, D, P),
-    listOf(I8, I16, F),
     listOf(P, P, P),
-    listOf(P, P, I8),
     listOf(I32, P, P),
     listOf(P, I32, P),
     listOf(I32, I32, P, P),

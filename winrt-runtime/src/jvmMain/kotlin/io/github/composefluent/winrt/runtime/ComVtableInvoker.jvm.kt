@@ -23,38 +23,14 @@ actual object ComVtableInvoker {
     private val pointerDescriptor = FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS)
     private val hResultDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
     private val hResultPtrDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultInt8Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_BYTE)
-    private val hResultInt16Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT)
     private val hResultInt32Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT)
     private val hResultInt64Descriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG)
-    private val hResultFloatDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_FLOAT)
-    private val hResultDoubleDescriptor = FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE)
     private val hResultPtrPtrDescriptor =
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS)
-    private val hResultInt8PtrDescriptor =
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_BYTE, ValueLayout.ADDRESS)
     private val hResultInt32PtrDescriptor =
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS)
     private val hResultInt32Int32Descriptor =
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT)
-    private val hResultDoublePtrDescriptor =
-        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_DOUBLE, ValueLayout.ADDRESS)
-    private val hResultDoubleDoublePtrDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_DOUBLE,
-            ValueLayout.JAVA_DOUBLE,
-            ValueLayout.ADDRESS,
-        )
-    private val hResultInt8Int16FloatDescriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_BYTE,
-            ValueLayout.JAVA_SHORT,
-            ValueLayout.JAVA_FLOAT,
-        )
     private val hResultPtrPtrPtrDescriptor =
         FunctionDescriptor.of(
             ValueLayout.JAVA_INT,
@@ -62,14 +38,6 @@ actual object ComVtableInvoker {
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
             ValueLayout.ADDRESS,
-        )
-    private val hResultPtrPtrInt8Descriptor =
-        FunctionDescriptor.of(
-            ValueLayout.JAVA_INT,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.ADDRESS,
-            ValueLayout.JAVA_BYTE,
         )
     private val hResultInt32PtrPtrDescriptor =
         FunctionDescriptor.of(
@@ -187,24 +155,6 @@ actual object ComVtableInvoker {
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
-        arg0: Byte,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt8Descriptor).invoke(instanceSegment, arg0) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: Short,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt16Descriptor).invoke(instanceSegment, arg0) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
         arg0: Int,
     ): Int {
         val instanceSegment = asSegment(instance)
@@ -232,42 +182,12 @@ actual object ComVtableInvoker {
     actual fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
-        arg0: Double,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultDoubleDescriptor).invoke(instanceSegment, arg0) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: Float,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultFloatDescriptor).invoke(instanceSegment, arg0) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
         arg0: RawAddress,
         arg1: RawAddress,
     ): Int {
         val instanceSegment = asSegment(instance)
         return downcallHandle(instanceSegment, slot, hResultPtrPtrDescriptor)
             .invoke(instanceSegment, asSegment(arg0), asSegment(arg1)) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: RawAddress,
-        arg1: RawAddress,
-        arg2: Byte,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultPtrPtrInt8Descriptor)
-            .invoke(instanceSegment, asSegment(arg0), asSegment(arg1), arg2) as Int
     }
 
     actual fun invokeArgs(
@@ -279,17 +199,6 @@ actual object ComVtableInvoker {
         val instanceSegment = asSegment(instance)
         return downcallHandle(instanceSegment, slot, hResultPtrPtrDescriptor)
             .invoke(instanceSegment, asSegment(arg0), asSegment(arg1)) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: Byte,
-        arg1: RawAddress,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt8PtrDescriptor)
-            .invoke(instanceSegment, arg0, asSegment(arg1)) as Int
     }
 
     actual fun invokeArgs(
@@ -335,41 +244,6 @@ actual object ComVtableInvoker {
         val instanceSegment = asSegment(instance)
         return downcallHandle(instanceSegment, slot, hResultInt32Int32Descriptor)
             .invoke(instanceSegment, arg0, arg1) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: Double,
-        arg1: RawAddress,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultDoublePtrDescriptor)
-            .invoke(instanceSegment, arg0, asSegment(arg1)) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: Double,
-        arg1: Double,
-        arg2: RawAddress,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultDoubleDoublePtrDescriptor)
-            .invoke(instanceSegment, arg0, arg1, asSegment(arg2)) as Int
-    }
-
-    actual fun invokeArgs(
-        instance: RawComPtr,
-        slot: Int,
-        arg0: Byte,
-        arg1: Short,
-        arg2: Float,
-    ): Int {
-        val instanceSegment = asSegment(instance)
-        return downcallHandle(instanceSegment, slot, hResultInt8Int16FloatDescriptor)
-            .invoke(instanceSegment, arg0, arg1, arg2) as Int
     }
 
     actual fun invokeArgs(
