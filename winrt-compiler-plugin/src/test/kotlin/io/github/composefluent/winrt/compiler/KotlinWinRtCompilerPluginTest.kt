@@ -118,7 +118,7 @@ class KotlinWinRtCompilerPluginTest {
             manifest,
             """
             kind	className	sourceFile	entries
-            projection-registrar	io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar	io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt	12
+            projection-registrar	io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar	projection-registrar.tsv	12
             event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt	3
             """.trimIndent() + "\n",
         )
@@ -128,7 +128,7 @@ class KotlinWinRtCompilerPluginTest {
         assertEquals(2, entries.size)
         assertEquals("projection-registrar", entries[0].kind)
         assertEquals("io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar", entries[0].className)
-        assertEquals("io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt", entries[0].sourceFile)
+        assertEquals("projection-registrar.tsv", entries[0].sourceFile)
         assertEquals(12, entries[0].entries)
         assertEquals("event-source", entries[1].kind)
     }
@@ -141,7 +141,7 @@ class KotlinWinRtCompilerPluginTest {
                 KotlinWinRtCompilerSupportManifestEntry(
                     kind = "projection-registrar",
                     className = "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar",
-                    sourceFile = "io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt",
+                    sourceFile = "projection-registrar.tsv",
                     entries = 12,
                 ),
                 KotlinWinRtCompilerSupportManifestEntry(
@@ -163,6 +163,32 @@ class KotlinWinRtCompilerPluginTest {
             assertEquals(2, klass.getField("ENTRY_COUNT").getInt(null))
             assertEquals(12, klass.getField("PROJECTION_REGISTRAR_ENTRIES").getInt(null))
             assertEquals(3, klass.getField("EVENT_SOURCE_ENTRIES").getInt(null))
+        }
+    }
+
+    @Test
+    fun projection_registrar_input_writes_class_artifact() {
+        val input = Files.createTempFile("kotlin-winrt-projection-registrar-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kotlinClassName", "projectedTypeName", "kind", "baseTypeName", "metadataClassName"),
+                listOf("java.lang.String", "Sample.Foundation.Widget", "RuntimeClass", "Sample.Foundation.WidgetBase", ""),
+                listOf("java.lang.Integer", "Sample.Foundation.IWidget", "Interface", "", ""),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-registrar-class-")
+
+        val entries = readProjectionRegistrarEntries(input)
+        writeProjectionRegistrarClass(entries, outputDirectory)
+
+        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
+            val klass = Class.forName(
+                "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar",
+                false,
+                classLoader,
+            )
+            assertEquals("register", klass.getDeclaredMethod("register").name)
         }
     }
 }

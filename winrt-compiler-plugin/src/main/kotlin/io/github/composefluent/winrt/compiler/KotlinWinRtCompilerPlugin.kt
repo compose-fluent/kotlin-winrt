@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.org.objectweb.asm.ClassWriter
 import org.jetbrains.org.objectweb.asm.Opcodes
+import org.jetbrains.org.objectweb.asm.Type
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -111,11 +112,11 @@ class KotlinWinRtIrGenerationExtension(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
     ) {
+        val compilerSupportEntries = readCompilerSupportManifest()
+        writeCompilerSupportClasses(compilerSupportEntries)
         if (metadataIndexPath.isNullOrBlank()) {
             return
         }
-        val compilerSupportEntries = readCompilerSupportManifest()
-        writeCompilerSupportManifestClass(compilerSupportEntries)
         val winRtTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
         if (winRtTypes.isEmpty()) {
             return
@@ -144,12 +145,35 @@ class KotlinWinRtIrGenerationExtension(
         return readCompilerSupportManifest(manifestPath)
     }
 
-    private fun writeCompilerSupportManifestClass(entries: List<KotlinWinRtCompilerSupportManifestEntry>) {
+    private fun writeCompilerSupportClasses(entries: List<KotlinWinRtCompilerSupportManifestEntry>) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         if (entries.isEmpty()) {
             return
         }
         writeCompilerSupportManifestClass(entries, outputDirectory)
+        writeProjectionRegistrarClass(
+            entries = readProjectionRegistrarEntries(entries),
+            outputDirectory = outputDirectory,
+        )
+    }
+
+    private fun readProjectionRegistrarEntries(
+        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    ): List<KotlinWinRtProjectionRegistrarEntry> {
+        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
+        val manifestDirectory = manifestPath.parent ?: return emptyList()
+        return manifestEntries
+            .asSequence()
+            .filter { it.kind == "projection-registrar" }
+            .flatMap { entry ->
+                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
+                if (Files.isRegularFile(sourcePath)) {
+                    readProjectionRegistrarEntries(sourcePath).asSequence()
+                } else {
+                    emptySequence()
+                }
+            }
+            .toList()
     }
 
     private fun writeProjectionTypeIndex(
@@ -259,7 +283,7 @@ fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportMani
         .toList()
 
 private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerSupportManifestEntry? {
-    val parts = line.split('\t')
+    val parts = line.split('\t', limit = 4)
     if (parts.size < 4) {
         return null
     }
@@ -274,6 +298,11 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
 
 private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest"
+
+private const val PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME: String =
+    "io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar"
+
+private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
 fun writeCompilerSupportManifestClass(
     entries: List<KotlinWinRtCompilerSupportManifestEntry>,
@@ -306,6 +335,142 @@ fun writeCompilerSupportManifestClass(
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
 }
+
+data class KotlinWinRtProjectionRegistrarEntry(
+    val kotlinClassName: String,
+    val projectedTypeName: String,
+    val kind: String,
+    val baseTypeName: String,
+    val metadataClassName: String,
+)
+
+fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> =
+    Files.readAllLines(path)
+        .asSequence()
+        .drop(1)
+        .filter(String::isNotBlank)
+        .mapNotNull(::parseProjectionRegistrarLine)
+        .toList()
+
+private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionRegistrarEntry? {
+    val parts = line.split('\t', limit = 5)
+    if (parts.size < 5) {
+        return null
+    }
+    return KotlinWinRtProjectionRegistrarEntry(
+        kotlinClassName = parts[0],
+        projectedTypeName = parts[1],
+        kind = parts[2],
+        baseTypeName = parts[3],
+        metadataClassName = parts[4],
+    )
+}
+
+fun writeProjectionRegistrarClass(
+    entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    outputDirectory: Path,
+) {
+    if (entries.isEmpty()) {
+        return
+    }
+    val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
+    classWriter.visit(
+        Opcodes.V17,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+        PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME,
+        null,
+        "java/lang/Object",
+        null,
+    )
+    classWriter.visitSource("projection-registrar.tsv", null)
+    classWriter.addDefaultConstructor()
+    val chunks = entries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
+    val register = classWriter.visitMethod(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        "register",
+        "()V",
+        null,
+        null,
+    )
+    register.visitCode()
+    chunks.indices.forEach { index ->
+        register.visitMethodInsn(
+            Opcodes.INVOKESTATIC,
+            PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME,
+            projectionRegistrarChunkName(index),
+            "()V",
+            false,
+        )
+    }
+    register.visitInsn(Opcodes.RETURN)
+    register.visitMaxs(0, 0)
+    register.visitEnd()
+
+    chunks.forEachIndexed { index, chunk ->
+        classWriter.addProjectionRegistrarChunk(projectionRegistrarChunkName(index), chunk)
+    }
+    classWriter.visitEnd()
+
+    val target = outputDirectory.resolve("$PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME.class")
+    Files.createDirectories(target.parent)
+    Files.write(target, classWriter.toByteArray())
+}
+
+private fun projectionRegistrarChunkName(index: Int): String =
+    "registerChunk${index.toString().padStart(3, '0')}"
+
+private fun ClassWriter.addProjectionRegistrarChunk(
+    name: String,
+    entries: List<KotlinWinRtProjectionRegistrarEntry>,
+) {
+    val method = visitMethod(
+        Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
+        name,
+        "()V",
+        null,
+        null,
+    )
+    method.visitCode()
+    entries.forEach { entry ->
+        if (entry.metadataClassName.isNotBlank()) {
+            val metadataInternalName = entry.metadataClassName.toMetadataInternalName()
+            method.visitFieldInsn(
+                Opcodes.GETSTATIC,
+                metadataInternalName,
+                "INSTANCE",
+                "L$metadataInternalName;",
+            )
+            method.visitInsn(Opcodes.POP)
+        }
+        method.visitLdcInsn(Type.getObjectType(entry.kotlinClassName.toInternalName()))
+        method.visitMethodInsn(
+            Opcodes.INVOKESTATIC,
+            "kotlin/jvm/internal/Reflection",
+            "getOrCreateKotlinClass",
+            "(Ljava/lang/Class;)Lkotlin/reflect/KClass;",
+            false,
+        )
+        method.visitLdcInsn(entry.projectedTypeName)
+        method.visitLdcInsn(entry.kind)
+        method.visitLdcInsn(entry.baseTypeName)
+        method.visitMethodInsn(
+            Opcodes.INVOKESTATIC,
+            "io/github/composefluent/winrt/runtime/CompilerGeneratedProjectionTypeIndexesKt",
+            "registerGeneratedProjectionTypeIndex",
+            "(Lkotlin/reflect/KClass;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            false,
+        )
+    }
+    method.visitInsn(Opcodes.RETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun String.toInternalName(): String =
+    replace('.', '/')
+
+private fun String.toMetadataInternalName(): String =
+    removeSuffix(".Metadata").toInternalName() + "\$Metadata"
 
 private fun compilerSupportFieldPrefix(kind: String): String =
     kind.uppercase()

@@ -87,7 +87,6 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
@@ -141,11 +140,11 @@ class KotlinProjectionSupportRenderer {
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         return listOfNotNull(
-            renderProjectionRegistrar(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
+            renderProjectionRegistrarCompilerInput(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans, inventory),
-            renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames),
+            renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
@@ -167,11 +166,16 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
         genericInstantiationWriters: List<WinRtGenericInstantiationWriterDescriptor>,
         excludedProjectionTypeNames: Set<String>,
+        emitProjectionRegistrar: Boolean,
     ): KotlinProjectionFile? {
         val authoredTypes = inventory.authoredMetadataTypeMappings
             .mapTo(excludedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
-        val registrarEntries = plans.count { plan ->
-            plan.type.qualifiedName !in authoredTypes && plan.type.kind != WinRtTypeKind.Unknown
+        val registrarEntries = if (emitProjectionRegistrar) {
+            plans.count { plan ->
+                plan.type.qualifiedName !in authoredTypes && plan.type.kind != WinRtTypeKind.Unknown
+            }
+        } else {
+            0
         }
         val eventSourceEntries = model.namespaces
             .flatMap(WinRtNamespace::types)
@@ -183,7 +187,7 @@ class KotlinProjectionSupportRenderer {
             compilerSupportManifestRow(
                 kind = "projection-registrar",
                 className = "$SUPPORT_PACKAGE.WinRTProjectionRegistrar",
-                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt",
+                sourceFile = "projection-registrar.tsv",
                 entries = registrarEntries,
             ),
             compilerSupportManifestRow(
@@ -227,7 +231,7 @@ class KotlinProjectionSupportRenderer {
     ): String =
         listOf(kind, className, sourceFile, entries.toString()).joinToString("\t")
 
-    private fun renderProjectionRegistrar(
+    private fun renderProjectionRegistrarCompilerInput(
         plans: List<KotlinTypeProjectionPlan>,
         inventory: WinRtMetadataProjectionInventory,
         excludedProjectionTypeNames: Set<String>,
@@ -243,107 +247,28 @@ class KotlinProjectionSupportRenderer {
         if (registrationPlans.isEmpty()) {
             return null
         }
-
-        val registerTypeIndex = MemberName("io.github.composefluent.winrt.runtime", "registerGeneratedProjectionTypeIndex")
-        val registrationChunks = registrationPlans.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
-        val chunkFunctions = registrationChunks.mapIndexed { index, chunk ->
-            projectionRegistrarChunkFunction(
-                name = projectionRegistrarChunkName(index),
-                plans = chunk,
-                registerTypeIndex = registerTypeIndex,
-            )
-        }
-        val registerFunction = FunSpec.builder("register")
-            .apply {
-                chunkFunctions.forEach { chunkFunction ->
-                    addStatement("%N()", chunkFunction)
-                }
-            }
-            .build()
-        val fileSpec = supportFileSpec("WinRTProjectionRegistrar")
-            .addType(
-                TypeSpec.objectBuilder("WinRTProjectionRegistrar")
-                    .addFunction(registerFunction)
-                    .addFunctions(chunkFunctions)
-                    .build(),
-            )
-            .build()
-        return supportFile("WinRTProjectionRegistrar.kt", fileSpec)
-    }
-
-    private fun projectionRegistrarChunkFunction(
-        name: String,
-        plans: List<KotlinTypeProjectionPlan>,
-        registerTypeIndex: MemberName,
-    ): FunSpec =
-        FunSpec.builder(name)
-            .addModifiers(KModifier.PRIVATE)
-            .apply {
-                plans.forEach { plan ->
-                    val projectedClassName = projectionClassNameForQualifiedName(plan.type.qualifiedName)
-                    if (plan.hasGeneratedRuntimeClassMetadataRegistration()) {
-                        addProjectionMetadataRegistration(plan, projectedClassName)
-                    }
-                    addStatement(
-                        "%M(%T::class, %S, %S, %S)",
-                        registerTypeIndex,
-                        projectedClassName,
-                        plan.type.qualifiedName,
-                        plan.type.kind.name,
-                        plan.type.baseTypeName.orEmpty(),
-                    )
-                }
-            }
-            .build()
-
-    private fun projectionRegistrarChunkName(index: Int): String =
-        "registerChunk${index.toString().padStart(3, '0')}"
-
-    private fun FunSpec.Builder.addProjectionMetadataRegistration(
-        plan: KotlinTypeProjectionPlan,
-        projectedClassName: ClassName,
-    ) {
-        addStatement(
-            "%T.registerRuntimeClassFactory(%S) { instance -> %T.Metadata.wrap(instance) }",
-            COM_WRAPPERS_SUPPORT_CLASS_NAME,
-            plan.type.qualifiedName,
-            projectedClassName,
-        )
-        addStatement(
-            "%T.registerCustomAbiTypeMapping(%T::class, %T::class, %S, isRuntimeClass = true)",
-            PROJECTIONS_CLASS_NAME,
-            projectedClassName,
-            projectedClassName,
-            plan.type.qualifiedName,
-        )
-        val defaultInterfaceName = plan.defaultInterfaceName ?: return
-        val defaultInterfaceSignature = typeRenderer.abiTypeSignature(
-            typeRenderer.renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName),
-        )
-        if (defaultInterfaceSignature != null) {
-            addStatement(
-                "%T.registerDefaultInterfaceTypeName(%S, %S, %L.render())",
-                PROJECTIONS_CLASS_NAME,
+        val rows = registrationPlans.joinToString(
+            separator = "\n",
+            postfix = "\n",
+            prefix = "kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName\n",
+        ) { plan ->
+            val projectedClassName = projectionClassNameForQualifiedName(plan.type.qualifiedName)
+            listOf(
+                projectedClassName.canonicalName,
                 plan.type.qualifiedName,
-                defaultInterfaceName,
-                defaultInterfaceSignature,
-            )
-        } else {
-            addStatement(
-                "%T.registerDefaultInterfaceTypeName(%S, %S)",
-                PROJECTIONS_CLASS_NAME,
-                plan.type.qualifiedName,
-                defaultInterfaceName,
-            )
+                plan.type.kind.name,
+                plan.type.baseTypeName.orEmpty(),
+                projectedClassName
+                    .takeIf { plan.hasGeneratedRuntimeClassMetadataRegistration() }
+                    ?.let { "${it.canonicalName}.Metadata" }
+                    .orEmpty(),
+            ).joinToString("\t")
         }
-        if (!defaultInterfaceName.contains('<')) {
-            addStatement(
-                "%T.registerDefaultInterfaceType(%T::class, %T::class)",
-                PROJECTIONS_CLASS_NAME,
-                projectedClassName,
-                typeRenderer.resolveTypeName(defaultInterfaceName),
-            )
-        }
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/projection-registrar.tsv",
+            packageName = "",
+            contents = rows,
+        )
     }
 
     private fun renderGenericAbiRegistry(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {

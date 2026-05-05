@@ -49,7 +49,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_emits_projection_registrar_with_class_literal_type_index_entries() {
+    fun generator_emits_projection_registrar_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -76,29 +76,22 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val registrar = KotlinProjectionGenerator(emitSupportFiles = true)
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("WinRTProjectionRegistrar.kt")
-            .contents
 
-        assertTrue(registrar, registrar.contains("object WinRTProjectionRegistrar"))
-        assertTrue(registrar, registrar.contains("fun register()"))
-        assertFalse(registrar, registrar.contains("Widget.Metadata.register()"))
-        assertTrue(registrar, registrar.contains("ComWrappersSupport.registerRuntimeClassFactory(\"Sample.Foundation.Widget\")"))
-        assertTrue(registrar, registrar.contains("Widget.Metadata.wrap(instance)"))
-        assertTrue(registrar, registrar.contains("Projections.registerCustomAbiTypeMapping("))
-        assertTrue(registrar, registrar.contains("Projections.registerDefaultInterfaceTypeName("))
-        assertTrue(registrar, registrar.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
-        assertTrue(registrar, registrar.contains("IWidget::class"))
-        assertTrue(registrar, registrar.contains("Widget::class"))
-        assertTrue(registrar, registrar.contains("registerGeneratedProjectionTypeIndex("))
-        assertTrue(registrar, registrar.contains("\"Sample.Foundation.WidgetBase\""))
-        assertFalse(registrar, registrar.contains("Class.forName"))
+        val registrar = filesByName.getValue("projection-registrar.tsv").contents
+        val manifest = filesByName.getValue("compiler-support.tsv").contents
+
+        assertFalse(filesByName.containsKey("WinRTProjectionRegistrar.kt"))
+        assertTrue(registrar, registrar.contains("kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName"))
+        assertTrue(registrar, registrar.contains("sample.foundation.IWidget\tSample.Foundation.IWidget\tInterface\t\t"))
+        assertTrue(registrar, registrar.contains("sample.foundation.Widget\tSample.Foundation.Widget\tRuntimeClass\tSample.Foundation.WidgetBase\tsample.foundation.Widget.Metadata"))
+        assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv\t2"))
     }
 
     @Test
-    fun generator_omits_suppressed_authored_types_from_projection_registrar() {
+    fun generator_omits_suppressed_authored_types_from_projection_registrar_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -127,18 +120,15 @@ class KotlinProjectionGeneratorTest {
         )
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("WinRTProjectionRegistrar.kt")
+            .getValue("projection-registrar.tsv")
             .contents
 
-        assertFalse(registrar, registrar.contains("AuthoredWidget.Metadata.register()"))
-        assertFalse(registrar, registrar.contains("AuthoredWidget::class"))
-        assertFalse(registrar, registrar.contains("ProjectedWidget.Metadata.register()"))
-        assertTrue(registrar, registrar.contains("ComWrappersSupport.registerRuntimeClassFactory(\"Sample.Foundation.ProjectedWidget\")"))
-        assertTrue(registrar, registrar.contains("ProjectedWidget::class"))
+        assertFalse(registrar, registrar.contains("AuthoredWidget"))
+        assertTrue(registrar, registrar.contains("sample.foundation.ProjectedWidget\tSample.Foundation.ProjectedWidget\tRuntimeClass\tSample.Foundation.WidgetBase\tsample.foundation.ProjectedWidget.Metadata"))
     }
 
     @Test
-    fun generator_chunks_projection_registrar_to_keep_register_method_small() {
+    fun generator_records_large_projection_registrar_as_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -154,21 +144,18 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val registrar = KotlinProjectionGenerator(emitSupportFiles = true)
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("WinRTProjectionRegistrar.kt")
-            .contents
 
-        assertTrue(registrar, registrar.contains("fun register()"))
-        assertTrue(registrar, registrar.contains("registerChunk000()"))
-        assertTrue(registrar, registrar.contains("registerChunk001()"))
-        assertTrue(registrar, registrar.contains("registerChunk002()"))
-        assertTrue(registrar, registrar.contains("private fun registerChunk000()"))
-        assertTrue(registrar, registrar.contains("private fun registerChunk001()"))
-        assertTrue(registrar, registrar.contains("private fun registerChunk002()"))
-        assertTrue(registrar, registrar.contains("Widget0::class"))
-        assertTrue(registrar, registrar.contains("Widget129::class"))
+        val registrar = filesByName.getValue("projection-registrar.tsv").contents
+        val manifest = filesByName.getValue("compiler-support.tsv").contents
+
+        assertFalse(filesByName.containsKey("WinRTProjectionRegistrar.kt"))
+        assertEquals(131, registrar.lineSequence().count { it.isNotBlank() })
+        assertTrue(registrar, registrar.contains("sample.foundation.Widget0\tSample.Foundation.Widget0\tRuntimeClass\t\tsample.foundation.Widget0.Metadata"))
+        assertTrue(registrar, registrar.contains("sample.foundation.Widget129\tSample.Foundation.Widget129\tRuntimeClass\t\tsample.foundation.Widget129.Metadata"))
+        assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv\t130"))
     }
 
     @Test
@@ -6992,7 +6979,7 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val compilerSupportManifest = filesByName.getValue("compiler-support.tsv").contents
         assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries"))
-        assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar"))
+        assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv"))
         assertTrue(compilerSupportManifest.contains("event-source\tio.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers"))
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
 
