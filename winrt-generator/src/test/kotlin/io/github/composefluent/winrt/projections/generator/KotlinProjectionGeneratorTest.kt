@@ -6986,6 +6986,11 @@ class KotlinProjectionGeneratorTest {
         )
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
+        val compilerSupportManifest = filesByName.getValue("compiler-support.tsv").contents
+        assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries"))
+        assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar"))
+        assertTrue(compilerSupportManifest.contains("event-source\tio.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers"))
+        assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
 
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("_get_Value_Int"))
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("Windows.Foundation.IReference<Int>"))

@@ -38,6 +38,12 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             description = "Path to the compiler-generated kotlin-winrt projection type index resource.",
             required = false,
         ),
+        CliOption(
+            optionName = "compilerSupportManifest",
+            valueDescription = "<path>",
+            description = "Path to the generator-emitted kotlin-winrt compiler support manifest.",
+            required = false,
+        ),
     )
 
     override fun processOption(
@@ -49,6 +55,8 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             configuration.put(METADATA_INDEX_KEY, value)
         } else if (option.optionName == "typeIndexOutput") {
             configuration.put(TYPE_INDEX_OUTPUT_KEY, value)
+        } else if (option.optionName == "compilerSupportManifest") {
+            configuration.put(COMPILER_SUPPORT_MANIFEST_KEY, value)
         }
     }
 
@@ -58,6 +66,8 @@ class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
             CompilerConfigurationKey("kotlin-winrt metadata index")
         val TYPE_INDEX_OUTPUT_KEY: CompilerConfigurationKey<String> =
             CompilerConfigurationKey("kotlin-winrt type index output")
+        val COMPILER_SUPPORT_MANIFEST_KEY: CompilerConfigurationKey<String> =
+            CompilerConfigurationKey("kotlin-winrt compiler support manifest")
     }
 }
 
@@ -71,6 +81,7 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
             KotlinWinRtIrGenerationExtension(
                 metadataIndexPath = configuration.get(KotlinWinRtCommandLineProcessor.METADATA_INDEX_KEY),
                 typeIndexOutputPath = configuration.get(KotlinWinRtCommandLineProcessor.TYPE_INDEX_OUTPUT_KEY),
+                compilerSupportManifestPath = configuration.get(KotlinWinRtCommandLineProcessor.COMPILER_SUPPORT_MANIFEST_KEY),
             ),
         )
     }
@@ -79,6 +90,7 @@ class KotlinWinRtCompilerPluginRegistrar : CompilerPluginRegistrar() {
 class KotlinWinRtIrGenerationExtension(
     private val metadataIndexPath: String?,
     private val typeIndexOutputPath: String?,
+    private val compilerSupportManifestPath: String?,
 ) : IrGenerationExtension {
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     override fun generate(
@@ -88,6 +100,7 @@ class KotlinWinRtIrGenerationExtension(
         if (metadataIndexPath.isNullOrBlank()) {
             return
         }
+        readCompilerSupportManifest()
         val winRtTypes = readAuthoringMetadataIndex(Path.of(metadataIndexPath))
         if (winRtTypes.isEmpty()) {
             return
@@ -106,6 +119,14 @@ class KotlinWinRtIrGenerationExtension(
                 messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
             }
         }
+    }
+
+    private fun readCompilerSupportManifest(): List<KotlinWinRtCompilerSupportManifestEntry> {
+        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
+        if (!Files.isRegularFile(manifestPath)) {
+            return emptyList()
+        }
+        return readCompilerSupportManifest(manifestPath)
     }
 
     private fun writeProjectionTypeIndex(
@@ -196,5 +217,34 @@ class KotlinWinRtIrGenerationExtension(
     private data class AuthoredIrClassContext(
         val klass: IrClass,
         val containingTypesPublic: Boolean,
+    )
+}
+
+data class KotlinWinRtCompilerSupportManifestEntry(
+    val kind: String,
+    val className: String,
+    val sourceFile: String,
+    val entries: Int,
+)
+
+fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> =
+    Files.readAllLines(path)
+        .asSequence()
+        .drop(1)
+        .filter(String::isNotBlank)
+        .mapNotNull(::parseCompilerSupportManifestLine)
+        .toList()
+
+private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerSupportManifestEntry? {
+    val parts = line.split('\t')
+    if (parts.size < 4) {
+        return null
+    }
+    val entries = parts[3].toIntOrNull() ?: return null
+    return KotlinWinRtCompilerSupportManifestEntry(
+        kind = parts[0],
+        className = parts[1],
+        sourceFile = parts[2],
+        entries = entries,
     )
 }

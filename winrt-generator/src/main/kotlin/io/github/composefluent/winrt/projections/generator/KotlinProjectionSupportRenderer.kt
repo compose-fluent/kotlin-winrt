@@ -146,6 +146,7 @@ class KotlinProjectionSupportRenderer {
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans, inventory),
+            renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
             renderAuthoringAbiClassPlan(inventory, plans, semanticHelpers),
@@ -160,6 +161,72 @@ class KotlinProjectionSupportRenderer {
             renderNamespaceAdditions(inventory),
         )
     }
+
+    private fun renderCompilerSupportManifest(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+        inventory: WinRtMetadataProjectionInventory,
+        genericInstantiationWriters: List<WinRtGenericInstantiationWriterDescriptor>,
+        excludedProjectionTypeNames: Set<String>,
+    ): KotlinProjectionFile? {
+        val authoredTypes = inventory.authoredMetadataTypeMappings
+            .mapTo(excludedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
+        val registrarEntries = plans.count { plan ->
+            plan.type.qualifiedName !in authoredTypes && plan.type.kind != WinRtTypeKind.Unknown
+        }
+        val eventSourceEntries = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .flatMap(model.semanticHelpers()::eventHelperSubclassDescriptors)
+            .distinctBy { it.eventTypeName to it.ownerTypeName }
+            .count()
+        val genericInstantiationEntries = genericInstantiationWriters.size
+        val rows = listOf(
+            compilerSupportManifestRow(
+                kind = "projection-registrar",
+                className = "$SUPPORT_PACKAGE.WinRTProjectionRegistrar",
+                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar.kt",
+                entries = registrarEntries,
+            ),
+            compilerSupportManifestRow(
+                kind = "event-source",
+                className = "$SUPPORT_PACKAGE.WinRTEventProjectionHelpers",
+                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt",
+                entries = eventSourceEntries,
+            ),
+            compilerSupportManifestRow(
+                kind = "event-source-mapping",
+                className = "$SUPPORT_PACKAGE.WinRTEventProjectionHelpers",
+                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt",
+                entries = inventory.eventSourceMappings.size,
+            ),
+            compilerSupportManifestRow(
+                kind = "generic-type-instantiation",
+                className = "$SUPPORT_PACKAGE.WinRTGenericTypeInstantiations",
+                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations.kt",
+                entries = genericInstantiationEntries,
+            ),
+        ).filterNot { row -> row.endsWith("\t0") }
+        if (rows.isEmpty()) {
+            return null
+        }
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/compiler-support.tsv",
+            packageName = "",
+            contents = rows.joinToString(
+                separator = "\n",
+                postfix = "\n",
+                prefix = "kind\tclassName\tsourceFile\tentries\n",
+            ),
+        )
+    }
+
+    private fun compilerSupportManifestRow(
+        kind: String,
+        className: String,
+        sourceFile: String,
+        entries: Int,
+    ): String =
+        listOf(kind, className, sourceFile, entries.toString()).joinToString("\t")
 
     private fun renderProjectionRegistrar(
         plans: List<KotlinTypeProjectionPlan>,
