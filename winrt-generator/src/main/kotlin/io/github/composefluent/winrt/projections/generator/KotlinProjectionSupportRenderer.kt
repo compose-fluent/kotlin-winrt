@@ -458,11 +458,19 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "EventSourceEntry")
+        val eventSourceEntryChunks = eventSourceEntries.chunked(EVENT_SOURCE_ENTRY_CHUNK_SIZE)
+        val eventSourceEntryChunkFunctions = eventSourceEntryChunks.mapIndexed { index, chunk ->
+            FunSpec.builder(eventSourceEntryChunkName(index))
+                .addModifiers(KModifier.PRIVATE)
+                .returns(List::class.asClassName().parameterizedBy(entryClass))
+                .addStatement("return %L", eventSourceEntriesCode(chunk, entryClass))
+                .build()
+        }
         val objectBuilder = TypeSpec.objectBuilder("WinRTEventProjectionHelpers")
             .addModifiers(KModifier.INTERNAL)
             .addProperty(
                 PropertySpec.builder("EVENT_SOURCES", List::class.asClassName().parameterizedBy(entryClass))
-                    .initializer(eventSourceEntriesCode(eventSourceEntries, entryClass))
+                    .initializer(eventSourceEntriesBuildListCode(eventSourceEntryChunks.indices))
                     .build(),
             )
             .addProperty(stringListProperty("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" }))
@@ -482,8 +490,10 @@ class KotlinProjectionSupportRenderer {
                     .initializer("EVENT_SOURCES.groupBy({ it.ownerType })")
                     .build(),
             )
+            .addFunctions(eventSourceEntryChunkFunctions)
             .addFunctions(eventProjectionHelperFunctions(entryClass, eventSourceFactoryDescriptors, plansByType, typesByQualifiedName))
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
+            .addAnnotation(generatedEventHelperSuppressAnnotation())
             .addType(
                 dataClass(
                     className = "EventSourceEntry",
@@ -511,6 +521,14 @@ class KotlinProjectionSupportRenderer {
             .build()
         return supportFile("WinRTEventProjectionHelpers.kt", fileSpec)
     }
+
+    private fun generatedEventHelperSuppressAnnotation(): AnnotationSpec =
+        AnnotationSpec.builder(Suppress::class)
+            .addMember("%S", "USELESS_IS_CHECK")
+            .addMember("%S", "USELESS_CAST")
+            .addMember("%S", "UNCHECKED_CAST")
+            .addMember("%S", "REDUNDANT_CALL_OF_CONVERSION_METHOD")
+            .build()
 
     private fun renderAbiImplementationPlan(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
         val abiPlans = plans.filter { plan ->
@@ -2765,6 +2783,21 @@ class KotlinProjectionSupportRenderer {
         return code.build()
     }
 
+    private fun eventSourceEntriesBuildListCode(indices: IntRange): CodeBlock {
+        val code = CodeBlock.builder()
+        code.add("buildList {\n")
+        code.indent()
+        indices.forEach { index ->
+            code.add("addAll(%N())\n", eventSourceEntryChunkName(index))
+        }
+        code.unindent()
+        code.add("}")
+        return code.build()
+    }
+
+    private fun eventSourceEntryChunkName(index: Int): String =
+        "eventSourceEntriesChunk${index.toString().padStart(3, '0')}"
+
     private fun eventSourceSubclassType(
         descriptor: WinRtEventHelperSubclassDescriptor,
         delegatePlan: KotlinTypeProjectionPlan,
@@ -3478,5 +3511,6 @@ class KotlinProjectionSupportRenderer {
     private companion object {
         const val SUPPORT_PACKAGE = "io.github.composefluent.winrt.projections.support"
         const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
+        const val EVENT_SOURCE_ENTRY_CHUNK_SIZE = 96
     }
 }

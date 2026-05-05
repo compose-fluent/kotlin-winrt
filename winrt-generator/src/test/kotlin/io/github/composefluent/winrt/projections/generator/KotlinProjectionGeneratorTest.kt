@@ -7012,6 +7012,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initDelegateCcwInvoke(entry)"))
         assertTrue(genericTypeInstantiations.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
+        assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
+        assertTrue(eventProjectionHelpers.contains("\"USELESS_IS_CHECK\""))
+        assertTrue(eventProjectionHelpers.contains("\"USELESS_CAST\""))
+        assertTrue(eventProjectionHelpers.contains("EVENT_SOURCES: List<EventSourceEntry> = buildList"))
+        assertTrue(eventProjectionHelpers.contains("addAll(eventSourceEntriesChunk000())"))
+        assertTrue(eventProjectionHelpers.contains("private fun eventSourceEntriesChunk000(): List<EventSourceEntry>"))
         assertTrue(eventProjectionHelpers.contains("sourceClass = \"EventHandlerEventSource\""))
         assertTrue(eventProjectionHelpers.contains("usesSharedEventHandlerSource = true"))
         assertTrue(eventProjectionHelpers.contains("\"EventHandlerEventSource\" -> eventHandlerEventSourceFactoryFor(entry)"))
