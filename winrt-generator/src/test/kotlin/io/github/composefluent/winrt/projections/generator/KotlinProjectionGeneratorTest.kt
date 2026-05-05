@@ -103,6 +103,66 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_slice_emits_jvm_projected_interface_abi_calls() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IChild",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetChild",
+                                    returnTypeName = "Sample.Foundation.IChild",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetChild",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("child", "Sample.Foundation.IChild")),
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Child",
+                                    typeName = "Sample.Foundation.IChild",
+                                    getterMethodName = "get_Child",
+                                    setterMethodName = "put_Child",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public fun getChild(): IChild"))
+        assertTrue(common, common.contains("public fun setChild(child: IChild)"))
+        assertTrue(common, common.contains("public var child: IChild"))
+        assertTrue(jvm, jvm.contains("IChildJvmProjection.wrap(__resultRef)"))
+        assertTrue(jvm, jvm.contains("PlatformAbi.fromRawComPtr("))
+        assertTrue(jvm, jvm.contains("nativeObject.pointer"))
+        assertTrue(jvm, jvm.contains("JvmAbi.invoke_p"))
+        assertFalse(jvm, jvm.contains("IChild.Metadata.wrap"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun expect_actual_interface_native_projection_implements_inherited_interface_members() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

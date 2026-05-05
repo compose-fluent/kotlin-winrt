@@ -137,14 +137,16 @@ internal class KotlinExpectActualProjectionRenderer(
                 )
             }
             if (
-                !returnBinding.isSupportedExpectActualJvmMemberAbiKind() ||
-                parameterBindings.any { !it.typeBinding.isSupportedExpectActualJvmMemberAbiKind() }
+                !returnBinding.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) ||
+                parameterBindings.any { !it.typeBinding.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) }
             ) {
                 return@runCatching false
             }
-            baseRenderer.buildAbiCallPlan(
+            buildJvmInterfaceAbiCallPlan(
                 returnBinding = returnBinding,
                 parameterBindings = parameterBindings,
+                suppressHResultCheck = false,
+                typesByQualifiedName = typesByQualifiedName,
             )?.jvmFfmShapeOrNull() != null
         }.getOrDefault(false)
 
@@ -545,12 +547,12 @@ internal class KotlinExpectActualProjectionRenderer(
                 typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, typesByQualifiedName),
             )
         }
-        val callPlan = baseRenderer.requireAbiCallPlan(
-            bindingName = "${slotInterfaceType.qualifiedName}.${method.name}",
+        val callPlan = buildJvmInterfaceAbiCallPlan(
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
-        )
+            typesByQualifiedName = typesByQualifiedName,
+        ) ?: error("Generator interface proxy parity failed to plan ${slotInterfaceType.qualifiedName}.${method.name}")
         val invocation = baseRenderer.renderInlineAbiInvocation(
             invokeTargetExpression = "nativeObject",
             slotExpression = baseRenderer.metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods)),
@@ -579,12 +581,12 @@ internal class KotlinExpectActualProjectionRenderer(
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
-        val getterCallPlan = baseRenderer.requireAbiCallPlan(
-            bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
+        val getterCallPlan = buildJvmInterfaceAbiCallPlan(
             returnBinding = baseRenderer.renderAbiTypeBinding(property.typeName, typesByQualifiedName),
             parameterBindings = emptyList(),
             suppressHResultCheck = property.isNoException,
-        )
+            typesByQualifiedName = typesByQualifiedName,
+        ) ?: error("Generator interface proxy parity failed to plan getter ${slotInterfaceType.qualifiedName}.${property.name}")
         builder.getter(
             FunSpec.getterBuilder()
                 .addCode(
@@ -599,12 +601,12 @@ internal class KotlinExpectActualProjectionRenderer(
                 .build(),
         )
         if (!property.isReadOnly) {
-            val setterCallPlan = baseRenderer.requireAbiCallPlan(
-                bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.set",
+            val setterCallPlan = buildJvmInterfaceAbiCallPlan(
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                 parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", baseRenderer.renderAbiTypeBinding(property.typeName, typesByQualifiedName))),
                 suppressHResultCheck = property.isNoException,
-            )
+                typesByQualifiedName = typesByQualifiedName,
+            ) ?: error("Generator interface proxy parity failed to plan setter ${slotInterfaceType.qualifiedName}.${property.name}")
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", baseRenderer.resolveTypeName(property.typeName))
@@ -800,6 +802,62 @@ internal class KotlinExpectActualProjectionRenderer(
         (baseRenderer.resolveTypeName(interfaceType.qualifiedName) as? ClassName)
             ?.let { ClassName(it.packageName, "${interfaceType.name}JvmProjection") }
             ?: ClassName(plan.packageName, "${interfaceType.name}JvmProjection")
+
+    private fun jvmInterfaceProjectionSupportClassName(
+        interfaceType: io.github.composefluent.winrt.metadata.WinRtTypeDefinition,
+    ): ClassName =
+        (baseRenderer.resolveTypeName(interfaceType.qualifiedName) as? ClassName)
+            ?.let { ClassName(it.packageName, "${interfaceType.name}JvmProjection") }
+            ?: projectionClassNameForQualifiedName(interfaceType.qualifiedName)
+                .let { ClassName(it.packageName, "${interfaceType.name}JvmProjection") }
+
+    private fun buildJvmInterfaceAbiCallPlan(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        suppressHResultCheck: Boolean,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): KotlinProjectionAbiCallPlan? {
+        val callPlan = baseRenderer.buildAbiCallPlan(
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = suppressHResultCheck,
+        ) ?: return null
+        return callPlan.withJvmProjectedInterfaceReturnReadback(returnBinding, typesByQualifiedName)
+    }
+
+    private fun KotlinProjectionAbiCallPlan.withJvmProjectedInterfaceReturnReadback(
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): KotlinProjectionAbiCallPlan? {
+        if (returnBinding.kind != KotlinProjectionAbiValueKind.ProjectedInterface) {
+            return this
+        }
+        val returnInterface = projectedInterfaceType(returnBinding, typesByQualifiedName) ?: return null
+        val returnMarshaler = returnMarshaler ?: return null
+        return copy(
+            returnMarshaler = returnMarshaler.copy(
+                readbackStatement = CodeBlock.of(
+                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __resultRef = %T(%T.toRawComPtr(__resultPointer))\nval __result = %T.wrap(__resultRef)\nreturn __result\n",
+                    PLATFORM_ABI_CLASS_NAME,
+                    abiNullReturnReadback(returnBinding),
+                    IUNKNOWN_REFERENCE_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    jvmInterfaceProjectionSupportClassName(returnInterface),
+                ),
+            ),
+        )
+    }
+
+    private fun projectedInterfaceType(
+        binding: KotlinProjectionAbiTypeBinding,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+    ): io.github.composefluent.winrt.metadata.WinRtTypeDefinition? {
+        if (binding.kind != KotlinProjectionAbiValueKind.ProjectedInterface || binding.typeArguments.isNotEmpty()) {
+            return null
+        }
+        return typesByQualifiedName[binding.resolvedTypeName.rawWinRtTypeName()]
+            ?: typesByQualifiedName[binding.typeName.rawWinRtTypeName()]
+    }
 }
 
 private val ClassName_FUNCTION_DESCRIPTOR = ClassName("java.lang.foreign", "FunctionDescriptor")
@@ -832,8 +890,24 @@ private fun KotlinProjectionAbiCallPlan.jvmFfmShapeOrNull(): List<KotlinProjecti
         }
     }.jvmFfmShapeOrNull()
 
-private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKind(): Boolean =
-    customObjectAbi(this) == null && kind in supportedExpectActualJvmMemberAbiKinds
+private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKind(
+    typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+): Boolean =
+    customObjectAbi(this) == null &&
+        kind in supportedExpectActualJvmMemberAbiKinds &&
+        when (kind) {
+            KotlinProjectionAbiValueKind.ProjectedInterface -> {
+                val type = typesByQualifiedName[resolvedTypeName.rawExpectActualWinRtTypeName()]
+                    ?: typesByQualifiedName[typeName.rawExpectActualWinRtTypeName()]
+                type?.kind == WinRtTypeKind.Interface &&
+                    type.genericParameterCount == 0 &&
+                    typeArguments.isEmpty()
+            }
+            else -> true
+        }
+
+private fun String.rawExpectActualWinRtTypeName(): String =
+    substringBefore('<').removeSuffix("?")
 
 private val supportedExpectActualJvmMemberAbiKinds = setOf(
     KotlinProjectionAbiValueKind.Unit,
@@ -852,6 +926,7 @@ private val supportedExpectActualJvmMemberAbiKinds = setOf(
     KotlinProjectionAbiValueKind.Char16,
     KotlinProjectionAbiValueKind.GuidValue,
     KotlinProjectionAbiValueKind.Enum,
+    KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.Object,
     KotlinProjectionAbiValueKind.UnknownReference,
