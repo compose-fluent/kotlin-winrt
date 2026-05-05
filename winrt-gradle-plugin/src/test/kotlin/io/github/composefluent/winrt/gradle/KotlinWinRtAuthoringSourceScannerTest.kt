@@ -84,6 +84,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
 
         val generated = output.resolve("sample/WinRT_App_TypeDetails.kt").readText()
         assertTrue(generated.contains("object WinRT_App_TypeDetails"))
+        assertTrue(generated, generated.contains("fun register()"))
+        assertTrue(generated, generated.contains("ComWrappersSupport.registerAuthoringTypeDetailsFactory(App::class, ::createCcwDefinition)"))
         assertTrue(generated, generated.contains("createCcwDefinition"))
         assertTrue(generated.contains("interfaceId = Guid(\"aaaaaaaa-1111-2222-3333-444444444444\")"))
         assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer))"))

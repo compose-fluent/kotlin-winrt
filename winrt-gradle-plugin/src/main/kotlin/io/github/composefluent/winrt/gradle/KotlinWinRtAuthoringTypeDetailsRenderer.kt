@@ -28,6 +28,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
     private val platformAbiType = ClassName("io.github.composefluent.winrt.runtime", "PlatformAbi")
     private val rawAddressType = ClassName("io.github.composefluent.winrt.runtime", "RawAddress")
+    private val comWrappersSupportType = ClassName("io.github.composefluent.winrt.runtime", "ComWrappersSupport")
     private val winRtCcwDefinitionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtCcwDefinition")
     private val winRtInspectableInterfaceDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableInterfaceDefinition")
@@ -62,11 +63,22 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         return FileSpec.builder(candidate.packageName, typeDetailsName)
             .addType(
                 TypeSpec.objectBuilder(typeDetailsName)
+                    .addFunction(renderRegister(candidate))
                     .addFunction(renderCreateCcwDefinition(candidate, interfaces))
                     .build(),
             )
             .build()
     }
+
+    private fun renderRegister(candidate: KotlinWinRtAuthoredTypeCandidate): FunSpec =
+        FunSpec.builder("register")
+            .addAnnotation(JvmStatic::class)
+            .addStatement(
+                "%T.registerAuthoringTypeDetailsFactory(%T::class, ::createCcwDefinition)",
+                comWrappersSupportType,
+                sourceClassName(candidate),
+            )
+            .build()
 
     private fun renderCreateCcwDefinition(
         candidate: KotlinWinRtAuthoredTypeCandidate,
@@ -254,6 +266,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"
+
+    private fun sourceClassName(candidate: KotlinWinRtAuthoredTypeCandidate): ClassName {
+        val names = candidate.className.split('$').filter(String::isNotBlank)
+        return ClassName(candidate.packageName, names.first(), *names.drop(1).toTypedArray())
+    }
 
     private fun projectionClassName(qualifiedName: String): ClassName {
         val lastDot = qualifiedName.lastIndexOf('.')

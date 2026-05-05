@@ -151,8 +151,9 @@ class ComWrappersSupportTest {
     }
 
     @Test
-    fun create_ccw_uses_generated_type_details_without_manual_registration() {
+    fun create_ccw_uses_registered_generated_type_details() {
         ComWrappersSupport.clearRegistriesForTests()
+        WinRT_GeneratedDetailsComponent_TypeDetails.register()
         val managed = GeneratedDetailsComponent("payload")
 
         ComWrappersSupport.createCCWForObject(managed, GENERATED_DETAILS_INTERFACE_ID).use { ccw ->
@@ -260,6 +261,14 @@ private val GENERATED_DETAILS_INTERFACE_ID = Guid("12121212-1212-1212-1212-12121
 private data class GeneratedDetailsComponent(val name: String)
 
 object WinRT_GeneratedDetailsComponent_TypeDetails {
+    @JvmStatic
+    fun register() {
+        ComWrappersSupport.registerAuthoringTypeDetailsFactory(
+            GeneratedDetailsComponent::class,
+            ::createCcwDefinition,
+        )
+    }
+
     @JvmStatic
     fun createCcwDefinition(value: Any): WinRtCcwDefinition {
         require(value is GeneratedDetailsComponent)

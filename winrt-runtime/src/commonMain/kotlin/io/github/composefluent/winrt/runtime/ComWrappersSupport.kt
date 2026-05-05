@@ -101,6 +101,11 @@ object ComWrappersSupport {
         factory: (Any) -> WinRtCcwDefinition,
     ): Boolean = ccwFactories.putIfAbsent(implementationType, factory) == null
 
+    fun registerAuthoringTypeDetailsFactory(
+        implementationType: KClass<*>,
+        factory: (Any) -> WinRtCcwDefinition,
+    ): Boolean = registerCcwFactory(implementationType, factory)
+
     fun registerProjectionType(
         type: KClass<*>,
         runtimeClassName: String? = null,
