@@ -142,6 +142,7 @@ class KotlinProjectionSupportRenderer {
         return listOfNotNull(
             renderProjectionRegistrarCompilerInput(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistry(inventory.genericAbiInventory),
+            renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionCompilerInput(model, inventory),
             renderEventProjectionHelpers(model, plans, inventory),
@@ -206,7 +207,7 @@ class KotlinProjectionSupportRenderer {
             compilerSupportManifestRow(
                 kind = "generic-type-instantiation",
                 className = "$SUPPORT_PACKAGE.WinRTGenericTypeInstantiations",
-                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations.kt",
+                sourceFile = "generic-instantiations.tsv",
                 entries = genericInstantiationEntries,
             ),
         ).filterNot { row -> row.endsWith("\t0") }
@@ -261,6 +262,36 @@ class KotlinProjectionSupportRenderer {
         }
         return KotlinProjectionFile(
             relativePath = "kotlin-winrt-support/event-sources.tsv",
+            packageName = "",
+            contents = rows,
+        )
+    }
+
+    private fun renderGenericTypeInstantiationCompilerInput(
+        descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
+    ): KotlinProjectionFile? {
+        if (descriptors.isEmpty()) {
+            return null
+        }
+        val rows = descriptors.joinToString(
+            separator = "\n",
+            postfix = "\n",
+            prefix = "className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies\n",
+        ) { descriptor ->
+            listOf(
+                descriptor.instantiationClassName,
+                descriptor.sourceTypeName,
+                descriptor.isDelegateInstantiation.toString(),
+                descriptor.rcwFunctionNames.joinToString(","),
+                descriptor.vtableFunctionNames.joinToString(","),
+                descriptor.propertyAccessorFunctionNames.joinToString(","),
+                descriptor.genericReturnOnlyRcwFunctionNames.joinToString(","),
+                descriptor.projectedGenericFallbackFunctionNames.joinToString(","),
+                descriptor.initializationDependencies.joinToString(","),
+            ).joinToString("\t")
+        }
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/generic-instantiations.tsv",
             packageName = "",
             contents = rows,
         )
@@ -421,21 +452,6 @@ class KotlinProjectionSupportRenderer {
             .addType(
                 TypeSpec.objectBuilder("WinRTGenericTypeInstantiations")
                     .addModifiers(KModifier.INTERNAL)
-                    .addProperty(
-                        PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(entryClass))
-                            .initializer(genericTypeInstantiationEntriesCode(descriptors, entryClass))
-                            .build(),
-                    )
-                    .addProperty(
-                        PropertySpec.builder("ENTRIES_BY_CLASS_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy({ it.className })")
-                            .build(),
-                    )
-                    .addProperty(
-                        PropertySpec.builder("ENTRIES_BY_SOURCE_TYPE", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("ENTRIES.associateBy({ it.sourceType })")
-                            .build(),
-                    )
                     .addProperty(
                         PropertySpec.builder("INITIALIZED_CLASS_NAMES", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
                             .addModifiers(KModifier.PRIVATE)
@@ -2560,33 +2576,6 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
-    private fun genericTypeInstantiationEntriesCode(
-        descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
-        entryClass: ClassName,
-    ): CodeBlock {
-        val code = CodeBlock.builder()
-        code.add("listOf(\n")
-        code.indent()
-        descriptors.forEach { descriptor ->
-            code.add("%T(\n", entryClass)
-            code.indent()
-            code.add("className = %S,\n", descriptor.instantiationClassName)
-            code.add("sourceType = %S,\n", descriptor.sourceTypeName)
-            code.add("isDelegate = %L,\n", descriptor.isDelegateInstantiation)
-            code.add("rcwFunctions = %L,\n", stringListCode(descriptor.rcwFunctionNames))
-            code.add("vtableFunctions = %L,\n", stringListCode(descriptor.vtableFunctionNames))
-            code.add("propertyAccessors = %L,\n", stringListCode(descriptor.propertyAccessorFunctionNames))
-            code.add("genericReturnOnlyRcwFunctions = %L,\n", stringListCode(descriptor.genericReturnOnlyRcwFunctionNames))
-            code.add("projectedGenericFallbacks = %L,\n", stringListCode(descriptor.projectedGenericFallbackFunctionNames))
-            code.add("dependencies = %L,\n", stringListCode(descriptor.initializationDependencies))
-            code.unindent()
-            code.add("),\n")
-        }
-        code.unindent()
-        code.add(")")
-        return code.build()
-    }
-
     private fun defaultGenericTypeRuntimeBindingCode(bindingClass: ClassName): CodeBlock =
         CodeBlock.of(
             """
@@ -2648,16 +2637,6 @@ class KotlinProjectionSupportRenderer {
         bindingClass: ClassName,
     ): List<FunSpec> =
         listOf(
-            FunSpec.builder("entryForClassName")
-                .addParameter("className", String::class)
-                .returns(entryClass.copy(nullable = true))
-                .addStatement("return ENTRIES_BY_CLASS_NAME[className]")
-                .build(),
-            FunSpec.builder("entryForSourceType")
-                .addParameter("sourceType", String::class)
-                .returns(entryClass.copy(nullable = true))
-                .addStatement("return ENTRIES_BY_SOURCE_TYPE[sourceType]")
-                .build(),
             FunSpec.builder("installRuntimeBinding")
                 .addParameter("binding", bindingClass)
                 .addStatement("runtimeBinding = binding")
@@ -2668,54 +2647,41 @@ class KotlinProjectionSupportRenderer {
                 .addStatement("return entry.className in INITIALIZED_CLASS_NAMES")
                 .build(),
             FunSpec.builder("initializeAll")
-                .addCode("val visited = linkedSetOf<String>()\nENTRIES.forEach { initializeWithDependencies(it, visited) }\n")
+                .addCode("genericInstantiationRegistryMethod(%S)?.invoke(null)\n", "initializeAll")
                 .build(),
             FunSpec.builder("initializeBySourceType")
                 .addParameter("sourceType", String::class)
-                .addStatement("entryForSourceType(sourceType)?.let(::initializeEntry)")
+                .addCode("genericInstantiationRegistryMethod(%S, String::class.java)?.invoke(null, sourceType)\n", "initializeBySourceType")
                 .build(),
             FunSpec.builder("initializeEntry")
                 .addParameter("entry", entryClass)
-                .addStatement("initializeWithDependencies(entry, linkedSetOf())")
+                .addCode("entry.dependencies.forEach(::initializeBySourceType)\nregisterGenericInstantiation(entry)\n")
                 .build(),
             FunSpec.builder("initializeDependencies")
                 .addParameter("entry", entryClass)
                 .addParameter("initialize", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
-                .addCode(
-                    "val visited = linkedSetOf(entry.className)\n" +
-                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
-                        "    .forEach { initializeWithDependencies(it, visited, initialize) }\n",
-                )
+                .addCode("entry.dependencies.forEach(::initializeBySourceType)\n")
                 .build(),
             FunSpec.builder("initializeDependencies")
                 .addParameter("entry", entryClass)
-                .addCode(
-                    "val visited = linkedSetOf(entry.className)\n" +
-                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
-                        "    .forEach { initializeWithDependencies(it, visited) }\n",
-                )
+                .addCode("entry.dependencies.forEach(::initializeBySourceType)\n")
                 .build(),
-            FunSpec.builder("initializeWithDependencies")
+            FunSpec.builder("genericInstantiationRegistryMethod")
                 .addModifiers(KModifier.PRIVATE)
-                .addParameter("entry", entryClass)
-                .addParameter("visited", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
-                .addParameter("initialize", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
-                .addCode(
-                    "if (!visited.add(entry.className)) return\n" +
-                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
-                        "    .forEach { initializeWithDependencies(it, visited, initialize) }\n" +
-                        "initialize(entry)\n",
+                .addParameter("name", String::class)
+                .addParameter(
+                    "parameterTypes",
+                    Class::class.asClassName().parameterizedBy(STAR),
+                    KModifier.VARARG,
                 )
-                .build(),
-            FunSpec.builder("initializeWithDependencies")
-                .addModifiers(KModifier.PRIVATE)
-                .addParameter("entry", entryClass)
-                .addParameter("visited", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
+                .returns(java.lang.reflect.Method::class.asClassName().copy(nullable = true))
                 .addCode(
-                    "if (!visited.add(entry.className)) return\n" +
-                        "entry.dependencies.mapNotNull(ENTRIES_BY_SOURCE_TYPE::get)\n" +
-                        "    .forEach { initializeWithDependencies(it, visited) }\n" +
-                        "registerGenericInstantiation(entry)\n",
+                    """
+                    val registryClass = runCatching {
+                        Class.forName("io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry")
+                    }.getOrNull() ?: return null
+                    return registryClass.getDeclaredMethod(name, *parameterTypes)
+                    """.trimIndent() + "\n",
                 )
                 .build(),
             FunSpec.builder("registerGenericInstantiation")

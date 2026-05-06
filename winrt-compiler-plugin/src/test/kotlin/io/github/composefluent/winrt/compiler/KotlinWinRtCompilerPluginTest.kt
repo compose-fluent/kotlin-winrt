@@ -150,6 +150,12 @@ class KotlinWinRtCompilerPluginTest {
                     sourceFile = "event-sources.tsv",
                     entries = 3,
                 ),
+                KotlinWinRtCompilerSupportManifestEntry(
+                    kind = "generic-type-instantiation",
+                    className = "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations",
+                    sourceFile = "generic-instantiations.tsv",
+                    entries = 5,
+                ),
             ),
             outputDirectory = outputDirectory,
         )
@@ -160,9 +166,10 @@ class KotlinWinRtCompilerPluginTest {
                 false,
                 classLoader,
             )
-            assertEquals(2, klass.getField("ENTRY_COUNT").getInt(null))
+            assertEquals(3, klass.getField("ENTRY_COUNT").getInt(null))
             assertEquals(12, klass.getField("PROJECTION_REGISTRAR_ENTRIES").getInt(null))
             assertEquals(3, klass.getField("EVENT_SOURCE_ENTRIES").getInt(null))
+            assertEquals(5, klass.getField("GENERIC_TYPE_INSTANTIATION_ENTRIES").getInt(null))
         }
     }
 
@@ -214,6 +221,32 @@ class KotlinWinRtCompilerPluginTest {
                 classLoader,
             )
             assertEquals("register", klass.getDeclaredMethod("register").name)
+        }
+    }
+
+    @Test
+    fun generic_instantiation_input_writes_registry_class_artifact() {
+        val input = Files.createTempFile("kotlin-winrt-generic-instantiations-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("className", "sourceType", "isDelegate", "rcwFunctions", "vtableFunctions", "propertyAccessors", "genericReturnOnlyRcwFunctions", "projectedGenericFallbacks", "dependencies"),
+                listOf("Windows_Foundation_IReference_Int", "Windows.Foundation.IReference<Int>", "false", "get_Value", "get_Value", "Value", "", "", ""),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-generic-registry-class-")
+
+        val entries = readGenericTypeInstantiationEntries(input)
+        writeGenericTypeInstantiationRegistryClass(entries, outputDirectory)
+
+        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
+            val klass = Class.forName(
+                "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry",
+                false,
+                classLoader,
+            )
+            assertEquals("initializeAll", klass.getDeclaredMethod("initializeAll").name)
+            assertEquals("initializeBySourceType", klass.getDeclaredMethod("initializeBySourceType", String::class.java).name)
         }
     }
 }

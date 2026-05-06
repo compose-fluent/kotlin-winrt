@@ -6981,13 +6981,17 @@ class KotlinProjectionGeneratorTest {
         assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries"))
         assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv"))
         assertTrue(compilerSupportManifest.contains("event-source\tio.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers\tevent-sources.tsv"))
-        assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
+        assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
 
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("_get_Value_Int"))
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("Windows.Foundation.IReference<Int>"))
         assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("fun registerAbiDelegates"))
         val genericTypeInstantiations = filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents
-        assertTrue(genericTypeInstantiations.contains("Windows_Foundation_IReference_Int"))
+        val genericInstantiations = filesByName.getValue("generic-instantiations.tsv").contents
+        assertTrue(genericInstantiations.contains("className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies"))
+        assertTrue(genericInstantiations.contains("Windows_Foundation_IReference_Int"))
+        assertTrue(genericInstantiations.contains("\tfalse\t"))
+        assertFalse(genericTypeInstantiations.contains("Windows_Foundation_IReference_Int"))
         assertTrue(genericTypeInstantiations.contains("fun initializeAll"))
         assertTrue(genericTypeInstantiations.contains("fun initializeBySourceType(sourceType: String)"))
         assertTrue(genericTypeInstantiations.contains("internal data class GenericTypeInstantiationRuntimeBinding"))
@@ -6998,8 +7002,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationRuntime.bindDelegateCcwInvoke"))
         assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationRuntime.bindGenericReturnOnlyRcwHelpers"))
         assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationRuntime.bindProjectedGenericFallbacks"))
-        assertTrue(genericTypeInstantiations.contains("genericReturnOnlyRcwFunctions = listOf(\"get_Value\")"))
-        assertTrue(genericTypeInstantiations.contains("projectedGenericFallbacks = listOf(\"get_Value\")"))
+        assertFalse(genericTypeInstantiations.contains("genericReturnOnlyRcwFunctions = listOf(\"get_Value\")"))
+        assertFalse(genericTypeInstantiations.contains("projectedGenericFallbacks = listOf(\"get_Value\")"))
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initRcwHelpers(entry, entry.rcwFunctions)"))
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initVtableFunctions(entry, entry.vtableFunctions)"))
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initPropertyAccessors(entry, entry.propertyAccessors)"))
@@ -7007,6 +7011,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initProjectedGenericFallbacks(entry, entry.projectedGenericFallbacks)"))
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initDelegateCcwInvoke(entry)"))
         assertTrue(genericTypeInstantiations.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
+        assertTrue(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         val eventSources = filesByName.getValue("event-sources.tsv").contents
         assertTrue(eventSources.contains("eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource"))

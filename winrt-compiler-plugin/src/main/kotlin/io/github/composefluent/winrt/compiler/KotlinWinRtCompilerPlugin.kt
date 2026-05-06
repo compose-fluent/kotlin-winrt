@@ -159,6 +159,10 @@ class KotlinWinRtIrGenerationExtension(
             entries = readEventProjectionEntries(entries),
             outputDirectory = outputDirectory,
         )
+        writeGenericTypeInstantiationRegistryClass(
+            entries = readGenericTypeInstantiationEntries(entries),
+            outputDirectory = outputDirectory,
+        )
     }
 
     private fun readProjectionRegistrarEntries(
@@ -192,6 +196,25 @@ class KotlinWinRtIrGenerationExtension(
                 val sourcePath = manifestDirectory.resolve(entry.sourceFile)
                 if (Files.isRegularFile(sourcePath)) {
                     readEventProjectionEntries(sourcePath).asSequence()
+                } else {
+                    emptySequence()
+                }
+            }
+            .toList()
+    }
+
+    private fun readGenericTypeInstantiationEntries(
+        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    ): List<KotlinWinRtGenericTypeInstantiationEntry> {
+        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
+        val manifestDirectory = manifestPath.parent ?: return emptyList()
+        return manifestEntries
+            .asSequence()
+            .filter { it.kind == "generic-type-instantiation" }
+            .flatMap { entry ->
+                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
+                if (Files.isRegularFile(sourcePath)) {
+                    readGenericTypeInstantiationEntries(sourcePath).asSequence()
                 } else {
                     emptySequence()
                 }
@@ -328,9 +351,14 @@ private const val PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME: String =
 private const val EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry"
 
+private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME: String =
+    "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiationRegistry"
+
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
 private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
+
+private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CHUNK_SIZE: Int = 96
 
 fun writeCompilerSupportManifestClass(
     entries: List<KotlinWinRtCompilerSupportManifestEntry>,
@@ -679,6 +707,192 @@ private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addEventSourceEntry(en
         "io/github/composefluent/winrt/projections/support/EventSourceEntry",
         "<init>",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Z)V",
+        false,
+    )
+}
+
+data class KotlinWinRtGenericTypeInstantiationEntry(
+    val className: String,
+    val sourceType: String,
+    val isDelegate: Boolean,
+    val rcwFunctions: List<String>,
+    val vtableFunctions: List<String>,
+    val propertyAccessors: List<String>,
+    val genericReturnOnlyRcwFunctions: List<String>,
+    val projectedGenericFallbacks: List<String>,
+    val dependencies: List<String>,
+)
+
+fun readGenericTypeInstantiationEntries(path: Path): List<KotlinWinRtGenericTypeInstantiationEntry> =
+    Files.readAllLines(path)
+        .asSequence()
+        .drop(1)
+        .filter(String::isNotBlank)
+        .mapNotNull(::parseGenericTypeInstantiationLine)
+        .toList()
+
+private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericTypeInstantiationEntry? {
+    val parts = line.split('\t', limit = 9)
+    if (parts.size < 9) {
+        return null
+    }
+    return KotlinWinRtGenericTypeInstantiationEntry(
+        className = parts[0],
+        sourceType = parts[1],
+        isDelegate = parts[2].toBooleanStrictOrNull() ?: false,
+        rcwFunctions = parts[3].splitListField(),
+        vtableFunctions = parts[4].splitListField(),
+        propertyAccessors = parts[5].splitListField(),
+        genericReturnOnlyRcwFunctions = parts[6].splitListField(),
+        projectedGenericFallbacks = parts[7].splitListField(),
+        dependencies = parts[8].splitListField(),
+    )
+}
+
+private fun String.splitListField(): List<String> =
+    split(',').filter(String::isNotBlank)
+
+fun writeGenericTypeInstantiationRegistryClass(
+    entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
+    outputDirectory: Path,
+) {
+    if (entries.isEmpty()) {
+        return
+    }
+    val classWriter = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+    classWriter.visit(
+        Opcodes.V17,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+        GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME,
+        null,
+        "java/lang/Object",
+        null,
+    )
+    classWriter.visitSource("generic-instantiations.tsv", null)
+    classWriter.addDefaultConstructor()
+    val chunks = entries.chunked(GENERIC_TYPE_INSTANTIATION_REGISTRY_CHUNK_SIZE)
+    classWriter.addGenericRegistryDispatcher("initializeAll", "()V", chunks.indices) { method, index ->
+        method.visitMethodInsn(
+            Opcodes.INVOKESTATIC,
+            GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME,
+            genericRegistryChunkName(index),
+            "()V",
+            false,
+        )
+    }
+    classWriter.addGenericRegistryDispatcher("initializeBySourceType", "(Ljava/lang/String;)V", chunks.indices) { method, index ->
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.visitMethodInsn(
+            Opcodes.INVOKESTATIC,
+            GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME,
+            genericRegistrySourceChunkName(index),
+            "(Ljava/lang/String;)V",
+            false,
+        )
+    }
+    chunks.forEachIndexed { index, chunk ->
+        classWriter.addGenericRegistryChunk(genericRegistryChunkName(index), chunk)
+        classWriter.addGenericRegistrySourceChunk(genericRegistrySourceChunkName(index), chunk)
+    }
+    classWriter.visitEnd()
+
+    val target = outputDirectory.resolve("$GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME.class")
+    Files.createDirectories(target.parent)
+    Files.write(target, classWriter.toByteArray())
+}
+
+private fun ClassWriter.addGenericRegistryDispatcher(
+    name: String,
+    descriptor: String,
+    indices: IntRange,
+    callChunk: (org.jetbrains.org.objectweb.asm.MethodVisitor, Int) -> Unit,
+) {
+    val method = visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, name, descriptor, null, null)
+    method.visitCode()
+    indices.forEach { index -> callChunk(method, index) }
+    method.visitInsn(Opcodes.RETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun genericRegistryChunkName(index: Int): String =
+    "initializeAllChunk${index.toString().padStart(3, '0')}"
+
+private fun genericRegistrySourceChunkName(index: Int): String =
+    "initializeBySourceTypeChunk${index.toString().padStart(3, '0')}"
+
+private fun ClassWriter.addGenericRegistryChunk(
+    name: String,
+    entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
+) {
+    val method = visitMethod(Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC, name, "()V", null, null)
+    method.visitCode()
+    entries.forEach { entry ->
+        method.addGenericInstantiationEntry(entry)
+        method.visitMethodInsn(
+            Opcodes.INVOKEVIRTUAL,
+            "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
+            "initializeEntry",
+            "(Lio/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry;)V",
+            false,
+        )
+    }
+    method.visitInsn(Opcodes.RETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun ClassWriter.addGenericRegistrySourceChunk(
+    name: String,
+    entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
+) {
+    val method = visitMethod(Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC, name, "(Ljava/lang/String;)V", null, null)
+    method.visitCode()
+    entries.forEach { entry ->
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.visitLdcInsn(entry.sourceType)
+        method.visitMethodInsn(Opcodes.INVOKESTATIC, "kotlin/jvm/internal/Intrinsics", "areEqual", "(Ljava/lang/Object;Ljava/lang/Object;)Z", false)
+        val next = org.jetbrains.org.objectweb.asm.Label()
+        method.visitJumpInsn(Opcodes.IFEQ, next)
+        method.addGenericInstantiationEntry(entry)
+        method.visitMethodInsn(
+            Opcodes.INVOKEVIRTUAL,
+            "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
+            "initializeEntry",
+            "(Lio/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry;)V",
+            false,
+        )
+        method.visitInsn(Opcodes.RETURN)
+        method.visitLabel(next)
+    }
+    method.visitInsn(Opcodes.RETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addGenericInstantiationEntry(entry: KotlinWinRtGenericTypeInstantiationEntry) {
+    visitFieldInsn(
+        Opcodes.GETSTATIC,
+        "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
+        "INSTANCE",
+        "Lio/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations;",
+    )
+    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry")
+    visitInsn(Opcodes.DUP)
+    visitLdcInsn(entry.className)
+    visitLdcInsn(entry.sourceType)
+    visitInsn(if (entry.isDelegate) Opcodes.ICONST_1 else Opcodes.ICONST_0)
+    addStringList(entry.rcwFunctions)
+    addStringList(entry.vtableFunctions)
+    addStringList(entry.propertyAccessors)
+    addStringList(entry.genericReturnOnlyRcwFunctions)
+    addStringList(entry.projectedGenericFallbacks)
+    addStringList(entry.dependencies)
+    visitMethodInsn(
+        Opcodes.INVOKESPECIAL,
+        "io/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry",
+        "<init>",
+        "(Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V",
         false,
     )
 }
