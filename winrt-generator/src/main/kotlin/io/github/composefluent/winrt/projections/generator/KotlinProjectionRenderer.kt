@@ -105,7 +105,9 @@ import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
-class KotlinProjectionRenderer {
+class KotlinProjectionRenderer(
+    private val useInterfaceProjectionArtifacts: Boolean = false,
+) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
             .addGeneratedProjectionSuppressions()
@@ -139,7 +141,7 @@ class KotlinProjectionRenderer {
             builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
         }
-        if (canRenderInterfaceProxy(plan)) {
+        if (canRenderInterfaceProxy(plan) && !canRenderInterfaceNativeProjectionArtifact(plan)) {
             builder.addType(renderInterfaceNativeProjection(plan))
         }
         appendCompanionShells(builder, plan)
@@ -388,6 +390,22 @@ class KotlinProjectionRenderer {
                     event.addMethodName != null || event.addMethodRowId != null
                 }
         }
+
+    internal fun canRenderInterfaceNativeProjectionArtifact(plan: KotlinTypeProjectionPlan): Boolean =
+        useInterfaceProjectionArtifacts &&
+            plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
+            plan.type.genericParameterCount == 0 &&
+            plan.interfaceIid != null &&
+            canRenderInterfaceProxy(plan) &&
+            plan.mutableCollectionBindings.isEmpty() &&
+            plan.readOnlyCollectionBindings.isEmpty() &&
+            !plan.usesMappedDisposableAugmentation &&
+            !plan.hasDirectMappedDisposableSuperinterface &&
+            collectInterfaceProxyTypes(plan).all { interfaceType ->
+                interfaceType.methods.none(WinRtMethodDefinition::isOrdinaryProjectedMethod) &&
+                    interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).none { it.getterMethodName != null } &&
+                    interfaceType.events.filterNot(WinRtEventDefinition::isStatic).none()
+            }
 
     internal fun collectInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<WinRtTypeDefinition> =
         collectInterfaceProxyTypes(plan.type, plan, linkedSetOf(), emptyList())

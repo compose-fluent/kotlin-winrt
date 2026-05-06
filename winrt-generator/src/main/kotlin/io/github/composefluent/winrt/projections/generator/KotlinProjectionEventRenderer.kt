@@ -1120,14 +1120,20 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 }
                 .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
                 .returns(plan.projectedSelfTypeName())
-                .addCode(
-                    "return NativeProjection%L(instance)\n",
-                    if (plan.type.genericParameterCount == 0) {
-                        ""
+                .apply {
+                    if (canRenderInterfaceNativeProjectionArtifact(plan)) {
+                        addCode("return %T.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as %T\n", COM_WRAPPERS_SUPPORT_CLASS_NAME, plan.projectedSelfTypeName())
                     } else {
-                        "<${(0 until plan.type.genericParameterCount).joinToString(", ") { index -> "T$index" }}>"
-                    },
-                )
+                        addCode(
+                            "return NativeProjection%L(instance)\n",
+                            if (plan.type.genericParameterCount == 0) {
+                                ""
+                            } else {
+                                "<${(0 until plan.type.genericParameterCount).joinToString(", ") { index -> "T$index" }}>"
+                            },
+                        )
+                    }
+                }
                 .build(),
         )
     }

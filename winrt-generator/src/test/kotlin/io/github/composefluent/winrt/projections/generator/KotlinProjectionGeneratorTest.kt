@@ -3037,6 +3037,51 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_moves_empty_interface_native_projection_to_compiler_artifact_when_support_files_are_enabled() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            isExclusiveTo = true,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IWidgetFactory.kt").contents
+        val compilerInput = filesByName.getValue("interface-native-projections.tsv").contents
+        val manifest = filesByName.getValue("compiler-support.tsv").contents
+
+        assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(
+            interfaceContents,
+            interfaceContents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidgetFactory"),
+        )
+        assertTrue(
+            compilerInput,
+            compilerInput.contains(
+                "Sample.Foundation.IWidgetFactory\tsample.foundation.IWidgetFactory\tsample.foundation.IWidgetFactoryNativeProjection\t11111111-2222-3333-4444-555555555556\t0",
+            ),
+        )
+        assertTrue(
+            manifest,
+            manifest.contains(
+                "interface-native-projection\tio.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry\tinterface-native-projections.tsv\t1",
+            ),
+        )
+    }
+
+    @Test
     fun generator_routes_native_projection_events_through_event_source_table() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

@@ -146,6 +146,7 @@ class KotlinProjectionSupportRenderer {
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionCompilerInput(model, inventory),
             renderEventProjectionHelpers(model, plans, inventory),
+            renderInterfaceNativeProjectionCompilerInput(plans),
             renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
@@ -185,6 +186,7 @@ class KotlinProjectionSupportRenderer {
             .distinctBy { it.eventTypeName to it.ownerTypeName }
             .count()
         val genericInstantiationEntries = genericInstantiationWriters.size
+        val interfaceNativeProjectionEntries = interfaceNativeProjectionPlans(plans).size
         val rows = listOf(
             compilerSupportManifestRow(
                 kind = "projection-registrar",
@@ -210,6 +212,12 @@ class KotlinProjectionSupportRenderer {
                 sourceFile = "generic-instantiations.tsv",
                 entries = genericInstantiationEntries,
             ),
+            compilerSupportManifestRow(
+                kind = "interface-native-projection",
+                className = "$SUPPORT_PACKAGE.WinRTInterfaceProjectionRegistry",
+                sourceFile = "interface-native-projections.tsv",
+                entries = interfaceNativeProjectionEntries,
+            ),
         ).filterNot { row -> row.endsWith("\t0") }
         if (rows.isEmpty()) {
             return null
@@ -232,6 +240,42 @@ class KotlinProjectionSupportRenderer {
         entries: Int,
     ): String =
         listOf(kind, className, sourceFile, entries.toString()).joinToString("\t")
+
+    private fun renderInterfaceNativeProjectionCompilerInput(
+        plans: List<KotlinTypeProjectionPlan>,
+    ): KotlinProjectionFile? {
+        val rows = interfaceNativeProjectionPlans(plans)
+            .sortedBy { plan -> plan.type.qualifiedName }
+            .map { plan ->
+                listOf(
+                    plan.type.qualifiedName,
+                    ClassName(plan.packageName, plan.type.name).canonicalName,
+                    interfaceNativeProjectionImplementationClassName(plan),
+                    plan.interfaceIid?.toString().orEmpty(),
+                    "0",
+                ).joinToString("\t")
+            }
+        if (rows.isEmpty()) {
+            return null
+        }
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/interface-native-projections.tsv",
+            packageName = "",
+            contents = rows.joinToString(
+                separator = "\n",
+                postfix = "\n",
+                prefix = "projectedTypeName\tkotlinInterfaceClassName\timplementationClassName\tinterfaceId\tmemberCount\n",
+            ),
+        )
+    }
+
+    private fun interfaceNativeProjectionPlans(plans: List<KotlinTypeProjectionPlan>): List<KotlinTypeProjectionPlan> {
+        val artifactRenderer = KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true)
+        return plans.filter(artifactRenderer::canRenderInterfaceNativeProjectionArtifact)
+    }
+
+    private fun interfaceNativeProjectionImplementationClassName(plan: KotlinTypeProjectionPlan): String =
+        ClassName(plan.packageName, "${plan.type.name}NativeProjection").canonicalName
 
     private fun renderEventProjectionCompilerInput(
         model: WinRtMetadataModel,

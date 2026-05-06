@@ -174,9 +174,16 @@ class KotlinProjectionGenerator(
     private fun projectionFileRenderer(): KotlinProjectionFileRenderer =
         when (generationLayout) {
             KotlinProjectionGenerationLayout.SingleSourceSet -> KotlinProjectionFileRenderer { plan ->
-                listOf(renderer.render(plan))
+                listOf(projectionRendererForLayout().render(plan))
             }
             KotlinProjectionGenerationLayout.ExpectActualJvm -> KotlinExpectActualProjectionRenderer(renderer)
+        }
+
+    private fun projectionRendererForLayout(): KotlinProjectionRenderer =
+        if (emitSupportFiles) {
+            KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true)
+        } else {
+            renderer
         }
 
     private fun supportFiles(
