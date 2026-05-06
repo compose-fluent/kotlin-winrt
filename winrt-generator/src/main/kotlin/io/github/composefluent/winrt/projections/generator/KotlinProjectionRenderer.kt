@@ -167,7 +167,13 @@ class KotlinProjectionRenderer {
                     .addModifiers(KModifier.OVERRIDE)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addCode("return Metadata.TYPE_HANDLE\n")
+                            .apply {
+                                if (plan.interfaceIid == null) {
+                                    addCode("return null\n")
+                                } else {
+                                    addCode("return Metadata.TYPE_HANDLE\n")
+                                }
+                            }
                             .build(),
                     )
                     .build(),

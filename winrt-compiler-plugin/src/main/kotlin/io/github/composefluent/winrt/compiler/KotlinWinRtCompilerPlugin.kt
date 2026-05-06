@@ -122,8 +122,12 @@ class KotlinWinRtIrGenerationExtension(
             return
         }
         val messageCollector = pluginContext.messageCollector
+        val generatedSourceRoot = generatedSourceRootFromMetadataIndex(metadataIndexPath)
         val classContexts = moduleFragment.files
-            .flatMap { file -> file.declarations.flatMap(::classContextsIn) }
+            .asSequence()
+            .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
+            .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
+            .toList()
         writeProjectionTypeIndex(classContexts, winRtTypes)
         classContexts.forEach { context ->
             val klass = context.klass
@@ -312,6 +316,26 @@ class KotlinWinRtIrGenerationExtension(
         val containingTypesPublic: Boolean,
     )
 }
+
+internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {
+    val indexPath = metadataIndexPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return null
+    val parent = indexPath.toAbsolutePath().normalize().parent ?: return null
+    if (parent.fileName?.toString() != "kotlin-winrt-authoring") {
+        return null
+    }
+    return parent.parent?.toString()?.normalizedCompilerPathPrefix()
+}
+
+internal fun isGeneratedSourceFile(fileName: String, generatedSourceRoot: String?): Boolean {
+    val root = generatedSourceRoot ?: return false
+    val normalizedFileName = fileName.normalizedCompilerPathPrefix()
+    return normalizedFileName == root || normalizedFileName.startsWith("$root/")
+}
+
+private fun String.normalizedCompilerPathPrefix(): String =
+    replace('\\', '/')
+        .trimEnd('/')
+        .lowercase()
 
 data class KotlinWinRtCompilerSupportManifestEntry(
     val kind: String,

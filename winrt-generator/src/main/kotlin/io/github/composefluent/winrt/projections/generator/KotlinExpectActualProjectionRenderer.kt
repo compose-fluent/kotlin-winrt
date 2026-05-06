@@ -590,7 +590,13 @@ internal class KotlinExpectActualProjectionRenderer(
                     .addModifiers(KModifier.OVERRIDE)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addCode("return %T.Metadata.TYPE_HANDLE\n", ClassName(plan.packageName, plan.type.name))
+                            .apply {
+                                if (plan.interfaceIid == null) {
+                                    addCode("return null\n")
+                                } else {
+                                    addCode("return %T.Metadata.TYPE_HANDLE\n", ClassName(plan.packageName, plan.type.name))
+                                }
+                            }
                             .build(),
                     )
                     .build(),
