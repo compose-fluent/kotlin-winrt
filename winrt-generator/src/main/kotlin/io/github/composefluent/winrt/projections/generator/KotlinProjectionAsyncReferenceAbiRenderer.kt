@@ -590,6 +590,7 @@ internal fun KotlinProjectionRenderer.mappedCollectionReturnReadback(
     returnBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
     readOnlyCollectionBindingForReturn(returnBinding)?.let { binding ->
+        renderStringReadOnlyListReturnReadback(binding)?.let { return it }
         return CodeBlock.of(
             "val __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn %L\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -599,6 +600,7 @@ internal fun KotlinProjectionRenderer.mappedCollectionReturnReadback(
         )
     }
     mutableCollectionBindingForReturn(returnBinding)?.let { binding ->
+        renderStringMutableListReturnReadback(binding)?.let { return it }
         return CodeBlock.of(
             "val __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\nreturn %L\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -608,6 +610,42 @@ internal fun KotlinProjectionRenderer.mappedCollectionReturnReadback(
         )
     }
     return null
+}
+
+private fun renderStringMutableListReturnReadback(
+    binding: KotlinProjectionMutableCollectionBinding,
+): CodeBlock? {
+    if (
+        binding.kind != KotlinProjectionMutableCollectionKind.Vector ||
+        binding.elementBinding?.kind != KotlinProjectionAbiValueKind.String
+    ) {
+        return null
+    }
+    return CodeBlock.of(
+        "val __collectionPointer = %T.readPointer(__resultOut)\nreturn %T.fromAbi(__collectionPointer, %T.string) ?: error(%S)\n",
+        PLATFORM_ABI_CLASS_NAME,
+        WINRT_LIST_PROJECTION_CLASS_NAME,
+        WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
+        "WINRT_E_NULL_ABI_RETURN",
+    )
+}
+
+private fun renderStringReadOnlyListReturnReadback(
+    binding: KotlinProjectionReadOnlyCollectionBinding,
+): CodeBlock? {
+    if (
+        binding.kind != KotlinProjectionReadOnlyCollectionKind.VectorView ||
+        binding.elementBinding?.kind != KotlinProjectionAbiValueKind.String
+    ) {
+        return null
+    }
+    return CodeBlock.of(
+        "val __collectionPointer = %T.readPointer(__resultOut)\nreturn %T.fromAbi(__collectionPointer, %T.string) ?: error(%S)\n",
+        PLATFORM_ABI_CLASS_NAME,
+        WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME,
+        WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
+        "WINRT_E_NULL_ABI_RETURN",
+    )
 }
 
 internal fun KotlinProjectionRenderer.observableVectorReturnReadback(

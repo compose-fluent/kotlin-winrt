@@ -7710,14 +7710,15 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents, contents.contains("fun items(): MutableList<String>"))
         assertTrue(contents, contents.contains("val mutableItems: MutableList<String>"))
-        assertTrue(contents, contents.contains("return object : AbstractMutableList<String>(), MutableList<String>, IWinRTObject"))
+        assertTrue(contents, contents.contains("WinRtListProjection.fromAbi(__collectionPointer, WinRtReferenceValueAdapters.string)"))
+        assertFalse(contents, contents.contains("return object : AbstractMutableList<String>(), MutableList<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
-        assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+        assertFalse(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
+        assertFalse(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
+        assertFalse(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+        assertFalse(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
+        assertFalse(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
+        assertFalse(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
     }
 
     @Test
@@ -7925,10 +7926,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("val nameMap: Map<String, Int>"))
         assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
         assertTrue(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
-        assertTrue(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi(__collectionPointer, WinRtReferenceValueAdapters.string)"))
+        assertFalse(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("return object : AbstractMap<String, Int>(), Map<String, Int>, IWinRTObject"))
         assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
-        assertTrue(contents, contents.contains("IVectorView.Metadata.GETAT_SLOT"))
+        assertFalse(contents, contents.contains("IVectorView.Metadata.GETAT_SLOT"))
         assertTrue(contents, contents.contains("IMapView.Metadata.LOOKUP_SLOT"))
         assertTrue(contents, contents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
     }
