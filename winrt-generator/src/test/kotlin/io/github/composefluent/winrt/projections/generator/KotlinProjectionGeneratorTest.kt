@@ -215,6 +215,70 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_slice_emits_jvm_event_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("99999999-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition("add_Changed", "Windows.Foundation.EventRegistrationToken", parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")), isSpecialName = true, methodRowId = 6),
+                                WinRtMethodDefinition("remove_Changed", "Unit", parameters = listOf(WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")), isSpecialName = true, methodRowId = 7),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public val changed: WinRtEvent<WidgetChangedHandler>"))
+        assertTrue(common, common.contains("public fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertTrue(common, common.contains("public fun removeChanged(token: EventRegistrationToken)"))
+        assertTrue(common, common.contains("internal const val CHANGED_ADD_SLOT: Int = 6"))
+        assertTrue(common, common.contains("internal const val CHANGED_REMOVE_SLOT: Int = 7"))
+        assertTrue(jvm, jvm.contains("override val changed: WinRtEvent<WidgetChangedHandler> by lazy"))
+        assertTrue(jvm, jvm.contains("WinRTEventProjectionHelpers.createEventSource("))
+        assertTrue(jvm, jvm.contains("IWidget.Metadata.CHANGED_ADD_SLOT"))
+        assertTrue(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertTrue(jvm, jvm.contains("changed.add(handler)"))
+        assertTrue(jvm, jvm.contains("override fun removeChanged(token: EventRegistrationToken)"))
+        assertTrue(jvm, jvm.contains("changed.remove(token)"))
+    }
+
+    @Test
     fun expect_actual_interface_slice_emits_jvm_projected_interface_abi_calls() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -742,6 +806,66 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("get() = _iWidget.count"))
         assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
         assertTrue(interfaceJvm, interfaceJvm.contains("JvmAbi.invoke_p_p"))
+    }
+
+    @Test
+    fun expect_actual_runtime_class_slice_forwards_event_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("99999999-2222-3333-4444-555555555555"),
+                            methods = listOf(WinRtMethodDefinition("Invoke", "Unit")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition("add_Changed", "Windows.Foundation.EventRegistrationToken", parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")), isSpecialName = true, methodRowId = 6),
+                                WinRtMethodDefinition("remove_Changed", "Unit", parameters = listOf(WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")), isSpecialName = true, methodRowId = 7),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition("Changed", "Sample.Foundation.WidgetChangedHandler", addMethodName = "add_Changed", removeMethodName = "remove_Changed", addMethodRowId = 6, removeMethodRowId = 7),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition("Changed", "Sample.Foundation.WidgetChangedHandler", addMethodName = "add_Changed", removeMethodName = "remove_Changed", addMethodRowId = 6, removeMethodRowId = 7),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
+        assertTrue(common, common.contains("public expect class Widget internal constructor("))
+        assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
+        assertTrue(jvm, jvm.contains("override val changed: WinRtEvent<WidgetChangedHandler>"))
+        assertTrue(jvm, jvm.contains("get() = _iWidget.changed"))
+        assertTrue(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertTrue(jvm, jvm.contains("_iWidget.addChanged(handler)"))
+        assertTrue(jvm, jvm.contains("override fun removeChanged(token: EventRegistrationToken)"))
+        assertTrue(jvm, jvm.contains("_iWidget.removeChanged(token)"))
     }
 
     @Test
