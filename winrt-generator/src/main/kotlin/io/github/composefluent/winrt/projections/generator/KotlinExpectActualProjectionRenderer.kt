@@ -411,8 +411,21 @@ internal class KotlinExpectActualProjectionRenderer(
         val builder = TypeSpec.classBuilder(plan.type.name)
             .addModifiers(KModifier.ACTUAL)
         baseRenderer.applyCommonTypeShape(builder, plan, emitKotlinSealed = false)
+        val proxyTypesByName = publicRuntimeClassInterfaceProxyTypes(plan).associateBy { it.qualifiedName }
         publicRuntimeClassInterfaces(plan).forEach { interfaceType ->
-            builder.addSuperinterface(baseRenderer.resolveTypeName(interfaceType.qualifiedName))
+            val typeName = baseRenderer.resolveTypeName(interfaceType.qualifiedName)
+            if (proxyTypesByName.containsKey(interfaceType.qualifiedName)) {
+                builder.addSuperinterface(
+                    typeName,
+                    CodeBlock.of(
+                        "%T.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID))",
+                        jvmInterfaceProjectionSupportClassName(plan, interfaceType),
+                        typeName,
+                    ),
+                )
+            } else {
+                builder.addSuperinterface(typeName)
+            }
         }
         builder.addSuperinterface(IWINRT_OBJECT_CLASS_NAME)
         builder.primaryConstructor(
@@ -435,7 +448,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .getter(FunSpec.getterBuilder().addCode("return _inner\n").build())
                 .build(),
         )
-        addJvmRuntimeClassInterfaceForwards(builder, plan)
+        addJvmRuntimeClassInterfaceForwards(builder, plan, delegatedInterfaceNames = proxyTypesByName.keys)
         builder.addType(baseRenderer.buildMetadataCompanionShell(plan, emptyList(), emptyList(), emptyList()))
         baseRenderer.appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
         return renderSourceSetFile("jvmMain/kotlin", plan, builder.build())
@@ -444,11 +457,15 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun addJvmRuntimeClassInterfaceForwards(
         builder: TypeSpec.Builder,
         plan: KotlinTypeProjectionPlan,
+        delegatedInterfaceNames: Set<String> = emptySet(),
     ) {
         val emittedMethods = mutableSetOf<String>()
         val emittedProperties = mutableSetOf<String>()
         val emittedEvents = mutableSetOf<String>()
         publicRuntimeClassInterfaceProxyTypes(plan).forEach { interfaceType ->
+            if (interfaceType.qualifiedName in delegatedInterfaceNames) {
+                return@forEach
+            }
             val cacheName = "_${interfaceType.name.replaceFirstChar(Char::lowercase)}"
             builder.addProperty(
                 PropertySpec.builder(cacheName, baseRenderer.resolveTypeName(interfaceType.qualifiedName))

@@ -523,6 +523,9 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
     val emittedMethods = mutableSetOf<String>()
     val propertyForwards = linkedMapOf<String, RequiredForwardProperty>()
     plan.type.implementedInterfaces.forEach { implemented ->
+        if (isRuntimeClassDelegatedInterface(plan, implemented.interfaceName)) {
+            return@forEach
+        }
         val ownerInterface = implemented.interfaceName
         collectRequiredForwardInterfaceTypes(ownerInterface, plan, mutableSetOf()).forEach { requiredInterface ->
             val interfaceType = requiredInterface.type

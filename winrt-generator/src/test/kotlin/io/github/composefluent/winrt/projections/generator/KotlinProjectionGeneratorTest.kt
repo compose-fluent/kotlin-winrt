@@ -404,13 +404,10 @@ class KotlinProjectionGeneratorTest {
         val filesByPath = KotlinProjectionGenerator().generate(model).associateBy(KotlinProjectionFile::relativePath)
         val widget = filesByPath.getValue("sample/foundation/Widget.kt").contents
 
-        assertTrue(widget, widget.contains("private val _iWidgetProjection: IWidget by lazy"))
+        assertTrue(widget, widget.contains("IWidget by IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
         assertTrue(widget, widget.contains("IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
-        assertTrue(widget, widget.contains("override fun rename(`value`: String)"))
-        assertTrue(widget, widget.contains("_iWidgetProjection.rename(value)"))
-        assertTrue(widget, widget.contains("override var title: String"))
-        assertTrue(widget, widget.contains("get() = _iWidgetProjection.title"))
-        assertTrue(widget, widget.contains("set(`value`) {\n      _iWidgetProjection.title = value"))
+        assertFalse(widget, widget.contains("override fun rename(`value`: String)"))
+        assertFalse(widget, widget.contains("override var title: String"))
         assertFalse(widget, widget.contains("ComVtableInvoker"))
         assertFalse(widget, widget.contains("PlatformAbi.confinedScope"))
     }
@@ -875,12 +872,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains(") : IWidget,\n    IWinRTObject"))
         assertFalse(common, common.contains("ComVtableInvoker"))
         assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
-        assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
-        assertTrue(jvm, jvm.contains("override fun rename(`value`: String): String"))
-        assertTrue(jvm, jvm.contains("= _iWidget.rename("))
-        assertTrue(jvm, jvm.contains("override val count: Int"))
-        assertTrue(jvm, jvm.contains("get() = _iWidget.count"))
+        assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertFalse(jvm, jvm.contains("override fun rename(`value`: String): String"))
+        assertFalse(jvm, jvm.contains("override val count: Int"))
         assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
         assertTrue(interfaceJvm, interfaceJvm.contains("JvmAbi.invoke_p_p"))
     }
@@ -937,12 +932,10 @@ class KotlinProjectionGeneratorTest {
         val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
         assertTrue(common, common.contains("public expect class Widget internal constructor("))
         assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
-        assertTrue(jvm, jvm.contains("override val changed: WinRtEvent<WidgetChangedHandler>"))
-        assertTrue(jvm, jvm.contains("get() = _iWidget.changed"))
-        assertTrue(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
-        assertTrue(jvm, jvm.contains("_iWidget.addChanged(handler)"))
-        assertTrue(jvm, jvm.contains("override fun removeChanged(token: EventRegistrationToken)"))
-        assertTrue(jvm, jvm.contains("_iWidget.removeChanged(token)"))
+        assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(jvm, jvm.contains("override val changed: WinRtEvent<WidgetChangedHandler>"))
+        assertFalse(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
+        assertFalse(jvm, jvm.contains("override fun removeChanged(token: EventRegistrationToken)"))
     }
 
     @Test
@@ -1010,9 +1003,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains(") : IWidget,\n    IWinRTObject"))
         assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
         assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
-        assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("override fun rename(`value`: String): String = _iWidget.rename("))
-        assertTrue(jvm, jvm.contains("override val count: Int"))
+        assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertFalse(jvm, jvm.contains("override fun rename(`value`: String): String"))
+        assertFalse(jvm, jvm.contains("override val count: Int"))
         assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
     }
 
@@ -1057,8 +1051,9 @@ class KotlinProjectionGeneratorTest {
         val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
         assertTrue(common, common.contains("public expect class Widget internal constructor("))
         assertTrue(common, common.contains("IWidget"))
-        assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("override fun reset()"))
+        assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertFalse(jvm, jvm.contains("override fun reset()"))
         assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
     }
 
@@ -1125,10 +1120,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains("INameReader"))
         assertTrue(common, common.contains("IEnabledReader"))
         assertTrue(common, common.contains("IWinRTObject"))
-        assertTrue(jvm, jvm.contains("private val _iNameReader: INameReader by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("private val _iEnabledReader: IEnabledReader by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("override val name: String"))
-        assertTrue(jvm, jvm.contains("override fun isEnabled(): Boolean = _iEnabledReader.isEnabled()"))
+        assertTrue(jvm, jvm.contains("INameReader by INameReaderJvmProjection.wrap(Metadata.acquireInterface(_inner,"))
+        assertTrue(jvm, jvm.contains("IEnabledReader by IEnabledReaderJvmProjection.wrap(Metadata.acquireInterface(_inner,"))
+        assertFalse(jvm, jvm.contains("override val name: String"))
+        assertFalse(jvm, jvm.contains("override fun isEnabled(): Boolean"))
         assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
     }
 
@@ -1196,11 +1191,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains("public expect class Widget internal constructor("))
         assertTrue(common, common.contains("IWidget"))
         assertTrue(common, common.contains("IWinRTObject"))
-        assertTrue(jvm, jvm.contains("private val _iBaseWidget: IBaseWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(jvm, jvm.contains("override fun reset()"))
-        assertTrue(jvm, jvm.contains("_iBaseWidget.reset()"))
-        assertTrue(jvm, jvm.contains("override val name: String"))
+        assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(jvm, jvm.contains("private val _iBaseWidget: IBaseWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertFalse(jvm, jvm.contains("private val _iWidget: IWidget by lazy(LazyThreadSafetyMode.PUBLICATION)"))
+        assertFalse(jvm, jvm.contains("override fun reset()"))
+        assertFalse(jvm, jvm.contains("override val name: String"))
         assertFalse(filesByPath.containsKey("sample/foundation/Widget.kt"))
     }
 
@@ -3079,6 +3074,58 @@ class KotlinProjectionGeneratorTest {
                 "interface-native-projection\tio.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry\tinterface-native-projections.tsv\t1",
             ),
         )
+    }
+
+    @Test
+    fun generator_moves_supported_method_property_interface_native_projection_to_compiler_artifact() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Add",
+                                    returnTypeName = "Int",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("left", "Int"),
+                                        WinRtParameterDefinition("right", "Int"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodName = "get_Title",
+                                    setterMethodName = "put_Title",
+                                    getterMethodRowId = 11,
+                                    setterMethodRowId = 12,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IWidget.kt").contents
+        val compilerInput = filesByName.getValue("interface-native-projections.tsv").contents
+
+        assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(compilerInput, compilerInput.contains("\t3\t"))
+        assertTrue(compilerInput, compilerInput.contains("Method|add|6|Int32|Int32,Int32|false"))
+        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getTitle|7|String||false"))
+        assertTrue(compilerInput, compilerInput.contains("PropertySet|setTitle|8|Unit|String|false"))
     }
 
     @Test

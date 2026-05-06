@@ -247,12 +247,26 @@ class KotlinProjectionSupportRenderer {
         val rows = interfaceNativeProjectionPlans(plans)
             .sortedBy { plan -> plan.type.qualifiedName }
             .map { plan ->
+                val artifactRenderer = KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true)
+                val members = artifactRenderer.interfaceNativeProjectionMemberDescriptors(plan).orEmpty()
                 listOf(
                     plan.type.qualifiedName,
                     ClassName(plan.packageName, plan.type.name).canonicalName,
                     interfaceNativeProjectionImplementationClassName(plan),
                     plan.interfaceIid?.toString().orEmpty(),
-                    "0",
+                    members.size.toString(),
+                    members.joinToString(";") { member ->
+                        listOf(
+                            member.kind,
+                            member.jvmName,
+                            member.slot.toString(),
+                            member.returnKind,
+                            member.parameterKinds.joinToString(","),
+                            member.suppressHResultCheck.toString(),
+                            member.eventTypeName,
+                            member.ownerTypeName,
+                        ).joinToString("|")
+                    },
                 ).joinToString("\t")
             }
         if (rows.isEmpty()) {
@@ -264,7 +278,7 @@ class KotlinProjectionSupportRenderer {
             contents = rows.joinToString(
                 separator = "\n",
                 postfix = "\n",
-                prefix = "projectedTypeName\tkotlinInterfaceClassName\timplementationClassName\tinterfaceId\tmemberCount\n",
+                prefix = "projectedTypeName\tkotlinInterfaceClassName\timplementationClassName\tinterfaceId\tmemberCount\tmembers\n",
             ),
         )
     }
