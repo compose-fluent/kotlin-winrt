@@ -3278,6 +3278,24 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(WinRtParameterDefinition("value", "String")),
                                     methodRowId = 10,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "getOwner",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(WinRtParameterDefinition("element", "Sample.Foundation.Widget")),
+                                    methodRowId = 16,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "isVisible",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(WinRtParameterDefinition("element", "Sample.Foundation.Widget")),
+                                    methodRowId = 17,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "show",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("element", "Sample.Foundation.Widget")),
+                                    methodRowId = 18,
+                                ),
                             ),
                             properties = listOf(
                                 WinRtPropertyDefinition(
@@ -3352,6 +3370,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun parse(`value`: String): Widget"))
         assertTrue(widgetContents.contains("ComVtableInvoker.invokeArgs"))
         assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics().pointer"))
+        assertTrue(widgetContents.contains("fun getOwner(element: Widget): Widget"))
+        assertTrue(widgetContents.contains("WinRtStaticProjectionInterop.callProjectedRuntimeClass("))
+        assertTrue(widgetContents.contains("STATIC_GETOWNER_SLOT"))
+        assertTrue(widgetContents.contains("fun isVisible(element: Widget): Boolean"))
+        assertTrue(widgetContents.contains("WinRtStaticProjectionInterop.callBoolean("))
+        assertTrue(widgetContents.contains("fun show(element: Widget)"))
+        assertTrue(widgetContents.contains("WinRtStaticProjectionInterop.callUnit("))
         assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
         assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
