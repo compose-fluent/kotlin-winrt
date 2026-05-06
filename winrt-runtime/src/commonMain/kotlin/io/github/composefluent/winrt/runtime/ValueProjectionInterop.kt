@@ -53,6 +53,41 @@ object WinRtReferenceProjection {
         }
 }
 
+object WinRtReferenceProjectionInterop {
+    @Suppress("UNCHECKED_CAST")
+    fun <T> getReferenceValue(
+        reference: ComObjectReference,
+        slot: Int,
+        interfaceId: Guid,
+    ): T =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(resultOut),
+            )
+            HResult(hr).requireSuccess()
+            WinRtReferenceProjection.fromAbi(PlatformAbi.readPointer(resultOut), interfaceId) as T
+        }
+
+    fun setReferenceValue(
+        reference: ComObjectReference,
+        slot: Int,
+        value: Any?,
+        interfaceId: Guid,
+    ) {
+        WinRtReferenceProjection.createMarshaler(value, interfaceId).use { valueAbi ->
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(valueAbi?.abi ?: PlatformAbi.nullPointer),
+            )
+            HResult(hr).requireSuccess()
+        }
+    }
+}
+
 object WinRtReferenceArrayProjection {
     fun createMarshaler(
         value: Any?,

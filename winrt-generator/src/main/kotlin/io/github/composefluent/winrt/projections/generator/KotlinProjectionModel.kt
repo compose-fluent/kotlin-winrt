@@ -84,6 +84,7 @@ import io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection
 import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceProjection
+import io.github.composefluent.winrt.runtime.WinRtReferenceProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters
 import io.github.composefluent.winrt.runtime.WinRtGenericParameterProjection
@@ -184,6 +185,7 @@ internal val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRtReadOnlyDic
 internal val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProjection::class.asClassName()
 internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayProjection::class.asClassName()
 internal val WINRT_REFERENCE_PROJECTION_CLASS_NAME = WinRtReferenceProjection::class.asClassName()
+internal val WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME = WinRtReferenceProjectionInterop::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
 internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRtGenericParameterProjection::class.asClassName()

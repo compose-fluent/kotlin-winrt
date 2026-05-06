@@ -428,7 +428,8 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
     builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
-    val getterInvocation = renderBoundInvocation(binding = getterBinding)
+    val getterInvocation = renderReferencePropertyGetter(getterBinding)
+        ?: renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
@@ -444,13 +445,60 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
                 .addParameter("value", resolveTypeName(property.typeName))
                 .addCode(
                     "%L\n",
-                    setterBinding?.let(::renderBoundInvocation)
+                    setterBinding?.let { renderReferencePropertySetter(it) ?: renderBoundInvocation(it) }
                         ?: missingAbiBindingError("property ${property.name} setter"),
                 )
                 .build(),
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderReferencePropertyGetter(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? {
+    if (
+        binding.parameterBindings.isNotEmpty() ||
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Reference
+    ) {
+        return null
+    }
+    val interfaceId = referenceInterfaceIdCode(binding.returnBinding) ?: return null
+    return CodeBlock.builder()
+        .add("return %T.getReferenceValue(\n", WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME)
+        .indent()
+        .add("%L,\n", binding.ownerCachePropertyName)
+        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%L,\n", interfaceId)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderReferencePropertySetter(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? {
+    val valueBinding = binding.parameterBindings.singleOrNull() ?: return null
+    if (
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        valueBinding.name != "value" ||
+        valueBinding.typeBinding.kind != KotlinProjectionAbiValueKind.Reference
+    ) {
+        return null
+    }
+    val interfaceId = referenceInterfaceIdCode(valueBinding.typeBinding) ?: return null
+    return CodeBlock.builder()
+        .add("%T.setReferenceValue(\n", WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME)
+        .indent()
+        .add("%L,\n", binding.ownerCachePropertyName)
+        .add("Metadata.%L,\n", binding.bindingName)
+        .add("value,\n")
+        .add("%L,\n", interfaceId)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 internal fun missingAbiBindingError(memberName: String): CodeBlock =

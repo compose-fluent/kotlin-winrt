@@ -18,6 +18,7 @@ import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
@@ -5483,14 +5484,77 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("fun setReady(ready: Boolean)"))
-        assertTrue(widgetContents.contains("if (ready) 1.toByte() else 0.toByte()"))
         assertTrue(widgetContents.contains("Metadata.SETREADY_SLOT"))
         assertTrue(widgetContents.contains("fun createNumberValue("))
         assertTrue(widgetContents.contains("Double): WidgetValue"))
         assertTrue(widgetContents.contains("Metadata.CREATENUMBERVALUE_SLOT"))
-        assertTrue(widgetContents.contains("WidgetValue.Metadata.wrap"))
+        assertTrue(widgetContents.contains("_iWidgetProjection.createNumberValue(value)"))
         assertTrue(widgetContents.contains("var ready: Boolean"))
         assertTrue(widgetContents.contains("Metadata.READY_SETTER_SLOT"))
+    }
+
+    @Test
+    fun generator_routes_nullable_value_properties_through_runtime_reference_projection_interop() {
+        val referenceIntBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.Reference,
+            typeName = "Windows.Foundation.IReference<Int>",
+            interfaceId = Guid("61C17706-2D65-11E0-9AE8-D48564015472"),
+            typeArguments = listOf(KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Int32, "Int")),
+        )
+        val property = KotlinProjectionRenderer().renderBoundProperty(
+            plan = KotlinTypeProjectionPlan(
+                type = WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "Widget",
+                    kind = WinRtTypeKind.RuntimeClass,
+                    isSealedType = true,
+                ),
+                packageName = "sample.foundation",
+                relativePath = "sample/foundation/Widget.kt",
+                declarationKind = KotlinProjectionDeclarationKind.Class,
+                typeDeclarationDescriptor = WinRtTypeDeclarationDescriptor(
+                    typeName = "Sample.Foundation.Widget",
+                    declarationKind = WinRtTypeKind.RuntimeClass,
+                    writesProjectedDeclaration = true,
+                    writesAbiDeclaration = true,
+                    writesWrapperDeclaration = true,
+                    writesImplementationClass = false,
+                    writesHelperClass = true,
+                    netStandardBranch = false,
+                ),
+                instanceMemberBindings = listOf(
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "SELECTION_GETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "SELECTION_GETTER_SLOT",
+                        returnBinding = referenceIntBinding,
+                    ),
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "SELECTION_SETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "SELECTION_SETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", referenceIntBinding)),
+                    ),
+                ),
+            ),
+            property = WinRtPropertyDefinition(
+                name = "Selection",
+                typeName = "Windows.Foundation.IReference<Int>",
+                getterMethodName = "get_Selection",
+                setterMethodName = "put_Selection",
+            ),
+        ).toString()
+
+        assertTrue(property, property.contains("var selection: kotlin.Int?"))
+        assertTrue(property, property.contains("WinRtReferenceProjectionInterop.getReferenceValue("))
+        assertTrue(property.contains("WinRtReferenceProjectionInterop.setReferenceValue("))
+        assertFalse(property.contains("WinRtReferenceProjection.fromAbi(PlatformAbi.readPointer(__resultOut)"))
+        assertFalse(property.contains("WinRtReferenceProjection.createMarshaler(value"))
     }
 
     @Test
