@@ -98,6 +98,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Internal
     abstract val authoringScannerClasspath: ConfigurableFileCollection
 
+    @get:Input
+    abstract val authoringScannerJvmArgs: ListProperty<String>
+
     @get:Inject
     abstract val execOperations: ExecOperations
 
@@ -336,6 +339,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         execOperations.javaexec { spec ->
             spec.classpath = authoringScannerClasspath
             spec.mainClass.set("io.github.composefluent.winrt.compiler.KotlinWinRtAuthoringScannerCli")
+            spec.jvmArgs(authoringScannerJvmArgs.get())
             spec.args(
                 buildList {
                     add("--metadata-index")

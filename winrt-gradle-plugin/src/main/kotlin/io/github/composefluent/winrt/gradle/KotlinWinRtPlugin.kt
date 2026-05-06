@@ -338,6 +338,14 @@ private fun configureWinRtGeneration(
                     (project.tasks.findByName("jar") as? Jar)?.archiveFileName?.get() ?: "${project.name}.jar"
                 },
             )
+            task.authoringScannerJvmArgs.convention(
+                listOf(
+                    "-Xmx128m",
+                    "-Xss512k",
+                    "-XX:+UseSerialGC",
+                    "-XX:ReservedCodeCacheSize=32m",
+                ),
+            )
             task.authoringScannerClasspath.from(compilerPluginClasspath)
             task.sourceRoots.from(
                 project.provider {

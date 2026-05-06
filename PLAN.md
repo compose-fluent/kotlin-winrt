@@ -100,7 +100,7 @@
 - [x] Generic instantiation table artifact migration: generator now emits `generic-instantiations.tsv` as compiler input, removes `ENTRIES`/source maps from `WinRTGenericTypeInstantiations.kt`, and the compiler plugin writes `WinRTGenericTypeInstantiationRegistry.class` while generated Kotlin keeps runtime binding functions.
 - [x] Projection source diagnostic suppression: ordinary projection files and opt-in expect/actual source-set files now emit shared generated-code file suppressions, reducing Kotlin diagnostic work over complete projection source without adding runtime resources or filtering referenced types.
 - [x] Runtime loader boundary: runtime now exposes a structured compiler-generated projection type-index registration helper and keeps the JVM resource loader limited to reading generated index rows and resolving the already-named class token; mapping installation is centralized in common runtime, with no source/package scanning or sample inference.
-- [x] Validation path: after the registrar slice, targeted compiler-plugin, generator registration, and runtime registry tests run through Windows Gradle on the required JDK 22 JVM target; `winrt-samples:compileKotlin` exposed and drove the authored-type registrar fix, with remaining sample rerun blocked by Windows Gradle/JDK 22 daemon native crashes rather than Kotlin source diagnostics.
+- [x] Validation path: after the registrar slice, targeted compiler-plugin, generator registration, and runtime registry tests run through Windows Gradle on the required JDK 22 JVM target; narrow `winrt-samples:compileKotlin` exposed and drove the authored-type registrar fix, but the representative validation surface is now the WinUI-enabled `winrt-samples` configuration because it exercises the Windows App SDK projection closure.
 
 ## Expect/Actual Projection ABI Migration Plan
 
@@ -111,6 +111,8 @@
 - [x] Metadata table ownership: runtime-class factory, default-interface name/signature/class, helper/ABI, base-type, and type-index registration for generated projections now live in `WinRTProjectionRegistrar` support output; compiler plugin remains limited to authored source facts and registrar handoff, while delegate/enum/struct/boxing metadata stay on existing runtime/generator ownership until their dedicated slices move.
 - [x] Runtime fallback shrink: removed generated-projection scalar/mixed-shape `ComVtableInvoker.invokeArgs` overloads now covered by JVM actual FFM calls; retained runtime primitive shapes for `IUnknown`/`IInspectable`, events, collections, async, callbacks, value boxing, and temporary migration fallback.
 - [x] Event expect/actual slice: non-static interface/runtime-class events with concrete add/remove slots stay on the expect/actual JVM path, using generated event-source helpers for subscription while static events/factories/activation remain on fallback.
+- [x] Authoring scanner process memory: the forked `KotlinWinRtAuthoringScannerCli` helper now uses a small fixed JVM footprint because it only scans authored source roots and metadata-index rows; this removes the JDK 22 default ergonomics path that reserved roughly 12GB heap before projection generation reached the real WinUI surface.
+- [ ] WinUI projection compile-surface reduction 正在做: after the scanner fix, WinUI-enabled `winrt-samples:compileKotlin` reaches the real Kotlin compile step and OOMs on roughly 1,751 generated Kotlin files, 21MB of source, and 122k generated lines; reduce generated source cost instead of treating the narrow non-WinUI sample as representative.
 - [ ] `mingwX64` actual generation: after JVM projection actuals stabilize, emit `mingwX64` actual projection implementations from the same metadata call-shape model instead of designing a separate public API.
 
 ## Frozen
@@ -124,9 +126,9 @@
 ### Current Validation
 
 - [x] Expect/actual event slice validation: targeted generator coverage passes for JVM event-source emission, runtime-class forwarding, and static-event fallback.
-- [ ] WinUI sample compile observation: use the WinUI-enabled `winrt-samples` source set with `kotlinWinRt.samples.windowsAppSdkVersion`; the latest run was blocked before sample compilation by Windows pagefile/native memory failure in `winrt-projections:generateWinRtProjections`, so it is not yet a sample compile-surface result.
+- [ ] WinUI projection compile observation 正在做: use the WinUI-enabled `winrt-samples` source set with `kotlinWinRt.samples.windowsAppSdkVersion`; after bounding the authoring scanner process, validation reaches `winrt-samples:compileKotlin` and fails with Kotlin compiler heap OOM on the full generated WinUI projection surface.
 - [x] Generator regression sweep: full `KotlinProjectionGeneratorTest` passes on Windows/JDK 22 with generator-local test JVM memory settings after registrar ownership changes.
-- [x] Sample compile-surface blocker closed: after moving registrar, event-source, and generic-instantiation support tables out of normal Kotlin source, `winrt-samples:compileKotlin` passes on Windows/JDK 22 with the constrained JVM validation settings.
+- [x] Narrow sample compile-surface blocker closed: after moving registrar, event-source, and generic-instantiation support tables out of normal Kotlin source, non-WinUI `winrt-samples:compileKotlin` passes on Windows/JDK 22 with the constrained JVM validation settings; this is no longer treated as representative of WinUI projection consumption.
 - [ ] Compile-surface observation: JVM target validation requires JDK 22; treat OOM or native compiler pressure as evidence of excessive generated compile surface, duplicated data, or diagnostic/source hot spots before considering environment tuning.
 
 ### Validation History Summary

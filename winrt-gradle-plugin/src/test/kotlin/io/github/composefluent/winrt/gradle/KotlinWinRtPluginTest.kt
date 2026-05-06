@@ -63,6 +63,15 @@ class KotlinWinRtPluginTest {
             listOf("Microsoft.WindowsAppSDK@1.8.260416003"),
             task.nugetPackages.get(),
         )
+        assertEquals(
+            listOf(
+                "-Xmx128m",
+                "-Xss512k",
+                "-XX:+UseSerialGC",
+                "-XX:ReservedCodeCacheSize=32m",
+            ),
+            task.authoringScannerJvmArgs.get(),
+        )
         assertEquals(project.name, task.authoringAssemblyName.get())
         assertEquals("${project.name}.jar", task.authoringTargetArtifactName.get())
     }
