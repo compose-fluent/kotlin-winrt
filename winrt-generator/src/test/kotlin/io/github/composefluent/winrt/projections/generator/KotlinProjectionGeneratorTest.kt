@@ -3286,6 +3286,12 @@ class KotlinProjectionGeneratorTest {
                                     getterMethodName = "get_Count",
                                     getterMethodRowId = 11,
                                 ),
+                                WinRtPropertyDefinition(
+                                    name = "StaticToken",
+                                    typeName = "Sample.Foundation.DependencyProperty",
+                                    getterMethodName = "get_StaticToken",
+                                    getterMethodRowId = 15,
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(
@@ -3325,6 +3331,11 @@ class KotlinProjectionGeneratorTest {
                                 ),
                             ),
                         ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "DependencyProperty",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
                     ),
                 ),
             ),
@@ -3345,6 +3356,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_SETTER_SLOT: Int = IWidgetStatics2.Metadata.COUNT_SETTER_SLOT"))
+        assertTrue(widgetContents.contains("val staticToken: DependencyProperty"))
+        assertTrue(widgetContents.contains("WinRtStaticProjectionInterop.getProjectedRuntimeClass("))
+        assertTrue(widgetContents.contains("STATIC_STATICTOKEN_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("DependencyProperty.Metadata::wrap"))
         assertTrue(widgetContents.contains("val changed: WinRtEvent<EventHandlerCallback<Int>> by"))
         assertTrue(widgetContents.contains("lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("WinRTEventProjectionHelpers.createEventSource("))

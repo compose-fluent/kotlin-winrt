@@ -454,7 +454,8 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     val getterBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
-    val getterInvocation = renderBoundStaticInvocation(getterBinding)
+    val getterInvocation = renderStaticProjectedObjectGetter(getterBinding)
+        ?: renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
         FunSpec.getterBuilder()
@@ -477,6 +478,36 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticProjectedObjectGetter(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        binding.parameterBindings.isNotEmpty() ||
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind !in setOf(
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+            KotlinProjectionAbiValueKind.ProjectedInterface,
+        )
+    ) {
+        return null
+    }
+    val returnType = resolveTypeName(binding.returnBinding.typeName)
+    val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "getProjectedRuntimeClass"
+        KotlinProjectionAbiValueKind.ProjectedInterface -> "getProjectedInterface"
+        else -> return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%T.Metadata::wrap,\n", returnType)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 internal fun KotlinProjectionRenderer.appendCompanionShells(

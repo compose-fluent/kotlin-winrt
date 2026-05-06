@@ -88,6 +88,7 @@ import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters
 import io.github.composefluent.winrt.runtime.WinRtGenericParameterProjection
 import io.github.composefluent.winrt.runtime.WinRtPlatformApi
+import io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtSystemProjectionMarshalers
 import io.github.composefluent.winrt.runtime.WinRtTypeSignature
 import io.github.composefluent.winrt.runtime.WinRtTypeHandle
@@ -193,6 +194,7 @@ internal val WINRT_OBJECT_MARSHALER_FUNCTION_NAME =
 internal val WINRT_PROPERTY_CHANGED_EVENT_ARGS_FROM_ABI_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRtPropertyChangedEventArgsFromAbi")
 internal val WINRT_PLATFORM_API_CLASS_NAME = WinRtPlatformApi::class.asClassName()
+internal val WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME = WinRtStaticProjectionInterop::class.asClassName()
 internal val WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME = WinRtSystemProjectionMarshalers::class.asClassName()
 internal val WINRT_TYPE_SIGNATURE_CLASS_NAME = WinRtTypeSignature::class.asClassName()
 internal val WINRT_TYPE_HANDLE_CLASS_NAME = WinRtTypeHandle::class.asClassName()
