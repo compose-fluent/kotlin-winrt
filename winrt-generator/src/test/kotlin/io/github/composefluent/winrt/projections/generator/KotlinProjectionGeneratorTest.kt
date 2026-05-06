@@ -339,6 +339,83 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun runtime_class_members_forward_to_native_interface_projection_in_single_source_layout() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodName = "get_Title",
+                                    setterMethodName = "put_Title",
+                                    getterMethodRowId = 7,
+                                    setterMethodRowId = 8,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodName = "get_Title",
+                                    setterMethodName = "put_Title",
+                                    getterMethodRowId = 7,
+                                    setterMethodRowId = 8,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator().generate(model).associateBy(KotlinProjectionFile::relativePath)
+        val widget = filesByPath.getValue("sample/foundation/Widget.kt").contents
+
+        assertTrue(widget, widget.contains("private val _iWidgetProjection: IWidget by lazy"))
+        assertTrue(widget, widget.contains("IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertTrue(widget, widget.contains("override fun rename(`value`: String)"))
+        assertTrue(widget, widget.contains("_iWidgetProjection.rename(value)"))
+        assertTrue(widget, widget.contains("override var title: String"))
+        assertTrue(widget, widget.contains("get() = _iWidgetProjection.title"))
+        assertTrue(widget, widget.contains("set(`value`) {\n      _iWidgetProjection.title = value"))
+        assertFalse(widget, widget.contains("ComVtableInvoker"))
+        assertFalse(widget, widget.contains("PlatformAbi.confinedScope"))
+    }
+
+    @Test
     fun expect_actual_interface_native_projection_implements_inherited_interface_members() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

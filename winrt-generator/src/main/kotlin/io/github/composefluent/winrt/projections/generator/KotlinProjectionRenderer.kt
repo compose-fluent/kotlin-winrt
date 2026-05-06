@@ -768,6 +768,7 @@ class KotlinProjectionRenderer {
         requiredIteratorBinding(plan)?.let { iteratorBinding ->
             addRequiredIteratorForwardMembers(builder, iteratorBinding)
         }
+        addRuntimeClassInterfaceProjectionCaches(builder, plan)
         renderRequiredInterfaceForwardMembers(plan, mappedCollectionMemberNames(plan)).forEach { member ->
             when (member) {
                 is TypeSpec -> error("Nested required-interface members are not supported.")
@@ -792,18 +793,28 @@ class KotlinProjectionRenderer {
             .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
             .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
-            .forEach { builder.addFunction(renderRuntimeMethod(plan, it)) }
+            .forEach { method ->
+                builder.addFunction(renderRuntimeClassInterfaceForwardMethod(plan, method) ?: renderRuntimeMethod(plan, method))
+            }
         plan.type.properties
             .filterNot { it.isStatic }
             .filter { it.getterMethodName != null }
             .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
-            .forEach { builder.addProperty(renderRuntimeProperty(plan, it)) }
+            .forEach { property ->
+                builder.addProperty(renderRuntimeClassInterfaceForwardProperty(plan, property) ?: renderRuntimeProperty(plan, property))
+            }
         plan.type.events
             .filterNot { it.isStatic }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "ErrorsChanged" }
             .filterNot { plan.usesMappedPropertyChangedAugmentation && it.name == "PropertyChanged" }
             .forEach { event ->
+            val forwardEvent = renderRuntimeClassInterfaceForwardEvent(plan, event)
+            if (forwardEvent != null) {
+                builder.addProperty(forwardEvent.property)
+                forwardEvent.functions.forEach(builder::addFunction)
+                return@forEach
+            }
             val addBinding = plan.instanceMemberBindings.firstOrNull {
                 it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
             }
@@ -842,6 +853,175 @@ class KotlinProjectionRenderer {
         }
         appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
         return builder.build()
+    }
+
+    private fun addRuntimeClassInterfaceProjectionCaches(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        runtimeClassInterfaceProjectionForwardTargets(plan).values
+            .distinctBy { it.projectionPropertyName }
+            .sortedBy { it.projectionPropertyName }
+            .forEach { target ->
+                builder.addProperty(
+                    PropertySpec.builder(target.projectionPropertyName, resolveTypeName(target.interfaceName))
+                        .addModifiers(KModifier.PRIVATE)
+                        .delegate(
+                            CodeBlock.of(
+                                "lazy(%T.PUBLICATION) { %T.Metadata.wrap(Metadata.acquireInterface(_inner, %T.Metadata.IID)) }",
+                                LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                                resolveTypeName(target.interfaceName),
+                                resolveTypeName(target.interfaceName),
+                            ),
+                        )
+                        .build(),
+                )
+            }
+    }
+
+    private fun renderRuntimeClassInterfaceForwardMethod(
+        plan: KotlinTypeProjectionPlan,
+        method: WinRtMethodDefinition,
+    ): FunSpec? {
+        val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == method.abiSlotConstantName(plan.type.methods) }
+            ?: return null
+        val target = runtimeClassInterfaceProjectionForwardTargets(plan)[binding.ownerInterfaceQualifiedName.substringBefore('<')]
+            ?: return null
+        val objectShape = runtimeObjectMethodShape(method)
+        val functionName = objectShape?.name ?: method.projectedMethodName()
+        val parameterSpecs = objectShape?.parameters ?: method.parameters.map { parameter ->
+            ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+        }
+        val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
+        val returns = objectShape?.returnType ?: resolveTypeName(method.returnTypeName)
+        return FunSpec.builder(functionName)
+            .addProjectedAttributeAnnotations(binding.projectedAttributes)
+            .addMethodGenericParameters(method, objectShape)
+            .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
+            .addParameters(parameterSpecs)
+            .returns(returns)
+            .apply {
+                if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
+                    addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
+                }
+                if (returns == UNIT) {
+                    addCode("%L.%L(%L)\n", target.projectionPropertyName, functionName, arguments)
+                } else {
+                    addCode("return %L.%L(%L)\n", target.projectionPropertyName, functionName, arguments)
+                }
+            }
+            .build()
+    }
+
+    private fun renderRuntimeClassInterfaceForwardProperty(
+        plan: KotlinTypeProjectionPlan,
+        property: WinRtPropertyDefinition,
+    ): PropertySpec? {
+        val getterBinding = plan.instanceMemberBindings.firstOrNull {
+            it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
+        } ?: return null
+        val target = runtimeClassInterfaceProjectionForwardTargets(plan)[getterBinding.ownerInterfaceQualifiedName.substringBefore('<')]
+            ?: return null
+        val propertyName = property.name.replaceFirstChar(Char::lowercase)
+        val builder = PropertySpec.builder(propertyName, resolveTypeName(property.typeName))
+            .mutable(!property.isReadOnly)
+            .addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
+            .addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
+            .getter(
+                FunSpec.getterBuilder()
+                    .addCode("return %L.%L\n", target.projectionPropertyName, propertyName)
+                    .build(),
+            )
+        if (!property.isReadOnly) {
+            builder.setter(
+                FunSpec.setterBuilder()
+                    .addParameter("value", resolveTypeName(property.typeName))
+                    .addCode("%L.%L = value\n", target.projectionPropertyName, propertyName)
+                    .build(),
+            )
+        }
+        return builder.build()
+    }
+
+    private data class RuntimeClassForwardEvent(
+        val property: PropertySpec,
+        val functions: List<FunSpec>,
+    )
+
+    private fun renderRuntimeClassInterfaceForwardEvent(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+    ): RuntimeClassForwardEvent? {
+        val addBinding = plan.instanceMemberBindings.firstOrNull {
+            it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
+        } ?: return null
+        val target = runtimeClassInterfaceProjectionForwardTargets(plan)[addBinding.ownerInterfaceQualifiedName.substringBefore('<')]
+            ?: return null
+        val eventName = event.name.replaceFirstChar(Char::lowercase)
+        val delegateTypeName = resolveTypeName(event.delegateTypeName)
+        val property = PropertySpec.builder(eventName, WINRT_EVENT_CLASS_NAME.parameterizedBy(delegateTypeName))
+            .addModifiers(runtimeClassMemberModifiers(plan, addBinding))
+            .getter(
+                FunSpec.getterBuilder()
+                    .addCode("return %L.%L\n", target.projectionPropertyName, eventName)
+                    .build(),
+            )
+            .build()
+        val functions = listOf(
+            FunSpec.builder("add${event.name}")
+                .addModifiers(runtimeClassMemberModifiers(plan, addBinding))
+                .addParameter("handler", delegateTypeName)
+                .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+                .addCode("return %L.add%L(handler)\n", target.projectionPropertyName, event.name)
+                .build(),
+            FunSpec.builder("remove${event.name}")
+                .addModifiers(runtimeClassMemberModifiers(plan, addBinding))
+                .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
+                .addCode("%L.remove%L(token)\n", target.projectionPropertyName, event.name)
+                .build(),
+        )
+        return RuntimeClassForwardEvent(property, functions)
+    }
+
+    private data class RuntimeClassInterfaceProjectionForwardTarget(
+        val interfaceName: String,
+        val projectionPropertyName: String,
+    )
+
+    private fun runtimeClassInterfaceProjectionForwardTargets(
+        plan: KotlinTypeProjectionPlan,
+    ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> {
+        val ownerInterfaceNames = plan.instanceMemberBindings
+            .map { binding -> binding.ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?") }
+            .distinct()
+        return ownerInterfaceNames.mapNotNull { interfaceName ->
+            if ('<' in interfaceName) {
+                return@mapNotNull null
+            }
+            val interfaceType = plan.typesByQualifiedName[interfaceName] ?: return@mapNotNull null
+            if (interfaceType.kind != WinRtTypeKind.Interface) {
+                return@mapNotNull null
+            }
+            val interfacePlan = plan.copy(
+                type = interfaceType,
+                declarationKind = KotlinProjectionDeclarationKind.Interface,
+                defaultInterfaceName = null,
+                defaultInterfaceIid = null,
+                staticInterfaceNames = emptyList(),
+                staticInterfaceBindings = emptyList(),
+                implementedInterfaceBindings = emptyList(),
+                instanceMemberBindings = emptyList(),
+                staticMemberBindings = emptyList(),
+                classMemberMergeDescriptor = null,
+            )
+            if (!canRenderInterfaceProxy(interfacePlan)) {
+                return@mapNotNull null
+            }
+            interfaceName to RuntimeClassInterfaceProjectionForwardTarget(
+                interfaceName = interfaceName,
+                projectionPropertyName = "_${interfaceType.name.replaceFirstChar(Char::lowercase)}Projection",
+            )
+        }.toMap()
     }
 
     private val KotlinTypeProjectionPlan.runtimeClassBaseTypeName: String?
