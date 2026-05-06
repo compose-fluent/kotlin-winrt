@@ -296,6 +296,9 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
     ): KotlinProjectionFile? {
         val helpers = model.semanticHelpers()
+        val typesByQualifiedName = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .associateBy { it.qualifiedName }
         val eventSourceEntries = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
@@ -307,8 +310,9 @@ class KotlinProjectionSupportRenderer {
         val rows = eventSourceEntries.joinToString(
             separator = "\n",
             postfix = "\n",
-            prefix = "eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource\n",
+            prefix = "eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource\tinterfaceId\tparameterKinds\treturnKind\tparameterTypeNames\n",
         ) { entry ->
+            val invokeShape = concreteEventInvokeShape(entry, typesByQualifiedName)
             listOf(
                 entry.eventTypeName,
                 entry.ownerTypeName,
@@ -316,6 +320,10 @@ class KotlinProjectionSupportRenderer {
                 entry.abiEventTypeName,
                 entry.genericArgumentTypeNames.joinToString(","),
                 entry.usesSharedEventHandlerSource.toString(),
+                invokeShape?.interfaceId?.toString().orEmpty(),
+                invokeShape?.parameterBindings.orEmpty().joinToString(",") { binding -> eventSourceDelegateValueKindEnumName(binding.typeBinding) },
+                invokeShape?.returnBinding?.let(::eventSourceDelegateValueKindEnumName).orEmpty(),
+                invokeShape?.parameterBindings.orEmpty().joinToString(",") { binding -> binding.typeBinding.typeName },
             ).joinToString("\t")
         }
         return KotlinProjectionFile(
@@ -536,56 +544,20 @@ class KotlinProjectionSupportRenderer {
         inventory: WinRtMetadataProjectionInventory,
     ): KotlinProjectionFile? {
         val helpers = model.semanticHelpers()
-        val plansByType = plans.associateBy { it.type.qualifiedName }
-        val typesByQualifiedName = plans.associate { it.type.qualifiedName to it.type }
         val eventSourceEntries = model.namespaces
             .flatMap(WinRtNamespace::types)
             .flatMap(helpers::eventHelperSubclassDescriptors)
             .distinctBy { it.eventTypeName to it.ownerTypeName }
             .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
-        val eventSourceFactoryDescriptors = eventSourceEntries
-            .distinctBy {
-                if (it.usesSharedEventHandlerSource) {
-                    it.eventTypeName
-                } else {
-                    it.sourceClassName
-                }
-            }
-        val eventSourceClassDescriptors = eventSourceEntries
-            .filterNot { it.usesSharedEventHandlerSource }
-            .distinctBy { it.sourceClassName }
         if (inventory.eventSourceMappings.isEmpty() && eventSourceEntries.isEmpty()) {
             return null
         }
-        val entryClass = ClassName(SUPPORT_PACKAGE, "EventSourceEntry")
         val objectBuilder = TypeSpec.objectBuilder("WinRTEventProjectionHelpers")
             .addModifiers(KModifier.INTERNAL)
             .addProperty(stringListProperty("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" }))
-            .addFunctions(eventProjectionHelperFunctions(entryClass, eventSourceFactoryDescriptors, plansByType, typesByQualifiedName))
+            .addFunctions(eventProjectionHelperFunctions())
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
             .addGeneratedProjectionSuppressions()
-            .addType(
-                dataClass(
-                    className = "EventSourceEntry",
-                    fields = listOf(
-                        "eventType" to stringTypeName(),
-                        "ownerType" to stringTypeName(),
-                        "sourceClass" to stringTypeName(),
-                        "abiEventType" to stringTypeName(),
-                        "genericArguments" to stringListTypeName(),
-                        "usesSharedEventHandlerSource" to Boolean::class.asClassName(),
-                    ),
-                ),
-            )
-        eventSourceClassDescriptors
-            .forEach { descriptor ->
-                val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
-                val delegatePlan = plansByType[rawEventType] ?: return@forEach
-                val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
-                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
-                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
-                }
-            }
         val fileSpec = fileBuilder
             .addType(objectBuilder.build())
             .build()
@@ -2874,6 +2846,9 @@ class KotlinProjectionSupportRenderer {
             else -> delegateValueKindName(binding)
         }
 
+    private fun eventSourceDelegateValueKindEnumName(binding: KotlinProjectionAbiTypeBinding): String =
+        eventSourceDelegateValueKindName(binding).substringAfterLast('.')
+
     private fun eventSourceTypeVariables(descriptor: WinRtEventHelperSubclassDescriptor): List<TypeVariableName> =
         descriptor.genericArgumentTypeNames
             .filter { it.isEventSourceGenericTypeParameterName() }
@@ -2927,12 +2902,7 @@ class KotlinProjectionSupportRenderer {
             )
         }
 
-    private fun eventProjectionHelperFunctions(
-        entryClass: ClassName,
-        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
-        plansByType: Map<String, KotlinTypeProjectionPlan>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): List<FunSpec> =
+    private fun eventProjectionHelperFunctions(): List<FunSpec> =
         listOf(
             FunSpec.builder("installEventSources")
                 .addCode(
@@ -2962,18 +2932,6 @@ class KotlinProjectionSupportRenderer {
                     )
                     """.trimIndent() + "\n",
                 )
-                .build(),
-            FunSpec.builder("eventSourceFactoryFor")
-                .addModifiers(KModifier.INTERNAL)
-                .addParameter("entry", entryClass)
-                .returns(ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceFactory").copy(nullable = true))
-                .addCode(eventSourceFactoryForCode(subclassDescriptors, plansByType, typesByQualifiedName))
-                .build(),
-            FunSpec.builder("eventHandlerEventSourceFactoryFor")
-                .addModifiers(KModifier.PRIVATE)
-                .addParameter("entry", entryClass)
-                .returns(ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceFactory").copy(nullable = true))
-                .addCode(eventHandlerEventSourceFactoryForCode(subclassDescriptors, typesByQualifiedName))
                 .build(),
         )
 

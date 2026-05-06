@@ -9,6 +9,10 @@ data class WinRtEventSourceDescriptor(
     val abiEventType: String,
     val genericArguments: List<String>,
     val usesSharedEventHandlerSource: Boolean = false,
+    val interfaceId: Guid? = null,
+    val parameterKinds: List<WinRtDelegateValueKind> = emptyList(),
+    val returnKind: WinRtDelegateValueKind = WinRtDelegateValueKind.UNIT,
+    val parameterTypeNames: List<String> = emptyList(),
     val eventSourceFactory: WinRtEventSourceFactory? = null,
 )
 
