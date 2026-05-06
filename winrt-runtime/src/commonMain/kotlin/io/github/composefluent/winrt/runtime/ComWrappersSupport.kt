@@ -21,6 +21,8 @@ class SingleInterfaceOptimizedObject(
 object ComWrappersSupport {
     private val typedRcwFactories = ConcurrentCacheMap<WinRtTypeHandle, (IInspectableReference) -> Any>()
     private val runtimeClassFactories = ConcurrentCacheMap<String, (IInspectableReference) -> Any>()
+    private val interfaceProjectionFactoriesByHandle = ConcurrentCacheMap<WinRtTypeHandle, (IUnknownReference) -> Any>()
+    private val interfaceProjectionFactoriesByTypeName = ConcurrentCacheMap<String, (IUnknownReference) -> Any>()
     private val authoringActivationFactories = ConcurrentCacheMap<String, () -> ComObjectReference>()
     private val authoringActivationFactoryFallbacks = SnapshotList<(String, Guid) -> ActivationResult>()
     private val helperTypeRegistry = ConcurrentCacheMap<WinRtTypeHandle, WinRtTypeHandle>()
@@ -43,6 +45,45 @@ object ComWrappersSupport {
         runtimeClassName: String,
         factory: (IInspectableReference) -> Any,
     ): Boolean = runtimeClassFactories.putIfAbsent(runtimeClassName, factory) == null
+
+    fun registerInterfaceProjectionFactory(
+        typeHandle: WinRtTypeHandle,
+        factory: (IUnknownReference) -> Any,
+    ): Boolean {
+        require(typeHandle.projectedTypeName.isNotBlank()) { "Projected interface type name must not be blank." }
+        interfaceProjectionFactoriesByTypeName.putIfAbsent(typeHandle.projectedTypeName, factory)
+        return interfaceProjectionFactoriesByHandle.putIfAbsent(typeHandle, factory) == null
+    }
+
+    fun registerInterfaceProjectionFactory(
+        projectedTypeName: String,
+        factory: (IUnknownReference) -> Any,
+    ): Boolean {
+        require(projectedTypeName.isNotBlank()) { "Projected interface type name must not be blank." }
+        return interfaceProjectionFactoriesByTypeName.putIfAbsent(projectedTypeName, factory) == null
+    }
+
+    fun wrapGeneratedInterfaceProjection(
+        typeHandle: WinRtTypeHandle,
+        instance: IUnknownReference,
+    ): Any =
+        resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
+            ?.invoke(instance)
+            ?: throw WinRtUnsupportedOperationException(
+                "Generated interface projection factory for '${typeHandle.projectedTypeName}' is not registered.",
+                KnownHResults.E_NOINTERFACE,
+            )
+
+    fun wrapGeneratedInterfaceProjection(
+        projectedTypeName: String,
+        instance: IUnknownReference,
+    ): Any =
+        resolveInterfaceProjectionFactory(null, projectedTypeName)
+            ?.invoke(instance)
+            ?: throw WinRtUnsupportedOperationException(
+                "Generated interface projection factory for '$projectedTypeName' is not registered.",
+                KnownHResults.E_NOINTERFACE,
+            )
 
     fun registerAuthoringActivationFactory(
         runtimeClassName: String,
@@ -326,6 +367,8 @@ object ComWrappersSupport {
     fun clearRegistriesForTests() {
         typedRcwFactories.clear()
         runtimeClassFactories.clear()
+        interfaceProjectionFactoriesByHandle.clear()
+        interfaceProjectionFactoriesByTypeName.clear()
         authoringActivationFactories.clear()
         helperTypeRegistry.clear()
         ccwFactories.clear()
@@ -377,6 +420,9 @@ object ComWrappersSupport {
             } finally {
                 inspectable.close()
             }
+            resolveInterfaceProjectionFactory(staticallyDeterminedType, staticallyDeterminedType.projectedTypeName)?.let { factory ->
+                return factory(typedReference.asUnknownReference(staticallyDeterminedType.interfaceId))
+            }
             return SingleInterfaceOptimizedObject(
                 primaryTypeHandle = staticallyDeterminedType,
                 nativeObject = typedReference,
@@ -384,9 +430,13 @@ object ComWrappersSupport {
         }
 
         if (staticallyDeterminedType != null) {
+            val typedReference = IUnknownReference(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId)
+            resolveInterfaceProjectionFactory(staticallyDeterminedType, staticallyDeterminedType.projectedTypeName)?.let { factory ->
+                return factory(typedReference)
+            }
             return SingleInterfaceOptimizedObject(
                 primaryTypeHandle = staticallyDeterminedType,
-                nativeObject = IUnknownReference(pointer.asRawComPtr(), staticallyDeterminedType.interfaceId),
+                nativeObject = typedReference,
             )
         }
 
@@ -408,6 +458,26 @@ object ComWrappersSupport {
         }
         return null
     }
+
+    private fun resolveInterfaceProjectionFactory(
+        staticallyDeterminedType: WinRtTypeHandle?,
+        projectedTypeName: String?,
+    ): ((IUnknownReference) -> Any)? {
+        if (staticallyDeterminedType != null) {
+            interfaceProjectionFactoriesByHandle[staticallyDeterminedType]?.let { return it }
+        }
+        if (!projectedTypeName.isNullOrBlank()) {
+            interfaceProjectionFactoriesByTypeName[projectedTypeName]?.let { return it }
+        }
+        return null
+    }
+
+    private fun ComObjectReference.asUnknownReference(interfaceId: Guid): IUnknownReference =
+        this as? IUnknownReference ?: try {
+            IUnknownReference(getRefPointer(), interfaceId)
+        } finally {
+            close()
+        }
 
     private fun hasReferenceTracker(pointer: RawAddress): Boolean {
         val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IReferenceTracker)

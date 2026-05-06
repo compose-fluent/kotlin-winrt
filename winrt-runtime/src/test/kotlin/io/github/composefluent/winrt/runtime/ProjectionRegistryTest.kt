@@ -1,9 +1,11 @@
 package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
+import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.reflect.KClass
@@ -109,6 +111,31 @@ class ProjectionRegistryTest {
             GeneratedRegistrarRuntimeClass::class,
             TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarDerived"),
         )
+    }
+
+    @Test
+    fun generated_interface_projection_registry_wraps_by_type_handle_and_type_name() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val typeHandle = WinRtTypeHandle(
+            projectedTypeName = "Contoso.IGeneratedInterface",
+            interfaceId = Guid("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        )
+        val nativeReference = IUnknownReference(
+            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
+            typeHandle.interfaceId,
+            preventReleaseOnDispose = true,
+        )
+        val projected = SampleGeneratedInterfaceProjection(nativeReference)
+
+        assertTrue(
+            ComWrappersSupport.registerInterfaceProjectionFactory(typeHandle) { instance ->
+                assertSame(nativeReference, instance)
+                projected
+            },
+        )
+
+        assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle, nativeReference))
+        assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle.projectedTypeName, nativeReference))
     }
 
     @Test
@@ -286,6 +313,8 @@ class ProjectionRegistryTest {
 
     private interface SampleDefaultInterface
 
+    private interface SampleGeneratedInterface
+
     private class SampleRuntimeClass
 
     private class SampleGenericRuntimeClass
@@ -303,6 +332,10 @@ class ProjectionRegistryTest {
     private class SampleStruct
 
     private class PlainManagedType
+
+    private class SampleGeneratedInterfaceProjection(
+        override val nativeObject: ComObjectReference,
+    ) : SampleGeneratedInterface, IWinRTObject
 
     @WinRtGuid("44444444-4444-4444-4444-444444444444")
     private interface AnnotatedDefaultInterface
