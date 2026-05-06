@@ -148,9 +148,42 @@ internal fun KotlinProjectionRenderer.renderMutableCollectionDelegateInitializer
 ): CodeBlock = when (binding.kind) {
     KotlinProjectionMutableCollectionKind.Vector ->
         bindableCollectionDelegateInitializer(binding.slotInterfaceQualifiedName, binding.ownerCachePropertyName)
+            ?: runtimeMutableCollectionDelegateInitializer(binding)
             ?: renderVectorCollectionDelegateInitializer(binding)
-    KotlinProjectionMutableCollectionKind.Map -> renderMapCollectionDelegateInitializer(binding)
+    KotlinProjectionMutableCollectionKind.Map ->
+        runtimeMutableCollectionDelegateInitializer(binding)
+            ?: renderMapCollectionDelegateInitializer(binding)
 }
+
+private fun KotlinProjectionRenderer.runtimeMutableCollectionDelegateInitializer(
+    binding: KotlinProjectionMutableCollectionBinding,
+): CodeBlock? =
+    when (binding.kind) {
+        KotlinProjectionMutableCollectionKind.Vector -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of(
+                "%T.fromAbi(%T.fromRawComPtr(%L.pointer), %L) ?: error(%S)\n",
+                WINRT_LIST_PROJECTION_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                binding.ownerCachePropertyName,
+                elementAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+        KotlinProjectionMutableCollectionKind.Map -> {
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            CodeBlock.of(
+                "%T.fromAbi(%T.fromRawComPtr(%L.pointer), %L, %L) ?: error(%S)\n",
+                WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                binding.ownerCachePropertyName,
+                keyAdapter,
+                valueAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+    }
 
 internal fun KotlinProjectionRenderer.renderVectorCollectionDelegateInitializer(
     binding: KotlinProjectionMutableCollectionBinding,
@@ -505,12 +538,57 @@ internal fun KotlinProjectionRenderer.renderReadOnlyCollectionDelegateInitialize
 ): CodeBlock = when (binding.kind) {
     KotlinProjectionReadOnlyCollectionKind.Iterable ->
         bindableCollectionDelegateInitializer(binding.slotInterfaceQualifiedName, binding.ownerCachePropertyName)
+            ?: runtimeReadOnlyCollectionDelegateInitializer(binding)
             ?: renderIterableCollectionDelegateInitializer(binding)
     KotlinProjectionReadOnlyCollectionKind.VectorView ->
         bindableCollectionDelegateInitializer(binding.slotInterfaceQualifiedName, binding.ownerCachePropertyName)
+            ?: runtimeReadOnlyCollectionDelegateInitializer(binding)
             ?: renderVectorViewCollectionDelegateInitializer(binding)
-    KotlinProjectionReadOnlyCollectionKind.MapView -> renderMapViewCollectionDelegateInitializer(binding)
+    KotlinProjectionReadOnlyCollectionKind.MapView ->
+        runtimeReadOnlyCollectionDelegateInitializer(binding)
+            ?: renderMapViewCollectionDelegateInitializer(binding)
 }
+
+private fun KotlinProjectionRenderer.runtimeReadOnlyCollectionDelegateInitializer(
+    binding: KotlinProjectionReadOnlyCollectionBinding,
+): CodeBlock? =
+    when (binding.kind) {
+        KotlinProjectionReadOnlyCollectionKind.Iterable -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of(
+                "%T.fromAbi(%T.fromRawComPtr(%L.pointer), %L) ?: error(%S)\n",
+                WINRT_ITERABLE_PROJECTION_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                binding.ownerCachePropertyName,
+                elementAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+        KotlinProjectionReadOnlyCollectionKind.VectorView -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of(
+                "%T.fromAbi(%T.fromRawComPtr(%L.pointer), %L) ?: error(%S)\n",
+                WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                binding.ownerCachePropertyName,
+                elementAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+        KotlinProjectionReadOnlyCollectionKind.MapView -> {
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            CodeBlock.of(
+                "%T.fromAbi(%T.fromRawComPtr(%L.pointer), %L, %L) ?: error(%S)\n",
+                WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                binding.ownerCachePropertyName,
+                keyAdapter,
+                valueAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+    }
 
 private fun bindableCollectionDelegateInitializer(
     slotInterfaceQualifiedName: String,

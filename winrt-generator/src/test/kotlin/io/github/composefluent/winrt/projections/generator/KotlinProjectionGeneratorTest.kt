@@ -7830,7 +7830,7 @@ class KotlinProjectionGeneratorTest {
         val contents = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("NameMap.kt")
+            .getValue("INameMap.kt")
             .contents
 
         assertTrue(contents, contents.contains("MutableMap<String, Int>,"))
@@ -7906,7 +7906,7 @@ class KotlinProjectionGeneratorTest {
         val contents = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("MapProvider.kt")
+            .getValue("IMapProvider.kt")
             .contents
 
         assertTrue(contents, contents.contains("fun items(): MutableMap<String, Int>"))
@@ -7989,15 +7989,16 @@ class KotlinProjectionGeneratorTest {
         val contents = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("CollectionProvider.kt")
+            .getValue("ICollectionProvider.kt")
             .contents
 
         assertTrue(contents, contents.contains("fun names(): Iterable<String>"))
         assertTrue(contents, contents.contains("fun readOnlyNames(): List<String>"))
         assertTrue(contents, contents.contains("val nameMap: Map<String, Int>"))
         assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
-        assertTrue(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
-        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi(__collectionPointer, WinRtReferenceValueAdapters.string)"))
+        assertTrue(contents, contents.contains("WinRtIterableProjection.fromAbi(__collectionPointer"))
+        assertFalse(contents, contents.contains("return object : Iterable<String>, IWinRTObject"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi(__collectionPointer"))
         assertFalse(contents, contents.contains("return object : AbstractList<String>(), List<String>, IWinRTObject"))
         assertTrue(contents, contents.contains("return object : AbstractMap<String, Int>(), Map<String, Int>, IWinRTObject"))
         assertTrue(contents, contents.contains("IIterable.Metadata.FIRST_SLOT"))
@@ -8057,12 +8058,95 @@ class KotlinProjectionGeneratorTest {
         val contents = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("WidgetProvider.kt")
+            .getValue("IWidgetProvider.kt")
             .contents
 
         assertTrue(contents, contents.contains("fun widgets(): List<IWidget>"))
-        assertTrue(contents, contents.contains("return object : AbstractList<IWidget>(), List<IWidget>, IWinRTObject"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyListProjection.fromAbi(__collectionPointer"))
+        assertFalse(contents, contents.contains("return object : AbstractList<IWidget>(), List<IWidget>, IWinRTObject"))
         assertTrue(contents, contents.contains("IWidget.Metadata.wrap"))
+    }
+
+    @Test
+    fun generator_uses_runtime_dictionary_projection_for_projected_value_map_returns() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetMapProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "widgets",
+                                    returnTypeName = "Windows.Foundation.Collections.IMap<String, Sample.Foundation.Widget>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "WidgetMap",
+                                    typeName = "Windows.Foundation.Collections.IMapView<String, Sample.Foundation.Widget>",
+                                    getterMethodName = "get_WidgetMap",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetMapProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetMapProvider",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "widgets",
+                                    returnTypeName = "Windows.Foundation.Collections.IMap<String, Sample.Foundation.Widget>",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "WidgetMap",
+                                    typeName = "Windows.Foundation.Collections.IMapView<String, Sample.Foundation.Widget>",
+                                    getterMethodName = "get_WidgetMap",
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetMapProvider", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IWidgetMapProvider.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("fun widgets(): MutableMap<String, Widget>"))
+        assertTrue(contents, contents.contains("val widgetMap: Map<String, Widget>"))
+        assertTrue(contents, contents.contains("WinRtDictionaryProjection.fromAbi(__collectionPointer"))
+        assertTrue(contents, contents.contains("WinRtReadOnlyDictionaryProjection.fromAbi(__collectionPointer"))
+        assertFalse(contents, contents.contains("return object : AbstractMutableMap<String, Widget>(), MutableMap<String, Widget>, IWinRTObject"))
+        assertFalse(contents, contents.contains("return object : AbstractMap<String, Widget>(), Map<String, Widget>, IWinRTObject"))
     }
 
     @Test
