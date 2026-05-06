@@ -7277,6 +7277,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
         assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact\tgeneric-abi-registry.tsv"))
 
+        val typeShapeDescriptors = filesByName.getValue("type-shape-descriptors.tsv").contents
+        assertTrue(typeShapeDescriptors.contains("projectedTypeName\tkey\tvalue"))
+        assertTrue(typeShapeDescriptors.contains("\tWRITES_ABI_DECLARATION\t"))
+        assertFalse(
+            filesByName.values
+                .filter { file -> file.relativePath.endsWith(".kt") }
+                .any { file -> file.contents.contains("WRITES_ABI_DECLARATION") },
+        )
+
         val genericAbiRegistry = filesByName.getValue("generic-abi-registry.tsv").contents
         val genericAbiRegistrySource = filesByName.getValue("WinRTGenericAbiRegistry.kt").contents
         assertTrue(genericAbiRegistry.contains("_get_Value_Int"))

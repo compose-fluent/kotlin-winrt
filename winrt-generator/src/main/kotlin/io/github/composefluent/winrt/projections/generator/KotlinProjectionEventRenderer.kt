@@ -991,7 +991,9 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
             .initializer("%S", plan.type.qualifiedName)
             .build(),
     )
-    appendDescriptorHandoffCompanionMembers(builder, plan)
+    if (!useInterfaceProjectionArtifacts) {
+        appendDescriptorHandoffCompanionMembers(builder, plan)
+    }
     plan.interfaceIid?.let { iid ->
         builder.addProperty(
             PropertySpec.builder("IID", GUID_CLASS_NAME)

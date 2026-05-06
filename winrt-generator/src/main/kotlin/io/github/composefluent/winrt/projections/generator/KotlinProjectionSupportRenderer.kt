@@ -140,6 +140,7 @@ class KotlinProjectionSupportRenderer {
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         return listOfNotNull(
+            renderTypeShapeDescriptorCompilerInput(plans),
             renderProjectionRegistrarCompilerInput(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
             renderGenericAbiRegistry(inventory.genericAbiInventory),
@@ -162,6 +163,142 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
+    }
+
+    private fun renderTypeShapeDescriptorCompilerInput(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
+        val rows = buildList {
+            add("projectedTypeName\tkey\tvalue")
+            plans.sortedBy { it.type.qualifiedName }.forEach { plan ->
+                addTypeShapeDescriptorRows(plan)
+            }
+        }
+        if (rows.size == 1) {
+            return null
+        }
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/type-shape-descriptors.tsv",
+            packageName = "",
+            contents = rows.joinToString(separator = "\n", postfix = "\n"),
+        )
+    }
+
+    private fun MutableList<String>.addTypeShapeDescriptorRows(plan: KotlinTypeProjectionPlan) {
+        val typeName = plan.type.qualifiedName
+        fun row(key: String, value: String) {
+            add(listOf(typeName, key, value).joinToString("\t"))
+        }
+        fun listRow(key: String, values: List<String>) {
+            if (values.isNotEmpty()) {
+                row(key, values.joinToString(TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR))
+            }
+        }
+        fun boolRow(key: String, value: Boolean) {
+            row(key, value.toString())
+        }
+
+        listRow(
+            "PROJECTED_ATTRIBUTES",
+            plan.projectedAttributes.map { attribute ->
+                listOf(
+                    attribute.projectedTypeName,
+                    attribute.metadataTypeName,
+                    "platform=${attribute.isPlatformAttribute}",
+                    "args=${attribute.renderedArguments.joinToString(",")}",
+                ).joinToString("|")
+            },
+        )
+        val declaration = plan.typeDeclarationDescriptor
+        boolRow("WRITES_ABI_DECLARATION", declaration.writesAbiDeclaration)
+        boolRow("WRITES_WRAPPER_DECLARATION", declaration.writesWrapperDeclaration)
+        boolRow("WRITES_HELPER_CLASS", declaration.writesHelperClass)
+        plan.factorySurfaceDescriptor?.let { descriptor ->
+            row("FACTORY_CACHE_NAME", descriptor.activationFactoryCacheName)
+            listRow("FACTORY_STATIC_TARGETS", descriptor.staticMemberTargets)
+            listRow("FACTORY_CONSTRUCTOR_TARGETS", descriptor.constructorFactories)
+            listRow("FACTORY_COMPOSABLE_TARGETS", descriptor.composableFactories)
+        }
+        plan.objectReferenceSurfaceDescriptor?.let { descriptor ->
+            listRow("OBJECT_REFERENCE_NAMES", descriptor.objectReferenceNames)
+            listRow("OBJECT_REFERENCE_METADATA_NAMES", descriptor.exposedTypeMetadataNames)
+            listRow(
+                "OBJECT_REFERENCE_PLANS",
+                descriptor.objectReferencePlans.map { referencePlan ->
+                    listOf(
+                        referencePlan.interfaceName,
+                        "cache=${referencePlan.cacheName}",
+                        "default=${referencePlan.isDefaultInterface}",
+                        "skip=${referencePlan.skippedReason.orEmpty()}",
+                        "inner=${referencePlan.usesInner}",
+                        "defaultObjRef=${referencePlan.usesDefaultInterfaceObjRef}",
+                        "hierarchy=${referencePlan.defaultInterfaceHierarchyIndex?.toString().orEmpty()}",
+                        "defaultObjRefSlot=${referencePlan.defaultInterfaceObjRefVtableSlot?.toString().orEmpty()}",
+                        "generic=${referencePlan.requiresGenericInstantiation}",
+                    ).joinToString("|")
+                },
+            )
+        }
+        plan.guidSignatureDescriptor?.let { descriptor ->
+            row("GUID_SIGNATURE_FRAGMENT", descriptor.signatureFragment)
+        }
+        plan.interfaceMemberSignatureSetDescriptor?.let { descriptor ->
+            listRow(
+                "INTERFACE_METHOD_SIGNATURES",
+                descriptor.methodSignatures.map { signature ->
+                    "${signature.methodName}:${signature.returnTypeName}(${signature.parameterTypeNames.joinToString(",")})"
+                },
+            )
+            listRow("INTERFACE_PROPERTY_NAMES", descriptor.propertyNames)
+            listRow("INTERFACE_EVENT_NAMES", descriptor.eventNames)
+        }
+        plan.customMappedMemberOutputDescriptor?.let { descriptor ->
+            listRow("CUSTOM_MAPPED_MEMBER_PLANS", descriptor.memberPlans)
+            row("CUSTOM_MAPPED_MEMBER_CALL_MODE", descriptor.callMode)
+            boolRow("CUSTOM_MAPPED_MEMBER_EXPLICIT", descriptor.emitsExplicitMembers)
+            boolRow("CUSTOM_MAPPED_MEMBER_PRIVATE", descriptor.emitsPrivateMembers)
+        }
+        plan.genericAbiClassInitializationDescriptor?.let { descriptor ->
+            listRow("GENERIC_ABI_INVOKE_SLOTS", descriptor.invokeSlotNames)
+            listRow("GENERIC_ABI_TYPE_ARRAYS", descriptor.genericTypeArrayDependencies)
+        }
+        plan.requiredInterfaceAugmentationDescriptor?.let { descriptor ->
+            listRow("REQUIRED_INTERFACE_NAMES", descriptor.requiredInterfaceNames)
+            listRow("REQUIRED_EXPLICIT_FORWARD_MEMBERS", descriptor.explicitForwardMemberNames)
+            listRow("REQUIRED_MAPPED_AUGMENTATION_MEMBERS", descriptor.mappedAugmentationMembers)
+            listRow(
+                "REQUIRED_MAPPED_HELPER_PLANS",
+                descriptor.mappedHelperPlans.map { helperPlan -> helperPlan.toSupportPlanString() },
+            )
+        }
+        plan.fastAbiClassDescriptor?.let { descriptor ->
+            listRow(
+                "FAST_ABI_INTERFACE_SLOTS",
+                descriptor.interfaceSlots.map { slot ->
+                    listOf(
+                        slot.interfaceName,
+                        "default=${slot.isDefault}",
+                        "start=${slot.vtableStartIndex}",
+                        "count=${slot.methodCount}",
+                        "hierarchyOffset=${slot.hierarchyOffsetAfterDefault}",
+                        "next=${slot.nextVtableStartIndex}",
+                    ).joinToString("|")
+                },
+            )
+            listRow(
+                "FAST_ABI_PROPERTY_SLOTS",
+                descriptor.propertySlots.map { slot ->
+                    listOf(
+                        slot.propertyName,
+                        "start=${slot.vtableStartIndex}",
+                        "get=${slot.getterVtableIndex ?: ""}",
+                        "set=${slot.setterVtableIndex ?: ""}",
+                    ).joinToString("|")
+                },
+            )
+        }
+        plan.moduleActivationAndAuthoringDescriptor?.let { module ->
+            listRow("DEFERRED_AUTHORING_FACTORY_MEMBERS", module.factoryMemberNames)
+            listRow("DEFERRED_MODULE_ACTIVATION_FACTORY_ENTRIES", module.moduleActivationFactoryEntries)
+        }
     }
 
     private fun renderCompilerSupportManifest(
@@ -3442,5 +3579,6 @@ class KotlinProjectionSupportRenderer {
         const val SUPPORT_PACKAGE = "io.github.composefluent.winrt.projections.support"
         const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
         const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR = "\u001F"
+        const val TYPE_SHAPE_DESCRIPTOR_LIST_SEPARATOR = "\u001F"
     }
 }

@@ -106,7 +106,7 @@ import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
 
 class KotlinProjectionRenderer(
-    private val useInterfaceProjectionArtifacts: Boolean = false,
+    internal val useInterfaceProjectionArtifacts: Boolean = false,
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
