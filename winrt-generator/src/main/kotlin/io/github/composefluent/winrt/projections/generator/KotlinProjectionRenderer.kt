@@ -401,122 +401,179 @@ class KotlinProjectionRenderer(
             plan.readOnlyCollectionBindings.isEmpty() &&
             !plan.usesMappedDisposableAugmentation &&
             !plan.hasDirectMappedDisposableSuperinterface &&
-            collectInterfaceProxyTypes(plan) == listOf(plan.type) &&
+            collectInterfaceProxyTypes(plan).all { interfaceType ->
+                interfaceType.genericParameterCount == 0 && '<' !in interfaceType.qualifiedName
+            } &&
             interfaceNativeProjectionMemberDescriptors(plan) != null
 
     internal fun interfaceNativeProjectionMemberDescriptors(
         plan: KotlinTypeProjectionPlan,
     ): List<KotlinInterfaceNativeProjectionMemberDescriptor>? {
-        val slotByName = plan.abiSlotBindings.associate { it.constantName to it.slot }
-        val methodDescriptors = plan.type.methods
-            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
-            .map { method ->
-                if (method.genericParameterCount != 0) {
-                    return null
-                }
-                val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName)
-                val parameterBindings = method.parameters.map { parameter ->
-                    KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName))
-                }
-                if (buildAbiCallPlan(returnBinding, parameterBindings, suppressHResultCheck = method.isNoException) == null) {
-                    return null
-                }
-                KotlinInterfaceNativeProjectionMemberDescriptor(
-                    kind = "Method",
-                    jvmName = method.projectedMethodName(),
-                    slot = slotByName[method.abiSlotConstantName(plan.type.methods)] ?: return null,
-                    returnKind = interfaceNativeProjectionValueKind(returnBinding),
-                    parameterKinds = parameterBindings.map { binding ->
-                        interfaceNativeProjectionValueKind(binding.typeBinding)
-                    },
-                    suppressHResultCheck = method.isNoException,
-                )
-            }
-        val propertyDescriptors = plan.type.properties
-            .filterNot(WinRtPropertyDefinition::isStatic)
-            .filter { property -> property.getterMethodName != null }
-            .flatMap { property ->
-                val typeBinding = renderAbiTypeBinding(property.typeName, plan.typesByQualifiedName)
-                val valueKind = interfaceNativeProjectionValueKind(typeBinding)
-                if (buildAbiCallPlan(typeBinding, emptyList(), suppressHResultCheck = property.isNoException) == null) {
-                    return null
-                }
-                val propertyName = property.name.replaceFirstChar(Char::lowercase)
-                val getter = KotlinInterfaceNativeProjectionMemberDescriptor(
-                    kind = "PropertyGet",
-                    jvmName = propertyGetterJvmName(propertyName, valueKind),
-                    slot = slotByName["${property.name.uppercase()}_GETTER_SLOT"] ?: return null,
-                    returnKind = valueKind,
-                    parameterKinds = emptyList(),
-                    suppressHResultCheck = property.isNoException,
-                )
-                if (property.isReadOnly) {
-                    listOf(getter)
-                } else {
-                    if (buildAbiCallPlan(
-                            KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                            listOf(KotlinProjectionAbiParameterBinding("value", typeBinding)),
-                            suppressHResultCheck = property.isNoException,
-                        ) == null
-                    ) {
+        val descriptors = buildList {
+            collectInterfaceProxyTypes(plan).forEach { interfaceType ->
+                val slotByName = interfaceNativeProjectionSlotByName(plan, interfaceType)
+                interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
+                    if (method.genericParameterCount != 0) {
                         return null
                     }
-                    listOf(
-                        getter,
+                    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName)
+                    val parameterBindings = method.parameters.map { parameter ->
+                        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName))
+                    }
+                    if (buildAbiCallPlan(returnBinding, parameterBindings, suppressHResultCheck = method.isNoException) == null) {
+                        return null
+                    }
+                    val returnKind = interfaceNativeProjectionValueKind(returnBinding)
+                    val parameterKinds = parameterBindings.map { binding ->
+                        interfaceNativeProjectionValueKind(binding.typeBinding)
+                    }
+                    add(
                         KotlinInterfaceNativeProjectionMemberDescriptor(
-                            kind = "PropertySet",
-                            jvmName = propertySetterJvmName(propertyName, valueKind),
-                            slot = slotByName["${property.name.uppercase()}_SETTER_SLOT"] ?: return null,
-                            returnKind = "Unit",
-                            parameterKinds = listOf(valueKind),
+                            kind = "Method",
+                            jvmName = method.projectedMethodName(),
+                            slot = slotByName[method.abiSlotConstantName(interfaceType.methods)] ?: return null,
+                            returnKind = returnKind,
+                            parameterKinds = parameterKinds,
+                            suppressHResultCheck = method.isNoException,
+                        ),
+                    )
+                }
+                interfaceType.properties
+                    .filterNot(WinRtPropertyDefinition::isStatic)
+                    .filter { property -> property.getterMethodName != null }
+                    .forEach { property ->
+                        val typeBinding = renderAbiTypeBinding(property.typeName, plan.typesByQualifiedName)
+                        val valueKind = interfaceNativeProjectionValueKind(typeBinding)
+                        if (buildAbiCallPlan(typeBinding, emptyList(), suppressHResultCheck = property.isNoException) == null) {
+                            return null
+                        }
+                        val propertyName = property.name.replaceFirstChar(Char::lowercase)
+                        val getter = KotlinInterfaceNativeProjectionMemberDescriptor(
+                            kind = "PropertyGet",
+                            jvmName = propertyGetterJvmName(propertyName, valueKind),
+                            slot = slotByName["${property.name.uppercase()}_GETTER_SLOT"] ?: return null,
+                            returnKind = valueKind,
+                            parameterKinds = emptyList(),
                             suppressHResultCheck = property.isNoException,
+                        )
+                        add(getter)
+                        if (!property.isReadOnly) {
+                            if (buildAbiCallPlan(
+                                    KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                                    listOf(KotlinProjectionAbiParameterBinding("value", typeBinding)),
+                                    suppressHResultCheck = property.isNoException,
+                                ) == null
+                            ) {
+                                return null
+                            }
+                            add(
+                                KotlinInterfaceNativeProjectionMemberDescriptor(
+                                    kind = "PropertySet",
+                                    jvmName = propertySetterJvmName(propertyName, valueKind),
+                                    slot = slotByName["${property.name.uppercase()}_SETTER_SLOT"] ?: return null,
+                                    returnKind = "Unit",
+                                    parameterKinds = listOf(valueKind),
+                                    suppressHResultCheck = property.isNoException,
+                                ),
+                            )
+                        }
+                    }
+                interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
+                    val addSlot = slotByName["${event.name.uppercase()}_ADD_SLOT"] ?: return null
+                    val removeSlot = slotByName["${event.name.uppercase()}_REMOVE_SLOT"] ?: addSlot + 1
+                    val propertyName = event.name.replaceFirstChar(Char::lowercase)
+                    val getterName = propertyGetterJvmName(propertyName, "Object")
+                    val eventTypeName = event.delegateTypeName
+                    val ownerTypeName = interfaceType.qualifiedName
+                    add(
+                        KotlinInterfaceNativeProjectionMemberDescriptor(
+                            kind = "EventGet",
+                            jvmName = getterName,
+                            slot = addSlot,
+                            returnKind = "Object",
+                            parameterKinds = emptyList(),
+                            suppressHResultCheck = false,
+                            eventTypeName = eventTypeName,
+                            ownerTypeName = ownerTypeName,
+                        ),
+                    )
+                    add(
+                        KotlinInterfaceNativeProjectionMemberDescriptor(
+                            kind = "EventAdd",
+                            jvmName = "add${event.name}",
+                            slot = addSlot,
+                            returnKind = "Object",
+                            parameterKinds = listOf("Object"),
+                            suppressHResultCheck = false,
+                            eventTypeName = eventTypeName,
+                            ownerTypeName = ownerTypeName,
+                        ),
+                    )
+                    add(
+                        KotlinInterfaceNativeProjectionMemberDescriptor(
+                            kind = "EventRemove",
+                            jvmName = "remove${event.name}",
+                            slot = removeSlot,
+                            returnKind = "Unit",
+                            parameterKinds = listOf("Object"),
+                            suppressHResultCheck = false,
+                            eventTypeName = eventTypeName,
+                            ownerTypeName = ownerTypeName,
                         ),
                     )
                 }
             }
-        val eventDescriptors = plan.type.events
-            .filterNot(WinRtEventDefinition::isStatic)
-            .flatMap { event ->
-                val addSlot = slotByName["${event.name.uppercase()}_ADD_SLOT"] ?: return null
-                val removeSlot = slotByName["${event.name.uppercase()}_REMOVE_SLOT"] ?: addSlot + 1
-                val propertyName = event.name.replaceFirstChar(Char::lowercase)
-                val getterName = propertyGetterJvmName(propertyName, "Object")
-                val eventTypeName = event.delegateTypeName
-                val ownerTypeName = plan.type.qualifiedName
-                listOf(
-                    KotlinInterfaceNativeProjectionMemberDescriptor(
-                        kind = "EventGet",
-                        jvmName = getterName,
-                        slot = addSlot,
-                        returnKind = "Object",
-                        parameterKinds = emptyList(),
-                        suppressHResultCheck = false,
-                        eventTypeName = eventTypeName,
-                        ownerTypeName = ownerTypeName,
-                    ),
-                    KotlinInterfaceNativeProjectionMemberDescriptor(
-                        kind = "EventAdd",
-                        jvmName = "add${event.name}",
-                        slot = addSlot,
-                        returnKind = "Object",
-                        parameterKinds = listOf("Object"),
-                        suppressHResultCheck = false,
-                        eventTypeName = eventTypeName,
-                        ownerTypeName = ownerTypeName,
-                    ),
-                    KotlinInterfaceNativeProjectionMemberDescriptor(
-                        kind = "EventRemove",
-                        jvmName = "remove${event.name}",
-                        slot = removeSlot,
-                        returnKind = "Unit",
-                        parameterKinds = listOf("Object"),
-                        suppressHResultCheck = false,
-                        eventTypeName = eventTypeName,
-                        ownerTypeName = ownerTypeName,
-                    ),
+        }
+        if (descriptors.groupingBy { it.jvmName to it.parameterKinds.size }.eachCount().any { it.value > 1 }) {
+            return null
+        }
+        return descriptors
+    }
+
+    private fun interfaceNativeProjectionSlotByName(
+        plan: KotlinTypeProjectionPlan,
+        interfaceType: WinRtTypeDefinition,
+    ): Map<String, Int> =
+        if (interfaceType.qualifiedName == plan.type.qualifiedName && interfaceType.implementedInterfaces.isEmpty()) {
+            plan.abiSlotBindings.associate { it.constantName to it.slot }
+        } else {
+            val baseSlotCount = interfaceType.implementedInterfaces.sumOf { implemented ->
+                interfaceNativeProjectionAbiMemberCount(
+                    implemented.interfaceName.substringBefore('<').removeSuffix("?"),
+                    plan.typesByQualifiedName,
+                    mutableSetOf(),
                 )
             }
-        return methodDescriptors + propertyDescriptors + eventDescriptors
+            val slotIndexByRowId = interfaceType.localAbiMemberOrders()
+                .map(AbiMemberOrder::rowId)
+                .distinct()
+                .mapIndexed { index, rowId -> rowId to index }
+                .toMap()
+            interfaceType.localAbiMemberOrders().associate { member ->
+                member.constantName to 6 + baseSlotCount + slotIndexByRowId.getValue(member.rowId)
+            }
+        }
+
+    private fun interfaceNativeProjectionAbiMemberCount(
+        interfaceName: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        visiting: MutableSet<String>,
+    ): Int {
+        val type = typesByQualifiedName[interfaceName] ?: return 0
+        if (type.kind != WinRtTypeKind.Interface || !visiting.add(interfaceName)) {
+            return 0
+        }
+        return try {
+            type.implementedInterfaces.sumOf { implemented ->
+                interfaceNativeProjectionAbiMemberCount(
+                    implemented.interfaceName.substringBefore('<').removeSuffix("?"),
+                    typesByQualifiedName,
+                    visiting,
+                )
+            } + type.localAbiMemberOrders().map(AbiMemberOrder::rowId).distinct().size
+        } finally {
+            visiting.remove(interfaceName)
+        }
     }
 
     internal fun collectInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<WinRtTypeDefinition> =

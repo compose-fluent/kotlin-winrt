@@ -3129,6 +3129,77 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_moves_inherited_interface_native_projection_to_compiler_artifact() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBaseWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 10,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodName = "get_Title",
+                                    getterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IChildWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBaseWidget"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Activate",
+                                    returnTypeName = "Boolean",
+                                    methodRowId = 20,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                    getterMethodRowId = 21,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IChildWidget.kt").contents
+        val compilerInput = filesByName.getValue("interface-native-projections.tsv").contents
+
+        assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(compilerInput, compilerInput.contains("\t4\t"))
+        assertTrue(compilerInput, compilerInput.contains("Method|reset|6|Unit||false"))
+        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getTitle|7|String||false"))
+        assertTrue(compilerInput, compilerInput.contains("Method|activate|8|Boolean||false"))
+        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getCount|9|Int32||false"))
+    }
+
+    @Test
     fun generator_routes_native_projection_events_through_event_source_table() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
