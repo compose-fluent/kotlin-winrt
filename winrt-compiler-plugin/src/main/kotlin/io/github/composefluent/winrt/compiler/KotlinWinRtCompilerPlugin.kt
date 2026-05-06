@@ -167,6 +167,10 @@ class KotlinWinRtIrGenerationExtension(
             entries = readGenericTypeInstantiationEntries(entries),
             outputDirectory = outputDirectory,
         )
+        writeGenericAbiRegistryArtifactClass(
+            entries = readGenericAbiRegistryEntries(entries),
+            outputDirectory = outputDirectory,
+        )
         writeInterfaceNativeProjectionRegistryClass(
             entries = readInterfaceNativeProjectionEntries(entries),
             outputDirectory = outputDirectory,
@@ -223,6 +227,25 @@ class KotlinWinRtIrGenerationExtension(
                 val sourcePath = manifestDirectory.resolve(entry.sourceFile)
                 if (Files.isRegularFile(sourcePath)) {
                     readGenericTypeInstantiationEntries(sourcePath).asSequence()
+                } else {
+                    emptySequence()
+                }
+            }
+            .toList()
+    }
+
+    private fun readGenericAbiRegistryEntries(
+        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    ): List<KotlinWinRtGenericAbiRegistryEntry> {
+        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
+        val manifestDirectory = manifestPath.parent ?: return emptyList()
+        return manifestEntries
+            .asSequence()
+            .filter { it.kind == "generic-abi-registry" }
+            .flatMap { entry ->
+                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
+                if (Files.isRegularFile(sourcePath)) {
+                    readGenericAbiRegistryEntries(sourcePath).asSequence()
                 } else {
                     emptySequence()
                 }
@@ -401,6 +424,9 @@ private const val EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
 private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiationRegistry"
 
+private const val GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME: String =
+    "io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact"
+
 private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry"
 
@@ -411,6 +437,8 @@ private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
 private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CHUNK_SIZE: Int = 96
 
 private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
+
+private const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR: String = "\u001F"
 
 fun writeCompilerSupportManifestClass(
     entries: List<KotlinWinRtCompilerSupportManifestEntry>,
@@ -949,6 +977,202 @@ private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addGenericInstantiatio
         "io/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry",
         "<init>",
         "(Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V",
+        false,
+    )
+}
+
+data class KotlinWinRtGenericAbiRegistryEntry(
+    val kind: String,
+    val name: String,
+    val sourceGenericType: String,
+    val operation: String,
+    val declaration: String,
+    val abiParameterTypes: List<String>,
+    val typeArrayShape: List<String>,
+)
+
+fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistryEntry> =
+    Files.readAllLines(path)
+        .asSequence()
+        .drop(1)
+        .filter(String::isNotBlank)
+        .mapNotNull(::parseGenericAbiRegistryLine)
+        .toList()
+
+private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegistryEntry? {
+    val parts = line.split('\t', limit = 7)
+    if (parts.size < 7) {
+        return null
+    }
+    return KotlinWinRtGenericAbiRegistryEntry(
+        kind = parts[0],
+        name = parts[1],
+        sourceGenericType = parts[2],
+        operation = parts[3],
+        declaration = parts[4],
+        abiParameterTypes = parts[5].splitGenericAbiRegistryListField(),
+        typeArrayShape = parts[6].splitGenericAbiRegistryListField(),
+    )
+}
+
+private fun String.splitGenericAbiRegistryListField(): List<String> =
+    split(GENERIC_ABI_REGISTRY_LIST_SEPARATOR).filter(String::isNotBlank)
+
+fun writeGenericAbiRegistryArtifactClass(
+    entries: List<KotlinWinRtGenericAbiRegistryEntry>,
+    outputDirectory: Path,
+) {
+    if (entries.isEmpty()) {
+        return
+    }
+    val classWriter = ClassWriter(ClassWriter.COMPUTE_FRAMES)
+    classWriter.visit(
+        Opcodes.V17,
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
+        GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME,
+        null,
+        "java/lang/Object",
+        null,
+    )
+    classWriter.visitSource("generic-abi-registry.tsv", null)
+    classWriter.addDefaultConstructor()
+    val delegates = entries.filter { it.kind == "delegate" }
+    val derivedInterfaces = entries.filter { it.kind == "derived-interface" }.map { it.name }
+    classWriter.addGenericAbiDelegateNamedMethod(delegates)
+    classWriter.addGenericAbiDelegatesForSourceTypeMethod(delegates)
+    classWriter.addGenericAbiIsDerivedGenericInterfaceMethod(derivedInterfaces)
+    classWriter.addGenericAbiRegisterDelegatesMethod(delegates)
+    classWriter.visitEnd()
+
+    val target = outputDirectory.resolve("$GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME.class")
+    Files.createDirectories(target.parent)
+    Files.write(target, classWriter.toByteArray())
+}
+
+private fun ClassWriter.addGenericAbiDelegateNamedMethod(entries: List<KotlinWinRtGenericAbiRegistryEntry>) {
+    val method = visitMethod(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        "delegateNamed",
+        "(Ljava/lang/String;)Lio/github/composefluent/winrt/projections/support/GenericAbiDelegateEntry;",
+        null,
+        null,
+    )
+    method.visitCode()
+    entries.forEach { entry ->
+        method.visitLdcInsn(entry.name)
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false)
+        val next = org.jetbrains.org.objectweb.asm.Label()
+        method.visitJumpInsn(Opcodes.IFEQ, next)
+        method.addGenericAbiDelegateEntry(entry)
+        method.visitInsn(Opcodes.ARETURN)
+        method.visitLabel(next)
+    }
+    method.visitInsn(Opcodes.ACONST_NULL)
+    method.visitInsn(Opcodes.ARETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun ClassWriter.addGenericAbiDelegatesForSourceTypeMethod(entries: List<KotlinWinRtGenericAbiRegistryEntry>) {
+    val method = visitMethod(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        "delegatesForSourceType",
+        "(Ljava/lang/String;)Ljava/util/List;",
+        null,
+        null,
+    )
+    method.visitCode()
+    method.visitTypeInsn(Opcodes.NEW, "java/util/ArrayList")
+    method.visitInsn(Opcodes.DUP)
+    method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V", false)
+    method.visitVarInsn(Opcodes.ASTORE, 1)
+    entries.forEach { entry ->
+        method.visitLdcInsn(entry.sourceGenericType)
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false)
+        val next = org.jetbrains.org.objectweb.asm.Label()
+        method.visitJumpInsn(Opcodes.IFEQ, next)
+        method.visitVarInsn(Opcodes.ALOAD, 1)
+        method.addGenericAbiDelegateEntry(entry)
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z", false)
+        method.visitInsn(Opcodes.POP)
+        method.visitLabel(next)
+    }
+    method.visitVarInsn(Opcodes.ALOAD, 1)
+    method.visitInsn(Opcodes.ARETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun ClassWriter.addGenericAbiIsDerivedGenericInterfaceMethod(typeNames: List<String>) {
+    val method = visitMethod(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        "isDerivedGenericInterface",
+        "(Ljava/lang/String;)Z",
+        null,
+        null,
+    )
+    method.visitCode()
+    typeNames.forEach { typeName ->
+        method.visitLdcInsn(typeName)
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false)
+        val next = org.jetbrains.org.objectweb.asm.Label()
+        method.visitJumpInsn(Opcodes.IFEQ, next)
+        method.visitInsn(Opcodes.ICONST_1)
+        method.visitInsn(Opcodes.IRETURN)
+        method.visitLabel(next)
+    }
+    method.visitInsn(Opcodes.ICONST_0)
+    method.visitInsn(Opcodes.IRETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun ClassWriter.addGenericAbiRegisterDelegatesMethod(entries: List<KotlinWinRtGenericAbiRegistryEntry>) {
+    val method = visitMethod(
+        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+        "registerAbiDelegates",
+        "(Lkotlin/jvm/functions/Function2;)V",
+        null,
+        null,
+    )
+    method.visitCode()
+    entries.forEach { entry ->
+        method.visitVarInsn(Opcodes.ALOAD, 0)
+        method.addStringList(entry.typeArrayShape)
+        method.visitLdcInsn(entry.name)
+        method.visitMethodInsn(
+            Opcodes.INVOKEINTERFACE,
+            "kotlin/jvm/functions/Function2",
+            "invoke",
+            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+            true,
+        )
+        method.visitInsn(Opcodes.POP)
+    }
+    method.visitInsn(Opcodes.RETURN)
+    method.visitMaxs(0, 0)
+    method.visitEnd()
+}
+
+private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addGenericAbiDelegateEntry(
+    entry: KotlinWinRtGenericAbiRegistryEntry,
+) {
+    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/projections/support/GenericAbiDelegateEntry")
+    visitInsn(Opcodes.DUP)
+    visitLdcInsn(entry.name)
+    visitLdcInsn(entry.sourceGenericType)
+    visitLdcInsn(entry.operation)
+    visitLdcInsn(entry.declaration)
+    addStringList(entry.abiParameterTypes)
+    addStringList(entry.typeArrayShape)
+    visitMethodInsn(
+        Opcodes.INVOKESPECIAL,
+        "io/github/composefluent/winrt/projections/support/GenericAbiDelegateEntry",
+        "<init>",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V",
         false,
     )
 }

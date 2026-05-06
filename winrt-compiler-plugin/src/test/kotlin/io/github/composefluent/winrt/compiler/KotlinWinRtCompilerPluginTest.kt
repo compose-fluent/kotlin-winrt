@@ -7,6 +7,7 @@ import org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.ClassVisitor
+import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -171,6 +172,12 @@ class KotlinWinRtCompilerPluginTest {
                     sourceFile = "generic-instantiations.tsv",
                     entries = 5,
                 ),
+                KotlinWinRtCompilerSupportManifestEntry(
+                    kind = "generic-abi-registry",
+                    className = "io.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact",
+                    sourceFile = "generic-abi-registry.tsv",
+                    entries = 4,
+                ),
             ),
             outputDirectory = outputDirectory,
         )
@@ -181,10 +188,11 @@ class KotlinWinRtCompilerPluginTest {
                 false,
                 classLoader,
             )
-            assertEquals(3, klass.getField("ENTRY_COUNT").getInt(null))
+            assertEquals(4, klass.getField("ENTRY_COUNT").getInt(null))
             assertEquals(12, klass.getField("PROJECTION_REGISTRAR_ENTRIES").getInt(null))
             assertEquals(3, klass.getField("EVENT_SOURCE_ENTRIES").getInt(null))
             assertEquals(5, klass.getField("GENERIC_TYPE_INSTANTIATION_ENTRIES").getInt(null))
+            assertEquals(4, klass.getField("GENERIC_ABI_REGISTRY_ENTRIES").getInt(null))
         }
     }
 
@@ -263,6 +271,60 @@ class KotlinWinRtCompilerPluginTest {
             assertEquals("initializeAll", klass.getDeclaredMethod("initializeAll").name)
             assertEquals("initializeBySourceType", klass.getDeclaredMethod("initializeBySourceType", String::class.java).name)
         }
+    }
+
+    @Test
+    fun generic_abi_registry_input_writes_artifact_class() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf("derived-interface", "Windows.Foundation.Collections.IVector", "", "", "", "", ""),
+                listOf(
+                    "delegate",
+                    "_get_Value_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "get_Value",
+                    "internal unsafe delegate int _get_Value_Int(void*, out int);",
+                    "void*\u001Fout int\u001Fint",
+                    "void*\u001Fint.MakeByRefType()\u001Fint",
+                ),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-generic-abi-class-")
+
+        val entries = readGenericAbiRegistryEntries(input)
+        writeGenericAbiRegistryArtifactClass(entries, outputDirectory)
+
+        val artifactClass = ClassReader(
+            Files.readAllBytes(
+                outputDirectory.resolve(
+                    "io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact.class",
+                ),
+            ),
+        )
+        val methodNames = mutableSetOf<String>()
+        artifactClass.accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(
+                    access: Int,
+                    name: String?,
+                    descriptor: String?,
+                    signature: String?,
+                    exceptions: Array<out String>?,
+                ): MethodVisitor? {
+                    name?.let(methodNames::add)
+                    return null
+                }
+            },
+            0,
+        )
+        assertEquals("io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact", artifactClass.className)
+        assertTrue(methodNames.contains("delegateNamed"))
+        assertTrue(methodNames.contains("delegatesForSourceType"))
+        assertTrue(methodNames.contains("isDerivedGenericInterface"))
+        assertTrue(methodNames.contains("registerAbiDelegates"))
     }
 
     @Test

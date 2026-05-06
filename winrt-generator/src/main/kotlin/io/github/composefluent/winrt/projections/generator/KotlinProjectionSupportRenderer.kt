@@ -10,7 +10,6 @@ import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
-import io.github.composefluent.winrt.metadata.WinRtGenericAbiDelegateDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
 import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
@@ -82,6 +81,7 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateReference
 import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRtEvent
 import com.squareup.kotlinpoet.ANY
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -141,6 +141,7 @@ class KotlinProjectionSupportRenderer {
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         return listOfNotNull(
             renderProjectionRegistrarCompilerInput(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
+            renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
             renderGenericTypeInstantiations(genericInstantiationWriters),
@@ -187,6 +188,8 @@ class KotlinProjectionSupportRenderer {
             .count()
         val genericInstantiationEntries = genericInstantiationWriters.size
         val interfaceNativeProjectionEntries = interfaceNativeProjectionPlans(plans).size
+        val genericAbiRegistryEntries = inventory.genericAbiInventory.genericAbiDelegates.size +
+            inventory.genericAbiInventory.derivedGenericInterfaces.size
         val rows = listOf(
             compilerSupportManifestRow(
                 kind = "projection-registrar",
@@ -211,6 +214,12 @@ class KotlinProjectionSupportRenderer {
                 className = "$SUPPORT_PACKAGE.WinRTGenericTypeInstantiations",
                 sourceFile = "generic-instantiations.tsv",
                 entries = genericInstantiationEntries,
+            ),
+            compilerSupportManifestRow(
+                kind = "generic-abi-registry",
+                className = "$SUPPORT_PACKAGE.WinRTGenericAbiRegistryArtifact",
+                sourceFile = "generic-abi-registry.tsv",
+                entries = genericAbiRegistryEntries,
             ),
             compilerSupportManifestRow(
                 kind = "interface-native-projection",
@@ -403,6 +412,46 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
+    private fun renderGenericAbiRegistryCompilerInput(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
+        if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
+            return null
+        }
+        val rows = buildList {
+            add("kind\tname\tsourceGenericType\toperation\tdeclaration\tabiParameterTypes\ttypeArrayShape")
+            inventory.derivedGenericInterfaces.forEach { typeName ->
+                add(
+                    listOf(
+                        "derived-interface",
+                        typeName,
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                    ).joinToString("\t"),
+                )
+            }
+            inventory.genericAbiDelegates.forEach { descriptor ->
+                add(
+                    listOf(
+                        "delegate",
+                        descriptor.abiDelegateName,
+                        descriptor.sourceGenericType.typeName,
+                        descriptor.operationName,
+                        descriptor.declaration,
+                        descriptor.abiParameterTypeNames.joinToString(GENERIC_ABI_REGISTRY_LIST_SEPARATOR),
+                        descriptor.typeArrayShape.joinToString(GENERIC_ABI_REGISTRY_LIST_SEPARATOR),
+                    ).joinToString("\t"),
+                )
+            }
+        }.joinToString(separator = "\n", postfix = "\n")
+        return KotlinProjectionFile(
+            relativePath = "kotlin-winrt-support/generic-abi-registry.tsv",
+            packageName = "",
+            contents = rows,
+        )
+    }
+
     private fun renderGenericAbiRegistry(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
         if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
             return null
@@ -425,49 +474,30 @@ class KotlinProjectionSupportRenderer {
             .addType(
                 TypeSpec.objectBuilder("WinRTGenericAbiRegistry")
                     .addModifiers(KModifier.INTERNAL)
-                    .addProperty(stringListProperty("DERIVED_GENERIC_INTERFACES", inventory.derivedGenericInterfaces))
-                    .addProperty(
-                        PropertySpec.builder("GENERIC_ABI_DELEGATES", List::class.asClassName().parameterizedBy(entryClass))
-                            .initializer(genericAbiDelegateEntriesCode(inventory.genericAbiDelegates, entryClass))
-                            .build(),
-                    )
-                    .addProperty(
-                        PropertySpec.builder("DELEGATES_BY_NAME", Map::class.asClassName().parameterizedBy(stringTypeName(), entryClass))
-                            .initializer("GENERIC_ABI_DELEGATES.associateBy({ it.name })")
-                            .build(),
-                    )
-                    .addProperty(
-                        PropertySpec.builder(
-                            "DELEGATES_BY_SOURCE_TYPE",
-                            Map::class.asClassName().parameterizedBy(stringTypeName(), List::class.asClassName().parameterizedBy(entryClass)),
-                        )
-                            .initializer("GENERIC_ABI_DELEGATES.groupBy({ it.sourceGenericType })")
-                            .build(),
-                    )
-                    .addProperty(
-                        PropertySpec.builder("DERIVED_GENERIC_INTERFACE_SET", Set::class.asClassName().parameterizedBy(stringTypeName()))
-                            .initializer("DERIVED_GENERIC_INTERFACES.toSet()")
-                            .build(),
-                    )
                     .addFunction(
                         FunSpec.builder("delegateNamed")
                             .addParameter("name", String::class)
                             .returns(entryClass.copy(nullable = true))
-                            .addStatement("return DELEGATES_BY_NAME[name]")
+                            .addStatement("return artifactMethod(%S, String::class.java)?.invoke(null, name) as? %T", "delegateNamed", entryClass)
                             .build(),
                     )
                     .addFunction(
                         FunSpec.builder("delegatesForSourceType")
                             .addParameter("sourceGenericType", String::class)
                             .returns(List::class.asClassName().parameterizedBy(entryClass))
-                            .addStatement("return DELEGATES_BY_SOURCE_TYPE[sourceGenericType].orEmpty()")
+                            .addAnnotation(Suppress::class.asClassName().let { AnnotationSpec.builder(it).addMember("%S", "UNCHECKED_CAST").build() })
+                            .addStatement(
+                                "return artifactMethod(%S, String::class.java)?.invoke(null, sourceGenericType) as? %T ?: emptyList()",
+                                "delegatesForSourceType",
+                                List::class.asClassName().parameterizedBy(entryClass),
+                            )
                             .build(),
                     )
                     .addFunction(
                         FunSpec.builder("isDerivedGenericInterface")
                             .addParameter("typeName", String::class)
                             .returns(Boolean::class)
-                            .addStatement("return typeName in DERIVED_GENERIC_INTERFACE_SET")
+                            .addStatement("return artifactMethod(%S, String::class.java)?.invoke(null, typeName) as? Boolean ?: false", "isDerivedGenericInterface")
                             .build(),
                     )
                     .addFunction(
@@ -476,10 +506,26 @@ class KotlinProjectionSupportRenderer {
                                 "register",
                                 Function2::class.asClassName().parameterizedBy(stringListTypeName(), stringTypeName(), UNIT),
                             )
+                            .addStatement("artifactMethod(%S, Function2::class.java)?.invoke(null, register)", "registerAbiDelegates")
+                            .build(),
+                    )
+                    .addFunction(
+                        FunSpec.builder("artifactMethod")
+                            .addModifiers(KModifier.PRIVATE)
+                            .addParameter("name", String::class)
+                            .addParameter(
+                                "parameterTypes",
+                                Class::class.asClassName().parameterizedBy(STAR),
+                                KModifier.VARARG,
+                            )
+                            .returns(java.lang.reflect.Method::class.asClassName().copy(nullable = true))
                             .addCode(
-                                CodeBlock.of(
-                                    "GENERIC_ABI_DELEGATES.forEach { entry ->\n⇥register(entry.typeArrayShape, entry.name)\n⇤}\n",
-                                ),
+                                """
+                                val artifactClass = runCatching {
+                                    Class.forName("io.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact")
+                                }.getOrNull() ?: return null
+                                return artifactClass.getDeclaredMethod(name, *parameterTypes)
+                                """.trimIndent() + "\n",
                             )
                             .build(),
                     )
@@ -2536,30 +2582,6 @@ class KotlinProjectionSupportRenderer {
             .initializer(stringListCode(values))
             .build()
 
-    private fun genericAbiDelegateEntriesCode(
-        entries: List<WinRtGenericAbiDelegateDescriptor>,
-        entryClass: ClassName,
-    ): CodeBlock {
-        val code = CodeBlock.builder()
-        code.add("listOf(\n")
-        code.indent()
-        entries.forEach { delegate ->
-            code.add("%T(\n", entryClass)
-            code.indent()
-            code.add("name = %S,\n", delegate.abiDelegateName)
-            code.add("sourceGenericType = %S,\n", delegate.sourceGenericType.typeName)
-            code.add("operation = %S,\n", delegate.operationName)
-            code.add("declaration = %S,\n", delegate.declaration)
-            code.add("abiParameterTypes = %L,\n", stringListCode(delegate.abiParameterTypeNames))
-            code.add("typeArrayShape = %L,\n", stringListCode(delegate.typeArrayShape))
-            code.unindent()
-            code.add("),\n")
-        }
-        code.unindent()
-        code.add(")")
-        return code.build()
-    }
-
     private fun genericTypeInstantiationRuntimeBindingType(entryClass: ClassName): TypeSpec {
         val entryStringListFunction = Function2::class.asClassName().parameterizedBy(entryClass, stringListTypeName(), UNIT)
         val entryFunction = Function1::class.asClassName().parameterizedBy(entryClass, UNIT)
@@ -3419,5 +3441,6 @@ class KotlinProjectionSupportRenderer {
     private companion object {
         const val SUPPORT_PACKAGE = "io.github.composefluent.winrt.projections.support"
         const val PROJECTION_REGISTRAR_CHUNK_SIZE = 64
+        const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR = "\u001F"
     }
 }

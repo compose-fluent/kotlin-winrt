@@ -7275,10 +7275,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv"))
         assertTrue(compilerSupportManifest.contains("event-source\tio.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers\tevent-sources.tsv"))
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
+        assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact\tgeneric-abi-registry.tsv"))
 
-        assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("_get_Value_Int"))
-        assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("Windows.Foundation.IReference<Int>"))
-        assertTrue(filesByName.getValue("WinRTGenericAbiRegistry.kt").contents.contains("fun registerAbiDelegates"))
+        val genericAbiRegistry = filesByName.getValue("generic-abi-registry.tsv").contents
+        val genericAbiRegistrySource = filesByName.getValue("WinRTGenericAbiRegistry.kt").contents
+        assertTrue(genericAbiRegistry.contains("_get_Value_Int"))
+        assertTrue(genericAbiRegistry.contains("Windows.Foundation.IReference<Int>"))
+        assertTrue(genericAbiRegistrySource.contains("fun registerAbiDelegates"))
+        assertFalse(genericAbiRegistrySource.contains("_get_Value_Int"))
+        assertFalse(genericAbiRegistrySource.contains("GENERIC_ABI_DELEGATES"))
         val genericTypeInstantiations = filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents
         val genericInstantiations = filesByName.getValue("generic-instantiations.tsv").contents
         assertTrue(genericInstantiations.contains("className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies"))
