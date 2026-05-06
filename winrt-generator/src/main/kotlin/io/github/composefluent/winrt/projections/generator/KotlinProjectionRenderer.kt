@@ -855,8 +855,7 @@ class KotlinProjectionRenderer(
                         .build(),
                 )
             }
-        val delegatedInterfaceTargets = runtimeClassInterfaceProjectionForwardTargets(plan)
-            .filterKeys { interfaceName -> plan.isPublicRuntimeClassInterface(interfaceName) }
+        val delegatedInterfaceTargets = runtimeClassDelegatedInterfaceTargets(plan)
         plan.defaultInterfaceName
             ?.takeUnless(::isMappedCollectionInterfaceName)
             ?.takeUnless(::isRuntimeOwnedMappedTypeName)
@@ -1105,10 +1104,18 @@ class KotlinProjectionRenderer(
                     .build(),
             )
         if (!property.isReadOnly) {
+            val setterBinding = plan.instanceMemberBindings.firstOrNull {
+                it.bindingName == "${property.name.uppercase()}_SETTER_SLOT"
+            } ?: return null
+            if (setterBinding.ownerInterfaceQualifiedName.substringBefore('<') != getterBinding.ownerInterfaceQualifiedName.substringBefore('<')) {
+                return null
+            }
+            val setterTarget = runtimeClassInterfaceProjectionForwardTargets(plan)[setterBinding.ownerInterfaceQualifiedName.substringBefore('<')]
+                ?: return null
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", resolveTypeName(property.typeName))
-                    .addCode("%L.%L = value\n", target.projectionPropertyName, propertyName)
+                    .addCode("%L.%L = value\n", setterTarget.projectionPropertyName, propertyName)
                     .build(),
             )
         }
@@ -1163,8 +1170,14 @@ class KotlinProjectionRenderer(
     private fun runtimeClassDelegatedInterfaceTargets(
         plan: KotlinTypeProjectionPlan,
     ): Map<String, RuntimeClassInterfaceProjectionForwardTarget> =
-        runtimeClassInterfaceProjectionForwardTargets(plan)
-            .filterKeys { interfaceName -> plan.isPublicRuntimeClassInterface(interfaceName) }
+        if (plan.canUseRuntimeClassInterfaceDelegation()) {
+            runtimeClassInterfaceProjectionForwardTargets(plan)
+                .filterKeys { interfaceName -> plan.isPublicRuntimeClassInterface(interfaceName) }
+        } else {
+            emptyMap()
+        }
+
+    private fun KotlinTypeProjectionPlan.canUseRuntimeClassInterfaceDelegation(): Boolean = false
 
     internal fun isRuntimeClassDelegatedInterface(
         plan: KotlinTypeProjectionPlan,

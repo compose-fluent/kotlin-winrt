@@ -404,10 +404,10 @@ class KotlinProjectionGeneratorTest {
         val filesByPath = KotlinProjectionGenerator().generate(model).associateBy(KotlinProjectionFile::relativePath)
         val widget = filesByPath.getValue("sample/foundation/Widget.kt").contents
 
-        assertTrue(widget, widget.contains("IWidget by IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(widget, widget.contains("IWidget by IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
         assertTrue(widget, widget.contains("IWidget.Metadata.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
-        assertFalse(widget, widget.contains("override fun rename(`value`: String)"))
-        assertFalse(widget, widget.contains("override var title: String"))
+        assertTrue(widget, widget.contains("override fun rename(`value`: String)"))
+        assertTrue(widget, widget.contains("override var title: String"))
         assertFalse(widget, widget.contains("ComVtableInvoker"))
         assertFalse(widget, widget.contains("PlatformAbi.confinedScope"))
     }
