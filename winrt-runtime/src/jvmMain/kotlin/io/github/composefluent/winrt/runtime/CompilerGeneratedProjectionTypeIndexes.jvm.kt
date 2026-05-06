@@ -3,10 +3,14 @@ package io.github.composefluent.winrt.runtime
 private const val WINRT_PROJECTION_REGISTRAR_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar"
 
+private const val WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS: String =
+    "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry"
+
 internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
     val classLoader = Thread.currentThread().contextClassLoader
         ?: WinRtTypeRegistry::class.java.classLoader
         ?: return
+    registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
     if (registerGeneratedProjectionRegistrar(classLoader)) {
         return
     }
@@ -20,8 +24,15 @@ internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
 }
 
 private fun registerGeneratedProjectionRegistrar(classLoader: ClassLoader): Boolean {
+    return registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
+}
+
+private fun registerGeneratedProjectionRegistry(
+    classLoader: ClassLoader,
+    className: String,
+): Boolean {
     val registrarClass = runCatching {
-        Class.forName(WINRT_PROJECTION_REGISTRAR_CLASS, true, classLoader)
+        Class.forName(className, true, classLoader)
     }.getOrNull() ?: return false
     val register = runCatching {
         registrarClass.getDeclaredMethod("register")
