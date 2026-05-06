@@ -119,7 +119,7 @@ class KotlinWinRtCompilerPluginTest {
             """
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar	projection-registrar.tsv	12
-            event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt	3
+            event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	event-sources.tsv	3
             """.trimIndent() + "\n",
         )
 
@@ -147,7 +147,7 @@ class KotlinWinRtCompilerPluginTest {
                 KotlinWinRtCompilerSupportManifestEntry(
                     kind = "event-source",
                     className = "io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers",
-                    sourceFile = "io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt",
+                    sourceFile = "event-sources.tsv",
                     entries = 3,
                 ),
             ),
@@ -185,6 +185,31 @@ class KotlinWinRtCompilerPluginTest {
         URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
             val klass = Class.forName(
                 "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar",
+                false,
+                classLoader,
+            )
+            assertEquals("register", klass.getDeclaredMethod("register").name)
+        }
+    }
+
+    @Test
+    fun event_projection_input_writes_registry_class_artifact() {
+        val input = Files.createTempFile("kotlin-winrt-event-sources-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("eventType", "ownerType", "sourceClass", "abiEventType", "genericArguments", "usesSharedEventHandlerSource"),
+                listOf("Windows.Foundation.EventHandler<Int>", "Sample.Foundation.IWidget", "EventHandlerEventSource", "Windows.Foundation.EventHandler`1", "Int", "true"),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-event-registry-class-")
+
+        val entries = readEventProjectionEntries(input)
+        writeEventProjectionRegistryClass(entries, outputDirectory)
+
+        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
+            val klass = Class.forName(
+                "io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry",
                 false,
                 classLoader,
             )
