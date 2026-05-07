@@ -440,6 +440,8 @@ private val WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop")
 
 private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
+    "staticGetArray" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
+    "staticGetArrayWithProjectedObject" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
     "staticCallProjectedRuntimeClassWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
     "staticCallProjectedInterfaceWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
     "invokeUnit" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,

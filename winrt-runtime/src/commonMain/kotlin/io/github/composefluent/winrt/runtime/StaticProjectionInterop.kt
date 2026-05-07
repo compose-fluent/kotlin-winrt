@@ -1,6 +1,25 @@
 package io.github.composefluent.winrt.runtime
 
 object WinRtStaticProjectionInterop {
+    fun <T> staticGetArray(
+        reference: IUnknownReference,
+        slot: Int,
+        marshaler: Marshaler<T>,
+    ): List<T?> =
+        staticGetArrayCore(reference, slot, marshaler) {
+            emptyArray<Any>()
+        }
+
+    fun <T> staticGetArrayWithProjectedObject(
+        reference: IUnknownReference,
+        slot: Int,
+        value: IWinRTObject,
+        marshaler: Marshaler<T>,
+    ): List<T?> =
+        staticGetArrayCore(reference, slot, marshaler) {
+            arrayOf<Any>(PlatformAbi.fromRawComPtr(value.nativeObject.pointer))
+        }
+
     fun <T> staticCallProjectedRuntimeClassWithString(
         reference: IUnknownReference,
         slot: Int,
@@ -18,6 +37,30 @@ object WinRtStaticProjectionInterop {
         wrap: (IUnknownReference) -> T,
     ): T =
         staticCallProjectedObjectWithString(reference, slot, value, wrap)
+
+    private fun <T> staticGetArrayCore(
+        reference: IUnknownReference,
+        slot: Int,
+        marshaler: Marshaler<T>,
+        arguments: (NativeScope) -> Array<Any>,
+    ): List<T?> =
+        PlatformAbi.confinedScope().use { scope ->
+            val lengthOut = PlatformAbi.allocateInt32Slot(scope)
+            val dataOut = PlatformAbi.allocatePointerSlot(scope)
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf<Any>(*arguments(scope), lengthOut, dataOut),
+            )
+            HResult(hr).requireSuccess()
+            val length = PlatformAbi.readInt32(lengthOut)
+            val data = PlatformAbi.readPointer(dataOut)
+            try {
+                marshaler.fromAbiArray(length, data) ?: emptyList()
+            } finally {
+                marshaler.disposeAbiArray(length, data)
+            }
+        }
 
     fun callUnit(
         reference: IUnknownReference,

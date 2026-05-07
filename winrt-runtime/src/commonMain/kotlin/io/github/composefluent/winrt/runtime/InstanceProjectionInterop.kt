@@ -222,6 +222,21 @@ object WinRtInstanceProjectionInterop {
 }
 
 object WinRtProjectionIntrinsic {
+    fun <T> staticGetArray(
+        reference: IUnknownReference,
+        slot: Int,
+        marshaler: Marshaler<T>,
+    ): List<T?> =
+        staticIntrinsicNotLowered("staticGetArray", reference, slot)
+
+    fun <T> staticGetArrayWithProjectedObject(
+        reference: IUnknownReference,
+        slot: Int,
+        value: IWinRTObject,
+        marshaler: Marshaler<T>,
+    ): List<T?> =
+        staticIntrinsicNotLowered("staticGetArrayWithProjectedObject", reference, slot, value)
+
     fun <T> staticCallProjectedRuntimeClassWithString(
         reference: IUnknownReference,
         slot: Int,
@@ -303,6 +318,9 @@ object WinRtProjectionIntrinsic {
 
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int, value: Any?): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot value $value")
+
+    private fun staticIntrinsicNotLowered(name: String, reference: IUnknownReference, slot: Int): Nothing =
+        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
 
     private fun staticIntrinsicNotLowered(name: String, reference: IUnknownReference, slot: Int, value: Any?): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot value $value")

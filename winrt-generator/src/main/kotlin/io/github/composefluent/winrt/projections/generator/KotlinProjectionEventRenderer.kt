@@ -421,7 +421,8 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     val binding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == staticMethodBindingName(plan, method)
     } ?: return null
-    val invocation = renderStaticStringProjectedObjectIntrinsicInvocation(binding)
+    val invocation = renderStaticArrayResultIntrinsicInvocation(binding)
+        ?: renderStaticStringProjectedObjectIntrinsicInvocation(binding)
         ?: renderStaticDirectAbiMethodInvocation(binding)
         ?: renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
@@ -431,6 +432,49 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
         .build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticArrayResultIntrinsicInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Array
+    ) {
+        return null
+    }
+    val elementBinding = binding.returnBinding.typeArguments.singleOrNull() ?: return null
+    val marshaler = arrayElementMarshalerExpression(elementBinding) ?: return null
+    val helperFunction = when (binding.parameterBindings.size) {
+        0 -> "staticGetArray"
+        1 -> {
+            val parameter = binding.parameterBindings.single()
+            if (
+                parameter.category != WinRtMetadataParameterCategory.In ||
+                parameter.typeBinding.kind !in setOf(
+                    KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                    KotlinProjectionAbiValueKind.ProjectedInterface,
+                )
+            ) {
+                return null
+            }
+            "staticGetArrayWithProjectedObject"
+        }
+        else -> return null
+    }
+    val code = CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+    binding.parameterBindings.singleOrNull()?.let { parameter ->
+        code.add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+    }
+    code.add("%L,\n", marshaler)
+        .unindent()
+        .add(").toTypedArray() as %T\n", resolveTypeName(binding.returnBinding.typeName))
+    return code.build()
 }
 
 private fun KotlinProjectionRenderer.renderStaticStringProjectedObjectIntrinsicInvocation(
