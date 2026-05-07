@@ -108,3 +108,29 @@ object WinRtInstanceProjectionInterop {
             wrap(resultRef)
         }
 }
+
+object WinRtProjectionIntrinsic {
+    fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
+        intrinsicNotLowered("getBoolean", reference, slot)
+
+    fun getInt32(reference: ComObjectReference, slot: Int): Int =
+        intrinsicNotLowered("getInt32", reference, slot)
+
+    fun getUInt32(reference: ComObjectReference, slot: Int): UInt =
+        intrinsicNotLowered("getUInt32", reference, slot)
+
+    fun getInt64(reference: ComObjectReference, slot: Int): Long =
+        intrinsicNotLowered("getInt64", reference, slot)
+
+    fun getUInt64(reference: ComObjectReference, slot: Int): ULong =
+        intrinsicNotLowered("getUInt64", reference, slot)
+
+    fun getFloat(reference: ComObjectReference, slot: Int): Float =
+        intrinsicNotLowered("getFloat", reference, slot)
+
+    fun getDouble(reference: ComObjectReference, slot: Int): Double =
+        intrinsicNotLowered("getDouble", reference, slot)
+
+    private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int): Nothing =
+        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
+}

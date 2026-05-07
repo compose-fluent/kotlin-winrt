@@ -181,7 +181,10 @@ class KotlinProjectionGenerator(
 
     private fun projectionRendererForLayout(): KotlinProjectionRenderer =
         if (emitSupportFiles) {
-            KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true)
+            KotlinProjectionRenderer(
+                useInterfaceProjectionArtifacts = true,
+                useProjectionIntrinsics = true,
+            )
         } else {
             renderer
         }

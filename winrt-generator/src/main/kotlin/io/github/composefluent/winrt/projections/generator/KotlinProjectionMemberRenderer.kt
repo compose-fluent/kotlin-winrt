@@ -489,6 +489,7 @@ private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
         referenceExpression = binding.ownerCachePropertyName,
         slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
         helperFunction = helperFunction,
+        intrinsic = useProjectionIntrinsics,
     )
 }
 
@@ -496,9 +497,14 @@ internal fun renderInstanceScalarGetterInvocation(
     referenceExpression: String,
     slotExpression: CodeBlock,
     helperFunction: String,
+    intrinsic: Boolean = false,
 ): CodeBlock {
     return CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
+        .add(
+            "return %T.%L(\n",
+            if (intrinsic) WINRT_PROJECTION_INTRINSIC_CLASS_NAME else WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME,
+            helperFunction,
+        )
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)

@@ -107,6 +107,7 @@ import kotlin.io.path.extension
 
 class KotlinProjectionRenderer(
     internal val useInterfaceProjectionArtifacts: Boolean = false,
+    internal val useProjectionIntrinsics: Boolean = false,
 ) {
     fun render(plan: KotlinTypeProjectionPlan): KotlinProjectionFile {
         val contents = FileSpec.builder(plan.packageName, plan.type.name)
@@ -381,6 +382,7 @@ class KotlinProjectionRenderer(
             referenceExpression = "nativeObject",
             slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
             helperFunction = helperFunction,
+            intrinsic = useProjectionIntrinsics,
         )
     }
 

@@ -2,6 +2,8 @@ package io.github.composefluent.winrt.compiler
 
 import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
+import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
+import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
@@ -16,9 +18,18 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.expressions.IrCall
+import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import org.jetbrains.kotlin.ir.builders.irCall
+import org.jetbrains.kotlin.ir.builders.irGetObject
+import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.org.objectweb.asm.ClassWriter
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
@@ -114,6 +125,7 @@ class KotlinWinRtIrGenerationExtension(
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
         writeCompilerSupportClasses(compilerSupportEntries)
+        lowerProjectionIntrinsics(moduleFragment, pluginContext)
         if (metadataIndexPath.isNullOrBlank()) {
             return
         }
@@ -139,6 +151,51 @@ class KotlinWinRtIrGenerationExtension(
                 messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
             }
         }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    @Suppress("DEPRECATION", "DEPRECATION_ERROR")
+    private fun lowerProjectionIntrinsics(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+    ) {
+        val intrinsicClassId = ClassId.topLevel(WINRT_PROJECTION_INTRINSIC_FQ_NAME)
+        val helperClassId = ClassId.topLevel(WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME)
+        val helperClass = pluginContext.referenceClass(helperClassId) ?: return
+        val helperReceiver = helperClass
+        val intrinsicFunctions = WINRT_PROJECTION_INTRINSIC_FUNCTIONS.associateWith { functionName ->
+            pluginContext.referenceFunctions(CallableId(intrinsicClassId, Name.identifier(functionName)))
+                .singleOrNull()
+        }
+            .filterValues { symbol -> symbol != null }
+        val helperFunctions = WINRT_PROJECTION_INTRINSIC_FUNCTIONS.associateWith { functionName ->
+            pluginContext.referenceFunctions(CallableId(helperClassId, Name.identifier(functionName)))
+                .singleOrNull()
+        }
+            .filterValues { symbol -> symbol != null }
+        if (intrinsicFunctions.isEmpty() || helperFunctions.isEmpty()) {
+            return
+        }
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    val intrinsicName = intrinsicFunctions.entries
+                        .firstOrNull { (_, symbol) -> symbol == call.symbol }
+                        ?.key
+                        ?: return call
+                    val helperSymbol = helperFunctions[intrinsicName] ?: return call
+                    val scope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+                    return builder.irCall(helperSymbol)
+                        .apply {
+                            arguments[0] = builder.irGetObject(helperReceiver)
+                            arguments[1] = call.arguments[1]
+                            arguments[2] = call.arguments[2]
+                        }
+                }
+            },
+        )
     }
 
     private fun readCompilerSupportManifest(): List<KotlinWinRtCompilerSupportManifestEntry> {
@@ -362,6 +419,22 @@ class KotlinWinRtIrGenerationExtension(
         val containingTypesPublic: Boolean,
     )
 }
+
+private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic")
+
+private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
+
+private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = listOf(
+    "getBoolean",
+    "getInt32",
+    "getUInt32",
+    "getInt64",
+    "getUInt64",
+    "getFloat",
+    "getDouble",
+)
 
 internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {
     val indexPath = metadataIndexPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return null
