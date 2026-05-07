@@ -456,6 +456,12 @@ private fun KotlinProjectionRenderer.renderStaticDirectAbiMethodInvocation(
     val helperFunction = when (binding.returnBinding.kind) {
         KotlinProjectionAbiValueKind.Unit -> "callUnit"
         KotlinProjectionAbiValueKind.Boolean -> "callBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "callInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "callUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "callInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "callUInt64"
+        KotlinProjectionAbiValueKind.Float -> "callFloat"
+        KotlinProjectionAbiValueKind.Double -> "callDouble"
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
         KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
         else -> return null
@@ -508,7 +514,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     val getterBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
-    val getterInvocation = renderStaticProjectedObjectGetter(getterBinding)
+    val getterInvocation = renderStaticDirectAbiGetter(getterBinding)
         ?: renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -534,34 +540,43 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     return builder.build()
 }
 
-private fun KotlinProjectionRenderer.renderStaticProjectedObjectGetter(
+private fun KotlinProjectionRenderer.renderStaticDirectAbiGetter(
     binding: KotlinProjectionStaticMemberBinding,
 ): CodeBlock? {
     if (
         binding.parameterBindings.isNotEmpty() ||
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind !in setOf(
-            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-            KotlinProjectionAbiValueKind.ProjectedInterface,
-        )
+        binding.suppressHResultCheck
     ) {
         return null
     }
-    val returnType = resolveTypeName(binding.returnBinding.typeName)
     val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.Boolean -> "callBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "callInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "callUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "callInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "callUInt64"
+        KotlinProjectionAbiValueKind.Float -> "callFloat"
+        KotlinProjectionAbiValueKind.Double -> "callDouble"
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "getProjectedRuntimeClass"
         KotlinProjectionAbiValueKind.ProjectedInterface -> "getProjectedInterface"
         else -> return null
     }
-    return CodeBlock.builder()
+    val code = CodeBlock.builder()
         .add("return %T.%L(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
-        .add("%T.Metadata::wrap,\n", returnType)
-        .unindent()
-        .add(")\n")
-        .build()
+        .add("%L", binding.bindingName)
+    if (binding.returnBinding.kind in setOf(
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+            KotlinProjectionAbiValueKind.ProjectedInterface,
+        )
+    ) {
+        code.add(",\n%T.Metadata::wrap", resolveTypeName(binding.returnBinding.typeName))
+    }
+    code.add(",\n")
+    code.unindent()
+    code.add(")\n")
+    return code.build()
 }
 
 internal fun KotlinProjectionRenderer.appendCompanionShells(

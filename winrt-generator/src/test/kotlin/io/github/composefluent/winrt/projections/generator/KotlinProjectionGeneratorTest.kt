@@ -3452,6 +3452,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
         assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("WinRtStaticProjectionInterop.callInt32("))
         assertTrue(widgetContents.contains("internal val STATIC_COUNT_SETTER_SLOT: Int = IWidgetStatics2.Metadata.COUNT_SETTER_SLOT"))
         assertTrue(widgetContents.contains("val staticToken: DependencyProperty"))
         assertTrue(widgetContents.contains("WinRtStaticProjectionInterop.getProjectedRuntimeClass("))

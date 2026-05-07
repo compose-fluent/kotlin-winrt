@@ -30,6 +30,48 @@ object WinRtStaticProjectionInterop {
             PlatformAbi.readInt8(resultOut).toInt() != 0
         }
 
+    fun callInt32(
+        reference: IUnknownReference,
+        slot: Int,
+        vararg args: Any,
+    ): Int =
+        callScalar(reference, slot, args, PlatformAbi::allocateInt32Slot, PlatformAbi::readInt32)
+
+    fun callUInt32(
+        reference: IUnknownReference,
+        slot: Int,
+        vararg args: Any,
+    ): UInt =
+        callInt32(reference, slot, *args).toUInt()
+
+    fun callInt64(
+        reference: IUnknownReference,
+        slot: Int,
+        vararg args: Any,
+    ): Long =
+        callScalar(reference, slot, args, PlatformAbi::allocateInt64Slot, PlatformAbi::readInt64)
+
+    fun callUInt64(
+        reference: IUnknownReference,
+        slot: Int,
+        vararg args: Any,
+    ): ULong =
+        callInt64(reference, slot, *args).toULong()
+
+    fun callFloat(
+        reference: IUnknownReference,
+        slot: Int,
+        vararg args: Any,
+    ): Float =
+        callScalar(reference, slot, args, { scope -> PlatformAbi.allocateBytes(scope, 4) }, PlatformAbi::readFloat)
+
+    fun callDouble(
+        reference: IUnknownReference,
+        slot: Int,
+        vararg args: Any,
+    ): Double =
+        callScalar(reference, slot, args, PlatformAbi::allocateDoubleSlot, PlatformAbi::readDouble)
+
     fun <T> callProjectedRuntimeClass(
         reference: IUnknownReference,
         slot: Int,
@@ -84,5 +126,23 @@ object WinRtStaticProjectionInterop {
             }
             val resultRef = IUnknownReference(PlatformAbi.toRawComPtr(resultPointer))
             wrap(resultRef)
+        }
+
+    private fun <T> callScalar(
+        reference: IUnknownReference,
+        slot: Int,
+        args: Array<out Any>,
+        allocate: (NativeScope) -> RawAddress,
+        read: (RawAddress) -> T,
+    ): T =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = allocate(scope)
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(*args, resultOut),
+            )
+            HResult(hr).requireSuccess()
+            read(resultOut)
         }
 }
