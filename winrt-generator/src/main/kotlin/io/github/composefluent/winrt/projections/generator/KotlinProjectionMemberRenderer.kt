@@ -331,6 +331,13 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
+            ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
@@ -476,6 +483,14 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
                     setterBinding?.let {
                         renderReferencePropertySetter(it)
                             ?: renderInstanceOneArgUnitIntrinsicInvocation(it, argumentExpression = "value")
+                            ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
+                                referenceExpression = it.ownerCachePropertyName,
+                                slotExpression = CodeBlock.of("Metadata.%L", it.bindingName),
+                                returnBinding = it.returnBinding,
+                                parameterBindings = it.parameterBindings,
+                                suppressHResultCheck = it.suppressHResultCheck,
+                                argumentExpression = "value",
+                            )
                             ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                                 referenceExpression = it.ownerCachePropertyName,
                                 slotExpression = CodeBlock.of("Metadata.%L", it.bindingName),
@@ -813,6 +828,39 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumOneArgUnitIntrinsicInvoc
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
         .add("%L.abiValue,\n", argumentExpression ?: parameter.name)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceStructOneArgUnitIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+    argumentExpression: String? = null,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        parameterBindings.size != 1 ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val parameter = parameterBindings.single()
+    if (parameter.typeBinding.kind != KotlinProjectionAbiValueKind.Struct || customStructAbi(parameter.typeBinding) != null) {
+        return null
+    }
+    val structType = nativeStructClassName(parameter.typeBinding) ?: return null
+    return CodeBlock.builder()
+        .add("return %T.setStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%L,\n", argumentExpression ?: parameter.name)
+        .add("%T.Metadata,\n", structType)
         .unindent()
         .add(")\n")
         .build()

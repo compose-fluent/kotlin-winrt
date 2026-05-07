@@ -288,6 +288,12 @@ class KotlinProjectionRenderer(
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
+        ) ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
+            referenceExpression = "nativeObject",
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
         ) ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
             referenceExpression = "nativeObject",
             slotExpression = slotExpression,
@@ -383,6 +389,13 @@ class KotlinProjectionRenderer(
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                             parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName, typesByQualifiedName))),
                             suppressHResultCheck = property.isNoException,
+                        ) ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
+                            referenceExpression = "nativeObject",
+                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
+                            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName, typesByQualifiedName))),
+                            suppressHResultCheck = property.isNoException,
+                            argumentExpression = "value",
                         ) ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                             referenceExpression = "nativeObject",
                             slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),

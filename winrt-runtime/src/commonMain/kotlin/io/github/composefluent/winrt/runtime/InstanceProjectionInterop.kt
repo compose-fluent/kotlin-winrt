@@ -64,6 +64,23 @@ object WinRtInstanceProjectionInterop {
             }
         }
 
+    fun <T> setStruct(reference: ComObjectReference, slot: Int, value: T, adapter: NativeStructAdapter<T>) {
+        PlatformAbi.confinedScope().use { scope ->
+            val valueAbi = PlatformAbi.allocateBytes(scope, adapter.layout.sizeBytes)
+            adapter.write(value, valueAbi)
+            try {
+                val hr = ComVtableInvoker.invokeGenericArgs(
+                    instance = reference.pointer,
+                    slot = slot,
+                    args = arrayOf(valueAbi),
+                )
+                HResult(hr).requireSuccess()
+            } finally {
+                adapter.disposeAbi(valueAbi)
+            }
+        }
+    }
+
     fun setString(reference: ComObjectReference, slot: Int, value: String) {
         HString.createReference(value).use { marshaler ->
             invokeUnit(reference, slot, marshaler.handle)
@@ -215,6 +232,9 @@ object WinRtProjectionIntrinsic {
 
     fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
         intrinsicNotLowered("getStruct", reference, slot, adapter)
+
+    fun <T> setStruct(reference: ComObjectReference, slot: Int, value: T, adapter: NativeStructAdapter<T>): Unit =
+        intrinsicNotLowered("setStruct", reference, slot, value)
 
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
         intrinsicNotLowered("setString", reference, slot, value)
