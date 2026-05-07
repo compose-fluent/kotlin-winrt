@@ -8625,15 +8625,24 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val contents = KotlinProjectionGenerator()
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("IOutputStream.kt")
-            .contents
+        val contents = filesByName.getValue("IOutputStream.kt").contents
+        val compilerInput = filesByName.getValue("interface-native-projections.tsv").contents
 
         assertTrue(contents, contents.contains("public interface IOutputStream : AutoCloseable"))
-        assertTrue(contents, contents.contains("override fun close()"))
-        assertTrue(contents, contents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer, slot = 6)"))
+        assertFalse(contents, contents.contains("private class NativeProjection("))
+        assertTrue(
+            contents,
+            contents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IOutputStream"),
+        )
+        assertTrue(
+            compilerInput,
+            compilerInput.contains(
+                "Sample.Foundation.IOutputStream\tsample.foundation.IOutputStream\tsample.foundation.IOutputStreamNativeProjection\t11111111-2222-3333-4444-555555555565\t1\tMethod|close|6|Unit||false",
+            ),
+        )
         assertFalse(contents, contents.contains("override fun Close()"))
         assertFalse(contents, contents.contains("AutoCloseable.Metadata"))
     }

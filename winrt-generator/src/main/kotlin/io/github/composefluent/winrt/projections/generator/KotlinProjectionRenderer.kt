@@ -399,8 +399,6 @@ class KotlinProjectionRenderer(
             canRenderInterfaceProxy(plan) &&
             plan.mutableCollectionBindings.isEmpty() &&
             plan.readOnlyCollectionBindings.isEmpty() &&
-            !plan.usesMappedDisposableAugmentation &&
-            !plan.hasDirectMappedDisposableSuperinterface &&
             collectInterfaceProxyTypes(plan).all { interfaceType ->
                 interfaceType.genericParameterCount == 0 && '<' !in interfaceType.qualifiedName
             } &&
@@ -410,6 +408,25 @@ class KotlinProjectionRenderer(
         plan: KotlinTypeProjectionPlan,
     ): List<KotlinInterfaceNativeProjectionMemberDescriptor>? {
         val descriptors = buildList {
+            if (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) {
+                if (buildAbiCallPlan(
+                        KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        emptyList(),
+                    ) == null
+                ) {
+                    return null
+                }
+                add(
+                    KotlinInterfaceNativeProjectionMemberDescriptor(
+                        kind = "Method",
+                        jvmName = "close",
+                        slot = 6,
+                        returnKind = "Unit",
+                        parameterKinds = emptyList(),
+                        suppressHResultCheck = false,
+                    ),
+                )
+            }
             collectInterfaceProxyTypes(plan).forEach { interfaceType ->
                 val slotByName = interfaceNativeProjectionSlotByName(plan, interfaceType)
                 interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
@@ -525,6 +542,14 @@ class KotlinProjectionRenderer(
             }
         }
         if (descriptors.groupingBy { it.jvmName to it.parameterKinds.size }.eachCount().any { it.value > 1 }) {
+            return null
+        }
+        if (
+            (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) &&
+            descriptors.any { descriptor ->
+                descriptor.returnKind == "Unsupported" || descriptor.parameterKinds.any { it == "Unsupported" }
+            }
+        ) {
             return null
         }
         return descriptors
