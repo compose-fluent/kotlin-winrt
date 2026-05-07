@@ -272,6 +272,11 @@ class KotlinProjectionRenderer(
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
+        ) ?: interfaceProxyStructResultIntrinsicInvocation(
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
         ) ?: interfaceProxyOneArgUnitIntrinsicInvocation(
             slotExpression = slotExpression,
             returnBinding = returnBinding,
@@ -324,7 +329,12 @@ class KotlinProjectionRenderer(
             FunSpec.getterBuilder()
                 .addCode(
                     "%L\n",
-                    projectedObjectGetterInvocation ?: scalarGetterInvocation ?: renderInlineAbiInvocation(
+                    projectedObjectGetterInvocation ?: scalarGetterInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
+                        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                        returnBinding = getterReturnBinding,
+                        parameterBindings = emptyList(),
+                        suppressHResultCheck = property.isNoException,
+                    ) ?: renderInlineAbiInvocation(
                             invokeTargetExpression = "nativeObject",
                             slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
                             callPlan = getterCallPlan,
@@ -359,6 +369,32 @@ class KotlinProjectionRenderer(
             )
         }
         return builder.build()
+    }
+
+    private fun interfaceProxyStructResultIntrinsicInvocation(
+        slotExpression: CodeBlock,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        suppressHResultCheck: Boolean,
+    ): CodeBlock? {
+        if (
+            !useProjectionIntrinsics ||
+            returnBinding.kind != KotlinProjectionAbiValueKind.Struct ||
+            parameterBindings.isNotEmpty() ||
+            suppressHResultCheck
+        ) {
+            return null
+        }
+        val structType = nativeStructClassName(returnBinding) ?: return null
+        return CodeBlock.builder()
+            .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+            .indent()
+            .add("nativeObject,\n")
+            .add("%L,\n", slotExpression)
+            .add("%T.Metadata,\n", structType)
+            .unindent()
+            .add(")\n")
+            .build()
     }
 
     private fun interfaceProxyNoArgIntrinsicInvocation(

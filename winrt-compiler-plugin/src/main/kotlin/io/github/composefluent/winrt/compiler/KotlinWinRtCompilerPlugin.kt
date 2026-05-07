@@ -437,6 +437,7 @@ private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = listOf(
     "getUInt64",
     "getFloat",
     "getDouble",
+    "getStruct",
     "setString",
     "setBoolean",
     "setInt32",

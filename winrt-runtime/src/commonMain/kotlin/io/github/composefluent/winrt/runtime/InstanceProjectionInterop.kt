@@ -48,6 +48,22 @@ object WinRtInstanceProjectionInterop {
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
         getScalar(reference, slot, PlatformAbi::allocateDoubleSlot, PlatformAbi::readDouble)
 
+    fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocateBytes(scope, adapter.layout.sizeBytes)
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(resultOut),
+            )
+            HResult(hr).requireSuccess()
+            try {
+                adapter.read(resultOut)
+            } finally {
+                adapter.disposeAbi(resultOut)
+            }
+        }
+
     fun setString(reference: ComObjectReference, slot: Int, value: String) {
         HString.createReference(value).use { marshaler ->
             invokeUnit(reference, slot, marshaler.handle)
@@ -196,6 +212,9 @@ object WinRtProjectionIntrinsic {
 
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
         intrinsicNotLowered("getDouble", reference, slot)
+
+    fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
+        intrinsicNotLowered("getStruct", reference, slot, adapter)
 
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
         intrinsicNotLowered("setString", reference, slot, value)

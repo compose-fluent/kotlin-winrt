@@ -322,6 +322,7 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         renderObjectEqualsInvocation(binding)
     } else {
         renderInstanceNoArgIntrinsicInvocation(binding)
+            ?: renderInstanceStructResultIntrinsicInvocation(binding)
             ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
             ?: renderBoundInvocation(binding)
     }
@@ -434,6 +435,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         ?: renderProjectedObjectPropertyGetter(getterBinding)
         ?: renderScalarPropertyGetter(getterBinding)
         ?: renderInstanceNoArgIntrinsicInvocation(getterBinding)
+        ?: renderInstanceStructResultIntrinsicInvocation(getterBinding)
         ?: renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -691,6 +693,29 @@ private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
         helperFunction = helperFunction,
         intrinsic = true,
     )
+}
+
+private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocation(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Struct ||
+        binding.parameterBindings.isNotEmpty() ||
+        binding.suppressHResultCheck
+    ) {
+        return null
+    }
+    val structType = nativeStructClassName(binding.returnBinding) ?: return null
+    return CodeBlock.builder()
+        .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", binding.ownerCachePropertyName)
+        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%T.Metadata,\n", structType)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
