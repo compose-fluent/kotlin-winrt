@@ -615,3 +615,23 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayElementMarshalerExpressio
             CodeBlock.of("%T.genericParameter<%T>()", MARSHALER_CLASS_NAME, resolveTypeName(elementBinding.typeName))
         else -> null
     }
+
+internal fun KotlinProjectionRenderer.arrayElementMarshalerExpression(
+    elementBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? =
+    nonBlittableArrayElementMarshalerExpression(elementBinding) ?: when (elementBinding.kind) {
+        KotlinProjectionAbiValueKind.Boolean -> CodeBlock.of("%T.boolean()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int8 -> CodeBlock.of("%T.int8()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt8 -> CodeBlock.of("%T.uint8()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int16 -> CodeBlock.of("%T.int16()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt16 -> CodeBlock.of("%T.uint16()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int32 -> CodeBlock.of("%T.int32()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt32 -> CodeBlock.of("%T.uint32()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Int64 -> CodeBlock.of("%T.int64()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.uint64()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.float32()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.float64()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.char16()", MARSHALER_CLASS_NAME)
+        KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.guid()", MARSHALER_CLASS_NAME)
+        else -> null
+    }

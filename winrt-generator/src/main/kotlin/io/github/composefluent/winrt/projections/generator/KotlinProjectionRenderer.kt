@@ -277,6 +277,12 @@ class KotlinProjectionRenderer(
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
+        ) ?: renderInstanceArrayResultIntrinsicInvocation(
+            referenceExpression = "nativeObject",
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
         ) ?: renderInstanceEnumResultIntrinsicInvocation(
             referenceExpression = "nativeObject",
             slotExpression = slotExpression,
@@ -354,6 +360,12 @@ class KotlinProjectionRenderer(
                 .addCode(
                     "%L\n",
                     projectedObjectGetterInvocation ?: scalarGetterInvocation ?: noArgIntrinsicInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
+                        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                        returnBinding = getterReturnBinding,
+                        parameterBindings = emptyList(),
+                        suppressHResultCheck = property.isNoException,
+                    ) ?: renderInstanceArrayResultIntrinsicInvocation(
+                        referenceExpression = "nativeObject",
                         slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
                         returnBinding = getterReturnBinding,
                         parameterBindings = emptyList(),

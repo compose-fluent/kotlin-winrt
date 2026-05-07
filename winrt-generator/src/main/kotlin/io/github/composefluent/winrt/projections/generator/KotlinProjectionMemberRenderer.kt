@@ -323,6 +323,13 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     } else {
         renderInstanceNoArgIntrinsicInvocation(binding)
             ?: renderInstanceStructResultIntrinsicInvocation(binding)
+            ?: renderInstanceArrayResultIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceEnumResultIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
@@ -457,6 +464,13 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         ?: renderScalarPropertyGetter(getterBinding)
         ?: renderInstanceNoArgIntrinsicInvocation(getterBinding)
         ?: renderInstanceStructResultIntrinsicInvocation(getterBinding)
+        ?: renderInstanceArrayResultIntrinsicInvocation(
+            referenceExpression = getterBinding.ownerCachePropertyName,
+            slotExpression = CodeBlock.of("Metadata.%L", getterBinding.bindingName),
+            returnBinding = getterBinding.returnBinding,
+            parameterBindings = getterBinding.parameterBindings,
+            suppressHResultCheck = getterBinding.suppressHResultCheck,
+        )
         ?: renderInstanceEnumResultIntrinsicInvocation(
             referenceExpression = getterBinding.ownerCachePropertyName,
             slotExpression = CodeBlock.of("Metadata.%L", getterBinding.bindingName),
@@ -794,6 +808,34 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocatio
         .add("),\n")
         .unindent()
         .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceArrayResultIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Array ||
+        parameterBindings.isNotEmpty() ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val elementBinding = returnBinding.typeArguments.singleOrNull() ?: return null
+    val marshaler = arrayElementMarshalerExpression(elementBinding) ?: return null
+    return CodeBlock.builder()
+        .add("return %T.getArray(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%L,\n", marshaler)
+        .unindent()
+        .add(").toTypedArray() as %T\n", resolveTypeName(returnBinding.typeName))
         .build()
 }
 
