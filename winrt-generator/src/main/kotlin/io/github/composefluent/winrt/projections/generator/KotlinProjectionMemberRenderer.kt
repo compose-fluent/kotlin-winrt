@@ -429,6 +429,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     } ?: return null
     builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
     val getterInvocation = renderReferencePropertyGetter(getterBinding)
+        ?: renderProjectedObjectPropertyGetter(getterBinding)
         ?: renderScalarPropertyGetter(getterBinding)
         ?: renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
@@ -453,6 +454,19 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? {
+    if (binding.parameterBindings.isNotEmpty() || binding.suppressHResultCheck) {
+        return null
+    }
+    return renderInstanceProjectedObjectGetterInvocation(
+        referenceExpression = binding.ownerCachePropertyName,
+        slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+        returnBinding = binding.returnBinding,
+    )
 }
 
 private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
@@ -488,6 +502,30 @@ internal fun renderInstanceScalarGetterInvocation(
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? {
+    val helperFunction = when (returnBinding.kind) {
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            if (returnBinding.isNullableAbiReturn) "getNullableProjectedRuntimeClass" else "getProjectedRuntimeClass"
+        KotlinProjectionAbiValueKind.ProjectedInterface ->
+            if (returnBinding.isNullableAbiReturn) "getNullableProjectedInterface" else "getProjectedInterface"
+        else -> return null
+    }
+    val returnType = resolvedReturnClassName(returnBinding) ?: return null
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%T.Metadata::wrap,\n", returnType)
         .unindent()
         .add(")\n")
         .build()

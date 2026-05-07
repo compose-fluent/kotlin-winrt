@@ -5635,6 +5635,96 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_projected_object_property_getters_through_runtime_instance_projection_interop() {
+        val property = KotlinProjectionRenderer().renderBoundProperty(
+            plan = KotlinTypeProjectionPlan(
+                type = WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "Widget",
+                    kind = WinRtTypeKind.RuntimeClass,
+                    isSealedType = true,
+                ),
+                packageName = "sample.foundation",
+                relativePath = "sample/foundation/Widget.kt",
+                declarationKind = KotlinProjectionDeclarationKind.Class,
+                typeDeclarationDescriptor = WinRtTypeDeclarationDescriptor(
+                    typeName = "Sample.Foundation.Widget",
+                    declarationKind = WinRtTypeKind.RuntimeClass,
+                    writesProjectedDeclaration = true,
+                    writesAbiDeclaration = true,
+                    writesWrapperDeclaration = true,
+                    writesImplementationClass = false,
+                    writesHelperClass = true,
+                    netStandardBranch = false,
+                ),
+                instanceMemberBindings = listOf(
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "OWNER_GETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "OWNER_GETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(
+                            kind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                            typeName = "Sample.Foundation.Widget",
+                            sourceTypeKind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+            property = WinRtPropertyDefinition(
+                name = "Owner",
+                typeName = "Sample.Foundation.Widget",
+                getterMethodName = "get_Owner",
+            ),
+        ).toString()
+
+        assertTrue(property, property.contains("val owner: sample.foundation.Widget"))
+        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass("))
+        assertTrue(property, property.contains("Widget.Metadata::wrap"))
+        assertFalse(property.contains("PlatformAbi.confinedScope()"))
+        assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
+    fun generator_routes_interface_proxy_projected_object_property_getters_through_runtime_instance_projection_interop() {
+        val widgetType = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Widget",
+            kind = WinRtTypeKind.RuntimeClass,
+        )
+        val interfaceType = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            iid = Guid("11111111-2222-3333-4444-555555555571"),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Owner",
+                    typeName = "Sample.Foundation.Widget",
+                    getterMethodName = "get_Owner",
+                    getterMethodRowId = 6,
+                ),
+            ),
+        )
+
+        val property = KotlinProjectionRenderer().renderInterfaceProxyProperty(
+            slotInterfaceType = interfaceType,
+            property = interfaceType.properties.single(),
+            typesByQualifiedName = mapOf(
+                interfaceType.qualifiedName to interfaceType,
+                widgetType.qualifiedName to widgetType,
+            ),
+        ).toString()
+
+        assertTrue(property, property.contains("override val owner: sample.foundation.Widget"))
+        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass("))
+        assertTrue(property, property.contains("Widget.Metadata::wrap"))
+        assertFalse(property.contains("PlatformAbi.confinedScope()"))
+        assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

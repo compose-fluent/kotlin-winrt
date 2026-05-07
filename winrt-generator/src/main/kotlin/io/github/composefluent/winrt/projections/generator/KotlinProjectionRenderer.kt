@@ -303,11 +303,16 @@ class KotlinProjectionRenderer(
             property = property,
             returnBinding = getterReturnBinding,
         )
+        val projectedObjectGetterInvocation = interfaceProxyProjectedObjectGetterInvocation(
+            slotInterfaceType = slotInterfaceType,
+            property = property,
+            returnBinding = getterReturnBinding,
+        )
         builder.getter(
             FunSpec.getterBuilder()
                 .addCode(
                     "%L\n",
-                    scalarGetterInvocation ?: renderInlineAbiInvocation(
+                    projectedObjectGetterInvocation ?: scalarGetterInvocation ?: renderInlineAbiInvocation(
                             invokeTargetExpression = "nativeObject",
                             slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
                             callPlan = getterCallPlan,
@@ -337,6 +342,21 @@ class KotlinProjectionRenderer(
             )
         }
         return builder.build()
+    }
+
+    private fun interfaceProxyProjectedObjectGetterInvocation(
+        slotInterfaceType: WinRtTypeDefinition,
+        property: WinRtPropertyDefinition,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        if (property.isNoException) {
+            return null
+        }
+        return renderInstanceProjectedObjectGetterInvocation(
+            referenceExpression = "nativeObject",
+            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+            returnBinding = returnBinding,
+        )
     }
 
     private fun interfaceProxyScalarGetterInvocation(
