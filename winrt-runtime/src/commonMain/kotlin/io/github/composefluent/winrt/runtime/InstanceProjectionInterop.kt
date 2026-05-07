@@ -1,6 +1,23 @@
 package io.github.composefluent.winrt.runtime
 
 object WinRtInstanceProjectionInterop {
+    fun invokeUnit(reference: ComObjectReference, slot: Int) {
+        val hr = ComVtableInvoker.invoke(instance = reference.pointer, slot = slot)
+        HResult(hr).requireSuccess()
+    }
+
+    fun getString(reference: ComObjectReference, slot: Int): String =
+        PlatformAbi.confinedScope().use { scope ->
+            val resultOut = PlatformAbi.allocatePointerSlot(scope)
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(resultOut),
+            )
+            HResult(hr).requireSuccess()
+            HString.fromHandle(PlatformAbi.readPointer(resultOut), owner = true).use(HString::toKString)
+        }
+
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocateInt8Slot(scope)
@@ -30,6 +47,40 @@ object WinRtInstanceProjectionInterop {
 
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
         getScalar(reference, slot, PlatformAbi::allocateDoubleSlot, PlatformAbi::readDouble)
+
+    fun setString(reference: ComObjectReference, slot: Int, value: String) {
+        HString.createReference(value).use { marshaler ->
+            invokeUnit(reference, slot, marshaler.handle)
+        }
+    }
+
+    fun setBoolean(reference: ComObjectReference, slot: Int, value: Boolean) {
+        invokeUnit(reference, slot, if (value) 1.toByte() else 0.toByte())
+    }
+
+    fun setInt32(reference: ComObjectReference, slot: Int, value: Int) {
+        invokeUnit(reference, slot, value)
+    }
+
+    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt) {
+        invokeUnit(reference, slot, value.toInt())
+    }
+
+    fun setInt64(reference: ComObjectReference, slot: Int, value: Long) {
+        invokeUnit(reference, slot, value)
+    }
+
+    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong) {
+        invokeUnit(reference, slot, value.toLong())
+    }
+
+    fun setFloat(reference: ComObjectReference, slot: Int, value: Float) {
+        invokeUnit(reference, slot, value)
+    }
+
+    fun setDouble(reference: ComObjectReference, slot: Int, value: Double) {
+        invokeUnit(reference, slot, value)
+    }
 
     fun <T> getProjectedRuntimeClass(
         reference: ComObjectReference,
@@ -80,6 +131,15 @@ object WinRtInstanceProjectionInterop {
             read(resultOut)
         }
 
+    private fun invokeUnit(reference: ComObjectReference, slot: Int, argument: Any) {
+        val hr = ComVtableInvoker.invokeGenericArgs(
+            instance = reference.pointer,
+            slot = slot,
+            args = arrayOf(argument),
+        )
+        HResult(hr).requireSuccess()
+    }
+
     private fun <T> getProjectedObject(
         reference: ComObjectReference,
         slot: Int,
@@ -110,6 +170,12 @@ object WinRtInstanceProjectionInterop {
 }
 
 object WinRtProjectionIntrinsic {
+    fun invokeUnit(reference: ComObjectReference, slot: Int): Unit =
+        intrinsicNotLowered("invokeUnit", reference, slot)
+
+    fun getString(reference: ComObjectReference, slot: Int): String =
+        intrinsicNotLowered("getString", reference, slot)
+
     fun getBoolean(reference: ComObjectReference, slot: Int): Boolean =
         intrinsicNotLowered("getBoolean", reference, slot)
 
@@ -131,6 +197,33 @@ object WinRtProjectionIntrinsic {
     fun getDouble(reference: ComObjectReference, slot: Int): Double =
         intrinsicNotLowered("getDouble", reference, slot)
 
+    fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
+        intrinsicNotLowered("setString", reference, slot, value)
+
+    fun setBoolean(reference: ComObjectReference, slot: Int, value: Boolean): Unit =
+        intrinsicNotLowered("setBoolean", reference, slot, value)
+
+    fun setInt32(reference: ComObjectReference, slot: Int, value: Int): Unit =
+        intrinsicNotLowered("setInt32", reference, slot, value)
+
+    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt): Unit =
+        intrinsicNotLowered("setUInt32", reference, slot, value)
+
+    fun setInt64(reference: ComObjectReference, slot: Int, value: Long): Unit =
+        intrinsicNotLowered("setInt64", reference, slot, value)
+
+    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong): Unit =
+        intrinsicNotLowered("setUInt64", reference, slot, value)
+
+    fun setFloat(reference: ComObjectReference, slot: Int, value: Float): Unit =
+        intrinsicNotLowered("setFloat", reference, slot, value)
+
+    fun setDouble(reference: ComObjectReference, slot: Int, value: Double): Unit =
+        intrinsicNotLowered("setDouble", reference, slot, value)
+
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
+
+    private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int, value: Any?): Nothing =
+        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot value $value")
 }

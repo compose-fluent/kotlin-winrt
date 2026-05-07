@@ -190,8 +190,9 @@ class KotlinWinRtIrGenerationExtension(
                     return builder.irCall(helperSymbol)
                         .apply {
                             arguments[0] = builder.irGetObject(helperReceiver)
-                            arguments[1] = call.arguments[1]
-                            arguments[2] = call.arguments[2]
+                            for (index in 1 until call.arguments.size) {
+                                arguments[index] = call.arguments[index]
+                            }
                         }
                 }
             },
@@ -427,6 +428,8 @@ private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = listOf(
+    "invokeUnit",
+    "getString",
     "getBoolean",
     "getInt32",
     "getUInt32",
@@ -434,6 +437,14 @@ private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = listOf(
     "getUInt64",
     "getFloat",
     "getDouble",
+    "setString",
+    "setBoolean",
+    "setInt32",
+    "setUInt32",
+    "setInt64",
+    "setUInt64",
+    "setFloat",
+    "setDouble",
 )
 
 internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {

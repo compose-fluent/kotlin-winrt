@@ -321,7 +321,9 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     val invocation = if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
         renderObjectEqualsInvocation(binding)
     } else {
-        renderBoundInvocation(binding)
+        renderInstanceNoArgIntrinsicInvocation(binding)
+            ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
+            ?: renderBoundInvocation(binding)
     }
     return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
@@ -431,6 +433,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     val getterInvocation = renderReferencePropertyGetter(getterBinding)
         ?: renderProjectedObjectPropertyGetter(getterBinding)
         ?: renderScalarPropertyGetter(getterBinding)
+        ?: renderInstanceNoArgIntrinsicInvocation(getterBinding)
         ?: renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -447,13 +450,55 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
                 .addParameter("value", resolveTypeName(property.typeName))
                 .addCode(
                     "%L\n",
-                    setterBinding?.let { renderReferencePropertySetter(it) ?: renderBoundInvocation(it) }
+                    setterBinding?.let {
+                        renderReferencePropertySetter(it)
+                            ?: renderInstanceOneArgUnitIntrinsicInvocation(it, argumentExpression = "value")
+                            ?: renderBoundInvocation(it)
+                    }
                         ?: missingAbiBindingError("property ${property.name} setter"),
                 )
                 .build(),
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderInstanceOneArgUnitIntrinsicInvocation(
+    binding: KotlinProjectionInstanceMemberBinding,
+    argumentExpression: String? = null,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        binding.parameterBindings.size != 1 ||
+        binding.suppressHResultCheck
+    ) {
+        return null
+    }
+    val parameter = binding.parameterBindings.single()
+    val helperFunction = when (parameter.typeBinding.kind) {
+        KotlinProjectionAbiValueKind.String -> {
+            if (parameter.typeBinding.typeName.endsWith("?")) return null
+            "setString"
+        }
+        KotlinProjectionAbiValueKind.Boolean -> "setBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "setInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "setUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "setInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "setUInt64"
+        KotlinProjectionAbiValueKind.Float -> "setFloat"
+        KotlinProjectionAbiValueKind.Double -> "setDouble"
+        else -> return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("%L,\n", binding.ownerCachePropertyName)
+        .add("Metadata.%L,\n", binding.bindingName)
+        .add("%L,\n", argumentExpression ?: parameter.name)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(
@@ -620,6 +665,32 @@ internal fun KotlinProjectionRenderer.renderBoundInvocation(
         slotExpression = "Metadata.${binding.bindingName}",
         callPlan = callPlan,
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
+}
+
+private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? {
+    if (!useProjectionIntrinsics || binding.parameterBindings.isNotEmpty() || binding.suppressHResultCheck) {
+        return null
+    }
+    val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.Unit -> "invokeUnit"
+        KotlinProjectionAbiValueKind.String -> "getString"
+        KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
+        KotlinProjectionAbiValueKind.Float -> "getFloat"
+        KotlinProjectionAbiValueKind.Double -> "getDouble"
+        else -> return null
+    }
+    return renderInstanceScalarGetterInvocation(
+        referenceExpression = binding.ownerCachePropertyName,
+        slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+        helperFunction = helperFunction,
+        intrinsic = true,
+    )
 }
 
 internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(

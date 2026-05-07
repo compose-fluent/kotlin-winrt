@@ -266,9 +266,20 @@ class KotlinProjectionRenderer(
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
         )
-        val invocation = renderInlineAbiInvocation(
+        val slotExpression = metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods))
+        val invocation = interfaceProxyNoArgIntrinsicInvocation(
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
+        ) ?: interfaceProxyOneArgUnitIntrinsicInvocation(
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
+        ) ?: renderInlineAbiInvocation(
             invokeTargetExpression = "nativeObject",
-            slotExpression = metadataSlotExpression(slotInterfaceType, method.abiSlotConstantName(slotInterfaceType.methods)),
+            slotExpression = slotExpression,
             callPlan = callPlan,
         ) ?: error("Generator interface proxy parity failed to emit ${method.name}")
         val objectShape = closableMethodShape(slotInterfaceType, method) ?: runtimeObjectMethodShape(method)
@@ -333,7 +344,12 @@ class KotlinProjectionRenderer(
                     .addParameter("value", resolveTypeName(property.typeName))
                     .addCode(
                         "%L\n",
-                        renderInlineAbiInvocation(
+                        interfaceProxyOneArgUnitIntrinsicInvocation(
+                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
+                            returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(property.typeName, typesByQualifiedName))),
+                            suppressHResultCheck = property.isNoException,
+                        ) ?: renderInlineAbiInvocation(
                             invokeTargetExpression = "nativeObject",
                             slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
                             callPlan = setterCallPlan,
@@ -343,6 +359,75 @@ class KotlinProjectionRenderer(
             )
         }
         return builder.build()
+    }
+
+    private fun interfaceProxyNoArgIntrinsicInvocation(
+        slotExpression: CodeBlock,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        suppressHResultCheck: Boolean,
+    ): CodeBlock? {
+        if (!useProjectionIntrinsics || parameterBindings.isNotEmpty() || suppressHResultCheck) {
+            return null
+        }
+        val helperFunction = when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Unit -> "invokeUnit"
+            KotlinProjectionAbiValueKind.String -> "getString"
+            KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+            KotlinProjectionAbiValueKind.Int32 -> "getInt32"
+            KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
+            KotlinProjectionAbiValueKind.Int64 -> "getInt64"
+            KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
+            KotlinProjectionAbiValueKind.Float -> "getFloat"
+            KotlinProjectionAbiValueKind.Double -> "getDouble"
+            else -> return null
+        }
+        return renderInstanceScalarGetterInvocation(
+            referenceExpression = "nativeObject",
+            slotExpression = slotExpression,
+            helperFunction = helperFunction,
+            intrinsic = true,
+        )
+    }
+
+    private fun interfaceProxyOneArgUnitIntrinsicInvocation(
+        slotExpression: CodeBlock,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        suppressHResultCheck: Boolean,
+    ): CodeBlock? {
+        if (
+            !useProjectionIntrinsics ||
+            returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+            parameterBindings.size != 1 ||
+            suppressHResultCheck
+        ) {
+            return null
+        }
+        val parameter = parameterBindings.single()
+        val helperFunction = when (parameter.typeBinding.kind) {
+            KotlinProjectionAbiValueKind.String -> {
+                if (parameter.typeBinding.typeName.endsWith("?")) return null
+                "setString"
+            }
+            KotlinProjectionAbiValueKind.Boolean -> "setBoolean"
+            KotlinProjectionAbiValueKind.Int32 -> "setInt32"
+            KotlinProjectionAbiValueKind.UInt32 -> "setUInt32"
+            KotlinProjectionAbiValueKind.Int64 -> "setInt64"
+            KotlinProjectionAbiValueKind.UInt64 -> "setUInt64"
+            KotlinProjectionAbiValueKind.Float -> "setFloat"
+            KotlinProjectionAbiValueKind.Double -> "setDouble"
+            else -> return null
+        }
+        return CodeBlock.builder()
+            .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+            .indent()
+            .add("nativeObject,\n")
+            .add("%L,\n", slotExpression)
+            .add("%L,\n", parameter.name)
+            .unindent()
+            .add(")\n")
+            .build()
     }
 
     private fun interfaceProxyProjectedObjectGetterInvocation(
