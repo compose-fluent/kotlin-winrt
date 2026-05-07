@@ -325,11 +325,17 @@ class KotlinProjectionRenderer(
             property = property,
             returnBinding = getterReturnBinding,
         )
+        val noArgIntrinsicInvocation = interfaceProxyNoArgIntrinsicInvocation(
+            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+            returnBinding = getterReturnBinding,
+            parameterBindings = emptyList(),
+            suppressHResultCheck = property.isNoException,
+        )
         builder.getter(
             FunSpec.getterBuilder()
                 .addCode(
                     "%L\n",
-                    projectedObjectGetterInvocation ?: scalarGetterInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
+                    projectedObjectGetterInvocation ?: scalarGetterInvocation ?: noArgIntrinsicInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
                         slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
                         returnBinding = getterReturnBinding,
                         parameterBindings = emptyList(),
