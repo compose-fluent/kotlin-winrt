@@ -323,7 +323,21 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
     } else {
         renderInstanceNoArgIntrinsicInvocation(binding)
             ?: renderInstanceStructResultIntrinsicInvocation(binding)
+            ?: renderInstanceEnumResultIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
+            ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderBoundInvocation(binding)
     }
     return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
@@ -436,6 +450,13 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         ?: renderScalarPropertyGetter(getterBinding)
         ?: renderInstanceNoArgIntrinsicInvocation(getterBinding)
         ?: renderInstanceStructResultIntrinsicInvocation(getterBinding)
+        ?: renderInstanceEnumResultIntrinsicInvocation(
+            referenceExpression = getterBinding.ownerCachePropertyName,
+            slotExpression = CodeBlock.of("Metadata.%L", getterBinding.bindingName),
+            returnBinding = getterBinding.returnBinding,
+            parameterBindings = getterBinding.parameterBindings,
+            suppressHResultCheck = getterBinding.suppressHResultCheck,
+        )
         ?: renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -455,6 +476,14 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
                     setterBinding?.let {
                         renderReferencePropertySetter(it)
                             ?: renderInstanceOneArgUnitIntrinsicInvocation(it, argumentExpression = "value")
+                            ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
+                                referenceExpression = it.ownerCachePropertyName,
+                                slotExpression = CodeBlock.of("Metadata.%L", it.bindingName),
+                                returnBinding = it.returnBinding,
+                                parameterBindings = it.parameterBindings,
+                                suppressHResultCheck = it.suppressHResultCheck,
+                                argumentExpression = "value",
+                            )
                             ?: renderBoundInvocation(it)
                     }
                         ?: missingAbiBindingError("property ${property.name} setter"),
@@ -713,6 +742,77 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
         .add("%L,\n", binding.ownerCachePropertyName)
         .add("Metadata.%L,\n", binding.bindingName)
         .add("%T.Metadata,\n", structType)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Enum ||
+        parameterBindings.isNotEmpty() ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val enumType = resolvedReturnClassName(returnBinding) ?: return null
+    val helperFunction = when (returnBinding.enumUnderlyingType) {
+        WinRtIntegralType.Int32 -> "getInt32"
+        WinRtIntegralType.UInt32 -> "getUInt32"
+        else -> return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.Metadata.fromAbi(\n", enumType)
+        .indent()
+        .add("%T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .unindent()
+        .add("),\n")
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceEnumOneArgUnitIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+    argumentExpression: String? = null,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        parameterBindings.size != 1 ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val parameter = parameterBindings.single()
+    val helperFunction = when (parameter.typeBinding.kind) {
+        KotlinProjectionAbiValueKind.Enum -> when (parameter.typeBinding.enumUnderlyingType) {
+            WinRtIntegralType.Int32 -> "setInt32"
+            WinRtIntegralType.UInt32 -> "setUInt32"
+            else -> return null
+        }
+        else -> return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%L.abiValue,\n", argumentExpression ?: parameter.name)
         .unindent()
         .add(")\n")
         .build()
