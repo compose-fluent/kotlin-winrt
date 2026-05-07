@@ -160,19 +160,27 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
     ) {
         val intrinsicClassId = ClassId.topLevel(WINRT_PROJECTION_INTRINSIC_FQ_NAME)
-        val helperClassId = ClassId.topLevel(WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME)
-        val helperClass = pluginContext.referenceClass(helperClassId) ?: return
-        val helperReceiver = helperClass
+        val helperReceivers = WINRT_PROJECTION_INTRINSIC_HELPERS.values
+            .distinct()
+            .mapNotNull { helperFqName ->
+                val classId = ClassId.topLevel(helperFqName)
+                pluginContext.referenceClass(classId)?.let { helperFqName to it }
+            }
+            .toMap()
         val intrinsicFunctions = WINRT_PROJECTION_INTRINSIC_FUNCTIONS.associateWith { functionName ->
             pluginContext.referenceFunctions(CallableId(intrinsicClassId, Name.identifier(functionName)))
                 .singleOrNull()
         }
             .filterValues { symbol -> symbol != null }
-        val helperFunctions = WINRT_PROJECTION_INTRINSIC_FUNCTIONS.associateWith { functionName ->
-            pluginContext.referenceFunctions(CallableId(helperClassId, Name.identifier(functionName)))
-                .singleOrNull()
-        }
-            .filterValues { symbol -> symbol != null }
+        val helperFunctions = WINRT_PROJECTION_INTRINSIC_HELPERS
+            .mapNotNull { (functionName, helperFqName) ->
+                val classId = ClassId.topLevel(helperFqName)
+                val symbol = pluginContext.referenceFunctions(CallableId(classId, Name.identifier(functionName)))
+                    .singleOrNull()
+                    ?: return@mapNotNull null
+                functionName to symbol
+            }
+            .toMap()
         if (intrinsicFunctions.isEmpty() || helperFunctions.isEmpty()) {
             return
         }
@@ -185,6 +193,7 @@ class KotlinWinRtIrGenerationExtension(
                         ?.key
                         ?: return call
                     val helperSymbol = helperFunctions[intrinsicName] ?: return call
+                    val helperReceiver = helperReceivers[WINRT_PROJECTION_INTRINSIC_HELPERS[intrinsicName]] ?: return call
                     val scope = currentScope?.scope?.scopeOwnerSymbol ?: return call
                     val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
                     return builder.irCall(helperSymbol)
@@ -427,28 +436,35 @@ private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
 private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
 
-private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = listOf(
-    "invokeUnit",
-    "getString",
-    "getBoolean",
-    "getInt32",
-    "getUInt32",
-    "getInt64",
-    "getUInt64",
-    "getFloat",
-    "getDouble",
-    "getStruct",
-    "getArray",
-    "setStruct",
-    "setString",
-    "setBoolean",
-    "setInt32",
-    "setUInt32",
-    "setInt64",
-    "setUInt64",
-    "setFloat",
-    "setDouble",
+private val WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop")
+
+private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
+    "staticCallProjectedRuntimeClassWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
+    "staticCallProjectedInterfaceWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
+    "invokeUnit" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getString" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getBoolean" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getInt32" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getUInt32" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getUInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getArray" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setString" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setBoolean" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setInt32" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setUInt32" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setUInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
+
+private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = WINRT_PROJECTION_INTRINSIC_HELPERS.keys.toList()
 
 internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {
     val indexPath = metadataIndexPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return null

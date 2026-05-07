@@ -421,7 +421,8 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     val binding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == staticMethodBindingName(plan, method)
     } ?: return null
-    val invocation = renderStaticDirectAbiMethodInvocation(binding)
+    val invocation = renderStaticStringProjectedObjectIntrinsicInvocation(binding)
+        ?: renderStaticDirectAbiMethodInvocation(binding)
         ?: renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
@@ -429,6 +430,42 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         .returns(resolveTypeName(method.returnTypeName))
         .addParameters(method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticStringProjectedObjectIntrinsicInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.suppressHResultCheck ||
+        binding.parameterBindings.size != 1
+    ) {
+        return null
+    }
+    val parameter = binding.parameterBindings.single()
+    if (
+        parameter.category != WinRtMetadataParameterCategory.In ||
+        parameter.typeBinding.kind != KotlinProjectionAbiValueKind.String ||
+        parameter.typeBinding.typeName.endsWith("?")
+    ) {
+        return null
+    }
+    val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "staticCallProjectedRuntimeClassWithString"
+        KotlinProjectionAbiValueKind.ProjectedInterface -> "staticCallProjectedInterfaceWithString"
+        else -> return null
+    }
+    val returnType = resolvedReturnClassName(binding.returnBinding) ?: return null
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", parameter.name)
+        .add("%T.Metadata::wrap,\n", returnType)
+        .unindent()
+        .add(")\n")
         .build()
 }
 

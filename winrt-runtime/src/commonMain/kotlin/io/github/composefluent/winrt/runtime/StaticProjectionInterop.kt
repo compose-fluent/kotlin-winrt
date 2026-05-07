@@ -1,6 +1,24 @@
 package io.github.composefluent.winrt.runtime
 
 object WinRtStaticProjectionInterop {
+    fun <T> staticCallProjectedRuntimeClassWithString(
+        reference: IUnknownReference,
+        slot: Int,
+        value: String,
+        wrap: (IInspectableReference) -> T,
+    ): T =
+        staticCallProjectedObjectWithString(reference, slot, value) { result ->
+            wrap(result.asInspectable())
+        }
+
+    fun <T> staticCallProjectedInterfaceWithString(
+        reference: IUnknownReference,
+        slot: Int,
+        value: String,
+        wrap: (IUnknownReference) -> T,
+    ): T =
+        staticCallProjectedObjectWithString(reference, slot, value, wrap)
+
     fun callUnit(
         reference: IUnknownReference,
         slot: Int,
@@ -126,6 +144,31 @@ object WinRtStaticProjectionInterop {
             }
             val resultRef = IUnknownReference(PlatformAbi.toRawComPtr(resultPointer))
             wrap(resultRef)
+        }
+
+    private fun <T> staticCallProjectedObjectWithString(
+        reference: IUnknownReference,
+        slot: Int,
+        value: String,
+        wrap: (IUnknownReference) -> T,
+    ): T =
+        HString.createReference(value).use { valueAbi ->
+            PlatformAbi.confinedScope().use { scope ->
+                val resultOut = PlatformAbi.allocatePointerSlot(scope)
+                val hr = ComVtableInvoker.invokeArgs(
+                    instance = reference.pointer,
+                    slot = slot,
+                    arg0 = valueAbi.handle,
+                    arg1 = resultOut,
+                )
+                HResult(hr).requireSuccess()
+                val resultPointer = PlatformAbi.readPointer(resultOut)
+                if (PlatformAbi.isNull(resultPointer)) {
+                    error("WINRT_E_NULL_ABI_RETURN")
+                }
+                val resultRef = IUnknownReference(PlatformAbi.toRawComPtr(resultPointer))
+                wrap(resultRef)
+            }
         }
 
     private fun <T> callScalar(

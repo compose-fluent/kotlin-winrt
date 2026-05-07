@@ -222,6 +222,22 @@ object WinRtInstanceProjectionInterop {
 }
 
 object WinRtProjectionIntrinsic {
+    fun <T> staticCallProjectedRuntimeClassWithString(
+        reference: IUnknownReference,
+        slot: Int,
+        value: String,
+        wrap: (IInspectableReference) -> T,
+    ): T =
+        staticIntrinsicNotLowered("staticCallProjectedRuntimeClassWithString", reference, slot, value)
+
+    fun <T> staticCallProjectedInterfaceWithString(
+        reference: IUnknownReference,
+        slot: Int,
+        value: String,
+        wrap: (IUnknownReference) -> T,
+    ): T =
+        staticIntrinsicNotLowered("staticCallProjectedInterfaceWithString", reference, slot, value)
+
     fun invokeUnit(reference: ComObjectReference, slot: Int): Unit =
         intrinsicNotLowered("invokeUnit", reference, slot)
 
@@ -286,5 +302,8 @@ object WinRtProjectionIntrinsic {
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
 
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int, value: Any?): Nothing =
+        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot value $value")
+
+    private fun staticIntrinsicNotLowered(name: String, reference: IUnknownReference, slot: Int, value: Any?): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot value $value")
 }
