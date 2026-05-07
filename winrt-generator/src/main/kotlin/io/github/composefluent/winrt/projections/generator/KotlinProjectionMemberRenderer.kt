@@ -429,6 +429,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     } ?: return null
     builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
     val getterInvocation = renderReferencePropertyGetter(getterBinding)
+        ?: renderScalarPropertyGetter(getterBinding)
         ?: renderBoundInvocation(binding = getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -452,6 +453,44 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderScalarPropertyGetter(
+    binding: KotlinProjectionInstanceMemberBinding,
+): CodeBlock? {
+    if (binding.parameterBindings.isNotEmpty() || binding.suppressHResultCheck) {
+        return null
+    }
+    val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
+        KotlinProjectionAbiValueKind.Float -> "getFloat"
+        KotlinProjectionAbiValueKind.Double -> "getDouble"
+        else -> return null
+    }
+    return renderInstanceScalarGetterInvocation(
+        referenceExpression = binding.ownerCachePropertyName,
+        slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+        helperFunction = helperFunction,
+    )
+}
+
+internal fun renderInstanceScalarGetterInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    helperFunction: String,
+): CodeBlock {
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 private fun KotlinProjectionRenderer.renderReferencePropertyGetter(

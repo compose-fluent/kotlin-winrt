@@ -291,21 +291,27 @@ class KotlinProjectionRenderer(
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
+        val getterReturnBinding = renderAbiTypeBinding(property.typeName, typesByQualifiedName)
         val getterCallPlan = requireAbiCallPlan(
             bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
-            returnBinding = renderAbiTypeBinding(property.typeName, typesByQualifiedName),
+            returnBinding = getterReturnBinding,
             parameterBindings = emptyList(),
             suppressHResultCheck = property.isNoException,
+        )
+        val scalarGetterInvocation = interfaceProxyScalarGetterInvocation(
+            slotInterfaceType = slotInterfaceType,
+            property = property,
+            returnBinding = getterReturnBinding,
         )
         builder.getter(
             FunSpec.getterBuilder()
                 .addCode(
                     "%L\n",
-                    renderInlineAbiInvocation(
-                        invokeTargetExpression = "nativeObject",
-                        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
-                        callPlan = getterCallPlan,
-                    ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
+                    scalarGetterInvocation ?: renderInlineAbiInvocation(
+                            invokeTargetExpression = "nativeObject",
+                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                            callPlan = getterCallPlan,
+                        ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
                 )
                 .build(),
         )
@@ -331,6 +337,31 @@ class KotlinProjectionRenderer(
             )
         }
         return builder.build()
+    }
+
+    private fun interfaceProxyScalarGetterInvocation(
+        slotInterfaceType: WinRtTypeDefinition,
+        property: WinRtPropertyDefinition,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+    ): CodeBlock? {
+        if (property.isNoException) {
+            return null
+        }
+        val helperFunction = when (returnBinding.kind) {
+            KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+            KotlinProjectionAbiValueKind.Int32 -> "getInt32"
+            KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
+            KotlinProjectionAbiValueKind.Int64 -> "getInt64"
+            KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
+            KotlinProjectionAbiValueKind.Float -> "getFloat"
+            KotlinProjectionAbiValueKind.Double -> "getDouble"
+            else -> return null
+        }
+        return renderInstanceScalarGetterInvocation(
+            referenceExpression = "nativeObject",
+            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+            helperFunction = helperFunction,
+        )
     }
 
     internal fun renderInterfaceProxyEventFunctions(

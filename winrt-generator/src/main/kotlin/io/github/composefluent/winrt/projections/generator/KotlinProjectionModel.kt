@@ -89,6 +89,7 @@ import io.github.composefluent.winrt.runtime.WinRtReferenceProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapter
 import io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters
 import io.github.composefluent.winrt.runtime.WinRtGenericParameterProjection
+import io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtPlatformApi
 import io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtSystemProjectionMarshalers
@@ -191,6 +192,7 @@ internal val WINRT_REFERENCE_PROJECTION_INTEROP_CLASS_NAME = WinRtReferenceProje
 internal val WINRT_REFERENCE_VALUE_ADAPTER_CLASS_NAME = WinRtReferenceValueAdapter::class.asClassName()
 internal val WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME = WinRtReferenceValueAdapters::class.asClassName()
 internal val WINRT_GENERIC_PARAMETER_PROJECTION_CLASS_NAME = WinRtGenericParameterProjection::class.asClassName()
+internal val WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME = WinRtInstanceProjectionInterop::class.asClassName()
 internal val WINRT_KEY_VALUE_PAIR_ADAPTER_FUNCTION_NAME =
     MemberName("io.github.composefluent.winrt.runtime", "winRtKeyValuePairAdapter")
 internal val WINRT_OBJECT_MARSHALER_FUNCTION_NAME =

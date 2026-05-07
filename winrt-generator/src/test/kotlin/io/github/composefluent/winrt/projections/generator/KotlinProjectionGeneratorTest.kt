@@ -5559,6 +5559,82 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_scalar_property_getters_through_runtime_instance_projection_interop() {
+        val property = KotlinProjectionRenderer().renderBoundProperty(
+            plan = KotlinTypeProjectionPlan(
+                type = WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "Widget",
+                    kind = WinRtTypeKind.RuntimeClass,
+                    isSealedType = true,
+                ),
+                packageName = "sample.foundation",
+                relativePath = "sample/foundation/Widget.kt",
+                declarationKind = KotlinProjectionDeclarationKind.Class,
+                typeDeclarationDescriptor = WinRtTypeDeclarationDescriptor(
+                    typeName = "Sample.Foundation.Widget",
+                    declarationKind = WinRtTypeKind.RuntimeClass,
+                    writesProjectedDeclaration = true,
+                    writesAbiDeclaration = true,
+                    writesWrapperDeclaration = true,
+                    writesImplementationClass = false,
+                    writesHelperClass = true,
+                    netStandardBranch = false,
+                ),
+                instanceMemberBindings = listOf(
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "COUNT_GETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "COUNT_GETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Int32, "Int"),
+                    ),
+                ),
+            ),
+            property = WinRtPropertyDefinition(
+                name = "Count",
+                typeName = "Int",
+                getterMethodName = "get_Count",
+            ),
+        ).toString()
+
+        assertTrue(property, property.contains("val count: kotlin.Int"))
+        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getInt32("))
+        assertFalse(property.contains("PlatformAbi.confinedScope()"))
+        assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
+    fun generator_routes_interface_proxy_scalar_property_getters_through_runtime_instance_projection_interop() {
+        val interfaceType = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            iid = Guid("11111111-2222-3333-4444-555555555570"),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Ready",
+                    typeName = "Boolean",
+                    getterMethodName = "get_Ready",
+                    getterMethodRowId = 6,
+                ),
+            ),
+        )
+
+        val property = KotlinProjectionRenderer().renderInterfaceProxyProperty(
+            slotInterfaceType = interfaceType,
+            property = interfaceType.properties.single(),
+            typesByQualifiedName = mapOf(interfaceType.qualifiedName to interfaceType),
+        ).toString()
+
+        assertTrue(property, property.contains("override val ready: kotlin.Boolean"))
+        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getBoolean("))
+        assertFalse(property.contains("PlatformAbi.confinedScope()"))
+        assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
