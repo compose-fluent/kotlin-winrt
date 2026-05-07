@@ -250,6 +250,69 @@ open class WinRtAsyncActionWithProgressReference<TProgress> internal constructor
     }
 }
 
+object WinRtAsyncProjectionInterop {
+    fun <T> operation(
+        pointer: RawAddress,
+        resultSignature: WinRtTypeSignature,
+        resultOut: (NativeScope) -> RawAddress,
+        resultReader: (RawAddress) -> T,
+    ): WinRtAsyncOperationReference<T> =
+        WinRtAsyncOperationReference(
+            pointer = pointer,
+            interfaceId = WinRtAsyncOperationReference.interfaceId(resultSignature),
+            completedHandlerInterfaceId = WinRtAsyncOperationReference.completedHandlerInterfaceId(resultSignature),
+            resultReader = { operation ->
+                PlatformAbi.confinedScope().use { scope ->
+                    val operationResultOut = resultOut(scope)
+                    val operationHr = ComVtableInvoker.invokeArgs(
+                        operation.pointer,
+                        WinRtAsyncOperationVftblSlots.GetResults,
+                        operationResultOut,
+                    )
+                    WinRtPlatformApi.checkSucceededRaw(operationHr)
+                    resultReader(operationResultOut)
+                }
+            },
+        )
+
+    fun <T, TProgress> operationWithProgress(
+        pointer: RawAddress,
+        resultSignature: WinRtTypeSignature,
+        progressSignature: WinRtTypeSignature,
+        resultOut: (NativeScope) -> RawAddress,
+        resultReader: (RawAddress) -> T,
+    ): WinRtAsyncOperationWithProgressReference<T, TProgress> =
+        WinRtAsyncOperationWithProgressReference(
+            pointer = pointer,
+            interfaceId = WinRtAsyncOperationWithProgressReference.interfaceId(resultSignature, progressSignature),
+            progressHandlerInterfaceId = WinRtAsyncOperationWithProgressReference.progressHandlerInterfaceId(resultSignature, progressSignature),
+            completedHandlerInterfaceId = WinRtAsyncOperationWithProgressReference.completedHandlerInterfaceId(resultSignature, progressSignature),
+            resultReader = { operation ->
+                PlatformAbi.confinedScope().use { scope ->
+                    val operationResultOut = resultOut(scope)
+                    val operationHr = ComVtableInvoker.invokeArgs(
+                        operation.pointer,
+                        WinRtAsyncOperationWithProgressVftblSlots.GetResults,
+                        operationResultOut,
+                    )
+                    WinRtPlatformApi.checkSucceededRaw(operationHr)
+                    resultReader(operationResultOut)
+                }
+            },
+        )
+
+    fun <TProgress> actionWithProgress(
+        pointer: RawAddress,
+        progressSignature: WinRtTypeSignature,
+    ): WinRtAsyncActionWithProgressReference<TProgress> =
+        WinRtAsyncActionWithProgressReference(
+            pointer = pointer,
+            interfaceId = WinRtAsyncActionWithProgressReference.interfaceId(progressSignature),
+            progressHandlerInterfaceId = WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(progressSignature),
+            completedHandlerInterfaceId = WinRtAsyncActionWithProgressReference.completedHandlerInterfaceId(progressSignature),
+        )
+}
+
 open class WinRtAsyncOperationWithProgressReference<T, TProgress> internal constructor(
     comPtr: ComPtr,
     private val progressHandlerInterfaceId: Guid,

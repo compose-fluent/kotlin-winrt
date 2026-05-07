@@ -80,6 +80,7 @@ import io.github.composefluent.winrt.runtime.WinRtAsyncOperationReference
 import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressReference
 import io.github.composefluent.winrt.runtime.WinRtAsyncOperationWithProgressVftblSlots
 import io.github.composefluent.winrt.runtime.WinRtAsyncOperationVftblSlots
+import io.github.composefluent.winrt.runtime.WinRtAsyncProjectionInterop
 import io.github.composefluent.winrt.runtime.WinRtReadOnlyDictionaryProjection
 import io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection
 import io.github.composefluent.winrt.runtime.WinRtReferenceArrayProjection
@@ -181,6 +182,7 @@ internal val WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME = WinRtAsyncOperationRef
 internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME = WinRtAsyncOperationWithProgressReference::class.asClassName()
 internal val WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationWithProgressVftblSlots::class.asClassName()
 internal val WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME = WinRtAsyncOperationVftblSlots::class.asClassName()
+internal val WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME = WinRtAsyncProjectionInterop::class.asClassName()
 internal val WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME = WinRtReadOnlyDictionaryProjection::class.asClassName()
 internal val WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME = WinRtReadOnlyListProjection::class.asClassName()
 internal val WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME = WinRtReferenceArrayProjection::class.asClassName()

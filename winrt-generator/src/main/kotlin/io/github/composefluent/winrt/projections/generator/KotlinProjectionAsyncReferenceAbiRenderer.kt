@@ -108,14 +108,11 @@ internal fun KotlinProjectionRenderer.asyncActionWithProgressReturnReadback(
 ): CodeBlock? {
     val progressBinding = returnBinding.typeArguments.singleOrNull() ?: return null
     val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
-    val asyncActionType = WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resolveTypeName(progressBinding.typeName))
     return CodeBlock.builder()
-        .add("return %T(\n", asyncActionType)
+        .add("return %T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(progressBinding.typeName))
         .indent()
         .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
-        .add("interfaceId = %T.interfaceId(%L),\n", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressTypeSignature)
-        .add("progressHandlerInterfaceId = %T.progressHandlerInterfaceId(%L),\n", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressTypeSignature)
-        .add("completedHandlerInterfaceId = %T.completedHandlerInterfaceId(%L),\n", WINRT_ASYNC_ACTION_WITH_PROGRESS_REFERENCE_CLASS_NAME, progressTypeSignature)
+        .add("progressSignature = %L,\n", progressTypeSignature)
         .unindent()
         .add(")\n")
         .build()
@@ -128,27 +125,15 @@ internal fun KotlinProjectionRenderer.asyncOperationReturnReadback(
     val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
-    val asyncOperationType = WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME.parameterizedBy(resolveTypeName(resultBinding.typeName))
     return CodeBlock.builder()
-        .add("return %T(\n", asyncOperationType)
+        .add("return %T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(resultBinding.typeName))
         .indent()
         .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
-        .add("interfaceId = %T.interfaceId(%L),\n", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME, resultTypeSignature)
-        .add("completedHandlerInterfaceId = %T.completedHandlerInterfaceId(%L),\n", WINRT_ASYNC_OPERATION_REFERENCE_CLASS_NAME, resultTypeSignature)
-        .add("resultReader = { __operation ->\n")
+        .add("resultSignature = %L,\n", resultTypeSignature)
+        .add("resultOut = { __operationScope -> %L },\n", resultOutAllocation)
+        .add("resultReader = { __operationResultOut ->\n")
         .indent()
-        .add("%T.confinedScope().use { __operationScope ->\n", PLATFORM_ABI_CLASS_NAME)
-        .indent()
-        .add("val __operationResultOut = %L\n", resultOutAllocation)
-        .add(
-            "val __operationHr = %T.invokeArgs(__operation.pointer, %T.GetResults, __operationResultOut)\n",
-            COM_VTABLE_INVOKER_CLASS_NAME,
-            WINRT_ASYNC_OPERATION_VFTBL_SLOTS_CLASS_NAME,
-        )
-        .add("%T.checkSucceededRaw(__operationHr)\n", WINRT_PLATFORM_API_CLASS_NAME)
         .add("%L\n", resultReadbackExpression)
-        .unindent()
-        .add("}\n")
         .unindent()
         .add("},\n")
         .unindent()
@@ -165,31 +150,21 @@ internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
     val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
-    val asyncOperationType = WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(
-        resolveTypeName(resultBinding.typeName),
-        resolveTypeName(progressBinding.typeName),
-    )
     return CodeBlock.builder()
-        .add("return %T(\n", asyncOperationType)
+        .add(
+            "return %T.operationWithProgress<%T, %T>(\n",
+            WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME,
+            resolveTypeName(resultBinding.typeName),
+            resolveTypeName(progressBinding.typeName),
+        )
         .indent()
         .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
-        .add("interfaceId = %T.interfaceId(%L, %L),\n", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultTypeSignature, progressTypeSignature)
-        .add("progressHandlerInterfaceId = %T.progressHandlerInterfaceId(%L, %L),\n", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultTypeSignature, progressTypeSignature)
-        .add("completedHandlerInterfaceId = %T.completedHandlerInterfaceId(%L, %L),\n", WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME, resultTypeSignature, progressTypeSignature)
-        .add("resultReader = { __operation ->\n")
+        .add("resultSignature = %L,\n", resultTypeSignature)
+        .add("progressSignature = %L,\n", progressTypeSignature)
+        .add("resultOut = { __operationScope -> %L },\n", resultOutAllocation)
+        .add("resultReader = { __operationResultOut ->\n")
         .indent()
-        .add("%T.confinedScope().use { __operationScope ->\n", PLATFORM_ABI_CLASS_NAME)
-        .indent()
-        .add("val __operationResultOut = %L\n", resultOutAllocation)
-        .add(
-            "val __operationHr = %T.invokeArgs(__operation.pointer, %T.GetResults, __operationResultOut)\n",
-            COM_VTABLE_INVOKER_CLASS_NAME,
-            WINRT_ASYNC_OPERATION_WITH_PROGRESS_VFTBL_SLOTS_CLASS_NAME,
-        )
-        .add("%T.checkSucceededRaw(__operationHr)\n", WINRT_PLATFORM_API_CLASS_NAME)
         .add("%L\n", resultReadbackExpression)
-        .unindent()
-        .add("}\n")
         .unindent()
         .add("},\n")
         .unindent()
