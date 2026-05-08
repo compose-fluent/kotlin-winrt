@@ -345,6 +345,13 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
+            ?: renderInstanceStringFloatUnitIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceFloatStringProjectedObjectUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
@@ -602,6 +609,43 @@ internal fun KotlinProjectionRenderer.renderInstanceFloatStringUnitIntrinsicInvo
     }
     return CodeBlock.builder()
         .add("return %T.callUnitWithFloatAndString(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%L,\n", first.name)
+        .add("%L,\n", second.name)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceStringFloatUnitIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        parameterBindings.size != 2 ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val first = parameterBindings[0]
+    val second = parameterBindings[1]
+    if (
+        first.typeBinding.kind != KotlinProjectionAbiValueKind.String ||
+        first.typeBinding.typeName.endsWith("?") ||
+        second.typeBinding.kind != KotlinProjectionAbiValueKind.Float ||
+        second.typeBinding.typeName.endsWith("?")
+    ) {
+        return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.callUnitWithStringAndFloat(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
