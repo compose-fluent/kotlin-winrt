@@ -612,13 +612,47 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
                 .addParameter("value", resolveTypeName(property.typeName))
                 .addCode(
                     "%L\n",
-                    setterBinding?.let(::renderBoundStaticInvocation)
+                    setterBinding?.let { renderStaticDirectAbiSetter(it) ?: renderBoundStaticInvocation(it) }
                         ?: missingAbiBindingError("static property ${property.name} setter"),
                 )
                 .build(),
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticDirectAbiSetter(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        binding.parameterBindings.size != 1
+    ) {
+        return null
+    }
+    val parameterBinding = binding.parameterBindings.single()
+    if (parameterBinding.category != WinRtMetadataParameterCategory.In) {
+        return null
+    }
+    val marshaler = buildAbiParameterMarshaler(parameterBinding) ?: return null
+    if (
+        marshaler.scopeOpeners.isNotEmpty() ||
+        marshaler.postCallStatements.isNotEmpty() ||
+        marshaler.finallyStatements.isNotEmpty() ||
+        marshaler.extraAbiArgumentExpressions.isNotEmpty()
+    ) {
+        return null
+    }
+    return CodeBlock.builder()
+        .add("%T.callUnit(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", marshaler.abiArgumentExpression)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 private fun KotlinProjectionRenderer.renderStaticDirectAbiGetter(
