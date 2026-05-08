@@ -3222,8 +3222,10 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithFloatAndString("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithFloatStringAndProjectedObject("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Float,String\","))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Float,String,Object\","))
+        assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
         assertTrue(interfaceContents, interfaceContents.contains("normalizedProgressKey,"))
         assertTrue(interfaceContents, interfaceContents.contains("value,"))
         assertTrue(interfaceContents, interfaceContents.contains("easingFunction as IWinRTObject,"))
@@ -3267,7 +3269,9 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithStringAndFloat("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"String,Float\","))
+        assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
         assertTrue(interfaceContents, interfaceContents.contains("propertyName,"))
         assertTrue(interfaceContents, interfaceContents.contains("value,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(propertyName)"))
@@ -3315,7 +3319,9 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithStringAndProjectedObject("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"String,Object\","))
+        assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
         assertTrue(interfaceContents, interfaceContents.contains("key,"))
         assertTrue(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(key)"))

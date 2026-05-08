@@ -313,38 +313,13 @@ object WinRtProjectionIntrinsic {
     fun setDouble(reference: ComObjectReference, slot: Int, value: Double): Unit =
         intrinsicNotLowered("setDouble", reference, slot, value)
 
-    fun callUnitWithFloatAndString(
+    fun callUnit(
         reference: ComObjectReference,
         slot: Int,
-        value0: Float,
-        value1: String,
+        abiShape: String,
+        vararg arguments: Any?,
     ): Unit =
-        intrinsicNotLowered("callUnitWithFloatAndString", reference, slot, value0, value1)
-
-    fun callUnitWithStringAndFloat(
-        reference: ComObjectReference,
-        slot: Int,
-        value0: String,
-        value1: Float,
-    ): Unit =
-        intrinsicNotLowered("callUnitWithStringAndFloat", reference, slot, value0, value1)
-
-    fun callUnitWithStringAndProjectedObject(
-        reference: ComObjectReference,
-        slot: Int,
-        value0: String,
-        value1: IWinRTObject,
-    ): Unit =
-        intrinsicNotLowered("callUnitWithStringAndProjectedObject", reference, slot, value0, value1)
-
-    fun callUnitWithFloatStringAndProjectedObject(
-        reference: ComObjectReference,
-        slot: Int,
-        value0: Float,
-        value1: String,
-        value2: IWinRTObject,
-    ): Unit =
-        intrinsicNotLowered("callUnitWithFloatStringAndProjectedObject", reference, slot, value0, value1, value2)
+        intrinsicNotLowered("callUnit", reference, slot, abiShape, *arguments)
 
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
@@ -356,20 +331,9 @@ object WinRtProjectionIntrinsic {
         name: String,
         reference: ComObjectReference,
         slot: Int,
-        value0: Any?,
-        value1: Any?,
+        vararg values: Any?,
     ): Nothing =
-        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot values $value0, $value1")
-
-    private fun intrinsicNotLowered(
-        name: String,
-        reference: ComObjectReference,
-        slot: Int,
-        value0: Any?,
-        value1: Any?,
-        value2: Any?,
-    ): Nothing =
-        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot values $value0, $value1, $value2")
+        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot values ${values.toList()}")
 
     private fun staticIntrinsicNotLowered(name: String, reference: IUnknownReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")

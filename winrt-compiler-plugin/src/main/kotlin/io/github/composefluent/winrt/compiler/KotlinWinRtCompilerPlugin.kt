@@ -21,7 +21,9 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrCall
+import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.expressions.IrVararg
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
@@ -247,60 +249,49 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? =
             when (intrinsicName) {
-                "callUnitWithFloatAndString" ->
-                    lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 4)
-                "callUnitWithStringAndFloat" ->
-                    lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 3)
-                "callUnitWithStringAndProjectedObject" ->
-                    lowerCallUnitWithArgumentsOneString(
-                        call = call,
-                        pluginContext = pluginContext,
-                        builderScope = builderScope,
-                        argumentCount = 2,
-                        stringArgumentIndex = 3,
-                        projectedObjectArgumentIndex = 4,
-                    )
-                "callUnitWithFloatStringAndProjectedObject" ->
-                    lowerCallUnitWithArgumentsOneString(
-                        call = call,
-                        pluginContext = pluginContext,
-                        builderScope = builderScope,
-                        argumentCount = 3,
-                        stringArgumentIndex = 4,
-                        projectedObjectArgumentIndex = 5,
-                    )
+                "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
                 else -> null
             }
 
-        private fun lowerCallUnitWithTwoArgumentsOneString(
+        private fun lowerDescriptorCallUnit(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
-            stringArgumentIndex: Int,
-        ): IrExpression? =
-            lowerCallUnitWithArgumentsOneString(
+        ): IrExpression? {
+            val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
+            val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
+            val values = call.varargValues(argumentKinds.size) ?: return null
+            val stringArgumentIndex = argumentKinds.singleIndexOf(UnitCallAbiArgumentKind.String) ?: return null
+            val projectedObjectIndexes = argumentKinds.indices.filter { index ->
+                argumentKinds[index] == UnitCallAbiArgumentKind.Object
+            }
+            if (projectedObjectIndexes.size > 1) {
+                return null
+            }
+            return lowerCallUnitWithArgumentsOneString(
                 call = call,
                 pluginContext = pluginContext,
                 builderScope = builderScope,
-                argumentCount = 2,
+                reference = call.arguments.getOrNull(1) ?: return null,
+                slot = call.arguments.getOrNull(2) ?: return null,
+                values = values,
                 stringArgumentIndex = stringArgumentIndex,
+                projectedObjectArgumentIndex = projectedObjectIndexes.singleOrNull(),
             )
+        }
 
         private fun lowerCallUnitWithArgumentsOneString(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
-            argumentCount: Int,
+            reference: IrExpression,
+            slot: IrExpression,
+            values: List<IrExpression>,
             stringArgumentIndex: Int,
             projectedObjectArgumentIndex: Int? = null,
         ): IrExpression? {
             val scope = builderScope ?: return null
-            val reference = call.arguments.getOrNull(1) ?: return null
-            val slot = call.arguments.getOrNull(2) ?: return null
-            val values = (0 until argumentCount).map { offset ->
-                call.arguments.getOrNull(3 + offset) ?: return null
-            }
-            val stringValue = values.getOrNull(stringArgumentIndex - 3) ?: return null
+            val stringValue = values.getOrNull(stringArgumentIndex) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
 
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
@@ -309,7 +300,7 @@ class KotlinWinRtIrGenerationExtension(
                         arguments[0] = builder.irGetObject(hStringCompanion)
                         arguments[1] = stringValue
                     },
-                    nameHint = "value${stringArgumentIndex - 3}Abi",
+                    nameHint = "value${stringArgumentIndex}Abi",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
@@ -354,6 +345,42 @@ class KotlinWinRtIrGenerationExtension(
             }
         }
 
+        private fun IrExpression.stringConstantValue(): String? =
+            (this as? IrConst)?.value as? String
+
+        private fun IrCall.varargValues(expectedCount: Int): List<IrExpression>? {
+            val vararg = arguments.getOrNull(4) as? IrVararg ?: return null
+            val values = vararg.elements.map { element -> element as? IrExpression ?: return null }
+            return values.takeIf { it.size == expectedCount }
+        }
+
+        private enum class UnitCallAbiArgumentKind {
+            Float,
+            String,
+            Object,
+        }
+
+        private object UnitCallAbiShape {
+            fun parse(value: String): List<UnitCallAbiArgumentKind>? {
+                if (value.isBlank()) {
+                    return null
+                }
+                return value.split(',').map { token ->
+                    when (token) {
+                        "Float" -> UnitCallAbiArgumentKind.Float
+                        "String" -> UnitCallAbiArgumentKind.String
+                        "Object" -> UnitCallAbiArgumentKind.Object
+                        else -> return null
+                    }
+                }
+            }
+        }
+
+        private fun List<UnitCallAbiArgumentKind>.singleIndexOf(kind: UnitCallAbiArgumentKind): Int? {
+            val matches = indices.filter { index -> this[index] == kind }
+            return matches.singleOrNull()
+        }
+
         private fun abiArguments(
             builder: DeclarationIrBuilder,
             stringAbi: org.jetbrains.kotlin.ir.declarations.IrVariable,
@@ -368,7 +395,7 @@ class KotlinWinRtIrGenerationExtension(
                 if (index == stringArgumentIndex) {
                     return stringHandle
                 }
-                val value = values.getOrNull(index - 3)
+                val value = values.getOrNull(index)
                     ?: error("Unsupported WinRT projection intrinsic argument index $index.")
                 return if (index == projectedObjectArgumentIndex) {
                     projectedObjectAbi(builder, value)
@@ -376,7 +403,7 @@ class KotlinWinRtIrGenerationExtension(
                     value
                 }
             }
-            return values.indices.map { offset -> argumentAt(3 + offset) }
+            return values.indices.map(::argumentAt)
         }
 
         private fun projectedObjectAbi(
@@ -743,10 +770,7 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
-    "callUnitWithFloatAndString",
-    "callUnitWithStringAndFloat",
-    "callUnitWithStringAndProjectedObject",
-    "callUnitWithFloatStringAndProjectedObject",
+    "callUnit",
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =

@@ -294,25 +294,7 @@ class KotlinProjectionRenderer(
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
-        ) ?: renderInstanceFloatStringUnitIntrinsicInvocation(
-            referenceExpression = "nativeObject",
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = method.isNoException,
-        ) ?: renderInstanceStringFloatUnitIntrinsicInvocation(
-            referenceExpression = "nativeObject",
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = method.isNoException,
-        ) ?: renderInstanceStringProjectedObjectUnitIntrinsicInvocation(
-            referenceExpression = "nativeObject",
-            slotExpression = slotExpression,
-            returnBinding = returnBinding,
-            parameterBindings = parameterBindings,
-            suppressHResultCheck = method.isNoException,
-        ) ?: renderInstanceFloatStringProjectedObjectUnitIntrinsicInvocation(
+        ) ?: renderInstanceDescriptorUnitIntrinsicInvocation(
             referenceExpression = "nativeObject",
             slotExpression = slotExpression,
             returnBinding = returnBinding,
