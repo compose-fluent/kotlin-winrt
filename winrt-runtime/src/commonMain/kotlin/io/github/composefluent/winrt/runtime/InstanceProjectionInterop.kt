@@ -100,40 +100,6 @@ object WinRtInstanceProjectionInterop {
         }
     }
 
-    fun setString(reference: ComObjectReference, slot: Int, value: String) {
-        HString.createReference(value).use { marshaler ->
-            invokeUnit(reference, slot, marshaler.handle)
-        }
-    }
-
-    fun setBoolean(reference: ComObjectReference, slot: Int, value: Boolean) {
-        invokeUnit(reference, slot, if (value) 1.toByte() else 0.toByte())
-    }
-
-    fun setInt32(reference: ComObjectReference, slot: Int, value: Int) {
-        invokeUnit(reference, slot, value)
-    }
-
-    fun setUInt32(reference: ComObjectReference, slot: Int, value: UInt) {
-        invokeUnit(reference, slot, value.toInt())
-    }
-
-    fun setInt64(reference: ComObjectReference, slot: Int, value: Long) {
-        invokeUnit(reference, slot, value)
-    }
-
-    fun setUInt64(reference: ComObjectReference, slot: Int, value: ULong) {
-        invokeUnit(reference, slot, value.toLong())
-    }
-
-    fun setFloat(reference: ComObjectReference, slot: Int, value: Float) {
-        invokeUnit(reference, slot, value)
-    }
-
-    fun setDouble(reference: ComObjectReference, slot: Int, value: Double) {
-        invokeUnit(reference, slot, value)
-    }
-
     fun <T> getProjectedRuntimeClass(
         reference: ComObjectReference,
         slot: Int,
@@ -182,15 +148,6 @@ object WinRtInstanceProjectionInterop {
             HResult(hr).requireSuccess()
             read(resultOut)
         }
-
-    private fun invokeUnit(reference: ComObjectReference, slot: Int, argument: Any) {
-        val hr = ComVtableInvoker.invokeGenericArgs(
-            instance = reference.pointer,
-            slot = slot,
-            args = arrayOf(argument),
-        )
-        HResult(hr).requireSuccess()
-    }
 
     private fun <T> getProjectedObject(
         reference: ComObjectReference,

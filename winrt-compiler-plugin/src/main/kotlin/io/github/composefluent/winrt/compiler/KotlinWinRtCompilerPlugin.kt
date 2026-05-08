@@ -29,11 +29,13 @@ import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.builders.irBlock
+import org.jetbrains.kotlin.ir.builders.irByte
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
+import org.jetbrains.kotlin.ir.builders.irIfThenElse
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
@@ -250,8 +252,105 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? =
             when (intrinsicName) {
                 "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
+                "setString" -> lowerOneArgumentStringUnit(call, pluginContext, builderScope)
+                "setBoolean" -> lowerOneArgumentRawUnit(
+                    call,
+                    pluginContext,
+                    builderScope,
+                ) { builder, value -> booleanAbiValue(builder, pluginContext, value) }
+                "setInt32",
+                "setUInt32",
+                "setInt64",
+                "setUInt64",
+                "setFloat",
+                "setDouble" -> lowerOneArgumentRawUnit(call, pluginContext, builderScope) { _, value -> value }
                 else -> null
             }
+
+        private fun lowerOneArgumentStringUnit(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? =
+            lowerCallUnitWithArgumentsOneString(
+                call = call,
+                pluginContext = pluginContext,
+                builderScope = builderScope,
+                reference = call.arguments.getOrNull(1) ?: return null,
+                slot = call.arguments.getOrNull(2) ?: return null,
+                values = listOf(call.arguments.getOrNull(3) ?: return null),
+                stringArgumentIndex = 0,
+            )
+
+        private fun lowerOneArgumentRawUnit(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            abiValue: (DeclarationIrBuilder, IrExpression) -> IrExpression,
+        ): IrExpression? {
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val value = call.arguments.getOrNull(3) ?: return null
+            return lowerCallUnitWithRawArguments(
+                call = call,
+                pluginContext = pluginContext,
+                builderScope = builderScope,
+                reference = reference,
+                slot = slot,
+                values = listOf(value),
+                abiValue = abiValue,
+            )
+        }
+
+        private fun booleanAbiValue(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            value: IrExpression,
+        ): IrExpression =
+            builder.irIfThenElse(
+                type = pluginContext.irBuiltIns.byteType,
+                condition = value,
+                thenPart = builder.irByte(1),
+                elsePart = builder.irByte(0),
+            )
+
+        private fun lowerCallUnitWithRawArguments(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            reference: IrExpression,
+            slot: IrExpression,
+            values: List<IrExpression>,
+            abiValue: (DeclarationIrBuilder, IrExpression) -> IrExpression = { _, value -> value },
+        ): IrExpression? {
+            val scope = builderScope ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val hResultValue = irTemporary(
+                    value = builder.irCall(invokeGenericArgs).apply {
+                        arguments[0] = builder.irGetObject(comVtableInvoker)
+                        arguments[1] = builder.irCall(comObjectReferencePointerGetter).apply {
+                            arguments[0] = reference
+                        }
+                        arguments[2] = slot
+                        arguments[3] = builder.irVararg(
+                            pluginContext.irBuiltIns.anyNType,
+                            values.map { value -> abiValue(builder, value) },
+                        )
+                    },
+                    nameHint = "hr",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irCall(hResultRequireSuccess).apply {
+                    arguments[0] = builder.irCall(hResultConstructor).apply {
+                        arguments[0] = builder.irGet(hResultValue)
+                    }
+                    arguments[1] = builder.irString("WinRT call")
+                }
+                +builder.irUnit()
+            }
+        }
 
         private fun lowerDescriptorCallUnit(
             call: IrCall,
@@ -759,18 +858,18 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "getStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "getArray" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setString" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setBoolean" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setInt32" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setUInt32" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setUInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnit",
+    "setString",
+    "setBoolean",
+    "setInt32",
+    "setUInt32",
+    "setInt64",
+    "setUInt64",
+    "setFloat",
+    "setDouble",
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =
