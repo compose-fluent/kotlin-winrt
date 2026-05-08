@@ -150,22 +150,6 @@ object WinRtInstanceProjectionInterop {
         }
     }
 
-    fun callUnitWithStringAndFloat(
-        reference: ComObjectReference,
-        slot: Int,
-        value0: String,
-        value1: Float,
-    ) {
-        HString.createReference(value0).use { value0Abi ->
-            val hr = ComVtableInvoker.invokeGenericArgs(
-                instance = reference.pointer,
-                slot = slot,
-                args = arrayOf(value0Abi.handle, value1),
-            )
-            HResult(hr).requireSuccess()
-        }
-    }
-
     fun callUnitWithStringAndProjectedObject(
         reference: ComObjectReference,
         slot: Int,

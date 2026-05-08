@@ -18,13 +18,27 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.declarations.IrProperty
+import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
+import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
+import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
+import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
+import org.jetbrains.kotlin.ir.builders.irBlock
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.builders.irCall
+import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
+import org.jetbrains.kotlin.ir.builders.irString
+import org.jetbrains.kotlin.ir.builders.irTemporary
+import org.jetbrains.kotlin.ir.builders.irTry
+import org.jetbrains.kotlin.ir.builders.irUnit
+import org.jetbrains.kotlin.ir.builders.irVararg
+import org.jetbrains.kotlin.ir.declarations.IrConstructor
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
@@ -160,6 +174,7 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
     ) {
         val intrinsicClassId = ClassId.topLevel(WINRT_PROJECTION_INTRINSIC_FQ_NAME)
+        val directLowerings = WinRtProjectionIntrinsicIrLowerings.create(pluginContext)
         val helperReceivers = WINRT_PROJECTION_INTRINSIC_HELPERS.values
             .distinct()
             .mapNotNull { helperFqName ->
@@ -192,6 +207,8 @@ class KotlinWinRtIrGenerationExtension(
                         .firstOrNull { (_, symbol) -> symbol == call.symbol }
                         ?.key
                         ?: return call
+                    directLowerings?.lower(intrinsicName, call, pluginContext, builderScope = currentScope?.scope?.scopeOwnerSymbol)
+                        ?.let { return it }
                     val helperSymbol = helperFunctions[intrinsicName] ?: return call
                     val helperReceiver = helperReceivers[WINRT_PROJECTION_INTRINSIC_HELPERS[intrinsicName]] ?: return call
                     val scope = currentScope?.scope?.scopeOwnerSymbol ?: return call
@@ -206,6 +223,136 @@ class KotlinWinRtIrGenerationExtension(
                 }
             },
         )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private class WinRtProjectionIntrinsicIrLowerings private constructor(
+        private val hStringCompanion: IrClassSymbol,
+        private val hStringCreateReference: IrSimpleFunctionSymbol,
+        private val referencedHStringHandleGetter: IrSimpleFunctionSymbol,
+        private val referencedHStringClose: IrSimpleFunctionSymbol,
+        private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol,
+        private val comVtableInvoker: IrClassSymbol,
+        private val invokeGenericArgs: IrSimpleFunctionSymbol,
+        private val hResultConstructor: IrConstructorSymbol,
+        private val hResultRequireSuccess: IrSimpleFunctionSymbol,
+    ) {
+        fun lower(
+            intrinsicName: String,
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? =
+            when (intrinsicName) {
+                "callUnitWithStringAndFloat" ->
+                    lowerCallUnitWithStringAndFloat(call, pluginContext, builderScope)
+                else -> null
+            }
+
+        private fun lowerCallUnitWithStringAndFloat(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val value0 = call.arguments.getOrNull(3) ?: return null
+            val value1 = call.arguments.getOrNull(4) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val value0Abi = irTemporary(
+                    value = builder.irCall(hStringCreateReference).apply {
+                        arguments[0] = builder.irGetObject(hStringCompanion)
+                        arguments[1] = value0
+                    },
+                    nameHint = "value0Abi",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = pluginContext.irBuiltIns.unitType,
+                    tryResult = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        val hResultValue = irTemporary(
+                            value = builder.irCall(invokeGenericArgs).apply {
+                                arguments[0] = builder.irGetObject(comVtableInvoker)
+                                arguments[1] = builder.irCall(comObjectReferencePointerGetter).apply {
+                                    arguments[0] = reference
+                                }
+                                arguments[2] = slot
+                                arguments[3] = builder.irVararg(
+                                    pluginContext.irBuiltIns.anyNType,
+                                    listOf(
+                                        builder.irCall(referencedHStringHandleGetter).apply {
+                                            arguments[0] = builder.irGet(value0Abi)
+                                        },
+                                        value1,
+                                    ),
+                                )
+                            },
+                            nameHint = "hr",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +builder.irCall(hResultRequireSuccess).apply {
+                            arguments[0] = builder.irCall(hResultConstructor).apply {
+                                arguments[0] = builder.irGet(hResultValue)
+                            }
+                            arguments[1] = builder.irString("WinRT call")
+                        }
+                        +builder.irUnit()
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irCall(referencedHStringClose).apply {
+                        arguments[0] = builder.irGet(value0Abi)
+                    },
+                )
+            }
+        }
+
+        companion object {
+            fun create(pluginContext: IrPluginContext): WinRtProjectionIntrinsicIrLowerings? {
+                val hString = pluginContext.referenceClass(WINRT_HSTRING_CLASS_ID)
+                    ?: return null
+                val hStringCompanion = hString.owner.declarations
+                    .filterIsInstance<IrClass>()
+                    .singleOrNull { it.name.asString() == "Companion" }
+                    ?.symbol
+                    ?: return null
+                val hStringCreateReference = hStringCompanion.functionNamed("createReference") ?: return null
+                val referencedHString = pluginContext.referenceClass(WINRT_REFERENCED_HSTRING_CLASS_ID)
+                    ?: return null
+                val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
+                val referencedHStringClose = referencedHString.functionNamed("close") ?: return null
+                val comObjectReference = pluginContext.referenceClass(WINRT_COM_OBJECT_REFERENCE_CLASS_ID)
+                    ?: return null
+                val comObjectReferencePointerGetter = comObjectReference.propertyGetter("pointer") ?: return null
+                val comVtableInvoker = pluginContext.referenceClass(WINRT_COM_VTABLE_INVOKER_CLASS_ID)
+                    ?: return null
+                val invokeGenericArgs = comVtableInvoker.functionNamed("invokeGenericArgs") ?: return null
+                val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
+                    ?: return null
+                val hResultConstructor = hResult.owner.declarations
+                    .filterIsInstance<IrConstructor>()
+                    .singleOrNull()
+                    ?.symbol
+                    ?: return null
+                val hResultRequireSuccess = hResult.functionNamed("requireSuccess") ?: return null
+                return WinRtProjectionIntrinsicIrLowerings(
+                    hStringCompanion = hStringCompanion,
+                    hStringCreateReference = hStringCreateReference,
+                    referencedHStringHandleGetter = referencedHStringHandleGetter,
+                    referencedHStringClose = referencedHStringClose,
+                    comObjectReferencePointerGetter = comObjectReferencePointerGetter,
+                    comVtableInvoker = comVtableInvoker,
+                    invokeGenericArgs = invokeGenericArgs,
+                    hResultConstructor = hResultConstructor,
+                    hResultRequireSuccess = hResultRequireSuccess,
+                )
+            }
+
+        }
     }
 
     private fun readCompilerSupportManifest(): List<KotlinWinRtCompilerSupportManifestEntry> {
@@ -433,11 +580,44 @@ class KotlinWinRtIrGenerationExtension(
 private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic")
 
+@OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.functionNamed(name: String): IrSimpleFunctionSymbol? =
+    owner.declarations
+        .filterIsInstance<IrSimpleFunction>()
+        .singleOrNull { it.name.asString() == name }
+        ?.symbol
+
+@OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.propertyGetter(name: String): IrSimpleFunctionSymbol? =
+    owner.declarations
+        .filterIsInstance<IrProperty>()
+        .singleOrNull { it.name.asString() == name }
+        ?.getter
+        ?.symbol
+
+private val WINRT_RUNTIME_PACKAGE_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime")
+
 private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
 
 private val WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop")
+
+private val WINRT_HSTRING_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HString"))
+
+private val WINRT_REFERENCED_HSTRING_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ReferencedHString"))
+
+private val WINRT_COM_OBJECT_REFERENCE_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ComObjectReference"))
+
+private val WINRT_COM_VTABLE_INVOKER_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ComVtableInvoker"))
+
+private val WINRT_HRESULT_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HResult"))
 
 private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "staticGetArray" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
@@ -465,12 +645,16 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "setFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithFloatAndString" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "callUnitWithStringAndFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithFloatStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
-private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = WINRT_PROJECTION_INTRINSIC_HELPERS.keys.toList()
+private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
+    "callUnitWithStringAndFloat",
+)
+
+private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =
+    WINRT_PROJECTION_INTRINSIC_HELPERS.keys + WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS
 
 internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {
     val indexPath = metadataIndexPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return null
