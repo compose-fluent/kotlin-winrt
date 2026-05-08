@@ -166,6 +166,25 @@ object WinRtInstanceProjectionInterop {
         }
     }
 
+    fun callUnitWithStringAndProjectedObject(
+        reference: ComObjectReference,
+        slot: Int,
+        value0: String,
+        value1: IWinRTObject,
+    ) {
+        HString.createReference(value0).use { value0Abi ->
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(
+                    value0Abi.handle,
+                    PlatformAbi.fromRawComPtr(value1.nativeObject.pointer),
+                ),
+            )
+            HResult(hr).requireSuccess()
+        }
+    }
+
     fun callUnitWithFloatStringAndProjectedObject(
         reference: ComObjectReference,
         slot: Int,
@@ -381,6 +400,14 @@ object WinRtProjectionIntrinsic {
         value1: Float,
     ): Unit =
         intrinsicNotLowered("callUnitWithStringAndFloat", reference, slot, value0, value1)
+
+    fun callUnitWithStringAndProjectedObject(
+        reference: ComObjectReference,
+        slot: Int,
+        value0: String,
+        value1: IWinRTObject,
+    ): Unit =
+        intrinsicNotLowered("callUnitWithStringAndProjectedObject", reference, slot, value0, value1)
 
     fun callUnitWithFloatStringAndProjectedObject(
         reference: ComObjectReference,

@@ -466,6 +466,7 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithFloatAndString" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithStringAndFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "callUnitWithStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithFloatStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 

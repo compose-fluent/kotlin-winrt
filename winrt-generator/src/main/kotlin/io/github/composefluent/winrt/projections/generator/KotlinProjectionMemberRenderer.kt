@@ -352,6 +352,13 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
                 parameterBindings = binding.parameterBindings,
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
+            ?: renderInstanceStringProjectedObjectUnitIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceFloatStringProjectedObjectUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
@@ -651,6 +658,47 @@ internal fun KotlinProjectionRenderer.renderInstanceStringFloatUnitIntrinsicInvo
         .add("%L,\n", slotExpression)
         .add("%L,\n", first.name)
         .add("%L,\n", second.name)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceStringProjectedObjectUnitIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        parameterBindings.size != 2 ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val first = parameterBindings[0]
+    val second = parameterBindings[1]
+    if (
+        first.typeBinding.kind != KotlinProjectionAbiValueKind.String ||
+        first.typeBinding.typeName.endsWith("?") ||
+        second.typeBinding.kind !in setOf(
+            KotlinProjectionAbiValueKind.ProjectedInterface,
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        ) ||
+        second.typeBinding.typeName.endsWith("?") ||
+        second.typeBinding.typeArguments.isNotEmpty()
+    ) {
+        return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.callUnitWithStringAndProjectedObject(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%L,\n", first.name)
+        .add("%L as %T,\n", second.name, IWINRT_OBJECT_CLASS_NAME)
         .unindent()
         .add(")\n")
         .build()

@@ -3275,6 +3275,55 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_string_projected_object_unit_interface_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICompositionAnimation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555560"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetReferenceParameter",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("key", "String"),
+                                        WinRtParameterDefinition("compositionObject", "Sample.Foundation.CompositionObject"),
+                                    ),
+                                    methodRowId = 16,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "CompositionObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ICompositionAnimation.kt")
+            .contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithStringAndProjectedObject("))
+        assertTrue(interfaceContents, interfaceContents.contains("key,"))
+        assertTrue(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
+        assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(key)"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
+        assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.fromRawComPtr((compositionObject as IWinRTObject).nativeObject.pointer)"))
+    }
+
+    @Test
     fun generator_keeps_unsupported_interface_native_projection_on_kotlin_fallback() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
