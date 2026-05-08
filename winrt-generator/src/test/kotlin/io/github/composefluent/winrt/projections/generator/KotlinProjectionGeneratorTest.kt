@@ -3193,7 +3193,22 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                     methodRowId = 13,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "InsertExpressionKeyFrame",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("normalizedProgressKey", "Float"),
+                                        WinRtParameterDefinition("value", "String"),
+                                        WinRtParameterDefinition("easingFunction", "Sample.Foundation.CompositionEasingFunction"),
+                                    ),
+                                    methodRowId = 14,
+                                ),
                             ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "CompositionEasingFunction",
+                            kind = WinRtTypeKind.RuntimeClass,
                         ),
                     ),
                 ),
@@ -3208,8 +3223,10 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithFloatAndString("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithFloatStringAndProjectedObject("))
         assertTrue(interfaceContents, interfaceContents.contains("normalizedProgressKey,"))
         assertTrue(interfaceContents, interfaceContents.contains("value,"))
+        assertTrue(interfaceContents, interfaceContents.contains("easingFunction as IWinRTObject,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(value)"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
