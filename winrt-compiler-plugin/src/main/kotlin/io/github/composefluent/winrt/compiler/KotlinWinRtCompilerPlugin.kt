@@ -252,12 +252,22 @@ class KotlinWinRtIrGenerationExtension(
                 "callUnitWithStringAndFloat" ->
                     lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 3)
                 "callUnitWithStringAndProjectedObject" ->
-                    lowerCallUnitWithTwoArgumentsOneString(
+                    lowerCallUnitWithArgumentsOneString(
                         call = call,
                         pluginContext = pluginContext,
                         builderScope = builderScope,
+                        argumentCount = 2,
                         stringArgumentIndex = 3,
                         projectedObjectArgumentIndex = 4,
+                    )
+                "callUnitWithFloatStringAndProjectedObject" ->
+                    lowerCallUnitWithArgumentsOneString(
+                        call = call,
+                        pluginContext = pluginContext,
+                        builderScope = builderScope,
+                        argumentCount = 3,
+                        stringArgumentIndex = 4,
+                        projectedObjectArgumentIndex = 5,
                     )
                 else -> null
             }
@@ -267,18 +277,30 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             stringArgumentIndex: Int,
+        ): IrExpression? =
+            lowerCallUnitWithArgumentsOneString(
+                call = call,
+                pluginContext = pluginContext,
+                builderScope = builderScope,
+                argumentCount = 2,
+                stringArgumentIndex = stringArgumentIndex,
+            )
+
+        private fun lowerCallUnitWithArgumentsOneString(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            argumentCount: Int,
+            stringArgumentIndex: Int,
             projectedObjectArgumentIndex: Int? = null,
         ): IrExpression? {
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
-            val value0 = call.arguments.getOrNull(3) ?: return null
-            val value1 = call.arguments.getOrNull(4) ?: return null
-            val stringValue = when (stringArgumentIndex) {
-                3 -> value0
-                4 -> value1
-                else -> return null
+            val values = (0 until argumentCount).map { offset ->
+                call.arguments.getOrNull(3 + offset) ?: return null
             }
+            val stringValue = values.getOrNull(stringArgumentIndex - 3) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
 
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
@@ -306,8 +328,7 @@ class KotlinWinRtIrGenerationExtension(
                                     abiArguments(
                                         builder = builder,
                                         stringAbi = stringAbi,
-                                        value0 = value0,
-                                        value1 = value1,
+                                        values = values,
                                         stringArgumentIndex = stringArgumentIndex,
                                         projectedObjectArgumentIndex = projectedObjectArgumentIndex,
                                     ),
@@ -336,8 +357,7 @@ class KotlinWinRtIrGenerationExtension(
         private fun abiArguments(
             builder: DeclarationIrBuilder,
             stringAbi: org.jetbrains.kotlin.ir.declarations.IrVariable,
-            value0: IrExpression,
-            value1: IrExpression,
+            values: List<IrExpression>,
             stringArgumentIndex: Int,
             projectedObjectArgumentIndex: Int?,
         ): List<IrExpression> {
@@ -348,18 +368,15 @@ class KotlinWinRtIrGenerationExtension(
                 if (index == stringArgumentIndex) {
                     return stringHandle
                 }
-                val value = when (index) {
-                    3 -> value0
-                    4 -> value1
-                    else -> error("Unsupported WinRT projection intrinsic argument index $index.")
-                }
+                val value = values.getOrNull(index - 3)
+                    ?: error("Unsupported WinRT projection intrinsic argument index $index.")
                 return if (index == projectedObjectArgumentIndex) {
                     projectedObjectAbi(builder, value)
                 } else {
                     value
                 }
             }
-            return listOf(argumentAt(3), argumentAt(4))
+            return values.indices.map { offset -> argumentAt(3 + offset) }
         }
 
         private fun projectedObjectAbi(
@@ -723,13 +740,13 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "setUInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "callUnitWithFloatStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnitWithFloatAndString",
     "callUnitWithStringAndFloat",
     "callUnitWithStringAndProjectedObject",
+    "callUnitWithFloatStringAndProjectedObject",
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =
