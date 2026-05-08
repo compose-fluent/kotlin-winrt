@@ -6,11 +6,15 @@ private const val WINRT_PROJECTION_REGISTRAR_CLASS: String =
 private const val WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry"
 
+private const val WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS: String =
+    "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar"
+
 internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
     val classLoader = Thread.currentThread().contextClassLoader
         ?: WinRtTypeRegistry::class.java.classLoader
         ?: return
     registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
+    registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)
     if (registerGeneratedProjectionRegistrar(classLoader)) {
         return
     }

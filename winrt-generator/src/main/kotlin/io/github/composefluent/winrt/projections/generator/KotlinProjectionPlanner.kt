@@ -817,7 +817,11 @@ class KotlinProjectionPlanner(
         return buildMutableCollectionBinding(
             collectionKind = collectionKind,
             ownerInterfaceQualifiedName = ownerInterface,
-            ownerCachePropertyName = if (mappedType.isBindableCollectionMapping()) "_inner" else ownerCachePropertyName(ownerInterface, defaultInterfaceName),
+            ownerCachePropertyName = if (mappedType.isBindableCollectionMapping()) {
+                "_inner"
+            } else {
+                ownerCachePropertyName(interfaceName, defaultInterfaceName)
+            },
             slotInterfaceQualifiedName = resolvedInterfaceName,
             delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
             typeArguments = genericArguments,
@@ -893,7 +897,11 @@ class KotlinProjectionPlanner(
         return buildReadOnlyCollectionBinding(
             collectionKind = collectionKind,
             ownerInterfaceQualifiedName = ownerInterface,
-            ownerCachePropertyName = if (mappedType.isBindableCollectionMapping()) "_inner" else ownerCachePropertyName(ownerInterface, defaultInterfaceName),
+            ownerCachePropertyName = if (mappedType.isBindableCollectionMapping()) {
+                "_inner"
+            } else {
+                ownerCachePropertyName(interfaceName, defaultInterfaceName)
+            },
             slotInterfaceQualifiedName = resolvedInterfaceName,
             delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
             typeArguments = genericArguments,

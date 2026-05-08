@@ -1129,7 +1129,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     code.unindent()
     code.add("}\n")
     code.add("val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-    code.add("return __resultRef.use { it.asInspectable() }\n")
+    code.add("return __resultRef.use { %T.initializeComposableReference(it.asInspectable()) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
     if (finallyStatements.isNotEmpty()) {
         code.unindent()
         code.add("} finally {\n")

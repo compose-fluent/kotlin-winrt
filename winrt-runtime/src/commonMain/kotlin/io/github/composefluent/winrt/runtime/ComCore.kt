@@ -11,6 +11,9 @@ internal class ComIdentity internal constructor(
     val hasReferenceTracker: Boolean
         get() = support.hasReferenceTracker
 
+    val isAggregated: Boolean
+        get() = support.isAggregated
+
     internal val referenceTrackerHandle: RawComPtr
         get() = support.referenceTrackerHandle
 
@@ -40,6 +43,9 @@ internal class ComPtr private constructor(
 
     val hasReferenceTracker: Boolean
         get() = identity.hasReferenceTracker
+
+    val isAggregated: Boolean
+        get() = identity.isAggregated
 
     internal val referenceTrackerHandle: RawComPtr
         get() = identity.referenceTrackerHandle
@@ -88,6 +94,7 @@ internal class ComPtr private constructor(
         queriedInterfaceId: Guid,
         trackerHandle: RawComPtr,
         queriedPreventReleaseOnDispose: Boolean,
+        queriedIsAggregated: Boolean,
     ): ComPtr =
         create(
             raw = queriedPointer,
@@ -99,6 +106,7 @@ internal class ComPtr private constructor(
                     ComOwnershipMode.Owned
                 },
             referenceTrackerPointer = trackerHandle,
+            isAggregated = queriedIsAggregated,
         )
 
     companion object {
@@ -107,11 +115,17 @@ internal class ComPtr private constructor(
             interfaceId: Guid,
             ownershipMode: ComOwnershipMode = ComOwnershipMode.Owned,
             referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr,
+            isAggregated: Boolean = false,
         ): ComPtr {
             require(!PlatformAbi.isNull(raw)) {
                 "COM object reference cannot wrap a null pointer."
             }
-            val support = RawComObjectReferenceSupport(raw, interfaceId, ownershipMode == ComOwnershipMode.Borrowed)
+            val support = RawComObjectReferenceSupport(
+                raw,
+                interfaceId,
+                ownershipMode == ComOwnershipMode.Borrowed,
+                isAggregated = isAggregated,
+            )
             if (!PlatformAbi.isNull(referenceTrackerPointer)) {
                 support.attachReferenceTracker(
                     trackerPointer = referenceTrackerPointer,

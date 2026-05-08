@@ -25,12 +25,14 @@ object WinRtWindowsAppSdkBootstrap {
 
     class Scope internal constructor(
         val bootstrapDll: Path,
-        private val activationContext: WinRtWindowsActivationContext.Scope?,
+        private val activationContexts: List<WinRtWindowsActivationContext.Scope>,
         private val lookup: SymbolLookup?,
     ) : AutoCloseable {
         override fun close() {
             lookup?.let(::shutdown)
-            activationContext?.close()
+            activationContexts.asReversed().forEach { context ->
+                context.close()
+            }
         }
     }
 
@@ -48,9 +50,14 @@ object WinRtWindowsAppSdkBootstrap {
         val bootstrapDll = bootstrapDllCandidates(root)
             .firstOrNull { it.isRegularFile() }
             ?: return null
+        val processCompatibilityContext = WinRtWindowsActivationContext.activateProcessCompatibility(root)
         val activationContext = WinRtWindowsActivationContext.activate(root)
         if (activationContext != null) {
-            return Scope(bootstrapDll, activationContext, lookup = null)
+            return Scope(
+                bootstrapDll = bootstrapDll,
+                activationContexts = listOfNotNull(processCompatibilityContext, activationContext),
+                lookup = null,
+            )
         }
         val lookup = SymbolLookup.libraryLookup(bootstrapDll, arena)
         val versionInfo = discoverVersionInfo(root) ?: BootstrapVersionInfo(
@@ -83,7 +90,11 @@ object WinRtWindowsAppSdkBootstrap {
                 ) as Int,
             ).requireSuccess("MddBootstrapInitialize2")
         }
-        return Scope(bootstrapDll, activationContext, lookup)
+        return Scope(
+            bootstrapDll = bootstrapDll,
+            activationContexts = listOfNotNull(processCompatibilityContext),
+            lookup = lookup,
+        )
     }
 
     fun discoverRuntimeAssetsRoot(): Path? {

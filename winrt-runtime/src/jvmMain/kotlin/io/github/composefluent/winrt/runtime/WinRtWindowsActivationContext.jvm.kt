@@ -69,7 +69,20 @@ internal object WinRtWindowsActivationContext {
         val manifestPath = root.resolve("WindowsAppSDK-SelfContained.manifest")
         Files.writeString(manifestPath, buildManifest(fragments, frameworkFileNames))
         setEnvironmentVariable(envVarName, root.toAbsolutePath().toString().let { if (it.endsWith("\\") || it.endsWith("/")) it else "$it\\" })
-        return Arena.ofConfined().use { arena ->
+        return activateManifest(manifestPath)
+    }
+
+    fun activateProcessCompatibility(root: Path): Scope? {
+        if (!PlatformRuntime.isWindows || !root.isDirectory()) {
+            return null
+        }
+        val manifestPath = root.resolve("kotlin-winrt-process.manifest")
+        Files.writeString(manifestPath, buildProcessCompatibilityManifest())
+        return activateManifest(manifestPath)
+    }
+
+    private fun activateManifest(manifestPath: Path): Scope =
+        Arena.ofConfined().use { arena ->
             val manifestSegment = allocateWideString(arena, manifestPath.toAbsolutePath().toString())
             val actCtx = arena.allocate(actCtxLayout)
             actCtx.set(ValueLayout.JAVA_INT, 0L, actCtxLayout.byteSize().toInt())
@@ -98,7 +111,6 @@ internal object WinRtWindowsActivationContext {
             }
             Scope(handle, cookieOut.get(ValueLayout.ADDRESS, 0L), manifestPath)
         }
-    }
 
     private fun deactivate(scope: Scope) {
         runCatching {
@@ -146,10 +158,28 @@ internal object WinRtWindowsActivationContext {
             appendLine("    xmlns:winrtv1='urn:schemas-microsoft-com:winrt.v1'")
             appendLine("    xmlns='urn:schemas-microsoft-com:asm.v1'>")
             appendLine("    <assemblyIdentity type='win32' name='io.github.composefluent.winrt.windowsappsdk' version='1.0.0.0' processorArchitecture='*'/>")
+            appendProcessCompatibility()
             entryByFileName.values.forEach(::append)
             remainingFileNames.values.forEach { fileName -> append(manifestFileEntry(fileName, "")) }
             appendLine("</assembly>")
         }
+    }
+
+    private fun buildProcessCompatibilityManifest(): String =
+        buildString {
+            appendLine("<?xml version='1.0' encoding='utf-8' standalone='yes'?>")
+            appendLine("<assembly manifestVersion='1.0' xmlns='urn:schemas-microsoft-com:asm.v1'>")
+            appendLine("    <assemblyIdentity type='win32' name='io.github.composefluent.winrt.process' version='1.0.0.0' processorArchitecture='*'/>")
+            appendProcessCompatibility()
+            appendLine("</assembly>")
+        }
+
+    private fun StringBuilder.appendProcessCompatibility() {
+        appendLine("    <compatibility xmlns='urn:schemas-microsoft-com:compatibility.v1'>")
+        appendLine("        <application>")
+        appendLine("            <maxversiontested Id='10.0.18362.0'/>")
+        appendLine("        </application>")
+        appendLine("    </compatibility>")
     }
 
     private fun manifestFileEntry(path: String, body: String): String =

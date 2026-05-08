@@ -19,6 +19,8 @@ import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
 object KotlinWinRtAuthoringTypeDetailsRenderer {
+    private val authoringTypeDetailsRegistrarPackage = "io.github.composefluent.winrt.projections.support"
+    private val authoringTypeDetailsRegistrarName = "WinRTAuthoringTypeDetailsRegistrar"
     private val comAbiValueKindType = ClassName("io.github.composefluent.winrt.runtime", "ComAbiValueKind")
     private val comMethodSignatureType = ClassName("io.github.composefluent.winrt.runtime", "ComMethodSignature")
     private val guidType = ClassName("io.github.composefluent.winrt.runtime", "Guid")
@@ -43,15 +45,19 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val typesByName = metadataModel.namespaces
             .flatMap { namespace -> namespace.types }
             .associateBy { type -> type.qualifiedName }
-        candidates.forEach { candidate ->
+        val renderedCandidates = candidates.mapNotNull { candidate ->
             val interfaces = candidate.winRtInterfaceNames.mapNotNull(typesByName::get)
                 .filter { type -> type.kind == WinRtTypeKind.Interface && type.iid != null }
             if (interfaces.isEmpty()) {
-                return@forEach
+                return@mapNotNull null
             }
             val packageDirectory = outputDirectory.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
             render(candidate, interfaces).writeTo(outputDirectory)
+            candidate
+        }
+        if (renderedCandidates.isNotEmpty()) {
+            renderRegistrar(renderedCandidates).writeTo(outputDirectory)
         }
     }
 
@@ -108,6 +114,28 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     .add(")\n")
                     .build(),
             )
+            .build()
+    }
+
+    private fun renderRegistrar(candidates: List<KotlinWinRtAuthoredTypeCandidate>): FileSpec =
+        FileSpec.builder(authoringTypeDetailsRegistrarPackage, authoringTypeDetailsRegistrarName)
+            .addType(
+                TypeSpec.objectBuilder(authoringTypeDetailsRegistrarName)
+                    .addModifiers(KModifier.INTERNAL)
+                    .addFunction(renderRegistrarRegister(candidates))
+                    .build(),
+            )
+            .build()
+
+    private fun renderRegistrarRegister(candidates: List<KotlinWinRtAuthoredTypeCandidate>): FunSpec {
+        val code = CodeBlock.builder()
+        candidates
+            .sortedBy { candidate -> candidate.sourceTypeName }
+            .forEach { candidate ->
+                code.addStatement("%T.register()", ClassName(candidate.packageName, detailsObjectName(candidate)))
+            }
+        return FunSpec.builder("register")
+            .addCode(code.build())
             .build()
     }
 

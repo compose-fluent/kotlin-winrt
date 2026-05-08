@@ -1,9 +1,12 @@
 package io.github.composefluent.winrt.samples
 
 import io.github.composefluent.winrt.runtime.RuntimeScope
+import io.github.composefluent.winrt.runtime.WinUiXamlMetadataProvider
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.WinRtWinUiResourceManagerBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
+import microsoft.ui.xaml.ResourceDictionary
 import microsoft.ui.xaml.Thickness
 import microsoft.ui.xaml.UIElement
 import microsoft.ui.xaml.Window
@@ -30,11 +33,12 @@ object WinUiControlsSample {
     fun start() {
         WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
             println("winui-controls: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
+            if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipRuntimeScope")) {
+                startApplication()
+                return
+            }
             RuntimeScope.initializeSingleThreaded().use {
-                Application.start {
-                    activeApplication = WinUiControlsApp()
-                    println("winui-controls: application composed")
-                }
+                startApplication()
             }
         }
     }
@@ -43,10 +47,22 @@ object WinUiControlsSample {
         RuntimeScope.initializeSingleThreaded().use {
             WinUiControlsApp().launchWithResources()
         }
+
+    private fun startApplication() {
+        Application.start {
+            activeApplication = WinUiControlsApp().also { app ->
+                if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWinUiResourceManager")) {
+                    app.ensureResourceManagerRegistered()
+                }
+            }
+            println("winui-controls: application composed")
+        }
+    }
 }
 
 class WinUiControlsApp : Application() {
     private var myWindow: Window? = null
+    private var resourceManagerRegistration: WinRtWinUiResourceManagerBootstrap.Registration? = null
 
     override fun onLaunched(args: LaunchActivatedEventArgs) {
         println("winui-controls: onLaunched")
@@ -54,8 +70,17 @@ class WinUiControlsApp : Application() {
         println("winui-controls: window activated")
     }
 
+    fun ensureResourceManagerRegistered() {
+        if (resourceManagerRegistration != null) {
+            return
+        }
+        resourceManagerRegistration = WinRtWinUiResourceManagerBootstrap.registerForApplication(this)
+    }
+
     fun launchWithResources(): WinUiControlsSampleResult {
-        installXamlResources()
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipXamlResources")) {
+            installXamlResources()
+        }
         return launchCore()
     }
 
@@ -63,12 +88,20 @@ class WinUiControlsApp : Application() {
         println("winui-controls: launchCore")
         val window = Window()
         window.title = "Kotlin WinRT WinUI Controls"
-        window.systemBackdrop = MicaBackdrop()
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipMica")) {
+            window.systemBackdrop = MicaBackdrop()
+        }
         println("winui-controls: creating controls surface")
-        window.content = createControlsSurface()
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.noWinUiContent")) {
+            window.content = createControlsSurface()
+        }
         println("winui-controls: controls surface assigned")
-        window.activate()
         myWindow = window
+        window.activate()
+        println("winui-controls: window activated native")
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+            Application.current.exit()
+        }
 
         return WinUiControlsSampleResult(
             xamlResourcesInstalled = true,
@@ -78,45 +111,92 @@ class WinUiControlsApp : Application() {
     }
 
     private fun installXamlResources() {
-        Application.current.resources.mergedDictionaries.add(XamlControlsResources())
+        println("winui-controls: install resources current")
+        val application = Application.current
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWinUiResourceManager")) {
+            ensureResourceManagerRegistered()
+        }
+        println("winui-controls: resource manager registered=${resourceManagerRegistration != null}")
+        println("winui-controls: initialize xaml metadata provider")
+        val metadataProvider = WinUiXamlMetadataProvider.tryCreate()
+        println("winui-controls: xaml metadata provider=${metadataProvider?.pointer ?: "not-created"}")
+        metadataProvider?.close()
+        println("winui-controls: install resources dictionary")
+        val resources = application.resources
+        println("winui-controls: install resources merged dictionaries")
+        val mergedDictionaries = resources.mergedDictionaries
+        println("winui-controls: install resources create controls resources")
+        val controlsResources = loadXamlControlsResources()
+        println("winui-controls: install resources add")
+        mergedDictionaries.add(controlsResources)
+        println("winui-controls: install resources done")
+    }
+
+    private fun loadXamlControlsResources(): ResourceDictionary {
+        return XamlControlsResources()
     }
 
     private fun createControlsSurface(): UIElement {
+        val skipObjectContent = java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipObjectContent")
+        println("winui-controls: create StackPanel")
         val root = StackPanel()
+        println("winui-controls: set StackPanel padding")
         root.padding = Thickness(32.0, 32.0, 32.0, 32.0)
+        println("winui-controls: set StackPanel spacing")
         root.spacing = 16.0
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.minimalWinUiSurface")) {
+            return root
+        }
 
+        println("winui-controls: add label")
         root.children.add(label("WinUI 3 controls"))
+        println("winui-controls: add textbox")
         root.children.add(TextBox().apply {
             text = "Kotlin WinRT"
             width = 320.0
         })
+        println("winui-controls: add toggle")
         root.children.add(ToggleSwitch().apply {
             isOn = true
         })
-        root.children.add(Slider().apply {
-            minimum = 0.0
-            maximum = 100.0
-            value = 42.0
-            width = 320.0
-        })
+        println("winui-controls: add slider")
+        val slider = Slider()
+        println("winui-controls: slider minimum")
+        slider.minimum = 0.0
+        println("winui-controls: slider maximum")
+        slider.maximum = 100.0
+        println("winui-controls: slider value")
+        slider.value = 42.0
+        println("winui-controls: slider width")
+        slider.width = 320.0
+        println("winui-controls: slider add child")
+        root.children.add(slider)
+        println("winui-controls: add combobox")
         root.children.add(ComboBox().apply {
             width = 320.0
-            items.add("Compact")
-            items.add("Comfortable")
-            items.add("Expanded")
+            if (!skipObjectContent) {
+                items.add("Compact")
+                items.add("Comfortable")
+                items.add("Expanded")
+            }
         })
+        println("winui-controls: add listview")
         root.children.add(ListView().apply {
             width = 320.0
             height = 140.0
-            items.add("TextBox")
-            items.add("ToggleSwitch")
-            items.add("Slider")
-            items.add("ComboBox")
-            items.add("ListView")
+            if (!skipObjectContent) {
+                items.add("TextBox")
+                items.add("ToggleSwitch")
+                items.add("Slider")
+                items.add("ComboBox")
+                items.add("ListView")
+            }
         })
+        println("winui-controls: add button")
         root.children.add(Button().apply {
-            content = "Apply"
+            if (!skipObjectContent) {
+                content = "Apply"
+            }
         })
 
         return root

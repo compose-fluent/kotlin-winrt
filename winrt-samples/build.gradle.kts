@@ -79,6 +79,7 @@ application {
 }
 
 tasks.named<JavaExec>("run") {
+    dependsOn(tasks.named("buildWinRtAuthoringHost"))
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     systemProperty(
         "kotlin.winrt.samples.runNativeSmoke",
@@ -95,6 +96,38 @@ tasks.named<JavaExec>("run") {
     systemProperty(
         "kotlin.winrt.samples.autoNavigateWinUi",
         providers.systemProperty("kotlin.winrt.samples.autoNavigateWinUi").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.autoExitWinUi",
+        providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.minimalWinUiSurface",
+        providers.systemProperty("kotlin.winrt.samples.minimalWinUiSurface").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipObjectContent",
+        providers.systemProperty("kotlin.winrt.samples.skipObjectContent").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipMica",
+        providers.systemProperty("kotlin.winrt.samples.skipMica").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.noWinUiContent",
+        providers.systemProperty("kotlin.winrt.samples.noWinUiContent").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipXamlResources",
+        providers.systemProperty("kotlin.winrt.samples.skipXamlResources").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipWinUiResourceManager",
+        providers.systemProperty("kotlin.winrt.samples.skipWinUiResourceManager").orElse("false").get(),
+    )
+    systemProperty(
+        "kotlin.winrt.samples.skipRuntimeScope",
+        providers.systemProperty("kotlin.winrt.samples.skipRuntimeScope").orElse("false").get(),
     )
     systemProperty(
         "KOTLIN_WINRT_TRACE_CCW",

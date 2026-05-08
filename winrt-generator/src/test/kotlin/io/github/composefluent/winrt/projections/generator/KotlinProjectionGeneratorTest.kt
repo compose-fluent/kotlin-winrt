@@ -2913,6 +2913,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(widgetContents.contains("fun createInstance(): IInspectableReference"))
         assertTrue(widgetContents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
+        assertTrue(widgetContents.contains("initializeComposableReference(it.asInspectable())"))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
         val widgetFactoryContents = filesByName.getValue("IWidgetFactory.kt").contents
@@ -3127,6 +3128,103 @@ class KotlinProjectionGeneratorTest {
         assertTrue(compilerInput, compilerInput.contains("Method|add|6|Int32|Int32,Int32|false"))
         assertTrue(compilerInput, compilerInput.contains("PropertyGet|getTitle|7|String||false"))
         assertTrue(compilerInput, compilerInput.contains("PropertySet|setTitle|8|Unit|String|false"))
+    }
+
+    @Test
+    fun generator_keeps_floating_point_interface_native_projection_on_ir_lowered_kotlin_fallback() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IRange",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Minimum",
+                                    typeName = "Double",
+                                    getterMethodName = "get_Minimum",
+                                    setterMethodName = "put_Minimum",
+                                    getterMethodRowId = 10,
+                                    setterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IRange.kt").contents
+        val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.getDouble"))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.setDouble"))
+        assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IRange"))
+        assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IRange"))
+    }
+
+    @Test
+    fun generator_keeps_unsupported_interface_native_projection_on_kotlin_fallback() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555566"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 11,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Owner",
+                                    typeName = "Sample.Foundation.Widget",
+                                    getterMethodName = "get_Owner",
+                                    getterMethodRowId = 10,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IWidget.kt").contents
+        val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("internal fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
+        assertTrue(interfaceContents, interfaceContents.contains("override fun reset()"))
+        assertTrue(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
+        assertTrue(interfaceContents, interfaceContents.contains("IWidget.Metadata.RESET_SLOT"))
+        assertFalse(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.invokeUnit"))
+        assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
+        assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
+        assertFalse(compilerInput, compilerInput.contains("Unsupported"))
     }
 
     @Test
@@ -5847,6 +5945,62 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_keeps_interface_proxy_custom_struct_getters_on_inline_abi_readback() {
+        val interfaceType = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            iid = Guid("11111111-2222-3333-4444-555555555572"),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Created",
+                    typeName = "Windows.Foundation.DateTime",
+                    getterMethodName = "get_Created",
+                    getterMethodRowId = 6,
+                ),
+            ),
+        )
+
+        val property = KotlinProjectionRenderer().renderInterfaceProxyProperty(
+            slotInterfaceType = interfaceType,
+            property = interfaceType.properties.single(),
+            typesByQualifiedName = mapOf(interfaceType.qualifiedName to interfaceType),
+        ).toString()
+
+        assertTrue(property, property.contains("WinRtSystemProjectionMarshalers.dateTimeFromAbi"))
+        assertFalse(property, property.contains("WinRtProjectionIntrinsic.getStruct"))
+        assertFalse(property, property.contains("Instant.Metadata"))
+    }
+
+    @Test
+    fun generator_keeps_interface_proxy_custom_object_getters_on_inline_abi_readback() {
+        val interfaceType = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget",
+            kind = WinRtTypeKind.Interface,
+            iid = Guid("11111111-2222-3333-4444-555555555573"),
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Command",
+                    typeName = "Microsoft.UI.Xaml.Input.ICommand",
+                    getterMethodName = "get_Command",
+                    getterMethodRowId = 6,
+                ),
+            ),
+        )
+
+        val property = KotlinProjectionRenderer().renderInterfaceProxyProperty(
+            slotInterfaceType = interfaceType,
+            property = interfaceType.properties.single(),
+            typesByQualifiedName = mapOf(interfaceType.qualifiedName to interfaceType),
+        ).toString()
+
+        assertTrue(property, property.contains("WinRtSystemProjectionMarshalers.objectFromAbi"))
+        assertFalse(property, property.contains("WinRtInstanceProjectionInterop.getProjectedInterface"))
+        assertFalse(property, property.contains("WinRtCommand.Metadata"))
+    }
+
+    @Test
     fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -8065,6 +8219,77 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("REQUIRED_MAPPED_HELPER_PLANS"))
         assertTrue(contents, contents.contains("Windows.Foundation.Collections.IVector<String>|IList|idic"))
         assertTrue(contents, contents.contains("removeGeneric=System.Collections.Generic.IEnumerable<String>"))
+    }
+
+    @Test
+    fun generator_uses_vector_interface_cache_for_observable_vector_runtime_collection_surface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            genericParameterCount = 1,
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IIterable<T0>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IObservableVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            genericParameterCount = 1,
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IVector<T0>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ObjectItems",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Windows.Foundation.Collections.IObservableVector<System.Object>",
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IObservableVector<System.Object>",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ObjectItems.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("private val _iVector: IUnknownReference"))
+        assertTrue(contents, contents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.pointer)"))
+        assertFalse(contents, contents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_defaultInterface.pointer)"))
     }
 
     @Test

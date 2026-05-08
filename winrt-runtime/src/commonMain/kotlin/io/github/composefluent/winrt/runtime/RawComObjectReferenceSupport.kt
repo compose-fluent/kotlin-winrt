@@ -4,6 +4,7 @@ internal class RawComObjectReferenceSupport(
     private val pointer: RawComPtr,
     val interfaceId: Guid,
     private val preventReleaseOnDispose: Boolean = false,
+    val isAggregated: Boolean = false,
 ) {
     private val state = ComObjectReferenceState()
 
@@ -50,7 +51,7 @@ internal class RawComObjectReferenceSupport(
 
     fun <T> tryQueryInterface(
         requestedInterfaceId: Guid,
-        wrapReference: (RawComPtr, Guid, RawComPtr, Boolean) -> T,
+        wrapReference: (RawComPtr, Guid, RawComPtr, Boolean, Boolean) -> T,
     ): T? {
         throwIfDisposed()
         val result = WinRtPlatformApi.queryInterfaceRaw(pointer.asNativePointer(), requestedInterfaceId)
@@ -59,17 +60,21 @@ internal class RawComObjectReferenceSupport(
             return null
         }
         WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        if (isAggregated) {
+            WinRtPlatformApi.releaseRaw(result.pointer)
+        }
         return wrapReference(
             queriedPointer,
             requestedInterfaceId,
             referenceTrackerHandle,
-            preventReleaseOnDispose,
+            preventReleaseOnDispose || isAggregated,
+            isAggregated,
         )
     }
 
     fun <T> queryInterface(
         requestedInterfaceId: Guid,
-        wrapReference: (RawComPtr, Guid, RawComPtr, Boolean) -> T,
+        wrapReference: (RawComPtr, Guid, RawComPtr, Boolean, Boolean) -> T,
     ): Result<T> =
         runCatching {
             tryQueryInterface(requestedInterfaceId, wrapReference)

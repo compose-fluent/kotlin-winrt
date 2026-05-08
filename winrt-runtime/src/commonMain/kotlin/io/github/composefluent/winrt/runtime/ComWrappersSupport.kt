@@ -261,6 +261,20 @@ object ComWrappersSupport {
         return rcw
     }
 
+    internal fun registerObjectForComInterface(
+        value: Any,
+        pointer: RawAddress,
+    ) {
+        if (PlatformAbi.isNull(pointer)) {
+            return
+        }
+        rcwCache[PlatformAbi.pointerKey(pointer)] = value
+        rcwCache[rcwCacheKey(pointer)] = value
+    }
+
+    fun initializeComposableReference(instance: IInspectableReference): IInspectableReference =
+        instance.also { it.tryInitializeReferenceTracker() }
+
     fun createCCWForObject(
         value: Any,
         interfaceId: Guid? = null,
@@ -314,22 +328,28 @@ object ComWrappersSupport {
                     ?.use { queried -> PlatformAbi.fromRawComPtr(queried.getRefPointer()) }
             },
         )
+        val isAggregation = outerInterfaceId != null
         val requestedInterface = outerInterfaceId ?: definition.defaultInterfaceId
         val outerReference = host.createReference(requestedInterface)
         return try {
             PlatformAbi.confinedScope().use { scope ->
                 val innerOut = PlatformAbi.allocatePointerSlot(scope)
                 val instanceOut = PlatformAbi.allocatePointerSlot(scope)
-                val hResult = createInstance(
-                    PlatformAbi.fromRawComPtr(outerReference.pointer),
-                    innerOut,
-                    instanceOut,
-                )
+                val baseInspectable = host.createReference(IID.IInspectable)
+                val hResult = try {
+                    createInstance(
+                        PlatformAbi.fromRawComPtr(baseInspectable.pointer),
+                        innerOut,
+                        instanceOut,
+                    )
+                } finally {
+                    baseInspectable.close()
+                }
                 HResult(hResult).requireSuccess()
                 val innerPointer = PlatformAbi.readPointer(innerOut)
                 if (!PlatformAbi.isNull(innerPointer)) {
-                    innerReference = IInspectableReference(PlatformAbi.toRawComPtr(innerPointer), IID.IInspectable)
                     host.registerExternalPointerAlias(innerPointer)
+                    registerObjectForComInterface(value, innerPointer)
                 }
                 val instancePointer = PlatformAbi.readPointer(instanceOut)
                 if (PlatformAbi.isNull(instancePointer)) {
@@ -339,16 +359,35 @@ object ComWrappersSupport {
                     )
                 }
                 host.registerExternalPointerAlias(instancePointer)
+                registerObjectForComInterface(value, instancePointer)
                 val isAggregatedReferenceTrackerObject =
                     !PlatformAbi.isNull(innerPointer) && hasReferenceTracker(innerPointer)
-                val instanceReference = IInspectableReference(
+                innerReference = if (PlatformAbi.isNull(innerPointer)) {
+                    null
+                } else {
+                    IInspectableReference(
+                        PlatformAbi.toRawComPtr(innerPointer),
+                        IID.IInspectable,
+                        preventReleaseOnDispose = isAggregatedReferenceTrackerObject,
+                        isAggregated = isAggregation,
+                    )
+                }
+                val composedReference = IInspectableReference(
                     PlatformAbi.toRawComPtr(instancePointer),
                     IID.IInspectable,
-                    preventReleaseOnDispose = isAggregatedReferenceTrackerObject,
+                    preventReleaseOnDispose = isAggregation || isAggregatedReferenceTrackerObject,
                 )
+                val projectedReference = if (isAggregation) {
+                    requireNotNull(innerReference) {
+                        "Composable aggregation requires the factory to return a non-null inner pointer."
+                    }
+                } else {
+                    composedReference
+                }
                 WinRtComposableObjectReference(
-                    instance = instanceReference,
+                    instance = projectedReference,
                     inner = innerReference,
+                    composed = composedReference.takeUnless { it === projectedReference },
                     outer = outerReference,
                     isAggregatedReferenceTrackerObject = isAggregatedReferenceTrackerObject,
                     cleanup = host::releaseManagedReference,

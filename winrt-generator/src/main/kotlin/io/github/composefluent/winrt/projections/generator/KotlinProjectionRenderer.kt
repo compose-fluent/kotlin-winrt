@@ -441,6 +441,9 @@ class KotlinProjectionRenderer(
         ) {
             return null
         }
+        if (customStructAbi(returnBinding) != null) {
+            return null
+        }
         val structType = nativeStructClassName(returnBinding) ?: return null
         return CodeBlock.builder()
             .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -463,7 +466,7 @@ class KotlinProjectionRenderer(
             return null
         }
         val helperFunction = when (returnBinding.kind) {
-            KotlinProjectionAbiValueKind.Unit -> "invokeUnit"
+            KotlinProjectionAbiValueKind.Unit -> return null
             KotlinProjectionAbiValueKind.String -> "getString"
             KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
             KotlinProjectionAbiValueKind.Int32 -> "getInt32"
@@ -528,6 +531,9 @@ class KotlinProjectionRenderer(
         returnBinding: KotlinProjectionAbiTypeBinding,
     ): CodeBlock? {
         if (property.isNoException) {
+            return null
+        }
+        if (customObjectAbi(returnBinding) != null) {
             return null
         }
         return renderInstanceProjectedObjectGetterInvocation(
@@ -774,12 +780,10 @@ class KotlinProjectionRenderer(
         if (descriptors.groupingBy { it.jvmName to it.parameterKinds.size }.eachCount().any { it.value > 1 }) {
             return null
         }
-        if (
-            (plan.usesMappedDisposableAugmentation || plan.hasDirectMappedDisposableSuperinterface) &&
-            descriptors.any { descriptor ->
-                descriptor.returnKind == "Unsupported" || descriptor.parameterKinds.any { it == "Unsupported" }
-            }
-        ) {
+        if (descriptors.any { descriptor -> descriptor.returnKind == "Unsupported" || descriptor.parameterKinds.any { it == "Unsupported" } }) {
+            return null
+        }
+        if (descriptors.any(KotlinInterfaceNativeProjectionMemberDescriptor::usesFloatingPointAbi)) {
             return null
         }
         return descriptors
@@ -2968,6 +2972,11 @@ internal data class KotlinInterfaceNativeProjectionMemberDescriptor(
     val eventTypeName: String = "",
     val ownerTypeName: String = "",
 )
+
+private fun KotlinInterfaceNativeProjectionMemberDescriptor.usesFloatingPointAbi(): Boolean =
+    returnKind == "Float" ||
+        returnKind == "Double" ||
+        parameterKinds.any { it == "Float" || it == "Double" }
 
 private fun interfaceNativeProjectionValueKind(binding: KotlinProjectionAbiTypeBinding): String =
     when (binding.kind) {

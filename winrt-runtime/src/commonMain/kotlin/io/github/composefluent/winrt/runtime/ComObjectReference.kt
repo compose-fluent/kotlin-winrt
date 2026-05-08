@@ -8,6 +8,7 @@ open class ComObjectReference internal constructor(
         interfaceId: Guid,
         referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr,
         preventReleaseOnDispose: Boolean = false,
+        isAggregated: Boolean = false,
     ) : this(
         ComPtr.create(
             raw = pointer,
@@ -19,6 +20,7 @@ open class ComObjectReference internal constructor(
                     ComOwnershipMode.Owned
                 },
             referenceTrackerPointer = referenceTrackerPointer,
+            isAggregated = isAggregated,
         ),
     )
 
@@ -33,6 +35,9 @@ open class ComObjectReference internal constructor(
 
     val hasReferenceTracker: Boolean
         get() = comPtr.hasReferenceTracker
+
+    internal val isAggregated: Boolean
+        get() = comPtr.isAggregated
 
     internal open val wrapperKind: ComReferenceWrapperKind
         get() = ComReferenceWrapperKind.Unknown
@@ -111,6 +116,7 @@ open class IUnknownReference internal constructor(
         interfaceId: Guid = IID.IUnknown,
         referenceTrackerPointer: RawComPtr = PlatformAbi.nullComPtr,
         preventReleaseOnDispose: Boolean = false,
+        isAggregated: Boolean = false,
     ) : this(
         ComPtr.create(
             raw = pointer,
@@ -122,6 +128,7 @@ open class IUnknownReference internal constructor(
                     ComOwnershipMode.Owned
                 },
             referenceTrackerPointer = referenceTrackerPointer,
+            isAggregated = isAggregated,
         ),
     )
 
@@ -151,6 +158,7 @@ class InspectableReference internal constructor(
         pointer: RawComPtr,
         interfaceId: Guid = IID.IInspectable,
         preventReleaseOnDispose: Boolean = false,
+        isAggregated: Boolean = false,
     ) : this(
         ComPtr.create(
             raw = pointer,
@@ -161,6 +169,7 @@ class InspectableReference internal constructor(
                 } else {
                     ComOwnershipMode.Owned
                 },
+            isAggregated = isAggregated,
         ),
     )
 

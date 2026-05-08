@@ -623,6 +623,9 @@ internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocat
     slotExpression: CodeBlock,
     returnBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
+    if (customObjectAbi(returnBinding) != null) {
+        return null
+    }
     val helperFunction = when (returnBinding.kind) {
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
             if (returnBinding.isNullableAbiReturn) "getNullableProjectedRuntimeClass" else "getProjectedRuntimeClass"
@@ -734,7 +737,7 @@ private fun KotlinProjectionRenderer.renderInstanceNoArgIntrinsicInvocation(
         return null
     }
     val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Unit -> "invokeUnit"
+        KotlinProjectionAbiValueKind.Unit -> return null
         KotlinProjectionAbiValueKind.String -> "getString"
         KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
         KotlinProjectionAbiValueKind.Int32 -> "getInt32"
@@ -762,6 +765,9 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
         binding.parameterBindings.isNotEmpty() ||
         binding.suppressHResultCheck
     ) {
+        return null
+    }
+    if (customStructAbi(binding.returnBinding) != null) {
         return null
     }
     val structType = nativeStructClassName(binding.returnBinding) ?: return null

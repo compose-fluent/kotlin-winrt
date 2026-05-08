@@ -75,6 +75,60 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun registered_com_interface_object_wins_rcw_identity_lookup() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val defaultInterfaceId = Guid("46464646-4646-4646-4646-464646464646")
+        val secondaryInterfaceId = Guid("47474747-4747-4747-4747-474747474747")
+        val managed = TestManagedType("registered")
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
+                WinRtInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
+            ),
+            runtimeClassName = "test.Registered",
+        )
+        val defaultPointer = host.detachReference(defaultInterfaceId)
+        val secondaryPointer = IUnknownReference(defaultPointer.asRawComPtr(), defaultInterfaceId, preventReleaseOnDispose = true)
+            .queryInterface(secondaryInterfaceId)
+            .getOrThrow()
+
+        ComWrappersSupport.registerObjectForComInterface(managed, defaultPointer)
+
+        assertSame(managed, ComWrappersSupport.createRcwForComObject(defaultPointer))
+        assertSame(managed, ComWrappersSupport.createRcwForComObject(PlatformAbi.fromRawComPtr(secondaryPointer.pointer)))
+        secondaryPointer.close()
+        IUnknownReference(defaultPointer.asRawComPtr(), defaultInterfaceId).close()
+    }
+
+    @Test
+    fun aggregated_reference_query_interface_releases_temporary_qi_reference_and_wraps_borrowed_pointer() {
+        val defaultInterfaceId = Guid("26262626-2626-2626-2626-262626262626")
+        val secondaryInterfaceId = Guid("27272727-2727-2727-2727-272727272727")
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(defaultInterfaceId, methods = emptyList()),
+                WinRtInspectableInterfaceDefinition(secondaryInterfaceId, methods = emptyList()),
+            ),
+            defaultInterfaceId = defaultInterfaceId,
+            runtimeClassName = "test.Aggregated",
+        )
+        val pointer = host.detachReference(defaultInterfaceId)
+        val source = IInspectableReference(
+            pointer = pointer.asRawComPtr(),
+            interfaceId = defaultInterfaceId,
+            preventReleaseOnDispose = true,
+            isAggregated = true,
+        )
+
+        val secondary = source.queryInterface(secondaryInterfaceId).getOrThrow()
+
+        assertTrue(secondary.isAggregated)
+        secondary.close()
+        assertEquals(0u, source.release())
+        source.close()
+    }
+
+    @Test
     fun create_rcw_uses_static_type_and_helper_type_registration() {
         ComWrappersSupport.clearRegistriesForTests()
         val interfaceType = WinRtTypeHandle("test.IFoo", Guid("11111111-1111-1111-1111-111111111111"))

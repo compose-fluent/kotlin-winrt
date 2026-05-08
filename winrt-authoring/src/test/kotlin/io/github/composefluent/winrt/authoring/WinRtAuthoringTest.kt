@@ -9,6 +9,7 @@ import io.github.composefluent.winrt.runtime.Guid
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ActivationFactoryReference
 import io.github.composefluent.winrt.runtime.HString
+import io.github.composefluent.winrt.runtime.IID
 import io.github.composefluent.winrt.runtime.IUnknownReference
 import io.github.composefluent.winrt.runtime.KnownHResults
 import io.github.composefluent.winrt.runtime.PlatformAbi
@@ -485,7 +486,7 @@ class WinRtAuthoringTest {
 
         var retainedInner: ComObjectReference? = null
         WinRtAuthoring.createComposableObject(OuterComponent, outerIid) { baseInterface, innerOut, instanceOut ->
-            val outer = IUnknownReference(PlatformAbi.toRawComPtr(baseInterface), outerIid, preventReleaseOnDispose = true)
+            val outer = IUnknownReference(PlatformAbi.toRawComPtr(baseInterface), IID.IInspectable, preventReleaseOnDispose = true)
             outer.queryInterface(outerIid).getOrThrow().use { queried ->
                 ComVtableInvoker.invoke(queried.pointer, 6)
             }

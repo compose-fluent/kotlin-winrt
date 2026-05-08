@@ -7,6 +7,7 @@ internal actual fun platformTryProjectBindableInspectable(pointer: RawAddress): 
     tryProjectBorrowedInspectableValue(pointer)
 
 internal actual fun platformEnsureInspectableProjectionInteropRegistered() {
+    ensureProjectionMappingsRegistered()
     WinRtBuiltInProjectionRuntimeHooks.ensureRegistered()
 }
 

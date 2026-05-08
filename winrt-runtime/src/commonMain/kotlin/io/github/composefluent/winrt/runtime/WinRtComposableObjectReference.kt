@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 class WinRtComposableObjectReference internal constructor(
     val instance: IInspectableReference,
     val inner: IInspectableReference?,
+    private val composed: IInspectableReference?,
     val outer: ComObjectReference,
     val isAggregatedReferenceTrackerObject: Boolean,
     private val cleanup: () -> Unit,
@@ -12,14 +13,18 @@ class WinRtComposableObjectReference internal constructor(
             instance.close()
         } finally {
             try {
-                if (!isAggregatedReferenceTrackerObject) {
+                if (!isAggregatedReferenceTrackerObject && inner !== instance) {
                     inner?.close()
                 }
             } finally {
                 try {
-                    outer.close()
+                    composed?.close()
                 } finally {
-                    cleanup()
+                    try {
+                        outer.close()
+                    } finally {
+                        cleanup()
+                    }
                 }
             }
         }
