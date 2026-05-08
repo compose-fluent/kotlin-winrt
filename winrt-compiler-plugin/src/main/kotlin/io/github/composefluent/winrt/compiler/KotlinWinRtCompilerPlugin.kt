@@ -244,30 +244,38 @@ class KotlinWinRtIrGenerationExtension(
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? =
             when (intrinsicName) {
+                "callUnitWithFloatAndString" ->
+                    lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 4)
                 "callUnitWithStringAndFloat" ->
-                    lowerCallUnitWithStringAndFloat(call, pluginContext, builderScope)
+                    lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 3)
                 else -> null
             }
 
-        private fun lowerCallUnitWithStringAndFloat(
+        private fun lowerCallUnitWithTwoArgumentsOneString(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            stringArgumentIndex: Int,
         ): IrExpression? {
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val value0 = call.arguments.getOrNull(3) ?: return null
             val value1 = call.arguments.getOrNull(4) ?: return null
+            val stringValue = when (stringArgumentIndex) {
+                3 -> value0
+                4 -> value1
+                else -> return null
+            }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
 
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                val value0Abi = irTemporary(
+                val stringAbi = irTemporary(
                     value = builder.irCall(hStringCreateReference).apply {
                         arguments[0] = builder.irGetObject(hStringCompanion)
-                        arguments[1] = value0
+                        arguments[1] = stringValue
                     },
-                    nameHint = "value0Abi",
+                    nameHint = "value${stringArgumentIndex - 3}Abi",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
@@ -283,11 +291,12 @@ class KotlinWinRtIrGenerationExtension(
                                 arguments[2] = slot
                                 arguments[3] = builder.irVararg(
                                     pluginContext.irBuiltIns.anyNType,
-                                    listOf(
-                                        builder.irCall(referencedHStringHandleGetter).apply {
-                                            arguments[0] = builder.irGet(value0Abi)
-                                        },
-                                        value1,
+                                    abiArguments(
+                                        builder = builder,
+                                        stringAbi = stringAbi,
+                                        value0 = value0,
+                                        value1 = value1,
+                                        stringArgumentIndex = stringArgumentIndex,
                                     ),
                                 )
                             },
@@ -305,9 +314,26 @@ class KotlinWinRtIrGenerationExtension(
                     },
                     catches = emptyList(),
                     finallyExpression = builder.irCall(referencedHStringClose).apply {
-                        arguments[0] = builder.irGet(value0Abi)
+                        arguments[0] = builder.irGet(stringAbi)
                     },
                 )
+            }
+        }
+
+        private fun abiArguments(
+            builder: DeclarationIrBuilder,
+            stringAbi: org.jetbrains.kotlin.ir.declarations.IrVariable,
+            value0: IrExpression,
+            value1: IrExpression,
+            stringArgumentIndex: Int,
+        ): List<IrExpression> {
+            val stringHandle = builder.irCall(referencedHStringHandleGetter).apply {
+                arguments[0] = builder.irGet(stringAbi)
+            }
+            return when (stringArgumentIndex) {
+                3 -> listOf(stringHandle, value1)
+                4 -> listOf(value0, stringHandle)
+                else -> emptyList()
             }
         }
 
@@ -644,12 +670,12 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "setUInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "callUnitWithFloatAndString" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithFloatStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
+    "callUnitWithFloatAndString",
     "callUnitWithStringAndFloat",
 )
 
