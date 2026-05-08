@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrCall
@@ -241,6 +242,13 @@ class KotlinWinRtIrGenerationExtension(
         private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol,
         private val comVtableInvoker: IrClassSymbol,
         private val invokeGenericArgs: IrSimpleFunctionSymbol,
+        private val invokeArgsRawAddress: IrSimpleFunctionSymbol,
+        private val invokeArgsByte: IrSimpleFunctionSymbol,
+        private val invokeArgsInt: IrSimpleFunctionSymbol,
+        private val invokeArgsUInt: IrSimpleFunctionSymbol,
+        private val invokeArgsLong: IrSimpleFunctionSymbol,
+        private val invokeArgsFloat: IrSimpleFunctionSymbol,
+        private val invokeArgsDouble: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
     ) {
@@ -253,17 +261,18 @@ class KotlinWinRtIrGenerationExtension(
             when (intrinsicName) {
                 "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
                 "setString" -> lowerOneArgumentStringUnit(call, pluginContext, builderScope)
-                "setBoolean" -> lowerOneArgumentRawUnit(
+                "setBoolean" -> lowerOneArgumentTypedUnit(
                     call,
                     pluginContext,
                     builderScope,
+                    invokeArgsByte,
                 ) { builder, value -> booleanAbiValue(builder, pluginContext, value) }
-                "setInt32",
-                "setUInt32",
+                "setInt32" -> lowerOneArgumentTypedUnit(call, pluginContext, builderScope, invokeArgsInt)
+                "setUInt32" -> lowerOneArgumentTypedUnit(call, pluginContext, builderScope, invokeArgsUInt)
                 "setInt64",
-                "setUInt64",
-                "setFloat",
-                "setDouble" -> lowerOneArgumentRawUnit(call, pluginContext, builderScope) { _, value -> value }
+                "setUInt64" -> lowerOneArgumentTypedUnit(call, pluginContext, builderScope, invokeArgsLong)
+                "setFloat" -> lowerOneArgumentTypedUnit(call, pluginContext, builderScope, invokeArgsFloat)
+                "setDouble" -> lowerOneArgumentTypedUnit(call, pluginContext, builderScope, invokeArgsDouble)
                 else -> null
             }
 
@@ -271,36 +280,71 @@ class KotlinWinRtIrGenerationExtension(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
-        ): IrExpression? =
-            lowerCallUnitWithArgumentsOneString(
-                call = call,
-                pluginContext = pluginContext,
-                builderScope = builderScope,
-                reference = call.arguments.getOrNull(1) ?: return null,
-                slot = call.arguments.getOrNull(2) ?: return null,
-                values = listOf(call.arguments.getOrNull(3) ?: return null),
-                stringArgumentIndex = 0,
-            )
+        ): IrExpression? {
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val value = call.arguments.getOrNull(3) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val stringAbi = irTemporary(
+                    value = builder.irCall(hStringCreateReference).apply {
+                        arguments[0] = builder.irGetObject(hStringCompanion)
+                        arguments[1] = value
+                    },
+                    nameHint = "valueAbi",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = pluginContext.irBuiltIns.unitType,
+                    tryResult = typedCallUnitBlock(
+                        builder = builder,
+                        pluginContext = pluginContext,
+                        reference = reference,
+                        slot = slot,
+                        invokeArgs = invokeArgsRawAddress,
+                        value = builder.irCall(referencedHStringHandleGetter).apply {
+                            arguments[0] = builder.irGet(stringAbi)
+                        },
+                    ),
+                    catches = emptyList(),
+                    finallyExpression = builder.irCall(referencedHStringClose).apply {
+                        arguments[0] = builder.irGet(stringAbi)
+                    },
+                )
+            }
+        }
 
-        private fun lowerOneArgumentRawUnit(
+        private fun lowerOneArgumentTypedUnit(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            invokeArgs: IrSimpleFunctionSymbol,
             abiValue: (DeclarationIrBuilder, IrExpression) -> IrExpression,
         ): IrExpression? {
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val value = call.arguments.getOrNull(3) ?: return null
-            return lowerCallUnitWithRawArguments(
-                call = call,
+            val scope = builderScope ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return typedCallUnitBlock(
+                builder = builder,
                 pluginContext = pluginContext,
-                builderScope = builderScope,
                 reference = reference,
                 slot = slot,
-                values = listOf(value),
-                abiValue = abiValue,
+                invokeArgs = invokeArgs,
+                value = abiValue(builder, value),
             )
         }
+
+        private fun lowerOneArgumentTypedUnit(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            invokeArgs: IrSimpleFunctionSymbol,
+        ): IrExpression? =
+            lowerOneArgumentTypedUnit(call, pluginContext, builderScope, invokeArgs) { _, value -> value }
 
         private fun booleanAbiValue(
             builder: DeclarationIrBuilder,
@@ -314,29 +358,23 @@ class KotlinWinRtIrGenerationExtension(
                 elsePart = builder.irByte(0),
             )
 
-        private fun lowerCallUnitWithRawArguments(
-            call: IrCall,
+        private fun typedCallUnitBlock(
+            builder: DeclarationIrBuilder,
             pluginContext: IrPluginContext,
-            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             reference: IrExpression,
             slot: IrExpression,
-            values: List<IrExpression>,
-            abiValue: (DeclarationIrBuilder, IrExpression) -> IrExpression = { _, value -> value },
-        ): IrExpression? {
-            val scope = builderScope ?: return null
-            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
-            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+            invokeArgs: IrSimpleFunctionSymbol,
+            value: IrExpression,
+        ): IrExpression =
+            builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
                 val hResultValue = irTemporary(
-                    value = builder.irCall(invokeGenericArgs).apply {
+                    value = builder.irCall(invokeArgs).apply {
                         arguments[0] = builder.irGetObject(comVtableInvoker)
                         arguments[1] = builder.irCall(comObjectReferencePointerGetter).apply {
                             arguments[0] = reference
                         }
                         arguments[2] = slot
-                        arguments[3] = builder.irVararg(
-                            pluginContext.irBuiltIns.anyNType,
-                            values.map { value -> abiValue(builder, value) },
-                        )
+                        arguments[3] = value
                     },
                     nameHint = "hr",
                     isMutable = false,
@@ -350,7 +388,6 @@ class KotlinWinRtIrGenerationExtension(
                 }
                 +builder.irUnit()
             }
-        }
 
         private fun lowerDescriptorCallUnit(
             call: IrCall,
@@ -544,6 +581,48 @@ class KotlinWinRtIrGenerationExtension(
                 val comVtableInvoker = pluginContext.referenceClass(WINRT_COM_VTABLE_INVOKER_CLASS_ID)
                     ?: return null
                 val invokeGenericArgs = comVtableInvoker.functionNamed("invokeGenericArgs") ?: return null
+                val invokeArgsRawAddress = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    WINRT_RAW_ADDRESS_FQ_NAME,
+                ) ?: return null
+                val invokeArgsByte = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    KOTLIN_BYTE_FQ_NAME,
+                ) ?: return null
+                val invokeArgsInt = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                ) ?: return null
+                val invokeArgsUInt = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    KOTLIN_UINT_FQ_NAME,
+                ) ?: return null
+                val invokeArgsLong = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    KOTLIN_LONG_FQ_NAME,
+                ) ?: return null
+                val invokeArgsFloat = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    KOTLIN_FLOAT_FQ_NAME,
+                ) ?: return null
+                val invokeArgsDouble = comVtableInvoker.functionNamedWithValueParameterTypes(
+                    "invokeArgs",
+                    WINRT_RAW_COM_PTR_FQ_NAME,
+                    KOTLIN_INT_FQ_NAME,
+                    KOTLIN_DOUBLE_FQ_NAME,
+                ) ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
                     ?: return null
                 val hResultConstructor = hResult.owner.declarations
@@ -563,6 +642,13 @@ class KotlinWinRtIrGenerationExtension(
                     platformAbiFromRawComPtr = platformAbiFromRawComPtr,
                     comVtableInvoker = comVtableInvoker,
                     invokeGenericArgs = invokeGenericArgs,
+                    invokeArgsRawAddress = invokeArgsRawAddress,
+                    invokeArgsByte = invokeArgsByte,
+                    invokeArgsInt = invokeArgsInt,
+                    invokeArgsUInt = invokeArgsUInt,
+                    invokeArgsLong = invokeArgsLong,
+                    invokeArgsFloat = invokeArgsFloat,
+                    invokeArgsDouble = invokeArgsDouble,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
                 )
@@ -804,6 +890,21 @@ private fun IrClassSymbol.functionNamed(name: String): IrSimpleFunctionSymbol? =
         ?.symbol
 
 @OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.functionNamedWithValueParameterTypes(
+    name: String,
+    vararg typeNames: FqName,
+): IrSimpleFunctionSymbol? =
+    owner.declarations
+        .filterIsInstance<IrSimpleFunction>()
+        .singleOrNull { function ->
+            function.name.asString() == name &&
+                function.parameters
+                    .filter { parameter -> parameter.kind == IrParameterKind.Regular }
+                    .map { parameter -> parameter.type.classFqName } == typeNames.toList()
+        }
+        ?.symbol
+
+@OptIn(UnsafeDuringIrConstructionAPI::class)
 private fun IrClassSymbol.propertyGetter(name: String): IrSimpleFunctionSymbol? =
     owner.declarations
         .filterIsInstance<IrProperty>()
@@ -813,6 +914,30 @@ private fun IrClassSymbol.propertyGetter(name: String): IrSimpleFunctionSymbol? 
 
 private val WINRT_RUNTIME_PACKAGE_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime")
+
+private val KOTLIN_BYTE_FQ_NAME =
+    FqName("kotlin.Byte")
+
+private val KOTLIN_INT_FQ_NAME =
+    FqName("kotlin.Int")
+
+private val KOTLIN_UINT_FQ_NAME =
+    FqName("kotlin.UInt")
+
+private val KOTLIN_LONG_FQ_NAME =
+    FqName("kotlin.Long")
+
+private val KOTLIN_FLOAT_FQ_NAME =
+    FqName("kotlin.Float")
+
+private val KOTLIN_DOUBLE_FQ_NAME =
+    FqName("kotlin.Double")
+
+private val WINRT_RAW_COM_PTR_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.RawComPtr")
+
+private val WINRT_RAW_ADDRESS_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.RawAddress")
 
 private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")

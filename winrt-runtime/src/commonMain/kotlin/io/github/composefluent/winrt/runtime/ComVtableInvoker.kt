@@ -26,6 +26,12 @@ expect object ComVtableInvoker {
     fun invokeArgs(
         instance: RawComPtr,
         slot: Int,
+        arg0: Byte,
+    ): Int
+
+    fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
         arg0: Int,
     ): Int
 
@@ -39,6 +45,18 @@ expect object ComVtableInvoker {
         instance: RawComPtr,
         slot: Int,
         arg0: Long,
+    ): Int
+
+    fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: Float,
+    ): Int
+
+    fun invokeArgs(
+        instance: RawComPtr,
+        slot: Int,
+        arg0: Double,
     ): Int
 
     fun invokeArgs(
