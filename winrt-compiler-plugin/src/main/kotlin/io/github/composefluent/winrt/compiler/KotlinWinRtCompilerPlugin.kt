@@ -231,7 +231,10 @@ class KotlinWinRtIrGenerationExtension(
         private val hStringCreateReference: IrSimpleFunctionSymbol,
         private val referencedHStringHandleGetter: IrSimpleFunctionSymbol,
         private val referencedHStringClose: IrSimpleFunctionSymbol,
+        private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol,
         private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol,
+        private val platformAbi: IrClassSymbol,
+        private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol,
         private val comVtableInvoker: IrClassSymbol,
         private val invokeGenericArgs: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
@@ -248,6 +251,14 @@ class KotlinWinRtIrGenerationExtension(
                     lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 4)
                 "callUnitWithStringAndFloat" ->
                     lowerCallUnitWithTwoArgumentsOneString(call, pluginContext, builderScope, stringArgumentIndex = 3)
+                "callUnitWithStringAndProjectedObject" ->
+                    lowerCallUnitWithTwoArgumentsOneString(
+                        call = call,
+                        pluginContext = pluginContext,
+                        builderScope = builderScope,
+                        stringArgumentIndex = 3,
+                        projectedObjectArgumentIndex = 4,
+                    )
                 else -> null
             }
 
@@ -256,6 +267,7 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             stringArgumentIndex: Int,
+            projectedObjectArgumentIndex: Int? = null,
         ): IrExpression? {
             val scope = builderScope ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
@@ -297,6 +309,7 @@ class KotlinWinRtIrGenerationExtension(
                                         value0 = value0,
                                         value1 = value1,
                                         stringArgumentIndex = stringArgumentIndex,
+                                        projectedObjectArgumentIndex = projectedObjectArgumentIndex,
                                     ),
                                 )
                             },
@@ -326,16 +339,41 @@ class KotlinWinRtIrGenerationExtension(
             value0: IrExpression,
             value1: IrExpression,
             stringArgumentIndex: Int,
+            projectedObjectArgumentIndex: Int?,
         ): List<IrExpression> {
             val stringHandle = builder.irCall(referencedHStringHandleGetter).apply {
                 arguments[0] = builder.irGet(stringAbi)
             }
-            return when (stringArgumentIndex) {
-                3 -> listOf(stringHandle, value1)
-                4 -> listOf(value0, stringHandle)
-                else -> emptyList()
+            fun argumentAt(index: Int): IrExpression {
+                if (index == stringArgumentIndex) {
+                    return stringHandle
+                }
+                val value = when (index) {
+                    3 -> value0
+                    4 -> value1
+                    else -> error("Unsupported WinRT projection intrinsic argument index $index.")
+                }
+                return if (index == projectedObjectArgumentIndex) {
+                    projectedObjectAbi(builder, value)
+                } else {
+                    value
+                }
             }
+            return listOf(argumentAt(3), argumentAt(4))
         }
+
+        private fun projectedObjectAbi(
+            builder: DeclarationIrBuilder,
+            value: IrExpression,
+        ): IrExpression =
+            builder.irCall(platformAbiFromRawComPtr).apply {
+                arguments[0] = builder.irGetObject(platformAbi)
+                arguments[1] = builder.irCall(comObjectReferencePointerGetter).apply {
+                    arguments[0] = builder.irCall(iWinRTObjectNativeObjectGetter).apply {
+                        arguments[0] = value
+                    }
+                }
+            }
 
         companion object {
             fun create(pluginContext: IrPluginContext): WinRtProjectionIntrinsicIrLowerings? {
@@ -351,9 +389,15 @@ class KotlinWinRtIrGenerationExtension(
                     ?: return null
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
                 val referencedHStringClose = referencedHString.functionNamed("close") ?: return null
+                val iWinRTObject = pluginContext.referenceClass(WINRT_IWINRT_OBJECT_CLASS_ID)
+                    ?: return null
+                val iWinRTObjectNativeObjectGetter = iWinRTObject.propertyGetter("nativeObject") ?: return null
                 val comObjectReference = pluginContext.referenceClass(WINRT_COM_OBJECT_REFERENCE_CLASS_ID)
                     ?: return null
                 val comObjectReferencePointerGetter = comObjectReference.propertyGetter("pointer") ?: return null
+                val platformAbi = pluginContext.referenceClass(WINRT_PLATFORM_ABI_CLASS_ID)
+                    ?: return null
+                val platformAbiFromRawComPtr = platformAbi.functionNamed("fromRawComPtr") ?: return null
                 val comVtableInvoker = pluginContext.referenceClass(WINRT_COM_VTABLE_INVOKER_CLASS_ID)
                     ?: return null
                 val invokeGenericArgs = comVtableInvoker.functionNamed("invokeGenericArgs") ?: return null
@@ -370,7 +414,10 @@ class KotlinWinRtIrGenerationExtension(
                     hStringCreateReference = hStringCreateReference,
                     referencedHStringHandleGetter = referencedHStringHandleGetter,
                     referencedHStringClose = referencedHStringClose,
+                    iWinRTObjectNativeObjectGetter = iWinRTObjectNativeObjectGetter,
                     comObjectReferencePointerGetter = comObjectReferencePointerGetter,
+                    platformAbi = platformAbi,
+                    platformAbiFromRawComPtr = platformAbiFromRawComPtr,
                     comVtableInvoker = comVtableInvoker,
                     invokeGenericArgs = invokeGenericArgs,
                     hResultConstructor = hResultConstructor,
@@ -636,8 +683,14 @@ private val WINRT_HSTRING_CLASS_ID =
 private val WINRT_REFERENCED_HSTRING_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ReferencedHString"))
 
+private val WINRT_IWINRT_OBJECT_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("IWinRTObject"))
+
 private val WINRT_COM_OBJECT_REFERENCE_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ComObjectReference"))
+
+private val WINRT_PLATFORM_ABI_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("PlatformAbi"))
 
 private val WINRT_COM_VTABLE_INVOKER_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ComVtableInvoker"))
@@ -670,13 +723,13 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "setUInt64" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setFloat" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setDouble" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "callUnitWithStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "callUnitWithFloatStringAndProjectedObject" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnitWithFloatAndString",
     "callUnitWithStringAndFloat",
+    "callUnitWithStringAndProjectedObject",
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =
