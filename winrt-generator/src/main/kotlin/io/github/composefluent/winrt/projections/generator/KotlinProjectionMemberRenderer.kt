@@ -584,7 +584,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
         return null
     }
     val argumentShapes = parameterBindings.map { parameter -> unitCallIntrinsicArgumentShape(parameter.typeBinding) ?: return null }
-    if (argumentShapes.count { it == "String" } != 1 || argumentShapes.count { it == "Object" } > 1) {
+    if (argumentShapes.count { it == "String" } > 1 || argumentShapes.count { it == "Object" } > 1) {
         return null
     }
     return CodeBlock.builder()
@@ -611,6 +611,8 @@ private fun unitCallIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBindi
     when (binding.kind) {
         KotlinProjectionAbiValueKind.Float ->
             if (binding.typeName.endsWith("?")) null else "Float"
+        KotlinProjectionAbiValueKind.Boolean ->
+            if (binding.typeName.endsWith("?")) null else "Boolean"
         KotlinProjectionAbiValueKind.String ->
             if (binding.typeName.endsWith("?")) null else "String"
         KotlinProjectionAbiValueKind.ProjectedInterface,
