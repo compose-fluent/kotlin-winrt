@@ -134,6 +134,22 @@ object WinRtInstanceProjectionInterop {
         invokeUnit(reference, slot, value)
     }
 
+    fun callUnitWithFloatAndString(
+        reference: ComObjectReference,
+        slot: Int,
+        value0: Float,
+        value1: String,
+    ) {
+        HString.createReference(value1).use { value1Abi ->
+            val hr = ComVtableInvoker.invokeGenericArgs(
+                instance = reference.pointer,
+                slot = slot,
+                args = arrayOf(value0, value1Abi.handle),
+            )
+            HResult(hr).requireSuccess()
+        }
+    }
+
     fun <T> getProjectedRuntimeClass(
         reference: ComObjectReference,
         slot: Int,
@@ -313,11 +329,28 @@ object WinRtProjectionIntrinsic {
     fun setDouble(reference: ComObjectReference, slot: Int, value: Double): Unit =
         intrinsicNotLowered("setDouble", reference, slot, value)
 
+    fun callUnitWithFloatAndString(
+        reference: ComObjectReference,
+        slot: Int,
+        value0: Float,
+        value1: String,
+    ): Unit =
+        intrinsicNotLowered("callUnitWithFloatAndString", reference, slot, value0, value1)
+
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
 
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int, value: Any?): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot value $value")
+
+    private fun intrinsicNotLowered(
+        name: String,
+        reference: ComObjectReference,
+        slot: Int,
+        value0: Any?,
+        value1: Any?,
+    ): Nothing =
+        error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot values $value0, $value1")
 
     private fun staticIntrinsicNotLowered(name: String, reference: IUnknownReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")

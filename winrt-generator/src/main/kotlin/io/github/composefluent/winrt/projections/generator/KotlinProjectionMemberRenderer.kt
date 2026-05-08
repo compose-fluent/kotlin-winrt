@@ -338,6 +338,13 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
                 suppressHResultCheck = binding.suppressHResultCheck,
             )
             ?: renderInstanceOneArgUnitIntrinsicInvocation(binding)
+            ?: renderInstanceFloatStringUnitIntrinsicInvocation(
+                referenceExpression = binding.ownerCachePropertyName,
+                slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
+                returnBinding = binding.returnBinding,
+                parameterBindings = binding.parameterBindings,
+                suppressHResultCheck = binding.suppressHResultCheck,
+            )
             ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
                 referenceExpression = binding.ownerCachePropertyName,
                 slotExpression = CodeBlock.of("Metadata.%L", binding.bindingName),
@@ -556,6 +563,43 @@ private fun KotlinProjectionRenderer.renderInstanceOneArgUnitIntrinsicInvocation
         .add("%L,\n", binding.ownerCachePropertyName)
         .add("Metadata.%L,\n", binding.bindingName)
         .add("%L,\n", argumentExpression ?: parameter.name)
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionRenderer.renderInstanceFloatStringUnitIntrinsicInvocation(
+    referenceExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        parameterBindings.size != 2 ||
+        suppressHResultCheck
+    ) {
+        return null
+    }
+    val first = parameterBindings[0]
+    val second = parameterBindings[1]
+    if (
+        first.typeBinding.kind != KotlinProjectionAbiValueKind.Float ||
+        first.typeBinding.typeName.endsWith("?") ||
+        second.typeBinding.kind != KotlinProjectionAbiValueKind.String ||
+        second.typeBinding.typeName.endsWith("?")
+    ) {
+        return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.callUnitWithFloatAndString(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", referenceExpression)
+        .add("%L,\n", slotExpression)
+        .add("%L,\n", first.name)
+        .add("%L,\n", second.name)
         .unindent()
         .add(")\n")
         .build()

@@ -3172,6 +3172,49 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_float_string_unit_interface_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IKeyFrameAnimation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "InsertExpressionKeyFrame",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("normalizedProgressKey", "Float"),
+                                        WinRtParameterDefinition("value", "String"),
+                                    ),
+                                    methodRowId = 13,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IKeyFrameAnimation.kt")
+            .contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnitWithFloatAndString("))
+        assertTrue(interfaceContents, interfaceContents.contains("normalizedProgressKey,"))
+        assertTrue(interfaceContents, interfaceContents.contains("value,"))
+        assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(value)"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_keeps_unsupported_interface_native_projection_on_kotlin_fallback() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
