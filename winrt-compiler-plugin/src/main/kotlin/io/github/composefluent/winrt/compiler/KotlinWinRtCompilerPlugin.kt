@@ -18,6 +18,7 @@ import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrField
+import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
@@ -30,6 +31,7 @@ import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
+import org.jetbrains.kotlin.ir.symbols.impl.IrFieldSymbolImpl
 import org.jetbrains.kotlin.ir.builders.irAs
 import org.jetbrains.kotlin.ir.builders.irBlock
 import org.jetbrains.kotlin.ir.builders.irByte
@@ -217,7 +219,13 @@ class KotlinWinRtIrGenerationExtension(
                         .firstOrNull { (_, symbol) -> symbol == call.symbol }
                         ?.key
                         ?: return call
-                    directLowerings?.lower(intrinsicName, call, pluginContext, builderScope = currentScope?.scope?.scopeOwnerSymbol)
+                    directLowerings?.lower(
+                        intrinsicName,
+                        call,
+                        pluginContext,
+                        builderScope = currentScope?.scope?.scopeOwnerSymbol,
+                        currentFile = currentFile,
+                    )
                         ?.let { return it }
                     val helperSymbol = helperFunctions[intrinsicName] ?: return call
                     val helperReceiver = helperReceivers[WINRT_PROJECTION_INTRINSIC_HELPERS[intrinsicName]] ?: return call
@@ -264,9 +272,10 @@ class KotlinWinRtIrGenerationExtension(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            currentFile: IrFile?,
         ): IrExpression? =
             when (intrinsicName) {
-                "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
+                "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope, currentFile)
                 "setString" -> lowerOneArgumentStringUnit(call, pluginContext, builderScope)
                 "setBoolean" -> lowerOneArgumentTypedUnit(
                     call,
@@ -404,6 +413,7 @@ class KotlinWinRtIrGenerationExtension(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            currentFile: IrFile?,
         ): IrExpression? {
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
@@ -420,6 +430,7 @@ class KotlinWinRtIrGenerationExtension(
                     slot = slot,
                     values = values,
                     argumentKinds = argumentKinds,
+                    currentFile = currentFile,
                 )
             }
         }
@@ -433,6 +444,7 @@ class KotlinWinRtIrGenerationExtension(
             slot: IrExpression,
             values: List<IrExpression>,
             argumentKinds: List<UnitCallAbiArgumentKind>,
+            currentFile: IrFile?,
         ): IrExpression? {
             val scope = builderScope ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
@@ -471,6 +483,7 @@ class KotlinWinRtIrGenerationExtension(
                     slot = slot,
                     argumentKinds = argumentKinds,
                     values = abiValues,
+                    currentFile = currentFile,
                 )
                 if (stringAbis.isEmpty()) {
                     +callBlock
@@ -499,17 +512,12 @@ class KotlinWinRtIrGenerationExtension(
             slot: IrExpression,
             argumentKinds: List<UnitCallAbiArgumentKind>,
             values: List<IrExpression>,
+            currentFile: IrFile?,
         ): IrExpression =
             builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
                 val instanceSegment = irTemporary(
                     value = symbols.segmentFromRawComPtr(builder, referencePointer(builder, reference)),
                     nameHint = "instanceSegment",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                )
-                val descriptor = irTemporary(
-                    value = symbols.functionDescriptor(builder, argumentKinds),
-                    nameHint = "descriptor",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
@@ -519,18 +527,10 @@ class KotlinWinRtIrGenerationExtension(
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
-                val linker = irTemporary(
-                    value = builder.irCall(symbols.linkerNativeLinker),
-                    nameHint = "linker",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                )
                 val handle = irTemporary(
-                    value = builder.irCall(symbols.linkerDowncallHandle).apply {
-                        arguments[0] = builder.irGet(linker)
-                        arguments[1] = builder.irGet(descriptor)
-                        arguments[2] = builder.irVararg(symbols.linkerOptionType, emptyList())
-                    },
+                    value = currentFile
+                        ?.let { file -> symbols.cachedDowncallHandle(builder, pluginContext, file, argumentKinds) }
+                        ?: symbols.downcallHandle(builder, argumentKinds),
                     nameHint = "handle",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -745,8 +745,10 @@ class KotlinWinRtIrGenerationExtension(
             private val valueLayoutJavaByte: IrField,
             private val valueLayoutJavaFloat: IrField,
             private val intToLong: IrSimpleFunctionSymbol,
+            private val methodHandleType: org.jetbrains.kotlin.ir.types.IrType,
             private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
             private val rawAddressValueGetter: IrSimpleFunctionSymbol,
+            private val downcallHandleFields: MutableMap<DowncallHandleFieldKey, IrField> = mutableMapOf(),
         ) {
             fun segmentFromRawComPtr(
                 builder: DeclarationIrBuilder,
@@ -786,6 +788,57 @@ class KotlinWinRtIrGenerationExtension(
                             argumentKinds.map { kind -> builder.irGetField(null, kind.valueLayoutField()) },
                     )
                 }
+
+            fun downcallHandle(
+                builder: DeclarationIrBuilder,
+                argumentKinds: List<UnitCallAbiArgumentKind>,
+            ): IrExpression =
+                builder.irCall(linkerDowncallHandle).apply {
+                    arguments[0] = builder.irCall(linkerNativeLinker)
+                    arguments[1] = functionDescriptor(builder, argumentKinds)
+                    arguments[2] = builder.irVararg(linkerOptionType, emptyList())
+                }
+
+            fun cachedDowncallHandle(
+                builder: DeclarationIrBuilder,
+                pluginContext: IrPluginContext,
+                file: IrFile,
+                argumentKinds: List<UnitCallAbiArgumentKind>,
+            ): IrExpression {
+                val key = DowncallHandleFieldKey(file, argumentKinds.joinToString(",") { it.name })
+                val field = downcallHandleFields.getOrPut(key) {
+                    createDowncallHandleField(pluginContext, file, argumentKinds)
+                }
+                return builder.irGetField(null, field)
+            }
+
+            private fun createDowncallHandleField(
+                pluginContext: IrPluginContext,
+                file: IrFile,
+                argumentKinds: List<UnitCallAbiArgumentKind>,
+            ): IrField {
+                val field = pluginContext.irFactory.createField(
+                    startOffset = file.startOffset,
+                    endOffset = file.endOffset,
+                    origin = IrDeclarationOrigin.DEFINED,
+                    name = Name.identifier("__winrtFfmHandle_${argumentKinds.joinToString("_") { it.name }}"),
+                    visibility = DescriptorVisibilities.PRIVATE,
+                    symbol = IrFieldSymbolImpl(),
+                    type = methodHandleType,
+                    isFinal = true,
+                    isExternal = false,
+                    isStatic = true,
+                )
+                field.parent = file
+                val fieldBuilder = DeclarationIrBuilder(pluginContext, field.symbol, file.startOffset, file.endOffset)
+                field.initializer = pluginContext.irFactory.createExpressionBody(
+                    field.startOffset,
+                    field.endOffset,
+                    downcallHandle(fieldBuilder, argumentKinds),
+                )
+                file.declarations.add(0, field)
+                return field
+            }
 
             fun vtableEntry(
                 builder: DeclarationIrBuilder,
@@ -833,6 +886,11 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.Object -> valueLayoutAddress
                 }
 
+            private data class DowncallHandleFieldKey(
+                val file: IrFile,
+                val shape: String,
+            )
+
             companion object {
                 fun create(
                     pluginContext: IrPluginContext,
@@ -870,6 +928,7 @@ class KotlinWinRtIrGenerationExtension(
                             KOTLIN_LONG_FQ_NAME,
                         ) ?: return null,
                         methodHandleInvoke = methodHandle.functionNamed("invoke") ?: return null,
+                        methodHandleType = methodHandle.owner.defaultType,
                         valueLayoutAddress = valueLayout.fieldNamed("ADDRESS") ?: addressLayout.fieldNamed("ADDRESS") ?: return null,
                         valueLayoutJavaInt = valueLayout.fieldNamed("JAVA_INT") ?: return null,
                         valueLayoutJavaByte = valueLayout.fieldNamed("JAVA_BYTE") ?: return null,
