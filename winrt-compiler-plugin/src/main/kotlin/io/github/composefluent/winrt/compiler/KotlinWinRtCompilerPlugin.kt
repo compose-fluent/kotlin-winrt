@@ -410,7 +410,7 @@ class KotlinWinRtIrGenerationExtension(
             val values = call.varargValues(argumentKinds.size) ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
-            jvmFfmSymbols?.let { symbols ->
+            return jvmFfmSymbols?.let { symbols ->
                 lowerJvmFfmCallUnitWithArguments(
                     symbols = symbols,
                     call = call,
@@ -420,28 +420,8 @@ class KotlinWinRtIrGenerationExtension(
                     slot = slot,
                     values = values,
                     argumentKinds = argumentKinds,
-                )?.let { return it }
+                )
             }
-            val stringArgumentIndex = argumentKinds.singleIndexOf(UnitCallAbiArgumentKind.String)
-            val projectedObjectIndexes = argumentKinds.indices.filter { index ->
-                argumentKinds[index] == UnitCallAbiArgumentKind.Object
-            }
-            if (projectedObjectIndexes.size > 1) {
-                return null
-            }
-            val invokeArgs = typedInvokeArgsForUnitCall(argumentKinds) ?: return null
-            return lowerTypedCallUnitWithArgumentsOneString(
-                call = call,
-                pluginContext = pluginContext,
-                builderScope = builderScope,
-                reference = reference,
-                slot = slot,
-                invokeArgs = invokeArgs,
-                values = values,
-                argumentKinds = argumentKinds,
-                stringArgumentIndex = stringArgumentIndex,
-                projectedObjectArgumentIndex = projectedObjectIndexes.singleOrNull(),
-            )
         }
 
         private fun lowerJvmFfmCallUnitWithArguments(
@@ -590,86 +570,6 @@ class KotlinWinRtIrGenerationExtension(
                 arguments[0] = reference
             }
 
-        private fun typedInvokeArgsForUnitCall(
-            argumentKinds: List<UnitCallAbiArgumentKind>,
-        ): IrSimpleFunctionSymbol? =
-            comVtableInvoker.functionNamedWithValueParameterTypes(
-                "invokeArgs",
-                WINRT_RAW_COM_PTR_FQ_NAME,
-                KOTLIN_INT_FQ_NAME,
-                *argumentKinds.map { kind -> kind.invokeArgsParameterTypeName() }.toTypedArray(),
-            )
-
-        private fun lowerTypedCallUnitWithArgumentsOneString(
-            call: IrCall,
-            pluginContext: IrPluginContext,
-            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
-            reference: IrExpression,
-            slot: IrExpression,
-            invokeArgs: IrSimpleFunctionSymbol,
-            values: List<IrExpression>,
-            argumentKinds: List<UnitCallAbiArgumentKind>,
-            stringArgumentIndex: Int?,
-            projectedObjectArgumentIndex: Int? = null,
-        ): IrExpression? {
-            val scope = builderScope ?: return null
-            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
-            if (stringArgumentIndex == null) {
-                return typedCallUnitBlock(
-                    builder = builder,
-                    pluginContext = pluginContext,
-                    reference = reference,
-                    slot = slot,
-                    invokeArgs = invokeArgs,
-                    values = abiArguments(
-                        builder = builder,
-                        pluginContext = pluginContext,
-                        stringAbi = null,
-                        values = values,
-                        argumentKinds = argumentKinds,
-                        stringArgumentIndex = null,
-                        projectedObjectArgumentIndex = projectedObjectArgumentIndex,
-                    ),
-                )
-            }
-            val stringValue = values.getOrNull(stringArgumentIndex) ?: return null
-
-            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                val stringAbi = irTemporary(
-                    value = builder.irCall(hStringCreateReference).apply {
-                        arguments[0] = builder.irGetObject(hStringCompanion)
-                        arguments[1] = stringValue
-                    },
-                    nameHint = "value${stringArgumentIndex}Abi",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                )
-                +builder.irTry(
-                    type = pluginContext.irBuiltIns.unitType,
-                    tryResult = typedCallUnitBlock(
-                        builder = builder,
-                        pluginContext = pluginContext,
-                        reference = reference,
-                        slot = slot,
-                        invokeArgs = invokeArgs,
-                        values = abiArguments(
-                            builder = builder,
-                            pluginContext = pluginContext,
-                            stringAbi = stringAbi,
-                            values = values,
-                            argumentKinds = argumentKinds,
-                            stringArgumentIndex = stringArgumentIndex,
-                            projectedObjectArgumentIndex = projectedObjectArgumentIndex,
-                        ),
-                    ),
-                    catches = emptyList(),
-                    finallyExpression = builder.irCall(referencedHStringClose).apply {
-                        arguments[0] = builder.irGet(stringAbi)
-                    },
-                )
-            }
-        }
-
         private fun IrExpression.stringConstantValue(): String? =
             (this as? IrConst)?.value as? String
 
@@ -686,14 +586,6 @@ class KotlinWinRtIrGenerationExtension(
             Object,
         }
 
-        private fun UnitCallAbiArgumentKind.invokeArgsParameterTypeName(): FqName =
-            when (this) {
-                UnitCallAbiArgumentKind.Float -> KOTLIN_FLOAT_FQ_NAME
-                UnitCallAbiArgumentKind.Boolean -> KOTLIN_BYTE_FQ_NAME
-                UnitCallAbiArgumentKind.String,
-                UnitCallAbiArgumentKind.Object -> WINRT_RAW_ADDRESS_FQ_NAME
-            }
-
         private object UnitCallAbiShape {
             fun parse(value: String): List<UnitCallAbiArgumentKind>? {
                 if (value.isBlank()) {
@@ -709,41 +601,6 @@ class KotlinWinRtIrGenerationExtension(
                     }
                 }
             }
-        }
-
-        private fun List<UnitCallAbiArgumentKind>.singleIndexOf(kind: UnitCallAbiArgumentKind): Int? {
-            val matches = indices.filter { index -> this[index] == kind }
-            return matches.singleOrNull()
-        }
-
-        private fun abiArguments(
-            builder: DeclarationIrBuilder,
-            pluginContext: IrPluginContext,
-            stringAbi: org.jetbrains.kotlin.ir.declarations.IrVariable?,
-            values: List<IrExpression>,
-            argumentKinds: List<UnitCallAbiArgumentKind>,
-            stringArgumentIndex: Int?,
-            projectedObjectArgumentIndex: Int?,
-        ): List<IrExpression> {
-            val stringHandle = stringAbi?.let {
-                builder.irCall(referencedHStringHandleGetter).apply {
-                    arguments[0] = builder.irGet(it)
-                }
-            }
-            fun argumentAt(index: Int): IrExpression {
-                if (index == stringArgumentIndex) {
-                    return stringHandle ?: error("Missing HSTRING reference for WinRT projection intrinsic argument $index.")
-                }
-                val value = values.getOrNull(index)
-                    ?: error("Unsupported WinRT projection intrinsic argument index $index.")
-                return when {
-                    index == projectedObjectArgumentIndex -> projectedObjectAbi(builder, value)
-                    argumentKinds[index] == UnitCallAbiArgumentKind.Boolean ->
-                        booleanAbiValue(builder, pluginContext, value)
-                    else -> value
-                }
-            }
-            return values.indices.map(::argumentAt)
         }
 
         private fun projectedObjectAbi(
