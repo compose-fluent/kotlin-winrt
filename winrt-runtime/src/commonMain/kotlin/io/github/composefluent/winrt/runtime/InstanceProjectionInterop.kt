@@ -1,11 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
 object WinRtInstanceProjectionInterop {
-    fun invokeUnit(reference: ComObjectReference, slot: Int) {
-        val hr = ComVtableInvoker.invoke(instance = reference.pointer, slot = slot)
-        HResult(hr).requireSuccess()
-    }
-
     fun getString(reference: ComObjectReference, slot: Int): String =
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
@@ -209,9 +204,6 @@ object WinRtProjectionIntrinsic {
         wrap: (IUnknownReference) -> T,
     ): T =
         staticIntrinsicNotLowered("staticCallProjectedInterfaceWithString", reference, slot, value)
-
-    fun invokeUnit(reference: ComObjectReference, slot: Int): Unit =
-        intrinsicNotLowered("invokeUnit", reference, slot)
 
     fun getString(reference: ComObjectReference, slot: Int): String =
         intrinsicNotLowered("getString", reference, slot)
