@@ -423,6 +423,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     } ?: return null
     val invocation = renderStaticArrayResultIntrinsicInvocation(binding)
         ?: renderStaticStringProjectedObjectIntrinsicInvocation(binding)
+        ?: renderStaticDescriptorUnitIntrinsicInvocation(binding)
         ?: renderStaticDirectAbiMethodInvocation(binding)
         ?: renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
@@ -512,6 +513,67 @@ private fun KotlinProjectionRenderer.renderStaticStringProjectedObjectIntrinsicI
         .add(")\n")
         .build()
 }
+
+private fun KotlinProjectionRenderer.renderStaticDescriptorUnitIntrinsicInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        binding.parameterBindings.isEmpty()
+    ) {
+        return null
+    }
+    val argumentShapes = binding.parameterBindings.map { parameter ->
+        if (parameter.category != WinRtMetadataParameterCategory.In) {
+            return null
+        }
+        staticUnitCallIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .apply {
+            binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
+                if (shape == "Object") {
+                    add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                } else {
+                    add("%L,\n", parameter.name)
+                }
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun staticUnitCallIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
+    when (binding.kind) {
+        KotlinProjectionAbiValueKind.Int32 ->
+            if (binding.typeName.endsWith("?")) null else "Int32"
+        KotlinProjectionAbiValueKind.UInt32 ->
+            if (binding.typeName.endsWith("?")) null else "UInt32"
+        KotlinProjectionAbiValueKind.Int64 ->
+            if (binding.typeName.endsWith("?")) null else "Int64"
+        KotlinProjectionAbiValueKind.UInt64 ->
+            if (binding.typeName.endsWith("?")) null else "UInt64"
+        KotlinProjectionAbiValueKind.Float ->
+            if (binding.typeName.endsWith("?")) null else "Float"
+        KotlinProjectionAbiValueKind.Double ->
+            if (binding.typeName.endsWith("?")) null else "Double"
+        KotlinProjectionAbiValueKind.Boolean ->
+            if (binding.typeName.endsWith("?")) null else "Boolean"
+        KotlinProjectionAbiValueKind.String ->
+            if (binding.typeName.endsWith("?")) null else "String"
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            if (binding.typeName.endsWith("?") || binding.typeArguments.isNotEmpty()) null else "Object"
+        else -> null
+    }
 
 private fun KotlinProjectionRenderer.renderStaticDirectAbiMethodInvocation(
     binding: KotlinProjectionStaticMemberBinding,
