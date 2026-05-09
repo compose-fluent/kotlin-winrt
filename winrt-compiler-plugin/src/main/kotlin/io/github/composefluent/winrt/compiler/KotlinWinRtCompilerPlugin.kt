@@ -1036,18 +1036,14 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            val argumentKinds = call.comVtableCallArgumentKinds() ?: return null
+            val callShape = call.comVtableCallShape() ?: return null
             val symbols = jvmFfmSymbols ?: return null
-            if (!symbols.canLower(argumentKinds)) {
+            if (!symbols.canLower(callShape.argumentKinds)) {
                 return null
             }
             val scope = builderScope ?: return null
             val instance = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
-            val values = mutableListOf<IrExpression>()
-            for (index in argumentKinds.indices) {
-                values += call.arguments.getOrNull(index + 3) ?: return null
-            }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
                 val hResultValue = irTemporary(
@@ -1057,8 +1053,8 @@ class KotlinWinRtIrGenerationExtension(
                         pluginContext = pluginContext,
                         instancePointer = instance,
                         slot = slot,
-                        argumentKinds = argumentKinds,
-                        values = values,
+                        argumentKinds = callShape.argumentKinds,
+                        values = callShape.values,
                     ),
                     nameHint = "hr",
                     isMutable = false,
@@ -1069,7 +1065,7 @@ class KotlinWinRtIrGenerationExtension(
         }
 
         @OptIn(UnsafeDuringIrConstructionAPI::class)
-        private fun IrCall.comVtableCallArgumentKinds(): List<UnitCallAbiArgumentKind>? {
+        private fun IrCall.comVtableCallShape(): ComVtableCallShape? {
             val ownerClass = symbol.owner.parent as? IrClass ?: return null
             if (ownerClass.fqNameWhenAvailable != WINRT_COM_VTABLE_INVOKER_FQ_NAME) {
                 return null
@@ -1078,18 +1074,43 @@ class KotlinWinRtIrGenerationExtension(
                 parameter.kind == IrParameterKind.Regular
             }
             return when (symbol.owner.name.asString()) {
-                "invoke" -> emptyList<UnitCallAbiArgumentKind>().takeIf { regularParameters.size == 2 }
+                "invoke" -> ComVtableCallShape(emptyList(), emptyList()).takeIf {
+                    regularParameters.size == 2
+                }
                 "invokeArgs" -> {
                     if (regularParameters.size < 3) {
                         return null
                     }
-                    regularParameters.drop(2).map { parameter ->
+                    val argumentKinds = regularParameters.drop(2).map { parameter ->
                         parameter.type.comVtableAbiArgumentKind() ?: return null
                     }
+                    val values = mutableListOf<IrExpression>()
+                    for (index in argumentKinds.indices) {
+                        values += arguments.getOrNull(index + 3) ?: return null
+                    }
+                    ComVtableCallShape(argumentKinds, values)
+                }
+                "invokeGenericArgs" -> {
+                    if (regularParameters.size != 3) {
+                        return null
+                    }
+                    val vararg = arguments.getOrNull(3) as? IrVararg ?: return null
+                    val values = vararg.elements.map { element ->
+                        element as? IrExpression ?: return null
+                    }
+                    val argumentKinds = values.map { value ->
+                        value.type.comVtableAbiArgumentKind() ?: return null
+                    }
+                    ComVtableCallShape(argumentKinds, values)
                 }
                 else -> null
             }
         }
+
+        private data class ComVtableCallShape(
+            val argumentKinds: List<UnitCallAbiArgumentKind>,
+            val values: List<IrExpression>,
+        )
 
         private fun org.jetbrains.kotlin.ir.types.IrType.comVtableAbiArgumentKind(): UnitCallAbiArgumentKind? =
             when (classFqName) {
