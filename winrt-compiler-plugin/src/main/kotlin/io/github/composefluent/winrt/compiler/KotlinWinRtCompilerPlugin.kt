@@ -39,6 +39,7 @@ import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.builders.irCall
+import org.jetbrains.kotlin.ir.builders.irIfNull
 import org.jetbrains.kotlin.ir.builders.irGetField
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
@@ -291,6 +292,9 @@ class KotlinWinRtIrGenerationExtension(
         private val nativeStructAdapterWrite: IrSimpleFunctionSymbol,
         private val nativeStructAdapterDisposeAbi: IrSimpleFunctionSymbol,
         private val nativeStructLayoutSizeBytesGetter: IrSimpleFunctionSymbol,
+        private val marshalerFromAbiArray: IrSimpleFunctionSymbol,
+        private val marshalerDisposeAbiArray: IrSimpleFunctionSymbol,
+        private val emptyList: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
         private val uintConstructor: IrConstructorSymbol?,
@@ -322,9 +326,123 @@ class KotlinWinRtIrGenerationExtension(
                 "getFloat" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Float)
                 "getDouble" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Double)
                 "getStruct" -> lowerStructGetter(call, pluginContext, builderScope)
+                "getArray" -> lowerArrayGetter(call, pluginContext, builderScope)
                 "setStruct" -> lowerStructSetter(call, pluginContext, builderScope)
                 else -> null
             }
+
+        private fun lowerArrayGetter(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val marshaler = call.arguments.getOrNull(3) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = call.type) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
+                        val lengthOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocateInt32Slot).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                            },
+                            nameHint = "lengthOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        val dataOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocatePointerSlot).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                            },
+                            nameHint = "dataOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +jvmFfmCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object),
+                            values = listOf(builder.irGet(lengthOut), builder.irGet(dataOut)),
+                        )
+                        val length = irTemporary(
+                            value = builder.irCall(platformAbiReadInt32).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(lengthOut)
+                            },
+                            nameHint = "length",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        val data = irTemporary(
+                            value = builder.irCall(platformAbiReadPointer).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(dataOut)
+                            },
+                            nameHint = "data",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +builder.irTry(
+                            type = call.type,
+                            tryResult = builder.irBlock(resultType = call.type) {
+                                val decoded = irTemporary(
+                                    value = builder.irCall(marshalerFromAbiArray).apply {
+                                        arguments[0] = marshaler
+                                        arguments[1] = builder.irGet(length)
+                                        arguments[2] = builder.irGet(data)
+                                    },
+                                    nameHint = "decoded",
+                                    isMutable = false,
+                                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                )
+                                +builder.irIfNull(
+                                    type = call.type,
+                                    subject = builder.irGet(decoded),
+                                    thenPart = builder.irAs(
+                                        builder.irCall(emptyList).apply {
+                                            typeArguments[0] = pluginContext.irBuiltIns.anyNType
+                                        },
+                                        call.type,
+                                    ),
+                                    elsePart = builder.irAs(builder.irGet(decoded), call.type),
+                                )
+                            },
+                            catches = emptyList(),
+                            finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                +builder.irCall(marshalerDisposeAbiArray).apply {
+                                    arguments[0] = marshaler
+                                    arguments[1] = builder.irGet(length)
+                                    arguments[2] = builder.irGet(data)
+                                }
+                            },
+                        )
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
+                )
+            }
+        }
 
         private fun lowerStructSetter(
             call: IrCall,
@@ -953,6 +1071,13 @@ class KotlinWinRtIrGenerationExtension(
                 val nativeStructAdapterWrite = nativeStructAdapter.functionNamed("write") ?: return null
                 val nativeStructAdapterDisposeAbi = nativeStructAdapter.functionNamed("disposeAbi") ?: return null
                 val nativeStructLayoutSizeBytesGetter = nativeStructLayout.propertyGetter("sizeBytes") ?: return null
+                val marshaler = pluginContext.referenceClass(WINRT_MARSHALER_CLASS_ID)
+                    ?: return null
+                val marshalerFromAbiArray = marshaler.functionNamed("fromAbiArray") ?: return null
+                val marshalerDisposeAbiArray = marshaler.functionNamed("disposeAbiArray") ?: return null
+                val emptyList = pluginContext.referenceFunctions(
+                    CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+                ).singleOrNull() ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
                     ?: return null
                 val hResultConstructor = hResult.owner.declarations
@@ -1003,6 +1128,9 @@ class KotlinWinRtIrGenerationExtension(
                     nativeStructAdapterWrite = nativeStructAdapterWrite,
                     nativeStructAdapterDisposeAbi = nativeStructAdapterDisposeAbi,
                     nativeStructLayoutSizeBytesGetter = nativeStructLayoutSizeBytesGetter,
+                    marshalerFromAbiArray = marshalerFromAbiArray,
+                    marshalerDisposeAbiArray = marshalerDisposeAbiArray,
+                    emptyList = emptyList,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
                     uintConstructor = uintConstructor,
@@ -1536,6 +1664,9 @@ private val WINRT_RUNTIME_PACKAGE_FQ_NAME =
 private val KOTLIN_PACKAGE_FQ_NAME =
     FqName("kotlin")
 
+private val KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME =
+    FqName("kotlin.collections")
+
 private val KOTLIN_INT_FQ_NAME =
     FqName("kotlin.Int")
 
@@ -1589,6 +1720,9 @@ private val WINRT_NATIVE_STRUCT_ADAPTER_CLASS_ID =
 
 private val WINRT_NATIVE_STRUCT_LAYOUT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeStructLayout"))
+
+private val WINRT_MARSHALER_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("Marshaler"))
 
 private val WINRT_HRESULT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HResult"))
