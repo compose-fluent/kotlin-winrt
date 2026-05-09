@@ -190,28 +190,12 @@ class KotlinWinRtIrGenerationExtension(
     ) {
         val intrinsicClassId = ClassId.topLevel(WINRT_PROJECTION_INTRINSIC_FQ_NAME)
         val directLowerings = WinRtProjectionIntrinsicIrLowerings.create(pluginContext)
-        val helperReceivers = WINRT_PROJECTION_INTRINSIC_HELPERS.values
-            .distinct()
-            .mapNotNull { helperFqName ->
-                val classId = ClassId.topLevel(helperFqName)
-                pluginContext.referenceClass(classId)?.let { helperFqName to it }
-            }
-            .toMap()
         val intrinsicFunctions = WINRT_PROJECTION_INTRINSIC_FUNCTIONS.associateWith { functionName ->
             pluginContext.referenceFunctions(CallableId(intrinsicClassId, Name.identifier(functionName)))
                 .singleOrNull()
         }
             .filterValues { symbol -> symbol != null }
-        val helperFunctions = WINRT_PROJECTION_INTRINSIC_HELPERS
-            .mapNotNull { (functionName, helperFqName) ->
-                val classId = ClassId.topLevel(helperFqName)
-                val symbol = pluginContext.referenceFunctions(CallableId(classId, Name.identifier(functionName)))
-                    .singleOrNull()
-                    ?: return@mapNotNull null
-                functionName to symbol
-            }
-            .toMap()
-        if (intrinsicFunctions.isEmpty() || helperFunctions.isEmpty()) {
+        if (intrinsicFunctions.isEmpty()) {
             return
         }
         moduleFragment.transformChildrenVoid(
@@ -236,17 +220,7 @@ class KotlinWinRtIrGenerationExtension(
                         builderScope = currentScope?.scope?.scopeOwnerSymbol,
                     )
                         ?.let { return it }
-                    val helperSymbol = helperFunctions[intrinsicName] ?: return call
-                    val helperReceiver = helperReceivers[WINRT_PROJECTION_INTRINSIC_HELPERS[intrinsicName]] ?: return call
-                    val scope = currentScope?.scope?.scopeOwnerSymbol ?: return call
-                    val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
-                    return builder.irCall(helperSymbol)
-                        .apply {
-                            arguments[0] = builder.irGetObject(helperReceiver)
-                            for (index in 1 until call.arguments.size) {
-                                arguments[index] = call.arguments[index]
-                            }
-                        }
+                    return call
                 }
             },
         )
@@ -368,9 +342,224 @@ class KotlinWinRtIrGenerationExtension(
                     ProjectedObjectGetterKind.Interface,
                     nullable = true,
                 )
+                "staticGetArray" -> lowerStaticArrayGetter(call, pluginContext, builderScope, includeProjectedObjectArgument = false)
+                "staticGetArrayWithProjectedObject" ->
+                    lowerStaticArrayGetter(call, pluginContext, builderScope, includeProjectedObjectArgument = true)
+                "staticCallProjectedRuntimeClassWithString" -> lowerStaticStringProjectedObjectCall(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    ProjectedObjectGetterKind.RuntimeClass,
+                )
+                "staticCallProjectedInterfaceWithString" -> lowerStaticStringProjectedObjectCall(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    ProjectedObjectGetterKind.Interface,
+                )
                 "setStruct" -> lowerStructSetter(call, pluginContext, builderScope)
                 else -> null
             }
+
+        private fun lowerStaticStringProjectedObjectCall(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            kind: ProjectedObjectGetterKind,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val value = call.arguments.getOrNull(3) ?: return null
+            val wrap = call.arguments.getOrNull(4) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = call.type) {
+                val valueAbi = irTemporary(
+                    value = builder.irCall(hStringCreateReference).apply {
+                        arguments[0] = builder.irGetObject(hStringCompanion)
+                        arguments[1] = value
+                    },
+                    nameHint = "valueAbi",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
+                        val nativeScope = irTemporary(
+                            value = builder.irCall(platformAbiConfinedScope).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                            },
+                            nameHint = "scope",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +builder.irTry(
+                            type = call.type,
+                            tryResult = builder.irBlock(resultType = call.type) {
+                                val resultOut = irTemporary(
+                                    value = builder.irCall(platformAbiAllocatePointerSlot).apply {
+                                        arguments[0] = builder.irGetObject(platformAbi)
+                                        arguments[1] = builder.irGet(nativeScope)
+                                    },
+                                    nameHint = "resultOut",
+                                    isMutable = false,
+                                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                )
+                                +jvmFfmCallUnitBlock(
+                                    symbols = symbols,
+                                    builder = builder,
+                                    pluginContext = pluginContext,
+                                    reference = reference,
+                                    slot = slot,
+                                    argumentKinds = listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object),
+                                    values = listOf(
+                                        builder.irCall(referencedHStringHandleGetter).apply {
+                                            arguments[0] = builder.irGet(valueAbi)
+                                        },
+                                        builder.irGet(resultOut),
+                                    ),
+                                )
+                                val resultPointer = irTemporary(
+                                    value = builder.irCall(platformAbiReadPointer).apply {
+                                        arguments[0] = builder.irGetObject(platformAbi)
+                                        arguments[1] = builder.irGet(resultOut)
+                                    },
+                                    nameHint = "resultPointer",
+                                    isMutable = false,
+                                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                )
+                                +builder.irIfThenElse(
+                                    type = call.type,
+                                    condition = builder.irCall(platformAbiIsNullRawAddress).apply {
+                                        arguments[0] = builder.irGetObject(platformAbi)
+                                        arguments[1] = builder.irGet(resultPointer)
+                                    },
+                                    thenPart = builder.irCall(kotlinError).apply {
+                                        arguments[0] = builder.irString("WINRT_E_NULL_ABI_RETURN")
+                                    },
+                                    elsePart = wrapProjectedObjectResult(
+                                        builder = builder,
+                                        callType = call.type,
+                                        resultPointer = builder.irGet(resultPointer),
+                                        wrap = wrap,
+                                        kind = kind,
+                                    ),
+                                )
+                            },
+                            catches = emptyList(),
+                            finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                +builder.irCall(nativeScopeClose).apply {
+                                    arguments[0] = builder.irGet(nativeScope)
+                                }
+                            },
+                        )
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(referencedHStringClose).apply {
+                            arguments[0] = builder.irGet(valueAbi)
+                        }
+                    },
+                )
+            }
+        }
+
+        private fun lowerStaticArrayGetter(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            includeProjectedObjectArgument: Boolean,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val projectedObject = if (includeProjectedObjectArgument) {
+                call.arguments.getOrNull(3) ?: return null
+            } else {
+                null
+            }
+            val marshaler = call.arguments.getOrNull(if (includeProjectedObjectArgument) 4 else 3) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = call.type) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
+                        val lengthOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocateInt32Slot).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                            },
+                            nameHint = "lengthOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        val dataOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocatePointerSlot).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                            },
+                            nameHint = "dataOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        val argumentKinds =
+                            if (projectedObject == null) {
+                                listOf(UnitCallAbiArgumentKind.Object, UnitCallAbiArgumentKind.Object)
+                            } else {
+                                listOf(
+                                    UnitCallAbiArgumentKind.Object,
+                                    UnitCallAbiArgumentKind.Object,
+                                    UnitCallAbiArgumentKind.Object,
+                                )
+                            }
+                        val values =
+                            if (projectedObject == null) {
+                                listOf(builder.irGet(lengthOut), builder.irGet(dataOut))
+                            } else {
+                                listOf(
+                                    projectedObjectAbi(builder, projectedObject),
+                                    builder.irGet(lengthOut),
+                                    builder.irGet(dataOut),
+                                )
+                            }
+                        +jvmFfmCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = argumentKinds,
+                            values = values,
+                        )
+                        +decodeAbiArrayFromOutSlots(
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            callType = call.type,
+                            marshaler = marshaler,
+                            lengthOut = builder.irGet(lengthOut),
+                            dataOut = builder.irGet(dataOut),
+                        )
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
+                )
+            }
+        }
 
         private fun lowerProjectedObjectGetter(
             call: IrCall,
@@ -438,29 +627,12 @@ class KotlinWinRtIrGenerationExtension(
                                 }
                             },
                             elsePart = builder.irBlock(resultType = call.type) {
-                                val resultReference = irTemporary(
-                                    value = builder.irCall(iUnknownReferenceConstructor).apply {
-                                        arguments[0] = builder.irCall(platformAbiToRawComPtr).apply {
-                                            arguments[0] = builder.irGetObject(platformAbi)
-                                            arguments[1] = builder.irGet(resultPointer)
-                                        }
-                                    },
-                                    nameHint = "resultReference",
-                                    isMutable = false,
-                                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                                )
-                                +builder.irAs(
-                                    builder.irCall(function1Invoke).apply {
-                                        arguments[0] = wrap
-                                        arguments[1] = when (kind) {
-                                            ProjectedObjectGetterKind.RuntimeClass ->
-                                                builder.irCall(comObjectReferenceAsInspectable).apply {
-                                                    arguments[0] = builder.irGet(resultReference)
-                                                }
-                                            ProjectedObjectGetterKind.Interface -> builder.irGet(resultReference)
-                                        }
-                                    },
-                                    call.type,
+                                +wrapProjectedObjectResult(
+                                    builder = builder,
+                                    callType = call.type,
+                                    resultPointer = builder.irGet(resultPointer),
+                                    wrap = wrap,
+                                    kind = kind,
                                 )
                             },
                         )
@@ -474,6 +646,40 @@ class KotlinWinRtIrGenerationExtension(
                 )
             }
         }
+
+        private fun wrapProjectedObjectResult(
+            builder: DeclarationIrBuilder,
+            callType: org.jetbrains.kotlin.ir.types.IrType,
+            resultPointer: IrExpression,
+            wrap: IrExpression,
+            kind: ProjectedObjectGetterKind,
+        ): IrExpression =
+            builder.irBlock(resultType = callType) {
+                val resultReference = irTemporary(
+                    value = builder.irCall(iUnknownReferenceConstructor).apply {
+                        arguments[0] = builder.irCall(platformAbiToRawComPtr).apply {
+                            arguments[0] = builder.irGetObject(platformAbi)
+                            arguments[1] = resultPointer
+                        }
+                    },
+                    nameHint = "resultReference",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irAs(
+                    builder.irCall(function1Invoke).apply {
+                        arguments[0] = wrap
+                        arguments[1] = when (kind) {
+                            ProjectedObjectGetterKind.RuntimeClass ->
+                                builder.irCall(comObjectReferenceAsInspectable).apply {
+                                    arguments[0] = builder.irGet(resultReference)
+                                }
+                            ProjectedObjectGetterKind.Interface -> builder.irGet(resultReference)
+                        }
+                    },
+                    callType,
+                )
+            }
 
         private fun lowerArrayGetter(
             call: IrCall,
@@ -543,39 +749,13 @@ class KotlinWinRtIrGenerationExtension(
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                         )
-                        +builder.irTry(
-                            type = call.type,
-                            tryResult = builder.irBlock(resultType = call.type) {
-                                val decoded = irTemporary(
-                                    value = builder.irCall(marshalerFromAbiArray).apply {
-                                        arguments[0] = marshaler
-                                        arguments[1] = builder.irGet(length)
-                                        arguments[2] = builder.irGet(data)
-                                    },
-                                    nameHint = "decoded",
-                                    isMutable = false,
-                                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                                )
-                                +builder.irIfNull(
-                                    type = call.type,
-                                    subject = builder.irGet(decoded),
-                                    thenPart = builder.irAs(
-                                        builder.irCall(emptyList).apply {
-                                            typeArguments[0] = pluginContext.irBuiltIns.anyNType
-                                        },
-                                        call.type,
-                                    ),
-                                    elsePart = builder.irAs(builder.irGet(decoded), call.type),
-                                )
-                            },
-                            catches = emptyList(),
-                            finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                                +builder.irCall(marshalerDisposeAbiArray).apply {
-                                    arguments[0] = marshaler
-                                    arguments[1] = builder.irGet(length)
-                                    arguments[2] = builder.irGet(data)
-                                }
-                            },
+                        +decodeAbiArray(
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            callType = call.type,
+                            marshaler = marshaler,
+                            length = builder.irGet(length),
+                            data = builder.irGet(data),
                         )
                     },
                     catches = emptyList(),
@@ -587,6 +767,86 @@ class KotlinWinRtIrGenerationExtension(
                 )
             }
         }
+
+        private fun decodeAbiArrayFromOutSlots(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            callType: org.jetbrains.kotlin.ir.types.IrType,
+            marshaler: IrExpression,
+            lengthOut: IrExpression,
+            dataOut: IrExpression,
+        ): IrExpression =
+            builder.irBlock(resultType = callType) {
+                val length = irTemporary(
+                    value = builder.irCall(platformAbiReadInt32).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = lengthOut
+                    },
+                    nameHint = "length",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val data = irTemporary(
+                    value = builder.irCall(platformAbiReadPointer).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = dataOut
+                    },
+                    nameHint = "data",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +decodeAbiArray(
+                    builder = builder,
+                    pluginContext = pluginContext,
+                    callType = callType,
+                    marshaler = marshaler,
+                    length = builder.irGet(length),
+                    data = builder.irGet(data),
+                )
+            }
+
+        private fun decodeAbiArray(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            callType: org.jetbrains.kotlin.ir.types.IrType,
+            marshaler: IrExpression,
+            length: IrExpression,
+            data: IrExpression,
+        ): IrExpression =
+            builder.irTry(
+                type = callType,
+                tryResult = builder.irBlock(resultType = callType) {
+                    val decoded = irTemporary(
+                        value = builder.irCall(marshalerFromAbiArray).apply {
+                            arguments[0] = marshaler
+                            arguments[1] = length
+                            arguments[2] = data
+                        },
+                        nameHint = "decoded",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                    +builder.irIfNull(
+                        type = callType,
+                        subject = builder.irGet(decoded),
+                        thenPart = builder.irAs(
+                            builder.irCall(emptyList).apply {
+                                typeArguments[0] = pluginContext.irBuiltIns.anyNType
+                            },
+                            callType,
+                        ),
+                        elsePart = builder.irAs(builder.irGet(decoded), callType),
+                    )
+                },
+                catches = emptyList(),
+                finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                    +builder.irCall(marshalerDisposeAbiArray).apply {
+                        arguments[0] = marshaler
+                        arguments[1] = length
+                        arguments[2] = data
+                    }
+                },
+            )
 
         private fun lowerStructSetter(
             call: IrCall,
@@ -2013,9 +2273,6 @@ private val KOTLIN_ULONG_CLASS_ID =
 private val KOTLIN_FUNCTION1_CLASS_ID =
     ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("Function1"))
 
-private val WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME =
-    FqName("io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop")
-
 private val WINRT_COM_VTABLE_INVOKER_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.ComVtableInvoker")
 
@@ -2085,13 +2342,6 @@ private val JAVA_ADDRESS_LAYOUT_CLASS_ID =
 private val JAVA_METHOD_HANDLE_CLASS_ID =
     ClassId(FqName("java.lang.invoke"), Name.identifier("MethodHandle"))
 
-private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
-    "staticGetArray" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
-    "staticGetArrayWithProjectedObject" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
-    "staticCallProjectedRuntimeClassWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
-    "staticCallProjectedInterfaceWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
-)
-
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnit",
     "getString",
@@ -2117,10 +2367,13 @@ private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "getNullableProjectedRuntimeClass",
     "getProjectedInterface",
     "getNullableProjectedInterface",
+    "staticGetArray",
+    "staticGetArrayWithProjectedObject",
+    "staticCallProjectedRuntimeClassWithString",
+    "staticCallProjectedInterfaceWithString",
 )
 
-private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =
-    WINRT_PROJECTION_INTRINSIC_HELPERS.keys + WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS
+private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS
 
 internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {
     val indexPath = metadataIndexPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return null
