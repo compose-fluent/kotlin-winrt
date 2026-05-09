@@ -248,12 +248,6 @@ class KotlinWinRtIrGenerationExtension(
         private val invokeArgsLong: IrSimpleFunctionSymbol,
         private val invokeArgsFloat: IrSimpleFunctionSymbol,
         private val invokeArgsDouble: IrSimpleFunctionSymbol,
-        private val invokeArgsRawAddressRawAddress: IrSimpleFunctionSymbol,
-        private val invokeArgsRawAddressFloat: IrSimpleFunctionSymbol,
-        private val invokeArgsRawAddressByte: IrSimpleFunctionSymbol,
-        private val invokeArgsFloatRawAddress: IrSimpleFunctionSymbol,
-        private val invokeArgsFloatByte: IrSimpleFunctionSymbol,
-        private val invokeArgsFloatRawAddressRawAddress: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
     ) {
@@ -431,25 +425,12 @@ class KotlinWinRtIrGenerationExtension(
         private fun typedInvokeArgsForUnitCall(
             argumentKinds: List<UnitCallAbiArgumentKind>,
         ): IrSimpleFunctionSymbol? =
-            when (argumentKinds) {
-                listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Object) ->
-                    invokeArgsRawAddressRawAddress
-                listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Float) ->
-                    invokeArgsRawAddressFloat
-                listOf(UnitCallAbiArgumentKind.String, UnitCallAbiArgumentKind.Boolean) ->
-                    invokeArgsRawAddressByte
-                listOf(UnitCallAbiArgumentKind.Float, UnitCallAbiArgumentKind.String) ->
-                    invokeArgsFloatRawAddress
-                listOf(UnitCallAbiArgumentKind.Float, UnitCallAbiArgumentKind.Boolean) ->
-                    invokeArgsFloatByte
-                listOf(
-                    UnitCallAbiArgumentKind.Float,
-                    UnitCallAbiArgumentKind.String,
-                    UnitCallAbiArgumentKind.Object,
-                ) ->
-                    invokeArgsFloatRawAddressRawAddress
-                else -> null
-            }
+            comVtableInvoker.functionNamedWithValueParameterTypes(
+                "invokeArgs",
+                WINRT_RAW_COM_PTR_FQ_NAME,
+                KOTLIN_INT_FQ_NAME,
+                *argumentKinds.map { kind -> kind.invokeArgsParameterTypeName() }.toTypedArray(),
+            )
 
         private fun lowerTypedCallUnitWithArgumentsOneString(
             call: IrCall,
@@ -536,6 +517,14 @@ class KotlinWinRtIrGenerationExtension(
             String,
             Object,
         }
+
+        private fun UnitCallAbiArgumentKind.invokeArgsParameterTypeName(): FqName =
+            when (this) {
+                UnitCallAbiArgumentKind.Float -> KOTLIN_FLOAT_FQ_NAME
+                UnitCallAbiArgumentKind.Boolean -> KOTLIN_BYTE_FQ_NAME
+                UnitCallAbiArgumentKind.String,
+                UnitCallAbiArgumentKind.Object -> WINRT_RAW_ADDRESS_FQ_NAME
+            }
 
         private object UnitCallAbiShape {
             fun parse(value: String): List<UnitCallAbiArgumentKind>? {
@@ -669,49 +658,6 @@ class KotlinWinRtIrGenerationExtension(
                     KOTLIN_INT_FQ_NAME,
                     KOTLIN_DOUBLE_FQ_NAME,
                 ) ?: return null
-                val invokeArgsRawAddressRawAddress = comVtableInvoker.functionNamedWithValueParameterTypes(
-                    "invokeArgs",
-                    WINRT_RAW_COM_PTR_FQ_NAME,
-                    KOTLIN_INT_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                ) ?: return null
-                val invokeArgsRawAddressFloat = comVtableInvoker.functionNamedWithValueParameterTypes(
-                    "invokeArgs",
-                    WINRT_RAW_COM_PTR_FQ_NAME,
-                    KOTLIN_INT_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                    KOTLIN_FLOAT_FQ_NAME,
-                ) ?: return null
-                val invokeArgsRawAddressByte = comVtableInvoker.functionNamedWithValueParameterTypes(
-                    "invokeArgs",
-                    WINRT_RAW_COM_PTR_FQ_NAME,
-                    KOTLIN_INT_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                    KOTLIN_BYTE_FQ_NAME,
-                ) ?: return null
-                val invokeArgsFloatRawAddress = comVtableInvoker.functionNamedWithValueParameterTypes(
-                    "invokeArgs",
-                    WINRT_RAW_COM_PTR_FQ_NAME,
-                    KOTLIN_INT_FQ_NAME,
-                    KOTLIN_FLOAT_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                ) ?: return null
-                val invokeArgsFloatByte = comVtableInvoker.functionNamedWithValueParameterTypes(
-                    "invokeArgs",
-                    WINRT_RAW_COM_PTR_FQ_NAME,
-                    KOTLIN_INT_FQ_NAME,
-                    KOTLIN_FLOAT_FQ_NAME,
-                    KOTLIN_BYTE_FQ_NAME,
-                ) ?: return null
-                val invokeArgsFloatRawAddressRawAddress = comVtableInvoker.functionNamedWithValueParameterTypes(
-                    "invokeArgs",
-                    WINRT_RAW_COM_PTR_FQ_NAME,
-                    KOTLIN_INT_FQ_NAME,
-                    KOTLIN_FLOAT_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                    WINRT_RAW_ADDRESS_FQ_NAME,
-                ) ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
                     ?: return null
                 val hResultConstructor = hResult.owner.declarations
@@ -737,12 +683,6 @@ class KotlinWinRtIrGenerationExtension(
                     invokeArgsLong = invokeArgsLong,
                     invokeArgsFloat = invokeArgsFloat,
                     invokeArgsDouble = invokeArgsDouble,
-                    invokeArgsRawAddressRawAddress = invokeArgsRawAddressRawAddress,
-                    invokeArgsRawAddressFloat = invokeArgsRawAddressFloat,
-                    invokeArgsRawAddressByte = invokeArgsRawAddressByte,
-                    invokeArgsFloatRawAddress = invokeArgsFloatRawAddress,
-                    invokeArgsFloatByte = invokeArgsFloatByte,
-                    invokeArgsFloatRawAddressRawAddress = invokeArgsFloatRawAddressRawAddress,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
                 )
