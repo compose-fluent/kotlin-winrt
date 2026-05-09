@@ -1,59 +1,5 @@
 package io.github.composefluent.winrt.runtime
 
-object WinRtInstanceProjectionInterop {
-    fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocateBytes(scope, adapter.layout.sizeBytes)
-            val hr = ComVtableInvoker.invokeGenericArgs(
-                instance = reference.pointer,
-                slot = slot,
-                args = arrayOf(resultOut),
-            )
-            HResult(hr).requireSuccess()
-            try {
-                adapter.read(resultOut)
-            } finally {
-                adapter.disposeAbi(resultOut)
-            }
-        }
-
-    fun <T> getArray(reference: ComObjectReference, slot: Int, marshaler: Marshaler<T>): List<T?> =
-        PlatformAbi.confinedScope().use { scope ->
-            val lengthOut = PlatformAbi.allocateInt32Slot(scope)
-            val dataOut = PlatformAbi.allocatePointerSlot(scope)
-            val hr = ComVtableInvoker.invokeGenericArgs(
-                instance = reference.pointer,
-                slot = slot,
-                args = arrayOf(lengthOut, dataOut),
-            )
-            HResult(hr).requireSuccess()
-            val length = PlatformAbi.readInt32(lengthOut)
-            val data = PlatformAbi.readPointer(dataOut)
-            try {
-                marshaler.fromAbiArray(length, data) ?: emptyList()
-            } finally {
-                marshaler.disposeAbiArray(length, data)
-            }
-        }
-
-    fun <T> setStruct(reference: ComObjectReference, slot: Int, value: T, adapter: NativeStructAdapter<T>) {
-        PlatformAbi.confinedScope().use { scope ->
-            val valueAbi = PlatformAbi.allocateBytes(scope, adapter.layout.sizeBytes)
-            adapter.write(value, valueAbi)
-            try {
-                val hr = ComVtableInvoker.invokeGenericArgs(
-                    instance = reference.pointer,
-                    slot = slot,
-                    args = arrayOf(valueAbi),
-                )
-                HResult(hr).requireSuccess()
-            } finally {
-                adapter.disposeAbi(valueAbi)
-            }
-        }
-    }
-}
-
 object WinRtProjectionIntrinsic {
     fun <T> staticGetArray(
         reference: IUnknownReference,

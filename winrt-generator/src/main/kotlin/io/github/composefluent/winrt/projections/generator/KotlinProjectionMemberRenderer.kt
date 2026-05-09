@@ -662,12 +662,13 @@ internal fun renderInstanceScalarGetterInvocation(
     referenceExpression: String,
     slotExpression: CodeBlock,
     helperFunction: String,
+    @Suppress("UNUSED_PARAMETER")
     intrinsic: Boolean = false,
 ): CodeBlock {
     return CodeBlock.builder()
         .add(
             "return %T.%L(\n",
-            if (intrinsic) WINRT_PROJECTION_INTRINSIC_CLASS_NAME else WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME,
+            WINRT_PROJECTION_INTRINSIC_CLASS_NAME,
             helperFunction,
         )
         .indent()
@@ -682,6 +683,7 @@ internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocat
     referenceExpression: String,
     slotExpression: CodeBlock,
     returnBinding: KotlinProjectionAbiTypeBinding,
+    @Suppress("UNUSED_PARAMETER")
     intrinsic: Boolean = useProjectionIntrinsics,
 ): CodeBlock? {
     if (customObjectAbi(returnBinding) != null) {
@@ -698,7 +700,7 @@ internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocat
     return CodeBlock.builder()
         .add(
             "return %T.%L(\n",
-            if (intrinsic) WINRT_PROJECTION_INTRINSIC_CLASS_NAME else WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME,
+            WINRT_PROJECTION_INTRINSIC_CLASS_NAME,
             helperFunction,
         )
         .indent()

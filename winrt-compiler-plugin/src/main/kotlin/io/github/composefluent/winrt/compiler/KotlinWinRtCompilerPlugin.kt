@@ -2013,9 +2013,6 @@ private val KOTLIN_ULONG_CLASS_ID =
 private val KOTLIN_FUNCTION1_CLASS_ID =
     ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("Function1"))
 
-private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
-    FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
-
 private val WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop")
 
@@ -2093,9 +2090,6 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "staticGetArrayWithProjectedObject" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
     "staticCallProjectedRuntimeClassWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
     "staticCallProjectedInterfaceWithString" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
-    "getStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "getArray" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
-    "setStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
@@ -2108,6 +2102,9 @@ private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "getUInt64",
     "getFloat",
     "getDouble",
+    "getStruct",
+    "getArray",
+    "setStruct",
     "setString",
     "setBoolean",
     "setInt32",

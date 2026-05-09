@@ -6017,6 +6017,76 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_struct_properties_through_projection_intrinsics() {
+        val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderBoundProperty(
+            plan = KotlinTypeProjectionPlan(
+                type = WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "Widget",
+                    kind = WinRtTypeKind.RuntimeClass,
+                    isSealedType = true,
+                ),
+                packageName = "sample.foundation",
+                relativePath = "sample/foundation/Widget.kt",
+                declarationKind = KotlinProjectionDeclarationKind.Class,
+                typeDeclarationDescriptor = WinRtTypeDeclarationDescriptor(
+                    typeName = "Sample.Foundation.Widget",
+                    declarationKind = WinRtTypeKind.RuntimeClass,
+                    writesProjectedDeclaration = true,
+                    writesAbiDeclaration = true,
+                    writesWrapperDeclaration = true,
+                    writesImplementationClass = false,
+                    writesHelperClass = true,
+                    netStandardBranch = false,
+                ),
+                instanceMemberBindings = listOf(
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "CENTER_GETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "CENTER_GETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(
+                            kind = KotlinProjectionAbiValueKind.Struct,
+                            typeName = "Sample.Foundation.Point",
+                            sourceTypeKind = WinRtTypeKind.Struct,
+                        ),
+                    ),
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "CENTER_SETTER_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "CENTER_SETTER_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                        parameterBindings = listOf(
+                            KotlinProjectionAbiParameterBinding(
+                                name = "value",
+                                typeBinding = KotlinProjectionAbiTypeBinding(
+                                    kind = KotlinProjectionAbiValueKind.Struct,
+                                    typeName = "Sample.Foundation.Point",
+                                    sourceTypeKind = WinRtTypeKind.Struct,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+            property = WinRtPropertyDefinition(
+                name = "Center",
+                typeName = "Sample.Foundation.Point",
+                getterMethodName = "get_Center",
+                setterMethodName = "put_Center",
+            ),
+        ).toString()
+
+        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getStruct("))
+        assertTrue(property, property.contains("WinRtProjectionIntrinsic.setStruct("))
+        assertFalse(property.contains("WinRtInstanceProjectionInterop"))
+        assertFalse(property.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_projected_object_property_getters_through_projection_intrinsics() {
         val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderBoundProperty(
             plan = KotlinTypeProjectionPlan(
