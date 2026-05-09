@@ -46,6 +46,7 @@ import org.jetbrains.kotlin.ir.builders.irGetObject
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
 import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irNotEquals
+import org.jetbrains.kotlin.ir.builders.irNull
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
@@ -286,6 +287,8 @@ class KotlinWinRtIrGenerationExtension(
         private val platformAbiReadInt64: IrSimpleFunctionSymbol,
         private val platformAbiReadFloat: IrSimpleFunctionSymbol,
         private val platformAbiReadDouble: IrSimpleFunctionSymbol,
+        private val platformAbiIsNullRawAddress: IrSimpleFunctionSymbol,
+        private val platformAbiToRawComPtr: IrSimpleFunctionSymbol,
         private val nativeScopeClose: IrSimpleFunctionSymbol,
         private val nativeStructAdapterLayoutGetter: IrSimpleFunctionSymbol,
         private val nativeStructAdapterRead: IrSimpleFunctionSymbol,
@@ -295,6 +298,10 @@ class KotlinWinRtIrGenerationExtension(
         private val marshalerFromAbiArray: IrSimpleFunctionSymbol,
         private val marshalerDisposeAbiArray: IrSimpleFunctionSymbol,
         private val emptyList: IrSimpleFunctionSymbol,
+        private val iUnknownReferenceConstructor: IrConstructorSymbol,
+        private val comObjectReferenceAsInspectable: IrSimpleFunctionSymbol,
+        private val function1Invoke: IrSimpleFunctionSymbol,
+        private val kotlinError: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
         private val uintConstructor: IrConstructorSymbol?,
@@ -327,9 +334,140 @@ class KotlinWinRtIrGenerationExtension(
                 "getDouble" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Double)
                 "getStruct" -> lowerStructGetter(call, pluginContext, builderScope)
                 "getArray" -> lowerArrayGetter(call, pluginContext, builderScope)
+                "getProjectedRuntimeClass" -> lowerProjectedObjectGetter(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    ProjectedObjectGetterKind.RuntimeClass,
+                    nullable = false,
+                )
+                "getNullableProjectedRuntimeClass" -> lowerProjectedObjectGetter(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    ProjectedObjectGetterKind.RuntimeClass,
+                    nullable = true,
+                )
+                "getProjectedInterface" -> lowerProjectedObjectGetter(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    ProjectedObjectGetterKind.Interface,
+                    nullable = false,
+                )
+                "getNullableProjectedInterface" -> lowerProjectedObjectGetter(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    ProjectedObjectGetterKind.Interface,
+                    nullable = true,
+                )
                 "setStruct" -> lowerStructSetter(call, pluginContext, builderScope)
                 else -> null
             }
+
+        private fun lowerProjectedObjectGetter(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            kind: ProjectedObjectGetterKind,
+            nullable: Boolean,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val wrap = call.arguments.getOrNull(3) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = call.type) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
+                        val resultOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocatePointerSlot).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                            },
+                            nameHint = "resultOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +jvmFfmCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = listOf(UnitCallAbiArgumentKind.Object),
+                            values = listOf(builder.irGet(resultOut)),
+                        )
+                        val resultPointer = irTemporary(
+                            value = builder.irCall(platformAbiReadPointer).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(resultOut)
+                            },
+                            nameHint = "resultPointer",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +builder.irIfThenElse(
+                            type = call.type,
+                            condition = builder.irCall(platformAbiIsNullRawAddress).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(resultPointer)
+                            },
+                            thenPart = if (nullable) {
+                                builder.irNull(call.type)
+                            } else {
+                                builder.irCall(kotlinError).apply {
+                                    arguments[0] = builder.irString("WINRT_E_NULL_ABI_RETURN")
+                                }
+                            },
+                            elsePart = builder.irBlock(resultType = call.type) {
+                                val resultReference = irTemporary(
+                                    value = builder.irCall(iUnknownReferenceConstructor).apply {
+                                        arguments[0] = builder.irCall(platformAbiToRawComPtr).apply {
+                                            arguments[0] = builder.irGetObject(platformAbi)
+                                            arguments[1] = builder.irGet(resultPointer)
+                                        }
+                                    },
+                                    nameHint = "resultReference",
+                                    isMutable = false,
+                                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                )
+                                +builder.irAs(
+                                    builder.irCall(function1Invoke).apply {
+                                        arguments[0] = wrap
+                                        arguments[1] = when (kind) {
+                                            ProjectedObjectGetterKind.RuntimeClass ->
+                                                builder.irCall(comObjectReferenceAsInspectable).apply {
+                                                    arguments[0] = builder.irGet(resultReference)
+                                                }
+                                            ProjectedObjectGetterKind.Interface -> builder.irGet(resultReference)
+                                        }
+                                    },
+                                    call.type,
+                                )
+                            },
+                        )
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
+                )
+            }
+        }
 
         private fun lowerArrayGetter(
             call: IrCall,
@@ -979,6 +1117,11 @@ class KotlinWinRtIrGenerationExtension(
             Double,
         }
 
+        private enum class ProjectedObjectGetterKind {
+            RuntimeClass,
+            Interface,
+        }
+
         private object UnitCallAbiShape {
             fun parse(value: String): List<UnitCallAbiArgumentKind>? {
                 if (value.isBlank()) {
@@ -1061,6 +1204,10 @@ class KotlinWinRtIrGenerationExtension(
                 val platformAbiReadInt64 = platformAbi.functionNamed("readInt64") ?: return null
                 val platformAbiReadFloat = platformAbi.functionNamed("readFloat") ?: return null
                 val platformAbiReadDouble = platformAbi.functionNamed("readDouble") ?: return null
+                val platformAbiIsNullRawAddress =
+                    platformAbi.functionNamedWithValueParameterTypes("isNull", WINRT_RAW_ADDRESS_FQ_NAME) ?: return null
+                val platformAbiToRawComPtr =
+                    platformAbi.functionNamedWithValueParameterTypes("toRawComPtr", WINRT_RAW_ADDRESS_FQ_NAME) ?: return null
                 val nativeScopeClose = nativeScope.functionNamed("close") ?: return null
                 val nativeStructAdapter = pluginContext.referenceClass(WINRT_NATIVE_STRUCT_ADAPTER_CLASS_ID)
                     ?: return null
@@ -1077,6 +1224,17 @@ class KotlinWinRtIrGenerationExtension(
                 val marshalerDisposeAbiArray = marshaler.functionNamed("disposeAbiArray") ?: return null
                 val emptyList = pluginContext.referenceFunctions(
                     CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+                ).singleOrNull() ?: return null
+                val iUnknownReference = pluginContext.referenceClass(WINRT_IUNKNOWN_REFERENCE_CLASS_ID)
+                    ?: return null
+                val iUnknownReferenceConstructor =
+                    iUnknownReference.constructorWithRegularParameterCount(5) ?: return null
+                val comObjectReferenceAsInspectable = comObjectReference.functionNamed("asInspectable") ?: return null
+                val function1 = pluginContext.referenceClass(KOTLIN_FUNCTION1_CLASS_ID)
+                    ?: return null
+                val function1Invoke = function1.functionNamed("invoke") ?: return null
+                val kotlinError = pluginContext.referenceFunctions(
+                    CallableId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("error")),
                 ).singleOrNull() ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
                     ?: return null
@@ -1122,6 +1280,8 @@ class KotlinWinRtIrGenerationExtension(
                     platformAbiReadInt64 = platformAbiReadInt64,
                     platformAbiReadFloat = platformAbiReadFloat,
                     platformAbiReadDouble = platformAbiReadDouble,
+                    platformAbiIsNullRawAddress = platformAbiIsNullRawAddress,
+                    platformAbiToRawComPtr = platformAbiToRawComPtr,
                     nativeScopeClose = nativeScopeClose,
                     nativeStructAdapterLayoutGetter = nativeStructAdapterLayoutGetter,
                     nativeStructAdapterRead = nativeStructAdapterRead,
@@ -1131,6 +1291,10 @@ class KotlinWinRtIrGenerationExtension(
                     marshalerFromAbiArray = marshalerFromAbiArray,
                     marshalerDisposeAbiArray = marshalerDisposeAbiArray,
                     emptyList = emptyList,
+                    iUnknownReferenceConstructor = iUnknownReferenceConstructor,
+                    comObjectReferenceAsInspectable = comObjectReferenceAsInspectable,
+                    function1Invoke = function1Invoke,
+                    kotlinError = kotlinError,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
                     uintConstructor = uintConstructor,
@@ -1658,6 +1822,15 @@ private fun IrClassSymbol.singleValueConstructor(): IrConstructorSymbol? =
         }
         ?.symbol
 
+@OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.constructorWithRegularParameterCount(count: Int): IrConstructorSymbol? =
+    owner.declarations
+        .filterIsInstance<IrConstructor>()
+        .singleOrNull { constructor ->
+            constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == count
+        }
+        ?.symbol
+
 private val WINRT_RUNTIME_PACKAGE_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime")
 
@@ -1676,6 +1849,9 @@ private val KOTLIN_LONG_FQ_NAME =
 private val WINRT_RAW_COM_PTR_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.RawComPtr")
 
+private val WINRT_RAW_ADDRESS_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.RawAddress")
+
 private val JAVA_ADDRESS_LAYOUT_FQ_NAME =
     FqName("java.lang.foreign.AddressLayout")
 
@@ -1684,6 +1860,9 @@ private val KOTLIN_UINT_CLASS_ID =
 
 private val KOTLIN_ULONG_CLASS_ID =
     ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("ULong"))
+
+private val KOTLIN_FUNCTION1_CLASS_ID =
+    ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("Function1"))
 
 private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
@@ -1702,6 +1881,9 @@ private val WINRT_IWINRT_OBJECT_CLASS_ID =
 
 private val WINRT_COM_OBJECT_REFERENCE_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ComObjectReference"))
+
+private val WINRT_IUNKNOWN_REFERENCE_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("IUnknownReference"))
 
 private val WINRT_RAW_COM_PTR_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("RawComPtr"))
@@ -1771,6 +1953,10 @@ private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "getStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "getArray" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
     "setStruct" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getProjectedRuntimeClass" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getNullableProjectedRuntimeClass" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getProjectedInterface" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
+    "getNullableProjectedInterface" to WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME,
 )
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
@@ -1783,6 +1969,10 @@ private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "setUInt64",
     "setFloat",
     "setDouble",
+    "getProjectedRuntimeClass",
+    "getNullableProjectedRuntimeClass",
+    "getProjectedInterface",
+    "getNullableProjectedInterface",
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS =
