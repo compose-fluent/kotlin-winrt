@@ -6015,8 +6015,8 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_routes_projected_object_property_getters_through_runtime_instance_projection_interop() {
-        val property = KotlinProjectionRenderer().renderBoundProperty(
+    fun generator_routes_projected_object_property_getters_through_projection_intrinsics() {
+        val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderBoundProperty(
             plan = KotlinTypeProjectionPlan(
                 type = WinRtTypeDefinition(
                     namespace = "Sample.Foundation",
@@ -6060,14 +6060,15 @@ class KotlinProjectionGeneratorTest {
         ).toString()
 
         assertTrue(property, property.contains("val owner: sample.foundation.Widget"))
-        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass("))
+        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass("))
         assertTrue(property, property.contains("Widget.Metadata::wrap"))
+        assertFalse(property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass"))
         assertFalse(property.contains("PlatformAbi.confinedScope()"))
         assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
     }
 
     @Test
-    fun generator_routes_interface_proxy_projected_object_property_getters_through_runtime_instance_projection_interop() {
+    fun generator_routes_interface_proxy_projected_object_property_getters_through_projection_intrinsics() {
         val widgetType = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "Widget",
@@ -6088,7 +6089,7 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val property = KotlinProjectionRenderer().renderInterfaceProxyProperty(
+        val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderInterfaceProxyProperty(
             slotInterfaceType = interfaceType,
             property = interfaceType.properties.single(),
             typesByQualifiedName = mapOf(
@@ -6098,8 +6099,9 @@ class KotlinProjectionGeneratorTest {
         ).toString()
 
         assertTrue(property, property.contains("override val owner: sample.foundation.Widget"))
-        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass("))
+        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass("))
         assertTrue(property, property.contains("Widget.Metadata::wrap"))
+        assertFalse(property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass"))
         assertFalse(property.contains("PlatformAbi.confinedScope()"))
         assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
     }

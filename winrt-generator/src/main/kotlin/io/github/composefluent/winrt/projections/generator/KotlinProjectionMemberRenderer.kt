@@ -682,6 +682,7 @@ internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocat
     referenceExpression: String,
     slotExpression: CodeBlock,
     returnBinding: KotlinProjectionAbiTypeBinding,
+    intrinsic: Boolean = useProjectionIntrinsics,
 ): CodeBlock? {
     if (customObjectAbi(returnBinding) != null) {
         return null
@@ -695,7 +696,11 @@ internal fun KotlinProjectionRenderer.renderInstanceProjectedObjectGetterInvocat
     }
     val returnType = resolvedReturnClassName(returnBinding) ?: return null
     return CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
+        .add(
+            "return %T.%L(\n",
+            if (intrinsic) WINRT_PROJECTION_INTRINSIC_CLASS_NAME else WINRT_INSTANCE_PROJECTION_INTEROP_CLASS_NAME,
+            helperFunction,
+        )
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)

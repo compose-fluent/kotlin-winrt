@@ -95,38 +95,6 @@ object WinRtInstanceProjectionInterop {
         }
     }
 
-    fun <T> getProjectedRuntimeClass(
-        reference: ComObjectReference,
-        slot: Int,
-        wrap: (IInspectableReference) -> T,
-    ): T =
-        getProjectedObject(reference, slot) { result ->
-            wrap(result.asInspectable())
-        }
-
-    fun <T> getNullableProjectedRuntimeClass(
-        reference: ComObjectReference,
-        slot: Int,
-        wrap: (IInspectableReference) -> T,
-    ): T? =
-        getNullableProjectedObject(reference, slot) { result ->
-            wrap(result.asInspectable())
-        }
-
-    fun <T> getProjectedInterface(
-        reference: ComObjectReference,
-        slot: Int,
-        wrap: (IUnknownReference) -> T,
-    ): T =
-        getProjectedObject(reference, slot, wrap)
-
-    fun <T> getNullableProjectedInterface(
-        reference: ComObjectReference,
-        slot: Int,
-        wrap: (IUnknownReference) -> T,
-    ): T? =
-        getNullableProjectedObject(reference, slot, wrap)
-
     private fun <T> getScalar(
         reference: ComObjectReference,
         slot: Int,
@@ -142,34 +110,6 @@ object WinRtInstanceProjectionInterop {
             )
             HResult(hr).requireSuccess()
             read(resultOut)
-        }
-
-    private fun <T> getProjectedObject(
-        reference: ComObjectReference,
-        slot: Int,
-        wrap: (IUnknownReference) -> T,
-    ): T =
-        getNullableProjectedObject(reference, slot, wrap) ?: error("WINRT_E_NULL_ABI_RETURN")
-
-    private fun <T> getNullableProjectedObject(
-        reference: ComObjectReference,
-        slot: Int,
-        wrap: (IUnknownReference) -> T,
-    ): T? =
-        PlatformAbi.confinedScope().use { scope ->
-            val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            val hr = ComVtableInvoker.invokeGenericArgs(
-                instance = reference.pointer,
-                slot = slot,
-                args = arrayOf(resultOut),
-            )
-            HResult(hr).requireSuccess()
-            val resultPointer = PlatformAbi.readPointer(resultOut)
-            if (PlatformAbi.isNull(resultPointer)) {
-                return null
-            }
-            val resultRef = IUnknownReference(PlatformAbi.toRawComPtr(resultPointer))
-            wrap(resultRef)
         }
 }
 
@@ -237,6 +177,34 @@ object WinRtProjectionIntrinsic {
 
     fun <T> setStruct(reference: ComObjectReference, slot: Int, value: T, adapter: NativeStructAdapter<T>): Unit =
         intrinsicNotLowered("setStruct", reference, slot, value)
+
+    fun <T> getProjectedRuntimeClass(
+        reference: ComObjectReference,
+        slot: Int,
+        wrap: (IInspectableReference) -> T,
+    ): T =
+        intrinsicNotLowered("getProjectedRuntimeClass", reference, slot, wrap)
+
+    fun <T> getNullableProjectedRuntimeClass(
+        reference: ComObjectReference,
+        slot: Int,
+        wrap: (IInspectableReference) -> T,
+    ): T? =
+        intrinsicNotLowered("getNullableProjectedRuntimeClass", reference, slot, wrap)
+
+    fun <T> getProjectedInterface(
+        reference: ComObjectReference,
+        slot: Int,
+        wrap: (IUnknownReference) -> T,
+    ): T =
+        intrinsicNotLowered("getProjectedInterface", reference, slot, wrap)
+
+    fun <T> getNullableProjectedInterface(
+        reference: ComObjectReference,
+        slot: Int,
+        wrap: (IUnknownReference) -> T,
+    ): T? =
+        intrinsicNotLowered("getNullableProjectedInterface", reference, slot, wrap)
 
     fun setString(reference: ComObjectReference, slot: Int, value: String): Unit =
         intrinsicNotLowered("setString", reference, slot, value)
