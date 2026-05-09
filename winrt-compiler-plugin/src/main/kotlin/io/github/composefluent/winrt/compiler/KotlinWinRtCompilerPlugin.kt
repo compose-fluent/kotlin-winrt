@@ -288,6 +288,7 @@ class KotlinWinRtIrGenerationExtension(
         private val nativeScopeClose: IrSimpleFunctionSymbol,
         private val nativeStructAdapterLayoutGetter: IrSimpleFunctionSymbol,
         private val nativeStructAdapterRead: IrSimpleFunctionSymbol,
+        private val nativeStructAdapterWrite: IrSimpleFunctionSymbol,
         private val nativeStructAdapterDisposeAbi: IrSimpleFunctionSymbol,
         private val nativeStructLayoutSizeBytesGetter: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
@@ -321,8 +322,82 @@ class KotlinWinRtIrGenerationExtension(
                 "getFloat" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Float)
                 "getDouble" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Double)
                 "getStruct" -> lowerStructGetter(call, pluginContext, builderScope)
+                "setStruct" -> lowerStructSetter(call, pluginContext, builderScope)
                 else -> null
             }
+
+        private fun lowerStructSetter(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val value = call.arguments.getOrNull(3) ?: return null
+            val adapter = call.arguments.getOrNull(4) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = pluginContext.irBuiltIns.unitType,
+                    tryResult = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        val valueAbi = irTemporary(
+                            value = builder.irCall(platformAbiAllocateBytes).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                                arguments[2] = builder.irCall(nativeStructLayoutSizeBytesGetter).apply {
+                                    arguments[0] = builder.irCall(nativeStructAdapterLayoutGetter).apply {
+                                        arguments[0] = adapter
+                                    }
+                                }
+                            },
+                            nameHint = "valueAbi",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +builder.irCall(nativeStructAdapterWrite).apply {
+                            arguments[0] = adapter
+                            arguments[1] = value
+                            arguments[2] = builder.irGet(valueAbi)
+                        }
+                        +builder.irTry(
+                            type = pluginContext.irBuiltIns.unitType,
+                            tryResult = jvmFfmCallUnitBlock(
+                                symbols = symbols,
+                                builder = builder,
+                                pluginContext = pluginContext,
+                                reference = reference,
+                                slot = slot,
+                                argumentKinds = listOf(UnitCallAbiArgumentKind.Object),
+                                values = listOf(builder.irGet(valueAbi)),
+                            ),
+                            catches = emptyList(),
+                            finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                +builder.irCall(nativeStructAdapterDisposeAbi).apply {
+                                    arguments[0] = adapter
+                                    arguments[1] = builder.irGet(valueAbi)
+                                }
+                            },
+                        )
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
+                )
+            }
+        }
 
         private fun lowerStructGetter(
             call: IrCall,
@@ -875,6 +950,7 @@ class KotlinWinRtIrGenerationExtension(
                     ?: return null
                 val nativeStructAdapterLayoutGetter = nativeStructAdapter.propertyGetter("layout") ?: return null
                 val nativeStructAdapterRead = nativeStructAdapter.functionNamed("read") ?: return null
+                val nativeStructAdapterWrite = nativeStructAdapter.functionNamed("write") ?: return null
                 val nativeStructAdapterDisposeAbi = nativeStructAdapter.functionNamed("disposeAbi") ?: return null
                 val nativeStructLayoutSizeBytesGetter = nativeStructLayout.propertyGetter("sizeBytes") ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
@@ -924,6 +1000,7 @@ class KotlinWinRtIrGenerationExtension(
                     nativeScopeClose = nativeScopeClose,
                     nativeStructAdapterLayoutGetter = nativeStructAdapterLayoutGetter,
                     nativeStructAdapterRead = nativeStructAdapterRead,
+                    nativeStructAdapterWrite = nativeStructAdapterWrite,
                     nativeStructAdapterDisposeAbi = nativeStructAdapterDisposeAbi,
                     nativeStructLayoutSizeBytesGetter = nativeStructLayoutSizeBytesGetter,
                     hResultConstructor = hResultConstructor,
