@@ -5939,8 +5939,8 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_routes_scalar_property_getters_through_runtime_instance_projection_interop() {
-        val property = KotlinProjectionRenderer().renderBoundProperty(
+    fun generator_routes_scalar_property_getters_through_projection_intrinsics() {
+        val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderBoundProperty(
             plan = KotlinTypeProjectionPlan(
                 type = WinRtTypeDefinition(
                     namespace = "Sample.Foundation",
@@ -5980,13 +5980,14 @@ class KotlinProjectionGeneratorTest {
         ).toString()
 
         assertTrue(property, property.contains("val count: kotlin.Int"))
-        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getInt32("))
+        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getInt32("))
+        assertFalse(property.contains("WinRtInstanceProjectionInterop.getInt32"))
         assertFalse(property.contains("PlatformAbi.confinedScope()"))
         assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
     }
 
     @Test
-    fun generator_routes_interface_proxy_scalar_property_getters_through_runtime_instance_projection_interop() {
+    fun generator_routes_interface_proxy_scalar_property_getters_through_projection_intrinsics() {
         val interfaceType = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "IWidget",
@@ -6002,14 +6003,15 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val property = KotlinProjectionRenderer().renderInterfaceProxyProperty(
+        val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderInterfaceProxyProperty(
             slotInterfaceType = interfaceType,
             property = interfaceType.properties.single(),
             typesByQualifiedName = mapOf(interfaceType.qualifiedName to interfaceType),
         ).toString()
 
         assertTrue(property, property.contains("override val ready: kotlin.Boolean"))
-        assertTrue(property, property.contains("WinRtInstanceProjectionInterop.getBoolean("))
+        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getBoolean("))
+        assertFalse(property.contains("WinRtInstanceProjectionInterop.getBoolean"))
         assertFalse(property.contains("PlatformAbi.confinedScope()"))
         assertFalse(property.contains("ComVtableInvoker.invokeArgs"))
     }
