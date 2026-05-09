@@ -286,6 +286,10 @@ class KotlinWinRtIrGenerationExtension(
         private val platformAbiReadFloat: IrSimpleFunctionSymbol,
         private val platformAbiReadDouble: IrSimpleFunctionSymbol,
         private val nativeScopeClose: IrSimpleFunctionSymbol,
+        private val nativeStructAdapterLayoutGetter: IrSimpleFunctionSymbol,
+        private val nativeStructAdapterRead: IrSimpleFunctionSymbol,
+        private val nativeStructAdapterDisposeAbi: IrSimpleFunctionSymbol,
+        private val nativeStructLayoutSizeBytesGetter: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
         private val uintConstructor: IrConstructorSymbol?,
@@ -316,8 +320,85 @@ class KotlinWinRtIrGenerationExtension(
                 "getUInt64" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.UInt64)
                 "getFloat" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Float)
                 "getDouble" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Double)
+                "getStruct" -> lowerStructGetter(call, pluginContext, builderScope)
                 else -> null
             }
+
+        private fun lowerStructGetter(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val adapter = call.arguments.getOrNull(3) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = call.type) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
+                        val resultOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocateBytes).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                                arguments[2] = builder.irCall(nativeStructLayoutSizeBytesGetter).apply {
+                                    arguments[0] = builder.irCall(nativeStructAdapterLayoutGetter).apply {
+                                        arguments[0] = adapter
+                                    }
+                                }
+                            },
+                            nameHint = "resultOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +builder.irTry(
+                            type = call.type,
+                            tryResult = builder.irBlock(resultType = call.type) {
+                                +jvmFfmCallUnitBlock(
+                                    symbols = symbols,
+                                    builder = builder,
+                                    pluginContext = pluginContext,
+                                    reference = reference,
+                                    slot = slot,
+                                    argumentKinds = listOf(UnitCallAbiArgumentKind.Object),
+                                    values = listOf(builder.irGet(resultOut)),
+                                )
+                                +builder.irAs(
+                                    builder.irCall(nativeStructAdapterRead).apply {
+                                        arguments[0] = adapter
+                                        arguments[1] = builder.irGet(resultOut)
+                                    },
+                                    call.type,
+                                )
+                            },
+                            catches = emptyList(),
+                            finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                +builder.irCall(nativeStructAdapterDisposeAbi).apply {
+                                    arguments[0] = adapter
+                                    arguments[1] = builder.irGet(resultOut)
+                                }
+                            },
+                        )
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
+                )
+            }
+        }
 
         private fun lowerNoArgumentGetter(
             call: IrCall,
@@ -788,6 +869,14 @@ class KotlinWinRtIrGenerationExtension(
                 val platformAbiReadFloat = platformAbi.functionNamed("readFloat") ?: return null
                 val platformAbiReadDouble = platformAbi.functionNamed("readDouble") ?: return null
                 val nativeScopeClose = nativeScope.functionNamed("close") ?: return null
+                val nativeStructAdapter = pluginContext.referenceClass(WINRT_NATIVE_STRUCT_ADAPTER_CLASS_ID)
+                    ?: return null
+                val nativeStructLayout = pluginContext.referenceClass(WINRT_NATIVE_STRUCT_LAYOUT_CLASS_ID)
+                    ?: return null
+                val nativeStructAdapterLayoutGetter = nativeStructAdapter.propertyGetter("layout") ?: return null
+                val nativeStructAdapterRead = nativeStructAdapter.functionNamed("read") ?: return null
+                val nativeStructAdapterDisposeAbi = nativeStructAdapter.functionNamed("disposeAbi") ?: return null
+                val nativeStructLayoutSizeBytesGetter = nativeStructLayout.propertyGetter("sizeBytes") ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
                     ?: return null
                 val hResultConstructor = hResult.owner.declarations
@@ -833,6 +922,10 @@ class KotlinWinRtIrGenerationExtension(
                     platformAbiReadFloat = platformAbiReadFloat,
                     platformAbiReadDouble = platformAbiReadDouble,
                     nativeScopeClose = nativeScopeClose,
+                    nativeStructAdapterLayoutGetter = nativeStructAdapterLayoutGetter,
+                    nativeStructAdapterRead = nativeStructAdapterRead,
+                    nativeStructAdapterDisposeAbi = nativeStructAdapterDisposeAbi,
+                    nativeStructLayoutSizeBytesGetter = nativeStructLayoutSizeBytesGetter,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
                     uintConstructor = uintConstructor,
@@ -1413,6 +1506,12 @@ private val WINRT_PLATFORM_ABI_CLASS_ID =
 
 private val WINRT_NATIVE_SCOPE_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeScope"))
+
+private val WINRT_NATIVE_STRUCT_ADAPTER_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeStructAdapter"))
+
+private val WINRT_NATIVE_STRUCT_LAYOUT_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeStructLayout"))
 
 private val WINRT_HRESULT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HResult"))
