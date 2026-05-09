@@ -218,6 +218,12 @@ class KotlinWinRtIrGenerationExtension(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
                     val call = super.visitCall(expression) as IrCall
+                    directLowerings?.lowerComVtableInvoke(
+                        call,
+                        pluginContext,
+                        builderScope = currentScope?.scope?.scopeOwnerSymbol,
+                    )
+                        ?.let { return it }
                     val intrinsicName = intrinsicFunctions.entries
                         .firstOrNull { (_, symbol) -> symbol == call.symbol }
                         ?.key
@@ -1022,6 +1028,50 @@ class KotlinWinRtIrGenerationExtension(
             }
         }
 
+        fun lowerComVtableInvoke(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            if (!call.isComVtableNoArgumentInvoke()) {
+                return null
+            }
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val instance = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
+                val hResultValue = irTemporary(
+                    value = jvmFfmCallRaw(
+                        symbols = symbols,
+                        builder = builder,
+                        pluginContext = pluginContext,
+                        instancePointer = instance,
+                        slot = slot,
+                        argumentKinds = emptyList(),
+                        values = emptyList(),
+                    ),
+                    nameHint = "hr",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irGet(hResultValue)
+            }
+        }
+
+        @OptIn(UnsafeDuringIrConstructionAPI::class)
+        private fun IrCall.isComVtableNoArgumentInvoke(): Boolean {
+            if (symbol.owner.name.asString() != "invoke") {
+                return false
+            }
+            val ownerClass = symbol.owner.parent as? IrClass ?: return false
+            if (ownerClass.fqNameWhenAvailable != WINRT_COM_VTABLE_INVOKER_FQ_NAME) {
+                return false
+            }
+            return symbol.owner.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 2
+        }
+
         private fun jvmFfmCallUnitBlock(
             symbols: JvmFfmSymbols,
             builder: DeclarationIrBuilder,
@@ -1032,8 +1082,41 @@ class KotlinWinRtIrGenerationExtension(
             values: List<IrExpression>,
         ): IrExpression =
             builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val hResultValue = irTemporary(
+                    value = jvmFfmCallRaw(
+                        symbols = symbols,
+                        builder = builder,
+                        pluginContext = pluginContext,
+                        instancePointer = referencePointer(builder, reference),
+                        slot = slot,
+                        argumentKinds = argumentKinds,
+                        values = values,
+                    ),
+                    nameHint = "hr",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irCall(hResultRequireSuccess).apply {
+                    arguments[0] = builder.irCall(hResultConstructor).apply {
+                        arguments[0] = builder.irGet(hResultValue)
+                    }
+                    arguments[1] = builder.irString("WinRT call")
+                }
+                +builder.irUnit()
+            }
+
+        private fun jvmFfmCallRaw(
+            symbols: JvmFfmSymbols,
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            instancePointer: IrExpression,
+            slot: IrExpression,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+            values: List<IrExpression>,
+        ): IrExpression =
+            builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
                 val instanceSegment = irTemporary(
-                    value = symbols.segmentFromRawComPtr(builder, referencePointer(builder, reference)),
+                    value = symbols.segmentFromRawComPtr(builder, instancePointer),
                     nameHint = "instanceSegment",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -1050,31 +1133,19 @@ class KotlinWinRtIrGenerationExtension(
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
-                val hResultValue = irTemporary(
-                    value = builder.irAs(
-                        builder.irCall(symbols.methodHandleInvoke).apply {
-                            arguments[0] = builder.irGet(handle)
-                            arguments[1] = builder.irVararg(
-                                pluginContext.irBuiltIns.anyNType,
-                                listOf(builder.irGet(function), builder.irGet(instanceSegment)) +
-                                    values.mapIndexed { index, value ->
+                +builder.irAs(
+                    builder.irCall(symbols.methodHandleInvoke).apply {
+                        arguments[0] = builder.irGet(handle)
+                        arguments[1] = builder.irVararg(
+                            pluginContext.irBuiltIns.anyNType,
+                            listOf(builder.irGet(function), builder.irGet(instanceSegment)) +
+                                values.mapIndexed { index, value ->
                                     symbols.jvmCarrier(builder, argumentKinds[index], value)
                                 },
-                            )
-                        },
-                        pluginContext.irBuiltIns.intType,
-                    ),
-                    nameHint = "hr",
-                    isMutable = false,
-                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                    },
+                    pluginContext.irBuiltIns.intType,
                 )
-                +builder.irCall(hResultRequireSuccess).apply {
-                    arguments[0] = builder.irCall(hResultConstructor).apply {
-                        arguments[0] = builder.irGet(hResultValue)
-                    }
-                    arguments[1] = builder.irString("WinRT call")
-                }
-                +builder.irUnit()
             }
 
         private fun referencePointer(
@@ -1869,6 +1940,9 @@ private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
 
 private val WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtStaticProjectionInterop")
+
+private val WINRT_COM_VTABLE_INVOKER_FQ_NAME =
+    FqName("io.github.composefluent.winrt.runtime.ComVtableInvoker")
 
 private val WINRT_HSTRING_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HString"))
