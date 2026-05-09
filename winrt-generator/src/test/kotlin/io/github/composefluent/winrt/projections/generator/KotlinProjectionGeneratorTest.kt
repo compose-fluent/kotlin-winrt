@@ -3726,6 +3726,79 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_static_properties_through_projection_intrinsics_when_support_files_are_enabled() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                    setterMethodName = "put_Count",
+                                    getterMethodRowId = 11,
+                                    setterMethodRowId = 12,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "StaticToken",
+                                    typeName = "Sample.Foundation.DependencyProperty",
+                                    getterMethodName = "get_StaticToken",
+                                    getterMethodRowId = 13,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "DependencyProperty",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("var count: Int"))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.getInt32("))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.setInt32("))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass("))
+        assertTrue(widgetContents.contains("DependencyProperty.Metadata::wrap"))
+        assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callInt32("))
+        assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callUnit("))
+        assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.getProjectedRuntimeClass("))
+    }
+
+    @Test
     fun generator_routes_static_string_projected_object_methods_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

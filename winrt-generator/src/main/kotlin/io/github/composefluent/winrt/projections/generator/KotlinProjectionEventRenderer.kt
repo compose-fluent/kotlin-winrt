@@ -595,7 +595,8 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     val getterBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
-    val getterInvocation = renderStaticDirectAbiGetter(getterBinding)
+    val getterInvocation = renderStaticIntrinsicGetter(getterBinding)
+        ?: renderStaticDirectAbiGetter(getterBinding)
         ?: renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -612,13 +613,54 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
                 .addParameter("value", resolveTypeName(property.typeName))
                 .addCode(
                     "%L\n",
-                    setterBinding?.let { renderStaticDirectAbiSetter(it) ?: renderBoundStaticInvocation(it) }
+                    setterBinding?.let {
+                        renderStaticIntrinsicSetter(it)
+                            ?: renderStaticDirectAbiSetter(it)
+                            ?: renderBoundStaticInvocation(it)
+                    }
                         ?: missingAbiBindingError("static property ${property.name} setter"),
                 )
                 .build(),
         )
     }
     return builder.build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticIntrinsicSetter(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.suppressHResultCheck ||
+        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
+        binding.parameterBindings.size != 1
+    ) {
+        return null
+    }
+    val parameterBinding = binding.parameterBindings.single()
+    if (parameterBinding.category != WinRtMetadataParameterCategory.In) {
+        return null
+    }
+    val intrinsicFunction = when (parameterBinding.typeBinding.kind) {
+        KotlinProjectionAbiValueKind.String -> "setString"
+        KotlinProjectionAbiValueKind.Boolean -> "setBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "setInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "setUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "setInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "setUInt64"
+        KotlinProjectionAbiValueKind.Float -> "setFloat"
+        KotlinProjectionAbiValueKind.Double -> "setDouble"
+        else -> return null
+    }
+    return CodeBlock.builder()
+        .add("%T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%L,\n", parameterBinding.name)
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 private fun KotlinProjectionRenderer.renderStaticDirectAbiSetter(
@@ -678,6 +720,47 @@ private fun KotlinProjectionRenderer.renderStaticDirectAbiGetter(
     }
     val code = CodeBlock.builder()
         .add("return %T.%L(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L", binding.bindingName)
+    if (binding.returnBinding.kind in setOf(
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+            KotlinProjectionAbiValueKind.ProjectedInterface,
+        )
+    ) {
+        code.add(",\n%T.Metadata::wrap", resolveTypeName(binding.returnBinding.typeName))
+    }
+    code.add(",\n")
+    code.unindent()
+    code.add(")\n")
+    return code.build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticIntrinsicGetter(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.parameterBindings.isNotEmpty() ||
+        binding.suppressHResultCheck
+    ) {
+        return null
+    }
+    val intrinsicFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.String -> "getString"
+        KotlinProjectionAbiValueKind.Boolean -> "getBoolean"
+        KotlinProjectionAbiValueKind.Int32 -> "getInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "getUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "getInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
+        KotlinProjectionAbiValueKind.Float -> "getFloat"
+        KotlinProjectionAbiValueKind.Double -> "getDouble"
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "getProjectedRuntimeClass"
+        KotlinProjectionAbiValueKind.ProjectedInterface -> "getProjectedInterface"
+        else -> return null
+    }
+    val code = CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, intrinsicFunction)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
         .add("%L", binding.bindingName)
