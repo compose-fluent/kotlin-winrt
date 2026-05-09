@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
+import org.jetbrains.kotlin.ir.declarations.IrField
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
@@ -29,14 +30,18 @@ import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
+import org.jetbrains.kotlin.ir.builders.irAs
 import org.jetbrains.kotlin.ir.builders.irBlock
 import org.jetbrains.kotlin.ir.builders.irByte
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
+import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.builders.irCall
+import org.jetbrains.kotlin.ir.builders.irGetField
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
+import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
@@ -238,6 +243,8 @@ class KotlinWinRtIrGenerationExtension(
         private val referencedHStringClose: IrSimpleFunctionSymbol,
         private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol,
         private val comObjectReferencePointerGetter: IrSimpleFunctionSymbol,
+        private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
+        private val rawAddressValueGetter: IrSimpleFunctionSymbol,
         private val platformAbi: IrClassSymbol,
         private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol,
         private val comVtableInvoker: IrClassSymbol,
@@ -250,6 +257,7 @@ class KotlinWinRtIrGenerationExtension(
         private val invokeArgsDouble: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
+        private val jvmFfmSymbols: JvmFfmSymbols?,
     ) {
         fun lower(
             intrinsicName: String,
@@ -400,6 +408,20 @@ class KotlinWinRtIrGenerationExtension(
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
             val values = call.varargValues(argumentKinds.size) ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            jvmFfmSymbols?.let { symbols ->
+                lowerJvmFfmCallUnitWithArguments(
+                    symbols = symbols,
+                    call = call,
+                    pluginContext = pluginContext,
+                    builderScope = builderScope,
+                    reference = reference,
+                    slot = slot,
+                    values = values,
+                    argumentKinds = argumentKinds,
+                )?.let { return it }
+            }
             val stringArgumentIndex = argumentKinds.singleIndexOf(UnitCallAbiArgumentKind.String)
             val projectedObjectIndexes = argumentKinds.indices.filter { index ->
                 argumentKinds[index] == UnitCallAbiArgumentKind.Object
@@ -412,8 +434,8 @@ class KotlinWinRtIrGenerationExtension(
                 call = call,
                 pluginContext = pluginContext,
                 builderScope = builderScope,
-                reference = call.arguments.getOrNull(1) ?: return null,
-                slot = call.arguments.getOrNull(2) ?: return null,
+                reference = reference,
+                slot = slot,
                 invokeArgs = invokeArgs,
                 values = values,
                 argumentKinds = argumentKinds,
@@ -421,6 +443,152 @@ class KotlinWinRtIrGenerationExtension(
                 projectedObjectArgumentIndex = projectedObjectIndexes.singleOrNull(),
             )
         }
+
+        private fun lowerJvmFfmCallUnitWithArguments(
+            symbols: JvmFfmSymbols,
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            reference: IrExpression,
+            slot: IrExpression,
+            values: List<IrExpression>,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+        ): IrExpression? {
+            val scope = builderScope ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
+                fun abiValueFor(index: Int, kind: UnitCallAbiArgumentKind): IrExpression {
+                    val value = values[index]
+                    return when (kind) {
+                        UnitCallAbiArgumentKind.Float -> value
+                        UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
+                        UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
+                        UnitCallAbiArgumentKind.String -> {
+                            val stringAbi = irTemporary(
+                                value = builder.irCall(hStringCreateReference).apply {
+                                    arguments[0] = builder.irGetObject(hStringCompanion)
+                                    arguments[1] = value
+                                },
+                                nameHint = "value${index}Abi",
+                                isMutable = false,
+                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                            )
+                            stringAbis += stringAbi
+                            builder.irCall(referencedHStringHandleGetter).apply {
+                                arguments[0] = builder.irGet(stringAbi)
+                            }
+                        }
+                    }
+                }
+
+                val abiValues = argumentKinds.mapIndexed(::abiValueFor)
+                val callBlock = jvmFfmCallUnitBlock(
+                    symbols = symbols,
+                    builder = builder,
+                    pluginContext = pluginContext,
+                    reference = reference,
+                    slot = slot,
+                    argumentKinds = argumentKinds,
+                    values = abiValues,
+                )
+                if (stringAbis.isEmpty()) {
+                    +callBlock
+                } else {
+                    +builder.irTry(
+                        type = pluginContext.irBuiltIns.unitType,
+                        tryResult = callBlock,
+                        catches = emptyList(),
+                        finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                            stringAbis.forEach { stringAbi ->
+                                +builder.irCall(referencedHStringClose).apply {
+                                    arguments[0] = builder.irGet(stringAbi)
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        private fun jvmFfmCallUnitBlock(
+            symbols: JvmFfmSymbols,
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            reference: IrExpression,
+            slot: IrExpression,
+            argumentKinds: List<UnitCallAbiArgumentKind>,
+            values: List<IrExpression>,
+        ): IrExpression =
+            builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                val instanceSegment = irTemporary(
+                    value = symbols.segmentFromRawComPtr(builder, referencePointer(builder, reference)),
+                    nameHint = "instanceSegment",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val descriptor = irTemporary(
+                    value = symbols.functionDescriptor(builder, argumentKinds),
+                    nameHint = "descriptor",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val function = irTemporary(
+                    value = symbols.vtableEntry(builder, builder.irGet(instanceSegment), slot),
+                    nameHint = "function",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val linker = irTemporary(
+                    value = builder.irCall(symbols.linkerNativeLinker),
+                    nameHint = "linker",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val handle = irTemporary(
+                    value = builder.irCall(symbols.linkerDowncallHandle).apply {
+                        arguments[0] = builder.irGet(linker)
+                        arguments[1] = builder.irGet(descriptor)
+                        arguments[2] = builder.irVararg(symbols.linkerOptionType, emptyList())
+                    },
+                    nameHint = "handle",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                val hResultValue = irTemporary(
+                    value = builder.irAs(
+                        builder.irCall(symbols.methodHandleInvoke).apply {
+                            arguments[0] = builder.irGet(handle)
+                            arguments[1] = builder.irVararg(
+                                pluginContext.irBuiltIns.anyNType,
+                                listOf(builder.irGet(function), builder.irGet(instanceSegment)) +
+                                    values.mapIndexed { index, value ->
+                                    symbols.jvmCarrier(builder, argumentKinds[index], value)
+                                },
+                            )
+                        },
+                        pluginContext.irBuiltIns.intType,
+                    ),
+                    nameHint = "hr",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irCall(hResultRequireSuccess).apply {
+                    arguments[0] = builder.irCall(hResultConstructor).apply {
+                        arguments[0] = builder.irGet(hResultValue)
+                    }
+                    arguments[1] = builder.irString("WinRT call")
+                }
+                +builder.irUnit()
+            }
+
+        private fun referencePointer(
+            builder: DeclarationIrBuilder,
+            reference: IrExpression,
+        ): IrExpression =
+            builder.irCall(comObjectReferencePointerGetter).apply {
+                arguments[0] = reference
+            }
 
         private fun typedInvokeArgsForUnitCall(
             argumentKinds: List<UnitCallAbiArgumentKind>,
@@ -611,6 +779,12 @@ class KotlinWinRtIrGenerationExtension(
                 val comObjectReference = pluginContext.referenceClass(WINRT_COM_OBJECT_REFERENCE_CLASS_ID)
                     ?: return null
                 val comObjectReferencePointerGetter = comObjectReference.propertyGetter("pointer") ?: return null
+                val rawComPtr = pluginContext.referenceClass(WINRT_RAW_COM_PTR_CLASS_ID)
+                    ?: return null
+                val rawComPtrValueGetter = rawComPtr.propertyGetter("value") ?: return null
+                val rawAddress = pluginContext.referenceClass(WINRT_RAW_ADDRESS_CLASS_ID)
+                    ?: return null
+                val rawAddressValueGetter = rawAddress.propertyGetter("value") ?: return null
                 val platformAbi = pluginContext.referenceClass(WINRT_PLATFORM_ABI_CLASS_ID)
                     ?: return null
                 val platformAbiFromRawComPtr = platformAbi.functionNamed("fromRawComPtr") ?: return null
@@ -673,6 +847,8 @@ class KotlinWinRtIrGenerationExtension(
                     referencedHStringClose = referencedHStringClose,
                     iWinRTObjectNativeObjectGetter = iWinRTObjectNativeObjectGetter,
                     comObjectReferencePointerGetter = comObjectReferencePointerGetter,
+                    rawComPtrValueGetter = rawComPtrValueGetter,
+                    rawAddressValueGetter = rawAddressValueGetter,
                     platformAbi = platformAbi,
                     platformAbiFromRawComPtr = platformAbiFromRawComPtr,
                     comVtableInvoker = comVtableInvoker,
@@ -685,9 +861,172 @@ class KotlinWinRtIrGenerationExtension(
                     invokeArgsDouble = invokeArgsDouble,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
+                    jvmFfmSymbols = JvmFfmSymbols.create(
+                        pluginContext = pluginContext,
+                        rawComPtrValueGetter = rawComPtrValueGetter,
+                        rawAddressValueGetter = rawAddressValueGetter,
+                    ),
                 )
             }
 
+        }
+
+        private class JvmFfmSymbols private constructor(
+            private val memoryLayoutType: org.jetbrains.kotlin.ir.types.IrType,
+            private val memorySegmentType: org.jetbrains.kotlin.ir.types.IrType,
+            val linkerOptionType: org.jetbrains.kotlin.ir.types.IrType,
+            val linkerNativeLinker: IrSimpleFunctionSymbol,
+            val linkerDowncallHandle: IrSimpleFunctionSymbol,
+            private val functionDescriptorOf: IrSimpleFunctionSymbol,
+            private val memorySegmentOfAddress: IrSimpleFunctionSymbol,
+            private val memorySegmentReinterpret: IrSimpleFunctionSymbol,
+            private val memorySegmentGetAddress: IrSimpleFunctionSymbol,
+            private val memorySegmentGetAtIndexAddress: IrSimpleFunctionSymbol,
+            val methodHandleInvoke: IrSimpleFunctionSymbol,
+            private val valueLayoutAddress: IrField,
+            private val valueLayoutJavaInt: IrField,
+            private val valueLayoutJavaByte: IrField,
+            private val valueLayoutJavaFloat: IrField,
+            private val intToLong: IrSimpleFunctionSymbol,
+            private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
+            private val rawAddressValueGetter: IrSimpleFunctionSymbol,
+        ) {
+            fun segmentFromRawComPtr(
+                builder: DeclarationIrBuilder,
+                pointer: IrExpression,
+            ): IrExpression =
+                builder.irCall(memorySegmentReinterpret).apply {
+                    arguments[0] = builder.irCall(memorySegmentOfAddress).apply {
+                        arguments[0] = builder.irCall(rawComPtrValueGetter).apply {
+                            arguments[0] = pointer
+                        }
+                    }
+                    arguments[1] = builder.irLong(Long.MAX_VALUE)
+                }
+
+            fun segmentFromRawAddress(
+                builder: DeclarationIrBuilder,
+                address: IrExpression,
+            ): IrExpression =
+                builder.irCall(memorySegmentReinterpret).apply {
+                    arguments[0] = builder.irCall(memorySegmentOfAddress).apply {
+                        arguments[0] = builder.irCall(rawAddressValueGetter).apply {
+                            arguments[0] = address
+                        }
+                    }
+                    arguments[1] = builder.irLong(Long.MAX_VALUE)
+                }
+
+            fun functionDescriptor(
+                builder: DeclarationIrBuilder,
+                argumentKinds: List<UnitCallAbiArgumentKind>,
+            ): IrExpression =
+                builder.irCall(functionDescriptorOf).apply {
+                    arguments[0] = builder.irGetField(null, valueLayoutJavaInt)
+                    arguments[1] = builder.irVararg(
+                        memoryLayoutType,
+                        listOf(builder.irGetField(null, valueLayoutAddress)) +
+                            argumentKinds.map { kind -> builder.irGetField(null, kind.valueLayoutField()) },
+                    )
+                }
+
+            fun vtableEntry(
+                builder: DeclarationIrBuilder,
+                instanceSegment: IrExpression,
+                slot: IrExpression,
+            ): IrExpression {
+                val objectMemory = builder.irCall(memorySegmentReinterpret).apply {
+                    arguments[0] = instanceSegment
+                    arguments[1] = builder.irLong(8L)
+                }
+                val vtable = builder.irCall(memorySegmentGetAddress).apply {
+                    arguments[0] = objectMemory
+                    arguments[1] = builder.irGetField(null, valueLayoutAddress)
+                    arguments[2] = builder.irLong(0L)
+                }
+                return builder.irCall(memorySegmentGetAtIndexAddress).apply {
+                    arguments[0] = builder.irCall(memorySegmentReinterpret).apply {
+                        arguments[0] = vtable
+                        arguments[1] = builder.irLong(Long.MAX_VALUE)
+                    }
+                    arguments[1] = builder.irGetField(null, valueLayoutAddress)
+                    arguments[2] = builder.irCall(intToLong).apply {
+                        arguments[0] = slot
+                    }
+                }
+            }
+
+            fun jvmCarrier(
+                builder: DeclarationIrBuilder,
+                kind: UnitCallAbiArgumentKind,
+                value: IrExpression,
+            ): IrExpression =
+                when (kind) {
+                    UnitCallAbiArgumentKind.Float,
+                    UnitCallAbiArgumentKind.Boolean -> value
+                    UnitCallAbiArgumentKind.String,
+                    UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
+                }
+
+            private fun UnitCallAbiArgumentKind.valueLayoutField(): IrField =
+                when (this) {
+                    UnitCallAbiArgumentKind.Float -> valueLayoutJavaFloat
+                    UnitCallAbiArgumentKind.Boolean -> valueLayoutJavaByte
+                    UnitCallAbiArgumentKind.String,
+                    UnitCallAbiArgumentKind.Object -> valueLayoutAddress
+                }
+
+            companion object {
+                fun create(
+                    pluginContext: IrPluginContext,
+                    rawComPtrValueGetter: IrSimpleFunctionSymbol,
+                    rawAddressValueGetter: IrSimpleFunctionSymbol,
+                ): JvmFfmSymbols? {
+                    val memoryLayout = pluginContext.referenceClass(JAVA_MEMORY_LAYOUT_CLASS_ID) ?: return null
+                    val memorySegment = pluginContext.referenceClass(JAVA_MEMORY_SEGMENT_CLASS_ID) ?: return null
+                    val linker = pluginContext.referenceClass(JAVA_LINKER_CLASS_ID) ?: return null
+                    val linkerOption = pluginContext.referenceClass(JAVA_LINKER_OPTION_CLASS_ID) ?: return null
+                    val functionDescriptor = pluginContext.referenceClass(JAVA_FUNCTION_DESCRIPTOR_CLASS_ID) ?: return null
+                    val methodHandle = pluginContext.referenceClass(JAVA_METHOD_HANDLE_CLASS_ID) ?: return null
+                    val valueLayout = pluginContext.referenceClass(JAVA_VALUE_LAYOUT_CLASS_ID) ?: return null
+                    val addressLayout = pluginContext.referenceClass(JAVA_ADDRESS_LAYOUT_CLASS_ID) ?: return null
+                    val linkerDowncallHandle = linker.functionNamedWithRegularParameterCount("downcallHandle", 2) ?: return null
+                    return JvmFfmSymbols(
+                        memoryLayoutType = memoryLayout.owner.defaultType,
+                        memorySegmentType = memorySegment.owner.defaultType,
+                        linkerOptionType = linkerOption.owner.defaultType,
+                        linkerNativeLinker = linker.functionNamed("nativeLinker") ?: return null,
+                        linkerDowncallHandle = linkerDowncallHandle,
+                        functionDescriptorOf = functionDescriptor.functionNamed("of") ?: return null,
+                        memorySegmentOfAddress = memorySegment.functionNamedWithValueParameterTypes("ofAddress", KOTLIN_LONG_FQ_NAME)
+                            ?: return null,
+                        memorySegmentReinterpret = memorySegment.functionNamedWithValueParameterTypes("reinterpret", KOTLIN_LONG_FQ_NAME)
+                            ?: return null,
+                        memorySegmentGetAddress = memorySegment.functionNamedWithValueParameterTypes(
+                            "get",
+                            JAVA_ADDRESS_LAYOUT_FQ_NAME,
+                            KOTLIN_LONG_FQ_NAME,
+                        ) ?: return null,
+                        memorySegmentGetAtIndexAddress = memorySegment.functionNamedWithValueParameterTypes(
+                            "getAtIndex",
+                            JAVA_ADDRESS_LAYOUT_FQ_NAME,
+                            KOTLIN_LONG_FQ_NAME,
+                        ) ?: return null,
+                        methodHandleInvoke = methodHandle.functionNamed("invoke") ?: return null,
+                        valueLayoutAddress = valueLayout.fieldNamed("ADDRESS") ?: addressLayout.fieldNamed("ADDRESS") ?: return null,
+                        valueLayoutJavaInt = valueLayout.fieldNamed("JAVA_INT") ?: return null,
+                        valueLayoutJavaByte = valueLayout.fieldNamed("JAVA_BYTE") ?: return null,
+                        valueLayoutJavaFloat = valueLayout.fieldNamed("JAVA_FLOAT") ?: return null,
+                        intToLong = pluginContext.irBuiltIns.intClass.owner.declarations
+                            .filterIsInstance<IrSimpleFunction>()
+                            .singleOrNull { function -> function.name.asString() == "toLong" }
+                            ?.symbol
+                            ?: return null,
+                        rawComPtrValueGetter = rawComPtrValueGetter,
+                        rawAddressValueGetter = rawAddressValueGetter,
+                    )
+                }
+            }
         }
     }
 
@@ -939,6 +1278,25 @@ private fun IrClassSymbol.functionNamedWithValueParameterTypes(
         ?.symbol
 
 @OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.functionNamedWithRegularParameterCount(
+    name: String,
+    count: Int,
+): IrSimpleFunctionSymbol? =
+    owner.declarations
+        .filterIsInstance<IrSimpleFunction>()
+        .singleOrNull { function ->
+            function.name.asString() == name &&
+                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == count
+        }
+        ?.symbol
+
+@OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.fieldNamed(name: String): IrField? =
+    owner.declarations
+        .filterIsInstance<IrField>()
+        .singleOrNull { field -> field.name.asString() == name }
+
+@OptIn(UnsafeDuringIrConstructionAPI::class)
 private fun IrClassSymbol.propertyGetter(name: String): IrSimpleFunctionSymbol? =
     owner.declarations
         .filterIsInstance<IrProperty>()
@@ -973,6 +1331,9 @@ private val WINRT_RAW_COM_PTR_FQ_NAME =
 private val WINRT_RAW_ADDRESS_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.RawAddress")
 
+private val JAVA_ADDRESS_LAYOUT_FQ_NAME =
+    FqName("java.lang.foreign.AddressLayout")
+
 private val WINRT_INSTANCE_PROJECTION_INTEROP_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.WinRtInstanceProjectionInterop")
 
@@ -991,6 +1352,12 @@ private val WINRT_IWINRT_OBJECT_CLASS_ID =
 private val WINRT_COM_OBJECT_REFERENCE_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("ComObjectReference"))
 
+private val WINRT_RAW_COM_PTR_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("RawComPtr"))
+
+private val WINRT_RAW_ADDRESS_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("RawAddress"))
+
 private val WINRT_PLATFORM_ABI_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("PlatformAbi"))
 
@@ -999,6 +1366,33 @@ private val WINRT_COM_VTABLE_INVOKER_CLASS_ID =
 
 private val WINRT_HRESULT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HResult"))
+
+private val JAVA_FOREIGN_PACKAGE_FQ_NAME =
+    FqName("java.lang.foreign")
+
+private val JAVA_MEMORY_LAYOUT_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("MemoryLayout"))
+
+private val JAVA_MEMORY_SEGMENT_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("MemorySegment"))
+
+private val JAVA_LINKER_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("Linker"))
+
+private val JAVA_LINKER_OPTION_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, FqName("Linker.Option"), false)
+
+private val JAVA_FUNCTION_DESCRIPTOR_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("FunctionDescriptor"))
+
+private val JAVA_VALUE_LAYOUT_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("ValueLayout"))
+
+private val JAVA_ADDRESS_LAYOUT_CLASS_ID =
+    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("AddressLayout"))
+
+private val JAVA_METHOD_HANDLE_CLASS_ID =
+    ClassId(FqName("java.lang.invoke"), Name.identifier("MethodHandle"))
 
 private val WINRT_PROJECTION_INTRINSIC_HELPERS = linkedMapOf(
     "staticGetArray" to WINRT_STATIC_PROJECTION_INTEROP_FQ_NAME,
