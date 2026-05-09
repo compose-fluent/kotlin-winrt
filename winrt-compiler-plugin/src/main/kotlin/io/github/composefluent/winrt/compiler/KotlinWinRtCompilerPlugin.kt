@@ -973,6 +973,9 @@ class KotlinWinRtIrGenerationExtension(
                 fun abiValueFor(index: Int, kind: UnitCallAbiArgumentKind): IrExpression {
                     val value = values[index]
                     return when (kind) {
+                        UnitCallAbiArgumentKind.RawAddress,
+                        UnitCallAbiArgumentKind.RawComPtr,
+                        UnitCallAbiArgumentKind.Byte,
                         UnitCallAbiArgumentKind.Int32,
                         UnitCallAbiArgumentKind.UInt32,
                         UnitCallAbiArgumentKind.Int64,
@@ -1033,13 +1036,18 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
-            if (!call.isComVtableNoArgumentInvoke()) {
+            val argumentKinds = call.comVtableCallArgumentKinds() ?: return null
+            val symbols = jvmFfmSymbols ?: return null
+            if (!symbols.canLower(argumentKinds)) {
                 return null
             }
-            val symbols = jvmFfmSymbols ?: return null
             val scope = builderScope ?: return null
             val instance = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
+            val values = mutableListOf<IrExpression>()
+            for (index in argumentKinds.indices) {
+                values += call.arguments.getOrNull(index + 3) ?: return null
+            }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
                 val hResultValue = irTemporary(
@@ -1049,8 +1057,8 @@ class KotlinWinRtIrGenerationExtension(
                         pluginContext = pluginContext,
                         instancePointer = instance,
                         slot = slot,
-                        argumentKinds = emptyList(),
-                        values = emptyList(),
+                        argumentKinds = argumentKinds,
+                        values = values,
                     ),
                     nameHint = "hr",
                     isMutable = false,
@@ -1061,16 +1069,41 @@ class KotlinWinRtIrGenerationExtension(
         }
 
         @OptIn(UnsafeDuringIrConstructionAPI::class)
-        private fun IrCall.isComVtableNoArgumentInvoke(): Boolean {
-            if (symbol.owner.name.asString() != "invoke") {
-                return false
-            }
-            val ownerClass = symbol.owner.parent as? IrClass ?: return false
+        private fun IrCall.comVtableCallArgumentKinds(): List<UnitCallAbiArgumentKind>? {
+            val ownerClass = symbol.owner.parent as? IrClass ?: return null
             if (ownerClass.fqNameWhenAvailable != WINRT_COM_VTABLE_INVOKER_FQ_NAME) {
-                return false
+                return null
             }
-            return symbol.owner.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 2
+            val regularParameters = symbol.owner.parameters.filter { parameter ->
+                parameter.kind == IrParameterKind.Regular
+            }
+            return when (symbol.owner.name.asString()) {
+                "invoke" -> emptyList<UnitCallAbiArgumentKind>().takeIf { regularParameters.size == 2 }
+                "invokeArgs" -> {
+                    if (regularParameters.size < 3) {
+                        return null
+                    }
+                    regularParameters.drop(2).map { parameter ->
+                        parameter.type.comVtableAbiArgumentKind() ?: return null
+                    }
+                }
+                else -> null
+            }
         }
+
+        private fun org.jetbrains.kotlin.ir.types.IrType.comVtableAbiArgumentKind(): UnitCallAbiArgumentKind? =
+            when (classFqName) {
+                WINRT_RAW_ADDRESS_FQ_NAME -> UnitCallAbiArgumentKind.RawAddress
+                WINRT_RAW_COM_PTR_FQ_NAME -> UnitCallAbiArgumentKind.RawComPtr
+                KOTLIN_BYTE_FQ_NAME -> UnitCallAbiArgumentKind.Byte
+                KOTLIN_INT_FQ_NAME -> UnitCallAbiArgumentKind.Int32
+                KOTLIN_UINT_FQ_NAME -> UnitCallAbiArgumentKind.UInt32
+                KOTLIN_LONG_FQ_NAME -> UnitCallAbiArgumentKind.Int64
+                KOTLIN_ULONG_FQ_NAME -> UnitCallAbiArgumentKind.UInt64
+                KOTLIN_FLOAT_FQ_NAME -> UnitCallAbiArgumentKind.Float
+                KOTLIN_DOUBLE_FQ_NAME -> UnitCallAbiArgumentKind.Double
+                else -> null
+            }
 
         private fun jvmFfmCallUnitBlock(
             symbols: JvmFfmSymbols,
@@ -1166,6 +1199,9 @@ class KotlinWinRtIrGenerationExtension(
         }
 
         private enum class UnitCallAbiArgumentKind {
+            RawAddress,
+            RawComPtr,
+            Byte,
             Int32,
             UInt32,
             Int64,
@@ -1490,6 +1526,7 @@ class KotlinWinRtIrGenerationExtension(
                 value: IrExpression,
             ): IrExpression =
                 when (kind) {
+                    UnitCallAbiArgumentKind.Byte,
                     UnitCallAbiArgumentKind.Int32,
                     UnitCallAbiArgumentKind.Int64,
                     UnitCallAbiArgumentKind.Float,
@@ -1501,19 +1538,24 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.UInt64 -> builder.irCall(requireNotNull(ulongToLong)).apply {
                         arguments[0] = value
                     }
+                    UnitCallAbiArgumentKind.RawComPtr -> segmentFromRawComPtr(builder, value)
+                    UnitCallAbiArgumentKind.RawAddress,
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
                 }
 
             private fun UnitCallAbiArgumentKind.valueLayoutValue(): JvmStaticLayoutValue =
                 when (this) {
+                    UnitCallAbiArgumentKind.Byte,
+                    UnitCallAbiArgumentKind.Boolean -> valueLayoutJavaByte
                     UnitCallAbiArgumentKind.Int32,
                     UnitCallAbiArgumentKind.UInt32 -> valueLayoutJavaInt
                     UnitCallAbiArgumentKind.Int64,
                     UnitCallAbiArgumentKind.UInt64 -> valueLayoutJavaLong
                     UnitCallAbiArgumentKind.Float -> valueLayoutJavaFloat
                     UnitCallAbiArgumentKind.Double -> valueLayoutJavaDouble
-                    UnitCallAbiArgumentKind.Boolean -> valueLayoutJavaByte
+                    UnitCallAbiArgumentKind.RawAddress,
+                    UnitCallAbiArgumentKind.RawComPtr,
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> valueLayoutAddress
                 }
@@ -1911,11 +1953,26 @@ private val KOTLIN_PACKAGE_FQ_NAME =
 private val KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME =
     FqName("kotlin.collections")
 
+private val KOTLIN_BYTE_FQ_NAME =
+    FqName("kotlin.Byte")
+
 private val KOTLIN_INT_FQ_NAME =
     FqName("kotlin.Int")
 
 private val KOTLIN_LONG_FQ_NAME =
     FqName("kotlin.Long")
+
+private val KOTLIN_FLOAT_FQ_NAME =
+    FqName("kotlin.Float")
+
+private val KOTLIN_DOUBLE_FQ_NAME =
+    FqName("kotlin.Double")
+
+private val KOTLIN_UINT_FQ_NAME =
+    FqName("kotlin.UInt")
+
+private val KOTLIN_ULONG_FQ_NAME =
+    FqName("kotlin.ULong")
 
 private val WINRT_RAW_COM_PTR_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.RawComPtr")
