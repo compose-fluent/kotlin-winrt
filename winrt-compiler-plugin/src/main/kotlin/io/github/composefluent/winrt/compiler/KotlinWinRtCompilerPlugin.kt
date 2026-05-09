@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.builders.irAs
 import org.jetbrains.kotlin.ir.builders.irBlock
+import org.jetbrains.kotlin.ir.builders.irBoolean
 import org.jetbrains.kotlin.ir.builders.irByte
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
@@ -43,6 +44,7 @@ import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
 import org.jetbrains.kotlin.ir.builders.irLong
+import org.jetbrains.kotlin.ir.builders.irNotEquals
 import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
@@ -259,6 +261,9 @@ class KotlinWinRtIrGenerationExtension(
     private class WinRtProjectionIntrinsicIrLowerings private constructor(
         private val hStringCompanion: IrClassSymbol,
         private val hStringCreateReference: IrSimpleFunctionSymbol,
+        private val hStringFromHandle: IrSimpleFunctionSymbol,
+        private val hStringToKString: IrSimpleFunctionSymbol,
+        private val hStringClose: IrSimpleFunctionSymbol,
         private val referencedHStringHandleGetter: IrSimpleFunctionSymbol,
         private val referencedHStringClose: IrSimpleFunctionSymbol,
         private val iWinRTObjectNativeObjectGetter: IrSimpleFunctionSymbol,
@@ -266,9 +271,25 @@ class KotlinWinRtIrGenerationExtension(
         private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
         private val rawAddressValueGetter: IrSimpleFunctionSymbol,
         private val platformAbi: IrClassSymbol,
+        private val platformAbiConfinedScope: IrSimpleFunctionSymbol,
         private val platformAbiFromRawComPtr: IrSimpleFunctionSymbol,
+        private val platformAbiAllocatePointerSlot: IrSimpleFunctionSymbol,
+        private val platformAbiAllocateInt8Slot: IrSimpleFunctionSymbol,
+        private val platformAbiAllocateInt32Slot: IrSimpleFunctionSymbol,
+        private val platformAbiAllocateInt64Slot: IrSimpleFunctionSymbol,
+        private val platformAbiAllocateDoubleSlot: IrSimpleFunctionSymbol,
+        private val platformAbiAllocateBytes: IrSimpleFunctionSymbol,
+        private val platformAbiReadPointer: IrSimpleFunctionSymbol,
+        private val platformAbiReadInt8: IrSimpleFunctionSymbol,
+        private val platformAbiReadInt32: IrSimpleFunctionSymbol,
+        private val platformAbiReadInt64: IrSimpleFunctionSymbol,
+        private val platformAbiReadFloat: IrSimpleFunctionSymbol,
+        private val platformAbiReadDouble: IrSimpleFunctionSymbol,
+        private val nativeScopeClose: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
+        private val uintConstructor: IrConstructorSymbol?,
+        private val ulongConstructor: IrConstructorSymbol?,
         private val jvmFfmSymbols: JvmFfmSymbols?,
     ) {
         fun lower(
@@ -287,7 +308,172 @@ class KotlinWinRtIrGenerationExtension(
                 "setUInt64" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.UInt64)
                 "setFloat" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Float)
                 "setDouble" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Double)
+                "getString" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.String)
+                "getBoolean" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Boolean)
+                "getInt32" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Int32)
+                "getUInt32" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.UInt32)
+                "getInt64" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Int64)
+                "getUInt64" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.UInt64)
+                "getFloat" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Float)
+                "getDouble" -> lowerNoArgumentGetter(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Double)
                 else -> null
+            }
+
+        private fun lowerNoArgumentGetter(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            returnKind: NoArgumentGetterReturnKind,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            if ((returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
+                (returnKind == NoArgumentGetterReturnKind.UInt64 && ulongConstructor == null)
+            ) {
+                return null
+            }
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = call.type) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
+                        val resultOut = irTemporary(
+                            value = allocateGetterResultSlot(builder, returnKind, builder.irGet(nativeScope)),
+                            nameHint = "resultOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        +jvmFfmCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = listOf(UnitCallAbiArgumentKind.Object),
+                            values = listOf(builder.irGet(resultOut)),
+                        )
+                        +readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
+                )
+            }
+        }
+
+        private fun allocateGetterResultSlot(
+            builder: DeclarationIrBuilder,
+            returnKind: NoArgumentGetterReturnKind,
+            nativeScope: IrExpression,
+        ): IrExpression =
+            builder.irCall(
+                when (returnKind) {
+                    NoArgumentGetterReturnKind.String -> platformAbiAllocatePointerSlot
+                    NoArgumentGetterReturnKind.Boolean -> platformAbiAllocateInt8Slot
+                    NoArgumentGetterReturnKind.Int32,
+                    NoArgumentGetterReturnKind.UInt32 -> platformAbiAllocateInt32Slot
+                    NoArgumentGetterReturnKind.Int64,
+                    NoArgumentGetterReturnKind.UInt64 -> platformAbiAllocateInt64Slot
+                    NoArgumentGetterReturnKind.Float -> platformAbiAllocateBytes
+                    NoArgumentGetterReturnKind.Double -> platformAbiAllocateDoubleSlot
+                },
+            ).apply {
+                arguments[0] = builder.irGetObject(platformAbi)
+                arguments[1] = nativeScope
+                if (returnKind == NoArgumentGetterReturnKind.Float) {
+                    arguments[2] = builder.irLong(4L)
+                }
+            }
+
+        private fun readGetterResult(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            returnKind: NoArgumentGetterReturnKind,
+            resultOut: IrExpression,
+        ): IrExpression =
+            when (returnKind) {
+                NoArgumentGetterReturnKind.String -> readHStringGetterResult(builder, pluginContext, resultOut)
+                NoArgumentGetterReturnKind.Boolean -> builder.irNotEquals(
+                    builder.irCall(platformAbiReadInt8).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = resultOut
+                    },
+                    builder.irByte(0),
+                )
+                NoArgumentGetterReturnKind.Int32 -> builder.irCall(platformAbiReadInt32).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.UInt32 -> builder.irCall(requireNotNull(uintConstructor)).apply {
+                    arguments[0] = builder.irCall(platformAbiReadInt32).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = resultOut
+                    }
+                }
+                NoArgumentGetterReturnKind.Int64 -> builder.irCall(platformAbiReadInt64).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.UInt64 -> builder.irCall(requireNotNull(ulongConstructor)).apply {
+                    arguments[0] = builder.irCall(platformAbiReadInt64).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = resultOut
+                    }
+                }
+                NoArgumentGetterReturnKind.Float -> builder.irCall(platformAbiReadFloat).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.Double -> builder.irCall(platformAbiReadDouble).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+            }
+
+        private fun readHStringGetterResult(
+            builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
+            resultOut: IrExpression,
+        ): IrExpression =
+            builder.irBlock(resultType = pluginContext.irBuiltIns.stringType) {
+                val value = irTemporary(
+                    value = builder.irCall(hStringFromHandle).apply {
+                        arguments[0] = builder.irGetObject(hStringCompanion)
+                        arguments[1] = builder.irCall(platformAbiReadPointer).apply {
+                            arguments[0] = builder.irGetObject(platformAbi)
+                            arguments[1] = resultOut
+                        }
+                        arguments[2] = builder.irBoolean(true)
+                    },
+                    nameHint = "result",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = pluginContext.irBuiltIns.stringType,
+                    tryResult = builder.irCall(hStringToKString).apply {
+                        arguments[0] = builder.irGet(value)
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(hStringClose).apply {
+                            arguments[0] = builder.irGet(value)
+                        }
+                    },
+                )
             }
 
         private fun lowerOneArgumentUnit(
@@ -508,6 +694,17 @@ class KotlinWinRtIrGenerationExtension(
             Object,
         }
 
+        private enum class NoArgumentGetterReturnKind {
+            String,
+            Boolean,
+            Int32,
+            UInt32,
+            Int64,
+            UInt64,
+            Float,
+            Double,
+        }
+
         private object UnitCallAbiShape {
             fun parse(value: String): List<UnitCallAbiArgumentKind>? {
                 if (value.isBlank()) {
@@ -553,6 +750,9 @@ class KotlinWinRtIrGenerationExtension(
                     ?.symbol
                     ?: return null
                 val hStringCreateReference = hStringCompanion.functionNamed("createReference") ?: return null
+                val hStringFromHandle = hStringCompanion.functionNamed("fromHandle") ?: return null
+                val hStringToKString = hString.functionNamed("toKString") ?: return null
+                val hStringClose = hString.functionNamed("close") ?: return null
                 val referencedHString = pluginContext.referenceClass(WINRT_REFERENCED_HSTRING_CLASS_ID)
                     ?: return null
                 val referencedHStringHandleGetter = referencedHString.propertyGetter("handle") ?: return null
@@ -571,7 +771,23 @@ class KotlinWinRtIrGenerationExtension(
                 val rawAddressValueGetter = rawAddress.propertyGetter("value") ?: return null
                 val platformAbi = pluginContext.referenceClass(WINRT_PLATFORM_ABI_CLASS_ID)
                     ?: return null
+                val nativeScope = pluginContext.referenceClass(WINRT_NATIVE_SCOPE_CLASS_ID)
+                    ?: return null
+                val platformAbiConfinedScope = platformAbi.functionNamed("confinedScope") ?: return null
                 val platformAbiFromRawComPtr = platformAbi.functionNamed("fromRawComPtr") ?: return null
+                val platformAbiAllocatePointerSlot = platformAbi.functionNamed("allocatePointerSlot") ?: return null
+                val platformAbiAllocateInt8Slot = platformAbi.functionNamed("allocateInt8Slot") ?: return null
+                val platformAbiAllocateInt32Slot = platformAbi.functionNamed("allocateInt32Slot") ?: return null
+                val platformAbiAllocateInt64Slot = platformAbi.functionNamed("allocateInt64Slot") ?: return null
+                val platformAbiAllocateDoubleSlot = platformAbi.functionNamed("allocateDoubleSlot") ?: return null
+                val platformAbiAllocateBytes = platformAbi.functionNamedWithRegularParameterCount("allocateBytes", 2) ?: return null
+                val platformAbiReadPointer = platformAbi.functionNamed("readPointer") ?: return null
+                val platformAbiReadInt8 = platformAbi.functionNamed("readInt8") ?: return null
+                val platformAbiReadInt32 = platformAbi.functionNamed("readInt32") ?: return null
+                val platformAbiReadInt64 = platformAbi.functionNamed("readInt64") ?: return null
+                val platformAbiReadFloat = platformAbi.functionNamed("readFloat") ?: return null
+                val platformAbiReadDouble = platformAbi.functionNamed("readDouble") ?: return null
+                val nativeScopeClose = nativeScope.functionNamed("close") ?: return null
                 val hResult = pluginContext.referenceClass(WINRT_HRESULT_CLASS_ID)
                     ?: return null
                 val hResultConstructor = hResult.owner.declarations
@@ -585,9 +801,16 @@ class KotlinWinRtIrGenerationExtension(
                     rawComPtrValueGetter = rawComPtrValueGetter,
                     rawAddressValueGetter = rawAddressValueGetter,
                 )
+                val uintConstructor = pluginContext.referenceClass(KOTLIN_UINT_CLASS_ID)
+                    ?.singleValueConstructor()
+                val ulongConstructor = pluginContext.referenceClass(KOTLIN_ULONG_CLASS_ID)
+                    ?.singleValueConstructor()
                 return WinRtProjectionIntrinsicIrLowerings(
                     hStringCompanion = hStringCompanion,
                     hStringCreateReference = hStringCreateReference,
+                    hStringFromHandle = hStringFromHandle,
+                    hStringToKString = hStringToKString,
+                    hStringClose = hStringClose,
                     referencedHStringHandleGetter = referencedHStringHandleGetter,
                     referencedHStringClose = referencedHStringClose,
                     iWinRTObjectNativeObjectGetter = iWinRTObjectNativeObjectGetter,
@@ -595,9 +818,25 @@ class KotlinWinRtIrGenerationExtension(
                     rawComPtrValueGetter = rawComPtrValueGetter,
                     rawAddressValueGetter = rawAddressValueGetter,
                     platformAbi = platformAbi,
+                    platformAbiConfinedScope = platformAbiConfinedScope,
                     platformAbiFromRawComPtr = platformAbiFromRawComPtr,
+                    platformAbiAllocatePointerSlot = platformAbiAllocatePointerSlot,
+                    platformAbiAllocateInt8Slot = platformAbiAllocateInt8Slot,
+                    platformAbiAllocateInt32Slot = platformAbiAllocateInt32Slot,
+                    platformAbiAllocateInt64Slot = platformAbiAllocateInt64Slot,
+                    platformAbiAllocateDoubleSlot = platformAbiAllocateDoubleSlot,
+                    platformAbiAllocateBytes = platformAbiAllocateBytes,
+                    platformAbiReadPointer = platformAbiReadPointer,
+                    platformAbiReadInt8 = platformAbiReadInt8,
+                    platformAbiReadInt32 = platformAbiReadInt32,
+                    platformAbiReadInt64 = platformAbiReadInt64,
+                    platformAbiReadFloat = platformAbiReadFloat,
+                    platformAbiReadDouble = platformAbiReadDouble,
+                    nativeScopeClose = nativeScopeClose,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
+                    uintConstructor = uintConstructor,
+                    ulongConstructor = ulongConstructor,
                     jvmFfmSymbols = jvmFfmSymbols,
                 )
             }
@@ -1112,6 +1351,15 @@ private fun IrClassSymbol.propertyGetter(name: String): IrSimpleFunctionSymbol? 
         ?.getter
         ?.symbol
 
+@OptIn(UnsafeDuringIrConstructionAPI::class)
+private fun IrClassSymbol.singleValueConstructor(): IrConstructorSymbol? =
+    owner.declarations
+        .filterIsInstance<IrConstructor>()
+        .singleOrNull { constructor ->
+            constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 1
+        }
+        ?.symbol
+
 private val WINRT_RUNTIME_PACKAGE_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime")
 
@@ -1162,6 +1410,9 @@ private val WINRT_RAW_ADDRESS_CLASS_ID =
 
 private val WINRT_PLATFORM_ABI_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("PlatformAbi"))
+
+private val WINRT_NATIVE_SCOPE_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("NativeScope"))
 
 private val WINRT_HRESULT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HResult"))
