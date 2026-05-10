@@ -32,6 +32,24 @@ object WinRtProjectionIntrinsic {
     ): T =
         staticIntrinsicNotLowered("staticCallProjectedInterfaceWithString", reference, slot, value)
 
+    fun <T> callProjectedRuntimeClass(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        wrap: (IInspectableReference) -> T,
+        vararg arguments: Any?,
+    ): T =
+        intrinsicNotLowered("callProjectedRuntimeClass", reference, slot, abiShape, wrap, *arguments)
+
+    fun <T> callProjectedInterface(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        wrap: (IUnknownReference) -> T,
+        vararg arguments: Any?,
+    ): T =
+        intrinsicNotLowered("callProjectedInterface", reference, slot, abiShape, wrap, *arguments)
+
     fun getString(reference: ComObjectReference, slot: Int): String =
         intrinsicNotLowered("getString", reference, slot)
 

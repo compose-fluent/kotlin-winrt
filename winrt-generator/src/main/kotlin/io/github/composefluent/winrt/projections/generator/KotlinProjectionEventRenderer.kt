@@ -426,6 +426,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         ?: renderStaticIntrinsicGetter(binding)
         ?: renderStaticDescriptorUnitIntrinsicInvocation(binding)
         ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
+        ?: renderStaticDescriptorProjectedObjectIntrinsicInvocation(binding)
         ?: renderStaticDirectAbiMethodInvocation(binding)
         ?: renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
@@ -596,6 +597,52 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorBooleanIntrinsicInvoc
         .build()
 }
 
+private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrinsicInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.suppressHResultCheck ||
+        binding.parameterBindings.isEmpty()
+    ) {
+        return null
+    }
+    val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
+        KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
+        else -> return null
+    }
+    val returnType = resolvedReturnClassName(binding.returnBinding) ?: return null
+    val argumentShapes = binding.parameterBindings.map { parameter ->
+        if (parameter.category != WinRtMetadataParameterCategory.In) {
+            return null
+        }
+        staticDescriptorIntrinsicArgumentShape(parameter.typeBinding)?.takeIf { it != "String" } ?: return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("%T.Metadata::wrap,\n", returnType)
+        .apply {
+            binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
+                when {
+                    shape == "Object" ->
+                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                        add("%L.abiValue,\n", parameter.name)
+                    else ->
+                        add("%L,\n", parameter.name)
+                }
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
 private fun staticDescriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
     when (binding.kind) {
         KotlinProjectionAbiValueKind.Int32 ->
@@ -622,7 +669,18 @@ private fun staticDescriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiT
             if (binding.typeName.endsWith("?")) null else "String"
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            if (binding.typeName.endsWith("?") || binding.typeArguments.isNotEmpty()) null else "Object"
+            if (
+                binding.typeName.endsWith("?") ||
+                binding.typeArguments.isNotEmpty() ||
+                binding.typeName != binding.resolvedTypeName ||
+                '.' !in binding.typeName ||
+                mappedTypeByAbiName(binding.resolvedTypeName)?.customObjectAbi != null ||
+                mappedTypeByAbiName(binding.typeName)?.customObjectAbi != null
+            ) {
+                null
+            } else {
+                "Object"
+            }
         else -> null
     }
 
