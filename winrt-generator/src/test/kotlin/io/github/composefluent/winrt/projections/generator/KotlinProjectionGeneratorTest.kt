@@ -3279,6 +3279,49 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_double_double_unit_interface_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IRangeBaseOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "OnValueChanged",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("oldValue", "Double"),
+                                        WinRtParameterDefinition("newValue", "Double"),
+                                    ),
+                                    methodRowId = 17,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IRangeBaseOverrides.kt")
+            .contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Double,Double\","))
+        assertTrue(interfaceContents, interfaceContents.contains("oldValue,"))
+        assertTrue(interfaceContents, interfaceContents.contains("newValue,"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_string_projected_object_unit_interface_methods_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

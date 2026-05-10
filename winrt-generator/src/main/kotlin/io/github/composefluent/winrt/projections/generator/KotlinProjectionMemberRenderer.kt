@@ -590,7 +590,12 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
     ) {
         return null
     }
-    val argumentShapes = parameterBindings.map { parameter -> unitCallIntrinsicArgumentShape(parameter.typeBinding) ?: return null }
+    val argumentShapes = parameterBindings.map { parameter ->
+        if (parameter.category != WinRtMetadataParameterCategory.In) {
+            return null
+        }
+        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+    }
     if (argumentShapes.count { it == "String" } > 1 || argumentShapes.count { it == "Object" } > 1) {
         return null
     }
@@ -602,10 +607,13 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
         .add("%S,\n", argumentShapes.joinToString(","))
         .apply {
             parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                if (shape == "Object") {
-                    add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                } else {
-                    add("%L,\n", parameter.name)
+                when {
+                    shape == "Object" ->
+                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                        add("%L.abiValue,\n", parameter.name)
+                    else ->
+                        add("%L,\n", parameter.name)
                 }
             }
         }
@@ -613,20 +621,6 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
         .add(")\n")
         .build()
 }
-
-private fun unitCallIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
-    when (binding.kind) {
-        KotlinProjectionAbiValueKind.Float ->
-            if (binding.typeName.endsWith("?")) null else "Float"
-        KotlinProjectionAbiValueKind.Boolean ->
-            if (binding.typeName.endsWith("?")) null else "Boolean"
-        KotlinProjectionAbiValueKind.String ->
-            if (binding.typeName.endsWith("?")) null else "String"
-        KotlinProjectionAbiValueKind.ProjectedInterface,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            if (binding.typeName.endsWith("?") || binding.typeArguments.isNotEmpty()) null else "Object"
-        else -> null
-    }
 
 internal fun KotlinProjectionRenderer.renderInstanceDescriptorScalarIntrinsicInvocation(
     referenceExpression: String,
