@@ -654,13 +654,13 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
     ) {
         return null
     }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Int32 -> "callInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "callUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "callInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "callUInt64"
-        KotlinProjectionAbiValueKind.Float -> "callFloat"
-        KotlinProjectionAbiValueKind.Double -> "callDouble"
+    val returnShape = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.Int32 -> "Int32"
+        KotlinProjectionAbiValueKind.UInt32 -> "UInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "Int64"
+        KotlinProjectionAbiValueKind.UInt64 -> "UInt64"
+        KotlinProjectionAbiValueKind.Float -> "Float"
+        KotlinProjectionAbiValueKind.Double -> "Double"
         else -> return null
     }
     val argumentShapes = binding.parameterBindings.map { parameter ->
@@ -670,10 +670,11 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
         staticDescriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
     }
     return CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
         .add("%L,\n", binding.bindingName)
+        .add("%S,\n", returnShape)
         .add("%S,\n", argumentShapes.joinToString(","))
         .apply {
             binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->

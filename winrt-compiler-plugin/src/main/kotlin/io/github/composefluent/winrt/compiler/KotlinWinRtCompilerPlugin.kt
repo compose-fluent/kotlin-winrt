@@ -297,42 +297,7 @@ class KotlinWinRtIrGenerationExtension(
             when (intrinsicName) {
                 "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
                 "callBoolean" -> lowerDescriptorCallBoolean(call, pluginContext, builderScope)
-                "callInt32" -> lowerDescriptorCallScalar(
-                    call,
-                    pluginContext,
-                    builderScope,
-                    NoArgumentGetterReturnKind.Int32,
-                )
-                "callUInt32" -> lowerDescriptorCallScalar(
-                    call,
-                    pluginContext,
-                    builderScope,
-                    NoArgumentGetterReturnKind.UInt32,
-                )
-                "callInt64" -> lowerDescriptorCallScalar(
-                    call,
-                    pluginContext,
-                    builderScope,
-                    NoArgumentGetterReturnKind.Int64,
-                )
-                "callUInt64" -> lowerDescriptorCallScalar(
-                    call,
-                    pluginContext,
-                    builderScope,
-                    NoArgumentGetterReturnKind.UInt64,
-                )
-                "callFloat" -> lowerDescriptorCallScalar(
-                    call,
-                    pluginContext,
-                    builderScope,
-                    NoArgumentGetterReturnKind.Float,
-                )
-                "callDouble" -> lowerDescriptorCallScalar(
-                    call,
-                    pluginContext,
-                    builderScope,
-                    NoArgumentGetterReturnKind.Double,
-                )
+                "callScalar" -> lowerDescriptorCallScalar(call, pluginContext, builderScope)
                 "setString" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.String)
                 "setBoolean" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Boolean)
                 "setInt32" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Int32)
@@ -1376,7 +1341,34 @@ class KotlinWinRtIrGenerationExtension(
             call: IrCall,
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            val returnShape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
+            val returnKind = when (returnShape) {
+                "Int32" -> NoArgumentGetterReturnKind.Int32
+                "UInt32" -> NoArgumentGetterReturnKind.UInt32
+                "Int64" -> NoArgumentGetterReturnKind.Int64
+                "UInt64" -> NoArgumentGetterReturnKind.UInt64
+                "Float" -> NoArgumentGetterReturnKind.Float
+                "Double" -> NoArgumentGetterReturnKind.Double
+                else -> return null
+            }
+            return lowerDescriptorCallScalar(
+                call = call,
+                pluginContext = pluginContext,
+                builderScope = builderScope,
+                returnKind = returnKind,
+                abiShapeIndex = 4,
+                varargIndex = 5,
+            )
+        }
+
+        private fun lowerDescriptorCallScalar(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
             returnKind: NoArgumentGetterReturnKind,
+            abiShapeIndex: Int = 3,
+            varargIndex: Int = 4,
         ): IrExpression? {
             val symbols = jvmFfmSymbols ?: return null
             val scope = builderScope ?: return null
@@ -1386,12 +1378,12 @@ class KotlinWinRtIrGenerationExtension(
             ) {
                 return null
             }
-            val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
+            val shape = call.arguments.getOrNull(abiShapeIndex)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
             if (!symbols.canLower(argumentKinds)) {
                 return null
             }
-            val values = call.varargValues(argumentKinds.size) ?: return null
+            val values = call.varargValues(argumentKinds.size, varargIndex = varargIndex) ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
@@ -2620,12 +2612,7 @@ private val JAVA_METHOD_HANDLE_CLASS_ID =
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnit",
     "callBoolean",
-    "callInt32",
-    "callUInt32",
-    "callInt64",
-    "callUInt64",
-    "callFloat",
-    "callDouble",
+    "callScalar",
     "getString",
     "getBoolean",
     "getInt32",
