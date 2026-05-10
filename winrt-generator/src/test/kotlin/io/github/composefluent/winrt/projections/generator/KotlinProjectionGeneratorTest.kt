@@ -3971,6 +3971,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_instance_descriptor_scalar_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICalculator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "subtract",
+                                    returnTypeName = "Double",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("left", "Double"),
+                                        WinRtParameterDefinition("right", "Double"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Calculator",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ICalculator",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ICalculator", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val calculatorContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Calculator.kt")
+            .contents
+
+        assertTrue(calculatorContents.contains("fun subtract(left: Double, right: Double): Double"))
+        assertTrue(calculatorContents.contains("WinRtProjectionIntrinsic.callScalar("))
+        assertTrue(calculatorContents.contains("\"Double\""))
+        assertTrue(calculatorContents.contains("\"Double,Double\""))
+        assertTrue(calculatorContents.contains("left,"))
+        assertTrue(calculatorContents.contains("right,"))
+        assertFalse(calculatorContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_static_properties_through_projection_intrinsics_when_support_files_are_enabled() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

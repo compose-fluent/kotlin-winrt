@@ -14,7 +14,6 @@ import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDes
 import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
-import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
@@ -532,7 +531,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorUnitIntrinsicInvocati
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        staticDescriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
     }
     return CodeBlock.builder()
         .add("return %T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -572,7 +571,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorBooleanIntrinsicInvoc
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        staticDescriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
     }
     return CodeBlock.builder()
         .add("return %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -617,7 +616,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrin
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        staticDescriptorIntrinsicArgumentShape(parameter.typeBinding)?.takeIf { it != "String" } ?: return null
+        descriptorIntrinsicArgumentShape(parameter.typeBinding)?.takeIf { it != "String" } ?: return null
     }
     return CodeBlock.builder()
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
@@ -653,20 +652,12 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
     ) {
         return null
     }
-    val returnShape = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Int32 -> "Int32"
-        KotlinProjectionAbiValueKind.UInt32 -> "UInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "Int64"
-        KotlinProjectionAbiValueKind.UInt64 -> "UInt64"
-        KotlinProjectionAbiValueKind.Float -> "Float"
-        KotlinProjectionAbiValueKind.Double -> "Double"
-        else -> return null
-    }
+    val returnShape = scalarIntrinsicReturnShape(binding.returnBinding) ?: return null
     val argumentShapes = binding.parameterBindings.map { parameter ->
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        staticDescriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
     }
     return CodeBlock.builder()
         .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -691,47 +682,6 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
         .add(")\n")
         .build()
 }
-
-private fun staticDescriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
-    when (binding.kind) {
-        KotlinProjectionAbiValueKind.Int32 ->
-            if (binding.typeName.endsWith("?")) null else "Int32"
-        KotlinProjectionAbiValueKind.UInt32 ->
-            if (binding.typeName.endsWith("?")) null else "UInt32"
-        KotlinProjectionAbiValueKind.Int64 ->
-            if (binding.typeName.endsWith("?")) null else "Int64"
-        KotlinProjectionAbiValueKind.UInt64 ->
-            if (binding.typeName.endsWith("?")) null else "UInt64"
-        KotlinProjectionAbiValueKind.Float ->
-            if (binding.typeName.endsWith("?")) null else "Float"
-        KotlinProjectionAbiValueKind.Double ->
-            if (binding.typeName.endsWith("?")) null else "Double"
-        KotlinProjectionAbiValueKind.Boolean ->
-            if (binding.typeName.endsWith("?")) null else "Boolean"
-        KotlinProjectionAbiValueKind.Enum ->
-            when (binding.enumUnderlyingType) {
-                WinRtIntegralType.Int32 -> "Int32"
-                WinRtIntegralType.UInt32 -> "UInt32"
-                else -> null
-            }
-        KotlinProjectionAbiValueKind.String ->
-            if (binding.typeName.endsWith("?")) null else "String"
-        KotlinProjectionAbiValueKind.ProjectedInterface,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            if (
-                binding.typeName.endsWith("?") ||
-                binding.typeArguments.isNotEmpty() ||
-                binding.typeName != binding.resolvedTypeName ||
-                '.' !in binding.typeName ||
-                mappedTypeByAbiName(binding.resolvedTypeName)?.customObjectAbi != null ||
-                mappedTypeByAbiName(binding.typeName)?.customObjectAbi != null
-            ) {
-                null
-            } else {
-                "Object"
-            }
-        else -> null
-    }
 
 private fun staticMethodBindingName(
     plan: KotlinTypeProjectionPlan,
