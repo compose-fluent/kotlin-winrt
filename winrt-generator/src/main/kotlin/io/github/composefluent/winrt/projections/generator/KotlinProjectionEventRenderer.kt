@@ -423,6 +423,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     } ?: return null
     val invocation = renderStaticArrayResultIntrinsicInvocation(binding)
         ?: renderStaticStringProjectedObjectIntrinsicInvocation(binding)
+        ?: renderStaticIntrinsicGetter(binding)
         ?: renderStaticDescriptorUnitIntrinsicInvocation(binding)
         ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
         ?: renderStaticDirectAbiMethodInvocation(binding)
@@ -540,10 +541,13 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorUnitIntrinsicInvocati
         .add("%S,\n", argumentShapes.joinToString(","))
         .apply {
             binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                if (shape == "Object") {
-                    add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                } else {
-                    add("%L,\n", parameter.name)
+                when {
+                    shape == "Object" ->
+                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                        add("%L.abiValue,\n", parameter.name)
+                    else ->
+                        add("%L,\n", parameter.name)
                 }
             }
         }
@@ -577,10 +581,13 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorBooleanIntrinsicInvoc
         .add("%S,\n", argumentShapes.joinToString(","))
         .apply {
             binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                if (shape == "Object") {
-                    add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                } else {
-                    add("%L,\n", parameter.name)
+                when {
+                    shape == "Object" ->
+                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                        add("%L.abiValue,\n", parameter.name)
+                    else ->
+                        add("%L,\n", parameter.name)
                 }
             }
         }
@@ -605,6 +612,12 @@ private fun staticDescriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiT
             if (binding.typeName.endsWith("?")) null else "Double"
         KotlinProjectionAbiValueKind.Boolean ->
             if (binding.typeName.endsWith("?")) null else "Boolean"
+        KotlinProjectionAbiValueKind.Enum ->
+            when (binding.enumUnderlyingType) {
+                WinRtIntegralType.Int32 -> "Int32"
+                WinRtIntegralType.UInt32 -> "UInt32"
+                else -> null
+            }
         KotlinProjectionAbiValueKind.String ->
             if (binding.typeName.endsWith("?")) null else "String"
         KotlinProjectionAbiValueKind.ProjectedInterface,

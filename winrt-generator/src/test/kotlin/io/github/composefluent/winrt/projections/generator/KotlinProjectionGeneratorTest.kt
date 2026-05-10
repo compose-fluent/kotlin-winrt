@@ -3815,6 +3815,11 @@ class KotlinProjectionGeneratorTest {
                             iid = Guid("22222222-2222-2222-2222-222222222222"),
                             methods = listOf(
                                 WinRtMethodDefinition(
+                                    name = "isCustomizationSupported",
+                                    returnTypeName = "Boolean",
+                                    methodRowId = 9,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "isVisible",
                                     returnTypeName = "Boolean",
                                     parameters = listOf(
@@ -3822,6 +3827,24 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                     methodRowId = 10,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "listenerExists",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("status", "Sample.Foundation.Status"),
+                                    ),
+                                    methodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Status",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Ready", 0u),
+                                WinRtEnumMemberDefinition("Busy", 1u),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -3848,9 +3871,14 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(widgetContents.contains("fun isVisible(element: Widget): Boolean"))
+        assertTrue(widgetContents.contains("fun isCustomizationSupported(): Boolean"))
+        assertTrue(widgetContents.contains("fun listenerExists(status: Status): Boolean"))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.getBoolean("))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callBoolean("))
         assertTrue(widgetContents.contains("\"Object\""))
+        assertTrue(widgetContents.contains("\"Int32\""))
         assertTrue(widgetContents.contains("element as IWinRTObject"))
+        assertTrue(widgetContents.contains("status.abiValue"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callBoolean("))
     }
 
