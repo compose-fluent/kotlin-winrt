@@ -77,6 +77,15 @@ object WinRtProjectionIntrinsic {
     fun <T> getStruct(reference: ComObjectReference, slot: Int, adapter: NativeStructAdapter<T>): T =
         intrinsicNotLowered("getStruct", reference, slot, adapter)
 
+    fun <T> callStruct(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        adapter: NativeStructAdapter<T>,
+        vararg arguments: Any?,
+    ): T =
+        intrinsicNotLowered("callStruct", reference, slot, abiShape, adapter, *arguments)
+
     fun <T> getArray(reference: ComObjectReference, slot: Int, marshaler: Marshaler<T>): List<T?> =
         intrinsicNotLowered("getArray", reference, slot, marshaler)
 

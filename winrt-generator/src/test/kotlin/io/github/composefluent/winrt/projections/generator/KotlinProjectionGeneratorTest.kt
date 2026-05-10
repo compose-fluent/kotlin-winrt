@@ -9525,6 +9525,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_struct_result_descriptor_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Rect",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                                WinRtFieldDefinition("Width", "Float"),
+                                WinRtFieldDefinition("Height", "Float"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ITextBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555576"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetRectFromCharacterIndex",
+                                    returnTypeName = "Sample.Foundation.Rect",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("charIndex", "Int"),
+                                        WinRtParameterDefinition("trailingEdge", "Boolean"),
+                                    ),
+                                    methodRowId = 20,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ITextBox.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("WinRtProjectionIntrinsic.callStruct("))
+        assertTrue(contents.contains("\"Int32,Boolean\""))
+        assertTrue(contents.contains("Rect.Metadata"))
+        assertTrue(contents.contains("charIndex,"))
+        assertTrue(contents.contains("trailingEdge,"))
+        assertFalse(contents.contains("PlatformAbi.allocateBytes"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_multi_projected_object_unit_calls_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
