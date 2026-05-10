@@ -758,12 +758,6 @@ private fun KotlinProjectionRenderer.renderStaticDirectAbiMethodInvocation(
     val helperFunction = when (binding.returnBinding.kind) {
         KotlinProjectionAbiValueKind.Unit -> "callUnit"
         KotlinProjectionAbiValueKind.Boolean -> "callBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "callInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "callUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "callInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "callUInt64"
-        KotlinProjectionAbiValueKind.Float -> "callFloat"
-        KotlinProjectionAbiValueKind.Double -> "callDouble"
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
         KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
         else -> return null
@@ -929,12 +923,6 @@ private fun KotlinProjectionRenderer.renderStaticDirectAbiGetter(
     }
     val helperFunction = when (binding.returnBinding.kind) {
         KotlinProjectionAbiValueKind.Boolean -> "callBoolean"
-        KotlinProjectionAbiValueKind.Int32 -> "callInt32"
-        KotlinProjectionAbiValueKind.UInt32 -> "callUInt32"
-        KotlinProjectionAbiValueKind.Int64 -> "callInt64"
-        KotlinProjectionAbiValueKind.UInt64 -> "callUInt64"
-        KotlinProjectionAbiValueKind.Float -> "callFloat"
-        KotlinProjectionAbiValueKind.Double -> "callDouble"
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "getProjectedRuntimeClass"
         KotlinProjectionAbiValueKind.ProjectedInterface -> "getProjectedInterface"
         else -> return null
