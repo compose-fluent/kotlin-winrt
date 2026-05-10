@@ -9321,6 +9321,85 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_multi_projected_object_unit_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IPath",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555562"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Path",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IPath",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IPath",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IEasingFunction",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "EasingFunction",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IEasingFunction",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IEasingFunction",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IPathKeyFrameAnimation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555564"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "InsertKeyFrame",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("progress", "Float"),
+                                        WinRtParameterDefinition("path", "Sample.Foundation.Path"),
+                                        WinRtParameterDefinition("easingFunction", "Sample.Foundation.EasingFunction"),
+                                    ),
+                                    methodRowId = 13,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IPathKeyFrameAnimation.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(contents.contains("\"Float,Object,Object\""))
+        assertTrue(contents.contains("path as IWinRTObject"))
+        assertTrue(contents.contains("easingFunction as IWinRTObject"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_uses_vector_interface_cache_for_observable_vector_runtime_collection_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

@@ -611,7 +611,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
         }
         descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
     }
-    if (argumentShapes.count { it == "String" } > 1 || argumentShapes.count { it == "Object" } > 1) {
+    if (argumentShapes.count { it == "String" } > 1) {
         return null
     }
     return CodeBlock.builder()
