@@ -4067,6 +4067,85 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_instance_descriptor_projected_object_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IEasingStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "createBackEasingFunction",
+                                    returnTypeName = "Sample.Foundation.BackEasingFunction",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("owner", "Sample.Foundation.Compositor"),
+                                        WinRtParameterDefinition("mode", "Sample.Foundation.CompositionEasingFunctionMode"),
+                                        WinRtParameterDefinition("amplitude", "Float"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "CompositionEasingFunctionMode",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("In", 0u),
+                                WinRtEnumMemberDefinition("Out", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Compositor",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBackEasingFunction",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "BackEasingFunction",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IBackEasingFunction",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.Foundation.IBackEasingFunction",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val easingContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IEasingStatics.kt")
+            .contents
+
+        assertTrue(easingContents.contains("fun createBackEasingFunction("))
+        assertTrue(easingContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
+        assertTrue(easingContents.contains("\"Object,Int32,Float\""))
+        assertTrue(easingContents.contains("BackEasingFunction.Metadata::wrap"))
+        assertTrue(easingContents.contains("owner as IWinRTObject"))
+        assertTrue(easingContents.contains("mode.abiValue"))
+        assertTrue(easingContents.contains("amplitude,"))
+        assertFalse(easingContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_static_properties_through_projection_intrinsics_when_support_files_are_enabled() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
