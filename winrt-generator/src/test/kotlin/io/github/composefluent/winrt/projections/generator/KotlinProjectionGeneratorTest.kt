@@ -9170,6 +9170,87 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_struct_argument_unit_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IEasingFunction",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "EasingFunction",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IEasingFunction",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IEasingFunction",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IKeyFrameAnimation",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "InsertKeyFrame",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("progress", "Float"),
+                                        WinRtParameterDefinition("value", "Sample.Foundation.Point"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "InsertKeyFrame",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("progress", "Float"),
+                                        WinRtParameterDefinition("value", "Sample.Foundation.Point"),
+                                        WinRtParameterDefinition("easingFunction", "Sample.Foundation.EasingFunction"),
+                                    ),
+                                    methodRowId = 11,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IKeyFrameAnimation.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(contents.contains("\"Float,Struct\""))
+        assertTrue(contents.contains("\"Float,Struct,Object\""))
+        assertTrue(contents.contains("Point.Metadata"))
+        assertTrue(contents.contains("easingFunction as IWinRTObject"))
+        assertFalse(contents.contains("PlatformAbi.allocateBytes"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_uses_vector_interface_cache_for_observable_vector_runtime_collection_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

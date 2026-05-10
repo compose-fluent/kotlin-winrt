@@ -609,7 +609,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        descriptorUnitIntrinsicArgumentShape(parameter.typeBinding) ?: return null
     }
     if (argumentShapes.count { it == "String" } > 1 || argumentShapes.count { it == "Object" } > 1) {
         return null
@@ -625,6 +625,11 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
                 when {
                     shape == "Object" ->
                         add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    shape == "Struct" -> {
+                        val structType = nativeStructClassName(parameter.typeBinding) ?: return null
+                        add("%L,\n", parameter.name)
+                        add("%T.Metadata,\n", structType)
+                    }
                     parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
                         add("%L.abiValue,\n", parameter.name)
                     else ->
@@ -827,6 +832,17 @@ internal fun descriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBi
                 "Object"
             }
         else -> null
+    }
+
+private fun KotlinProjectionRenderer.descriptorUnitIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
+    when (binding.kind) {
+        KotlinProjectionAbiValueKind.Struct ->
+            if (binding.typeName.endsWith("?") || customStructAbi(binding) != null || nativeStructClassName(binding) == null) {
+                null
+            } else {
+                "Struct"
+            }
+        else -> descriptorIntrinsicArgumentShape(binding)
     }
 
 private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(

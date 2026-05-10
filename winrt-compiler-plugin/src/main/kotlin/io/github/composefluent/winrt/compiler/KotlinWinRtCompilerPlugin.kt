@@ -428,6 +428,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
+                                UnitCallAbiArgumentKind.Struct,
                                 UnitCallAbiArgumentKind.String -> return null
                             }
                         }
@@ -1312,7 +1313,7 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? {
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            val values = call.varargValues(argumentKinds.size) ?: return null
+            val values = call.varargValues(UnitCallAbiShape.varargValueCount(argumentKinds)) ?: return null
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             return jvmFfmSymbols?.let { symbols ->
@@ -1380,7 +1381,7 @@ class KotlinWinRtIrGenerationExtension(
             }
             val shape = call.arguments.getOrNull(abiShapeIndex)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (!symbols.canLower(argumentKinds)) {
+            if (UnitCallAbiArgumentKind.Struct in argumentKinds || !symbols.canLower(argumentKinds)) {
                 return null
             }
             val values = call.varargValues(argumentKinds.size, varargIndex = varargIndex) ?: return null
@@ -1420,6 +1421,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.Double -> value
                                 UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
                                 UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
+                                UnitCallAbiArgumentKind.Struct -> error("Struct arguments are not supported for scalar descriptor calls.")
                                 UnitCallAbiArgumentKind.String -> {
                                     val stringAbi = irTemporary(
                                         value = builder.irCall(hStringCreateReference).apply {
@@ -1496,61 +1498,130 @@ class KotlinWinRtIrGenerationExtension(
             }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
-                fun abiValueFor(index: Int, kind: UnitCallAbiArgumentKind): IrExpression {
-                    val value = values[index]
-                    return when (kind) {
-                        UnitCallAbiArgumentKind.RawAddress,
-                        UnitCallAbiArgumentKind.RawComPtr,
-                        UnitCallAbiArgumentKind.Byte,
-                        UnitCallAbiArgumentKind.Int32,
-                        UnitCallAbiArgumentKind.UInt32,
-                        UnitCallAbiArgumentKind.Int64,
-                        UnitCallAbiArgumentKind.UInt64,
-                        UnitCallAbiArgumentKind.Float -> value
-                        UnitCallAbiArgumentKind.Double -> value
-                        UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
-                        UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
-                        UnitCallAbiArgumentKind.String -> {
-                            val stringAbi = irTemporary(
-                                value = builder.irCall(hStringCreateReference).apply {
-                                    arguments[0] = builder.irGetObject(hStringCompanion)
-                                    arguments[1] = value
-                                },
-                                nameHint = "value${index}Abi",
-                                isMutable = false,
-                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
-                            )
-                            stringAbis += stringAbi
-                            builder.irCall(referencedHStringHandleGetter).apply {
-                                arguments[0] = builder.irGet(stringAbi)
+                val hasStructArguments = UnitCallAbiArgumentKind.Struct in argumentKinds
+                val nativeScope = if (hasStructArguments) {
+                    irTemporary(
+                        value = builder.irCall(platformAbiConfinedScope).apply {
+                            arguments[0] = builder.irGetObject(platformAbi)
+                        },
+                        nameHint = "scope",
+                        isMutable = false,
+                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                    )
+                } else {
+                    null
+                }
+                fun callWithPreparedArguments(): IrExpression =
+                    builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
+                        val structAbis =
+                            mutableListOf<Pair<org.jetbrains.kotlin.ir.declarations.IrVariable, org.jetbrains.kotlin.ir.declarations.IrVariable>>()
+                        var valueIndex = 0
+                        fun nextValue(): IrExpression = values[valueIndex++]
+                        fun abiValueFor(kind: UnitCallAbiArgumentKind): IrExpression {
+                            val value = nextValue()
+                            return when (kind) {
+                                UnitCallAbiArgumentKind.RawAddress,
+                                UnitCallAbiArgumentKind.RawComPtr,
+                                UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int32,
+                                UnitCallAbiArgumentKind.UInt32,
+                                UnitCallAbiArgumentKind.Int64,
+                                UnitCallAbiArgumentKind.UInt64,
+                                UnitCallAbiArgumentKind.Float -> value
+                                UnitCallAbiArgumentKind.Double -> value
+                                UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
+                                UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
+                                UnitCallAbiArgumentKind.Struct -> {
+                                    val adapter = irTemporary(
+                                        value = nextValue(),
+                                        nameHint = "structAdapter",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    val valueAbi = irTemporary(
+                                        value = builder.irCall(platformAbiAllocateBytes).apply {
+                                            arguments[0] = builder.irGetObject(platformAbi)
+                                            arguments[1] = builder.irGet(requireNotNull(nativeScope))
+                                            arguments[2] = builder.irCall(nativeStructLayoutSizeBytesGetter).apply {
+                                                arguments[0] = builder.irCall(nativeStructAdapterLayoutGetter).apply {
+                                                    arguments[0] = builder.irGet(adapter)
+                                                }
+                                            }
+                                        },
+                                        nameHint = "value${valueIndex}Abi",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    +builder.irCall(nativeStructAdapterWrite).apply {
+                                        arguments[0] = builder.irGet(adapter)
+                                        arguments[1] = value
+                                        arguments[2] = builder.irGet(valueAbi)
+                                    }
+                                    structAbis += adapter to valueAbi
+                                    builder.irGet(valueAbi)
+                                }
+                                UnitCallAbiArgumentKind.String -> {
+                                    val stringAbi = irTemporary(
+                                        value = builder.irCall(hStringCreateReference).apply {
+                                            arguments[0] = builder.irGetObject(hStringCompanion)
+                                            arguments[1] = value
+                                        },
+                                        nameHint = "value${valueIndex}Abi",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    stringAbis += stringAbi
+                                    builder.irCall(referencedHStringHandleGetter).apply {
+                                        arguments[0] = builder.irGet(stringAbi)
+                                    }
+                                }
                             }
                         }
-                    }
-                }
 
-                val abiValues = argumentKinds.mapIndexed(::abiValueFor)
-                val callBlock = jvmFfmCallUnitBlock(
-                    symbols = symbols,
-                    builder = builder,
-                    pluginContext = pluginContext,
-                    reference = reference,
-                    slot = slot,
-                    argumentKinds = argumentKinds,
-                    values = abiValues,
-                )
-                if (stringAbis.isEmpty()) {
-                    +callBlock
+                        val abiValues = argumentKinds.map(::abiValueFor)
+                        val callBlock = jvmFfmCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = argumentKinds,
+                            values = abiValues,
+                        )
+                        if (stringAbis.isEmpty() && structAbis.isEmpty()) {
+                            +callBlock
+                        } else {
+                            +builder.irTry(
+                                type = pluginContext.irBuiltIns.unitType,
+                                tryResult = callBlock,
+                                catches = emptyList(),
+                                finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                    structAbis.forEach { (adapter, valueAbi) ->
+                                        +builder.irCall(nativeStructAdapterDisposeAbi).apply {
+                                            arguments[0] = builder.irGet(adapter)
+                                            arguments[1] = builder.irGet(valueAbi)
+                                        }
+                                    }
+                                    stringAbis.forEach { stringAbi ->
+                                        +builder.irCall(referencedHStringClose).apply {
+                                            arguments[0] = builder.irGet(stringAbi)
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                if (nativeScope == null) {
+                    +callWithPreparedArguments()
                 } else {
                     +builder.irTry(
                         type = pluginContext.irBuiltIns.unitType,
-                        tryResult = callBlock,
+                        tryResult = callWithPreparedArguments(),
                         catches = emptyList(),
                         finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                            stringAbis.forEach { stringAbi ->
-                                +builder.irCall(referencedHStringClose).apply {
-                                    arguments[0] = builder.irGet(stringAbi)
-                                }
+                            +builder.irCall(nativeScopeClose).apply {
+                                arguments[0] = builder.irGet(nativeScope)
                             }
                         },
                     )
@@ -1758,6 +1829,7 @@ class KotlinWinRtIrGenerationExtension(
             Double,
             Boolean,
             String,
+            Struct,
             Object,
         }
 
@@ -1792,11 +1864,20 @@ class KotlinWinRtIrGenerationExtension(
                         "Double" -> UnitCallAbiArgumentKind.Double
                         "Boolean" -> UnitCallAbiArgumentKind.Boolean
                         "String" -> UnitCallAbiArgumentKind.String
+                        "Struct" -> UnitCallAbiArgumentKind.Struct
                         "Object" -> UnitCallAbiArgumentKind.Object
                         else -> return null
                     }
                 }
             }
+
+            fun varargValueCount(argumentKinds: List<UnitCallAbiArgumentKind>): Int =
+                argumentKinds.sumOf { kind ->
+                    when (kind) {
+                        UnitCallAbiArgumentKind.Struct -> 2
+                        else -> 1
+                    }
+                }
         }
 
         private fun projectedObjectAbi(
@@ -2088,6 +2169,7 @@ class KotlinWinRtIrGenerationExtension(
                     }
                     UnitCallAbiArgumentKind.RawComPtr -> segmentFromRawComPtr(builder, value)
                     UnitCallAbiArgumentKind.RawAddress,
+                    UnitCallAbiArgumentKind.Struct,
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
                 }
@@ -2104,6 +2186,7 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.Double -> valueLayoutJavaDouble
                     UnitCallAbiArgumentKind.RawAddress,
                     UnitCallAbiArgumentKind.RawComPtr,
+                    UnitCallAbiArgumentKind.Struct,
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> valueLayoutAddress
                 }
