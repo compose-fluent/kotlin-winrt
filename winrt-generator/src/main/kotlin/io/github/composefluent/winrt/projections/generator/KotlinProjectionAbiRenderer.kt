@@ -489,11 +489,10 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
                 HSTRING_CLASS_NAME,
             )
         KotlinProjectionAbiValueKind.MappedAsyncAction ->
-            CodeBlock.of(
-                "val __result = %T(%T.readPointer(__resultOut))\nreturn __result\n",
-                WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
-            )
+            asyncReferenceExpression(
+                returnBinding = returnBinding,
+                pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
+            )?.let { CodeBlock.of("return %L\n", it) } ?: return null
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress ->
             asyncActionWithProgressReturnReadback(returnBinding) ?: return null
         KotlinProjectionAbiValueKind.MappedAsyncOperation ->

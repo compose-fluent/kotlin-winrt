@@ -318,6 +318,12 @@ class KotlinProjectionRenderer(
             returnBinding = returnBinding,
             parameterBindings = parameterBindings,
             suppressHResultCheck = method.isNoException,
+        ) ?: renderInstanceDescriptorAsyncIntrinsicInvocation(
+            referenceExpression = "nativeObject",
+            slotExpression = slotExpression,
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
         ) ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
             referenceExpression = "nativeObject",
             slotExpression = slotExpression,

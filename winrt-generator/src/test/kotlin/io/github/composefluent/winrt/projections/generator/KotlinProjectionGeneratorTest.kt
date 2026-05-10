@@ -7997,6 +7997,63 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_async_operation_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "InputStreamOptions",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBuffer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IInputStream",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "ReadAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<Sample.Foundation.IBuffer, UInt>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("buffer", "Sample.Foundation.IBuffer"),
+                                        WinRtParameterDefinition("count", "UInt"),
+                                        WinRtParameterDefinition("options", "Sample.Foundation.InputStreamOptions"),
+                                    ),
+                                    methodRowId = 17,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IInputStream.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
+        assertTrue(contents.contains("\"Object,UInt32,Int32\""))
+        assertTrue(contents.contains("WinRtAsyncProjectionInterop.operationWithProgress<IBuffer, UInt>("))
+        assertTrue(contents.contains("pointer = PlatformAbi.fromRawComPtr(__asyncReference.pointer)"))
+        assertTrue(contents.contains("buffer as IWinRTObject"))
+        assertTrue(contents.contains("options.abiValue"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_applies_winui_bindable_collection_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

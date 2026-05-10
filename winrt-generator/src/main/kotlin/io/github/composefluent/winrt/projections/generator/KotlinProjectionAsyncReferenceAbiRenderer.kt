@@ -106,29 +106,77 @@ import kotlin.io.path.extension
 internal fun KotlinProjectionRenderer.asyncActionWithProgressReturnReadback(
     returnBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
-    val progressBinding = returnBinding.typeArguments.singleOrNull() ?: return null
-    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
-    return CodeBlock.builder()
-        .add("return %T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(progressBinding.typeName))
-        .indent()
-        .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
-        .add("progressSignature = %L,\n", progressTypeSignature)
-        .unindent()
-        .add(")\n")
-        .build()
+    val expression = asyncReferenceExpression(
+        returnBinding = returnBinding,
+        pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
+    ) ?: return null
+    return CodeBlock.of("return %L\n", expression)
 }
 
 internal fun KotlinProjectionRenderer.asyncOperationReturnReadback(
     returnBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? {
+    val expression = asyncReferenceExpression(
+        returnBinding = returnBinding,
+        pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
+    ) ?: return null
+    return CodeBlock.of("return %L\n", expression)
+}
+
+internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock? {
+    val expression = asyncReferenceExpression(
+        returnBinding = returnBinding,
+        pointerExpression = CodeBlock.of("%T.readPointer(__resultOut)", PLATFORM_ABI_CLASS_NAME),
+    ) ?: return null
+    return CodeBlock.of("return %L\n", expression)
+}
+
+internal fun KotlinProjectionRenderer.asyncReferenceExpression(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
+): CodeBlock? =
+    when (returnBinding.kind) {
+        KotlinProjectionAbiValueKind.MappedAsyncAction ->
+            CodeBlock.of("%T(%L)", WINRT_ASYNC_ACTION_REFERENCE_CLASS_NAME, pointerExpression)
+        KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress ->
+            asyncActionWithProgressExpression(returnBinding, pointerExpression)
+        KotlinProjectionAbiValueKind.MappedAsyncOperation ->
+            asyncOperationExpression(returnBinding, pointerExpression)
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress ->
+            asyncOperationWithProgressExpression(returnBinding, pointerExpression)
+        else -> null
+    }
+
+private fun KotlinProjectionRenderer.asyncActionWithProgressExpression(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
+): CodeBlock? {
+    val progressBinding = returnBinding.typeArguments.singleOrNull() ?: return null
+    val progressTypeSignature = asyncOperationResultTypeSignature(progressBinding) ?: return null
+    return CodeBlock.builder()
+        .add("%T.actionWithProgress<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(progressBinding.typeName))
+        .indent()
+        .add("pointer = %L,\n", pointerExpression)
+        .add("progressSignature = %L,\n", progressTypeSignature)
+        .unindent()
+        .add(")")
+        .build()
+}
+
+private fun KotlinProjectionRenderer.asyncOperationExpression(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
 ): CodeBlock? {
     val resultBinding = returnBinding.typeArguments.singleOrNull() ?: return null
     val resultTypeSignature = asyncOperationResultTypeSignature(resultBinding) ?: return null
     val resultOutAllocation = abiResultAllocationForAsyncOperationResult(resultBinding, "__operationScope") ?: return null
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
     return CodeBlock.builder()
-        .add("return %T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(resultBinding.typeName))
+        .add("%T.operation<%T>(\n", WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME, resolveTypeName(resultBinding.typeName))
         .indent()
-        .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
+        .add("pointer = %L,\n", pointerExpression)
         .add("resultSignature = %L,\n", resultTypeSignature)
         .add("resultOut = { __operationScope -> %L },\n", resultOutAllocation)
         .add("resultReader = { __operationResultOut ->\n")
@@ -137,12 +185,13 @@ internal fun KotlinProjectionRenderer.asyncOperationReturnReadback(
         .unindent()
         .add("},\n")
         .unindent()
-        .add(")\n")
+        .add(")")
         .build()
 }
 
-internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
+private fun KotlinProjectionRenderer.asyncOperationWithProgressExpression(
     returnBinding: KotlinProjectionAbiTypeBinding,
+    pointerExpression: CodeBlock,
 ): CodeBlock? {
     val resultBinding = returnBinding.typeArguments.getOrNull(0) ?: return null
     val progressBinding = returnBinding.typeArguments.getOrNull(1) ?: return null
@@ -152,13 +201,13 @@ internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
     val resultReadbackExpression = asyncOperationResultReadbackExpression(resultBinding) ?: return null
     return CodeBlock.builder()
         .add(
-            "return %T.operationWithProgress<%T, %T>(\n",
+            "%T.operationWithProgress<%T, %T>(\n",
             WINRT_ASYNC_PROJECTION_INTEROP_CLASS_NAME,
             resolveTypeName(resultBinding.typeName),
             resolveTypeName(progressBinding.typeName),
         )
         .indent()
-        .add("pointer = %T.readPointer(__resultOut),\n", PLATFORM_ABI_CLASS_NAME)
+        .add("pointer = %L,\n", pointerExpression)
         .add("resultSignature = %L,\n", resultTypeSignature)
         .add("progressSignature = %L,\n", progressTypeSignature)
         .add("resultOut = { __operationScope -> %L },\n", resultOutAllocation)
@@ -168,7 +217,7 @@ internal fun KotlinProjectionRenderer.asyncOperationWithProgressReturnReadback(
         .unindent()
         .add("},\n")
         .unindent()
-        .add(")\n")
+        .add(")")
         .build()
 }
 
