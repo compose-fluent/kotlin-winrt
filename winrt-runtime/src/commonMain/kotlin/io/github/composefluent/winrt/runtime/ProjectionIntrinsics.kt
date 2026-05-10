@@ -125,6 +125,14 @@ object WinRtProjectionIntrinsic {
     ): Unit =
         intrinsicNotLowered("callUnit", reference, slot, abiShape, *arguments)
 
+    fun callBoolean(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): Boolean =
+        intrinsicNotLowered("callBoolean", reference, slot, abiShape, *arguments)
+
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
 

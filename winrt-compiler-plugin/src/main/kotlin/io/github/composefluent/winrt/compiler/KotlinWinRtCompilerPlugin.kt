@@ -296,6 +296,7 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? =
             when (intrinsicName) {
                 "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
+                "callBoolean" -> lowerDescriptorCallBoolean(call, pluginContext, builderScope)
                 "setString" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.String)
                 "setBoolean" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Boolean)
                 "setInt32" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Int32)
@@ -1209,6 +1210,124 @@ class KotlinWinRtIrGenerationExtension(
                     slot = slot,
                     values = values,
                     argumentKinds = argumentKinds,
+                )
+            }
+        }
+
+        private fun lowerDescriptorCallBoolean(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+        ): IrExpression? {
+            val symbols = jvmFfmSymbols ?: return null
+            val scope = builderScope ?: return null
+            val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
+            val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
+            if (!symbols.canLower(argumentKinds)) {
+                return null
+            }
+            val values = call.varargValues(argumentKinds.size) ?: return null
+            val reference = call.arguments.getOrNull(1) ?: return null
+            val slot = call.arguments.getOrNull(2) ?: return null
+            val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
+            return builder.irBlock(resultType = pluginContext.irBuiltIns.booleanType) {
+                val nativeScope = irTemporary(
+                    value = builder.irCall(platformAbiConfinedScope).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                    },
+                    nameHint = "scope",
+                    isMutable = false,
+                    origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                )
+                +builder.irTry(
+                    type = pluginContext.irBuiltIns.booleanType,
+                    tryResult = builder.irBlock(resultType = pluginContext.irBuiltIns.booleanType) {
+                        val resultOut = irTemporary(
+                            value = builder.irCall(platformAbiAllocateInt8Slot).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(nativeScope)
+                            },
+                            nameHint = "resultOut",
+                            isMutable = false,
+                            origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                        )
+                        val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
+                        fun abiValueFor(index: Int, kind: UnitCallAbiArgumentKind): IrExpression {
+                            val value = values[index]
+                            return when (kind) {
+                                UnitCallAbiArgumentKind.RawAddress,
+                                UnitCallAbiArgumentKind.RawComPtr,
+                                UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int32,
+                                UnitCallAbiArgumentKind.UInt32,
+                                UnitCallAbiArgumentKind.Int64,
+                                UnitCallAbiArgumentKind.UInt64,
+                                UnitCallAbiArgumentKind.Float,
+                                UnitCallAbiArgumentKind.Double -> value
+                                UnitCallAbiArgumentKind.Boolean -> booleanAbiValue(builder, pluginContext, value)
+                                UnitCallAbiArgumentKind.Object -> projectedObjectAbi(builder, value)
+                                UnitCallAbiArgumentKind.String -> {
+                                    val stringAbi = irTemporary(
+                                        value = builder.irCall(hStringCreateReference).apply {
+                                            arguments[0] = builder.irGetObject(hStringCompanion)
+                                            arguments[1] = value
+                                        },
+                                        nameHint = "value${index}Abi",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    stringAbis += stringAbi
+                                    builder.irCall(referencedHStringHandleGetter).apply {
+                                        arguments[0] = builder.irGet(stringAbi)
+                                    }
+                                }
+                            }
+                        }
+
+                        val abiValues = argumentKinds.mapIndexed(::abiValueFor)
+                        val callBlock = jvmFfmCallUnitBlock(
+                            symbols = symbols,
+                            builder = builder,
+                            pluginContext = pluginContext,
+                            reference = reference,
+                            slot = slot,
+                            argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
+                            values = abiValues + builder.irGet(resultOut),
+                        )
+                        val readResult = builder.irNotEquals(
+                            builder.irCall(platformAbiReadInt8).apply {
+                                arguments[0] = builder.irGetObject(platformAbi)
+                                arguments[1] = builder.irGet(resultOut)
+                            },
+                            builder.irByte(0),
+                        )
+                        if (stringAbis.isEmpty()) {
+                            +callBlock
+                            +readResult
+                        } else {
+                            +builder.irTry(
+                                type = pluginContext.irBuiltIns.booleanType,
+                                tryResult = builder.irBlock(resultType = pluginContext.irBuiltIns.booleanType) {
+                                    +callBlock
+                                    +readResult
+                                },
+                                catches = emptyList(),
+                                finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                    stringAbis.forEach { stringAbi ->
+                                        +builder.irCall(referencedHStringClose).apply {
+                                            arguments[0] = builder.irGet(stringAbi)
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    },
+                    catches = emptyList(),
+                    finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                        +builder.irCall(nativeScopeClose).apply {
+                            arguments[0] = builder.irGet(nativeScope)
+                        }
+                    },
                 )
             }
         }
@@ -2344,6 +2463,7 @@ private val JAVA_METHOD_HANDLE_CLASS_ID =
 
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnit",
+    "callBoolean",
     "getString",
     "getBoolean",
     "getInt32",

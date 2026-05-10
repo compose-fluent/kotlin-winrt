@@ -3796,6 +3796,65 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_static_boolean_methods_through_projection_intrinsic_when_support_files_are_enabled() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "isVisible",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("element", "Sample.Foundation.Widget"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("fun isVisible(element: Widget): Boolean"))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callBoolean("))
+        assertTrue(widgetContents.contains("\"Object\""))
+        assertTrue(widgetContents.contains("element as IWinRTObject"))
+        assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callBoolean("))
+    }
+
+    @Test
     fun generator_routes_static_properties_through_projection_intrinsics_when_support_files_are_enabled() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
