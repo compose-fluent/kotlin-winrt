@@ -426,6 +426,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         ?: renderStaticIntrinsicGetter(binding)
         ?: renderStaticDescriptorUnitIntrinsicInvocation(binding)
         ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
+        ?: renderStaticDescriptorScalarIntrinsicInvocation(binding)
         ?: renderStaticDescriptorProjectedObjectIntrinsicInvocation(binding)
         ?: renderStaticDirectAbiMethodInvocation(binding)
         ?: renderBoundStaticInvocation(binding)
@@ -626,6 +627,54 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrin
         .add("%L,\n", binding.bindingName)
         .add("%S,\n", argumentShapes.joinToString(","))
         .add("%T.Metadata::wrap,\n", returnType)
+        .apply {
+            binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
+                when {
+                    shape == "Object" ->
+                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                        add("%L.abiValue,\n", parameter.name)
+                    else ->
+                        add("%L,\n", parameter.name)
+                }
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvocation(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        binding.suppressHResultCheck ||
+        binding.parameterBindings.isEmpty()
+    ) {
+        return null
+    }
+    val helperFunction = when (binding.returnBinding.kind) {
+        KotlinProjectionAbiValueKind.Int32 -> "callInt32"
+        KotlinProjectionAbiValueKind.UInt32 -> "callUInt32"
+        KotlinProjectionAbiValueKind.Int64 -> "callInt64"
+        KotlinProjectionAbiValueKind.UInt64 -> "callUInt64"
+        KotlinProjectionAbiValueKind.Float -> "callFloat"
+        KotlinProjectionAbiValueKind.Double -> "callDouble"
+        else -> return null
+    }
+    val argumentShapes = binding.parameterBindings.map { parameter ->
+        if (parameter.category != WinRtMetadataParameterCategory.In) {
+            return null
+        }
+        staticDescriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
+        .add("%L,\n", binding.bindingName)
+        .add("%S,\n", argumentShapes.joinToString(","))
         .apply {
             binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
                 when {

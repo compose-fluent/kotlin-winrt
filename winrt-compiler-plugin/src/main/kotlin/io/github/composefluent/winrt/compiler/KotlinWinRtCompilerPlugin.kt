@@ -297,6 +297,42 @@ class KotlinWinRtIrGenerationExtension(
             when (intrinsicName) {
                 "callUnit" -> lowerDescriptorCallUnit(call, pluginContext, builderScope)
                 "callBoolean" -> lowerDescriptorCallBoolean(call, pluginContext, builderScope)
+                "callInt32" -> lowerDescriptorCallScalar(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.Int32,
+                )
+                "callUInt32" -> lowerDescriptorCallScalar(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.UInt32,
+                )
+                "callInt64" -> lowerDescriptorCallScalar(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.Int64,
+                )
+                "callUInt64" -> lowerDescriptorCallScalar(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.UInt64,
+                )
+                "callFloat" -> lowerDescriptorCallScalar(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.Float,
+                )
+                "callDouble" -> lowerDescriptorCallScalar(
+                    call,
+                    pluginContext,
+                    builderScope,
+                    NoArgumentGetterReturnKind.Double,
+                )
                 "setString" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.String)
                 "setBoolean" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Boolean)
                 "setInt32" -> lowerOneArgumentUnit(call, pluginContext, builderScope, UnitCallAbiArgumentKind.Int32)
@@ -1333,8 +1369,23 @@ class KotlinWinRtIrGenerationExtension(
             pluginContext: IrPluginContext,
             builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
         ): IrExpression? {
+            return lowerDescriptorCallScalar(call, pluginContext, builderScope, NoArgumentGetterReturnKind.Boolean)
+        }
+
+        private fun lowerDescriptorCallScalar(
+            call: IrCall,
+            pluginContext: IrPluginContext,
+            builderScope: org.jetbrains.kotlin.ir.symbols.IrSymbol?,
+            returnKind: NoArgumentGetterReturnKind,
+        ): IrExpression? {
             val symbols = jvmFfmSymbols ?: return null
             val scope = builderScope ?: return null
+            if ((returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
+                (returnKind == NoArgumentGetterReturnKind.UInt64 && ulongConstructor == null) ||
+                returnKind == NoArgumentGetterReturnKind.String
+            ) {
+                return null
+            }
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
             if (!symbols.canLower(argumentKinds)) {
@@ -1344,7 +1395,7 @@ class KotlinWinRtIrGenerationExtension(
             val reference = call.arguments.getOrNull(1) ?: return null
             val slot = call.arguments.getOrNull(2) ?: return null
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
-            return builder.irBlock(resultType = pluginContext.irBuiltIns.booleanType) {
+            return builder.irBlock(resultType = call.type) {
                 val nativeScope = irTemporary(
                     value = builder.irCall(platformAbiConfinedScope).apply {
                         arguments[0] = builder.irGetObject(platformAbi)
@@ -1354,13 +1405,10 @@ class KotlinWinRtIrGenerationExtension(
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 +builder.irTry(
-                    type = pluginContext.irBuiltIns.booleanType,
-                    tryResult = builder.irBlock(resultType = pluginContext.irBuiltIns.booleanType) {
+                    type = call.type,
+                    tryResult = builder.irBlock(resultType = call.type) {
                         val resultOut = irTemporary(
-                            value = builder.irCall(platformAbiAllocateInt8Slot).apply {
-                                arguments[0] = builder.irGetObject(platformAbi)
-                                arguments[1] = builder.irGet(nativeScope)
-                            },
+                            value = allocateGetterResultSlot(builder, returnKind, builder.irGet(nativeScope)),
                             nameHint = "resultOut",
                             isMutable = false,
                             origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -1408,20 +1456,14 @@ class KotlinWinRtIrGenerationExtension(
                             argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
                             values = abiValues + builder.irGet(resultOut),
                         )
-                        val readResult = builder.irNotEquals(
-                            builder.irCall(platformAbiReadInt8).apply {
-                                arguments[0] = builder.irGetObject(platformAbi)
-                                arguments[1] = builder.irGet(resultOut)
-                            },
-                            builder.irByte(0),
-                        )
+                        val readResult = readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
                         if (stringAbis.isEmpty()) {
                             +callBlock
                             +readResult
                         } else {
                             +builder.irTry(
-                                type = pluginContext.irBuiltIns.booleanType,
-                                tryResult = builder.irBlock(resultType = pluginContext.irBuiltIns.booleanType) {
+                                type = call.type,
+                                tryResult = builder.irBlock(resultType = call.type) {
                                     +callBlock
                                     +readResult
                                 },
@@ -2578,6 +2620,12 @@ private val JAVA_METHOD_HANDLE_CLASS_ID =
 private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
     "callUnit",
     "callBoolean",
+    "callInt32",
+    "callUInt32",
+    "callInt64",
+    "callUInt64",
+    "callFloat",
+    "callDouble",
     "getString",
     "getBoolean",
     "getInt32",

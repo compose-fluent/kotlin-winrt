@@ -151,6 +151,54 @@ object WinRtProjectionIntrinsic {
     ): Boolean =
         intrinsicNotLowered("callBoolean", reference, slot, abiShape, *arguments)
 
+    fun callInt32(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): Int =
+        intrinsicNotLowered("callInt32", reference, slot, abiShape, *arguments)
+
+    fun callUInt32(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): UInt =
+        intrinsicNotLowered("callUInt32", reference, slot, abiShape, *arguments)
+
+    fun callInt64(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): Long =
+        intrinsicNotLowered("callInt64", reference, slot, abiShape, *arguments)
+
+    fun callUInt64(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): ULong =
+        intrinsicNotLowered("callUInt64", reference, slot, abiShape, *arguments)
+
+    fun callFloat(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): Float =
+        intrinsicNotLowered("callFloat", reference, slot, abiShape, *arguments)
+
+    fun callDouble(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): Double =
+        intrinsicNotLowered("callDouble", reference, slot, abiShape, *arguments)
+
     private fun intrinsicNotLowered(name: String, reference: ComObjectReference, slot: Int): Nothing =
         error("WinRtProjectionIntrinsic.$name was not lowered for ${reference.pointer} slot $slot")
 
