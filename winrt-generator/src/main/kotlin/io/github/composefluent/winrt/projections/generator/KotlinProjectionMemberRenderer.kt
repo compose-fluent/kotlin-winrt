@@ -1066,7 +1066,6 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocatio
     if (
         !useProjectionIntrinsics ||
         returnBinding.kind != KotlinProjectionAbiValueKind.Enum ||
-        parameterBindings.isNotEmpty() ||
         suppressHResultCheck
     ) {
         return null
@@ -1076,6 +1075,41 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocatio
         WinRtIntegralType.Int32 -> "getInt32"
         WinRtIntegralType.UInt32 -> "getUInt32"
         else -> return null
+    }
+    if (parameterBindings.isNotEmpty()) {
+        val returnShape = if (helperFunction == "getInt32") "Int32" else "UInt32"
+        val argumentShapes = parameterBindings.map { parameter ->
+            if (parameter.category != WinRtMetadataParameterCategory.In) {
+                return null
+            }
+            descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        }
+        return CodeBlock.builder()
+            .add("return %T.Metadata.fromAbi(\n", enumType)
+            .indent()
+            .add("%T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+            .indent()
+            .add("%L,\n", referenceExpression)
+            .add("%L,\n", slotExpression)
+            .add("%S,\n", returnShape)
+            .add("%S,\n", argumentShapes.joinToString(","))
+            .apply {
+                parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
+                    when {
+                        shape == "Object" ->
+                            add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                        parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                            add("%L.abiValue,\n", parameter.name)
+                        else ->
+                            add("%L,\n", parameter.name)
+                    }
+                }
+            }
+            .unindent()
+            .add("),\n")
+            .unindent()
+            .add(")\n")
+            .build()
     }
     return CodeBlock.builder()
         .add("return %T.Metadata.fromAbi(\n", enumType)

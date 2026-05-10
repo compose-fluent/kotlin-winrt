@@ -4115,6 +4115,61 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_instance_descriptor_enum_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IPropertySet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "tryGetBoolean",
+                                    returnTypeName = "Sample.Foundation.GetValueStatus",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("value", "Boolean"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "GetValueStatus",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Succeeded", 0u),
+                                WinRtEnumMemberDefinition("NotFound", 1u),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val propertySetContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IPropertySet.kt")
+            .contents
+
+        assertTrue(propertySetContents.contains("fun tryGetBoolean(name: String, `value`: Boolean): GetValueStatus"))
+        assertTrue(propertySetContents.contains("GetValueStatus.Metadata.fromAbi("))
+        assertTrue(propertySetContents.contains("WinRtProjectionIntrinsic.callScalar("))
+        assertTrue(propertySetContents.contains("\"Int32\""))
+        assertTrue(propertySetContents.contains("\"String,Boolean\""))
+        assertTrue(propertySetContents.contains("name,"))
+        assertTrue(propertySetContents.contains("value,"))
+        assertFalse(propertySetContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_instance_descriptor_projected_object_methods_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
