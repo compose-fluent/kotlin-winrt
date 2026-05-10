@@ -428,7 +428,6 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
         ?: renderStaticDescriptorScalarIntrinsicInvocation(binding)
         ?: renderStaticDescriptorProjectedObjectIntrinsicInvocation(binding)
-        ?: renderStaticDirectAbiMethodInvocation(binding)
         ?: renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
@@ -734,59 +733,6 @@ private fun staticDescriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiT
         else -> null
     }
 
-private fun KotlinProjectionRenderer.renderStaticDirectAbiMethodInvocation(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (binding.suppressHResultCheck) {
-        return null
-    }
-    val argumentExpressions = binding.parameterBindings.map { parameterBinding ->
-        if (parameterBinding.category != WinRtMetadataParameterCategory.In) {
-            return null
-        }
-        val marshaler = buildAbiParameterMarshaler(parameterBinding) ?: return null
-        if (
-            marshaler.scopeOpeners.isNotEmpty() ||
-            marshaler.postCallStatements.isNotEmpty() ||
-            marshaler.finallyStatements.isNotEmpty() ||
-            marshaler.extraAbiArgumentExpressions.isNotEmpty()
-        ) {
-            return null
-        }
-        marshaler.abiArgumentExpression
-    }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Unit -> "callUnit"
-        KotlinProjectionAbiValueKind.Boolean -> "callBoolean"
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
-        else -> return null
-    }
-    val returnType = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-        KotlinProjectionAbiValueKind.ProjectedInterface -> resolveTypeName(binding.returnBinding.typeName)
-        else -> null
-    }
-    val code = CodeBlock.builder()
-    if (binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit) {
-        code.add("return ")
-    }
-    code.add("%T.%L(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
-    code.indent()
-    code.add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-    code.add("%L", binding.bindingName)
-    if (returnType != null) {
-        code.add(",\n%T.Metadata::wrap", returnType)
-    }
-    argumentExpressions.forEach { argument ->
-        code.add(",\n%L", argument)
-    }
-    code.add(",\n")
-    code.unindent()
-    code.add(")\n")
-    return code.build()
-}
-
 private fun staticMethodBindingName(
     plan: KotlinTypeProjectionPlan,
     method: WinRtMethodDefinition,
@@ -811,7 +757,6 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
     val getterInvocation = renderStaticIntrinsicGetter(getterBinding)
-        ?: renderStaticDirectAbiGetter(getterBinding)
         ?: renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
     builder.getter(
@@ -830,7 +775,6 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
                     "%L\n",
                     setterBinding?.let {
                         renderStaticIntrinsicSetter(it)
-                            ?: renderStaticDirectAbiSetter(it)
                             ?: renderBoundStaticInvocation(it)
                     }
                         ?: missingAbiBindingError("static property ${property.name} setter"),
@@ -876,73 +820,6 @@ private fun KotlinProjectionRenderer.renderStaticIntrinsicSetter(
         .unindent()
         .add(")\n")
         .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticDirectAbiSetter(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        binding.suppressHResultCheck ||
-        binding.returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        binding.parameterBindings.size != 1
-    ) {
-        return null
-    }
-    val parameterBinding = binding.parameterBindings.single()
-    if (parameterBinding.category != WinRtMetadataParameterCategory.In) {
-        return null
-    }
-    val marshaler = buildAbiParameterMarshaler(parameterBinding) ?: return null
-    if (
-        marshaler.scopeOpeners.isNotEmpty() ||
-        marshaler.postCallStatements.isNotEmpty() ||
-        marshaler.finallyStatements.isNotEmpty() ||
-        marshaler.extraAbiArgumentExpressions.isNotEmpty()
-    ) {
-        return null
-    }
-    return CodeBlock.builder()
-        .add("%T.callUnit(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L,\n", binding.bindingName)
-        .add("%L,\n", marshaler.abiArgumentExpression)
-        .unindent()
-        .add(")\n")
-        .build()
-}
-
-private fun KotlinProjectionRenderer.renderStaticDirectAbiGetter(
-    binding: KotlinProjectionStaticMemberBinding,
-): CodeBlock? {
-    if (
-        binding.parameterBindings.isNotEmpty() ||
-        binding.suppressHResultCheck
-    ) {
-        return null
-    }
-    val helperFunction = when (binding.returnBinding.kind) {
-        KotlinProjectionAbiValueKind.Boolean -> "callBoolean"
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "getProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface -> "getProjectedInterface"
-        else -> return null
-    }
-    val code = CodeBlock.builder()
-        .add("return %T.%L(\n", WINRT_STATIC_PROJECTION_INTEROP_CLASS_NAME, helperFunction)
-        .indent()
-        .add("StaticInterfaces.%L(),\n", binding.ownerAccessorName)
-        .add("%L", binding.bindingName)
-    if (binding.returnBinding.kind in setOf(
-            KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-            KotlinProjectionAbiValueKind.ProjectedInterface,
-        )
-    ) {
-        code.add(",\n%T.Metadata::wrap", resolveTypeName(binding.returnBinding.typeName))
-    }
-    code.add(",\n")
-    code.unindent()
-    code.add(")\n")
-    return code.build()
 }
 
 private fun KotlinProjectionRenderer.renderStaticIntrinsicGetter(
