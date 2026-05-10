@@ -9251,6 +9251,76 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_projected_object_struct_argument_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBrush",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555560"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Brush",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IBrush",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IBrush",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBrushFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateBrush",
+                                    returnTypeName = "Sample.Foundation.Brush",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("offset", "Float"),
+                                        WinRtParameterDefinition("origin", "Sample.Foundation.Point"),
+                                    ),
+                                    methodRowId = 12,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IBrushFactory.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
+        assertTrue(contents.contains("\"Float,Struct\""))
+        assertTrue(contents.contains("Brush.Metadata::wrap"))
+        assertTrue(contents.contains("Point.Metadata"))
+        assertFalse(contents.contains("PlatformAbi.allocateBytes"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_uses_vector_interface_cache_for_observable_vector_runtime_collection_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
