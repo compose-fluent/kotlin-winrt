@@ -166,13 +166,27 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
     } else {
         emptyList()
     }
-    code.add("val __hr = ")
-    code.add(
-        renderInvocation(invokeTargetExpression, slotExpression, abiArguments),
-    )
-    code.add("\n")
-    if (!callPlan.suppressHResultCheck) {
-        code.addStatement("%T(__hr).requireSuccess()", HRESULT_CLASS_NAME)
+    val intrinsicUnitInvocation =
+        if (resultMarshaler == null && !callPlan.suppressHResultCheck) {
+            renderInlineDescriptorUnitIntrinsicInvocation(
+                invokeTargetExpression = invokeTargetExpression,
+                slotExpression = slotExpression,
+                abiArguments = abiArguments,
+            )
+        } else {
+            null
+        }
+    if (intrinsicUnitInvocation != null) {
+        code.add("%L", intrinsicUnitInvocation)
+    } else {
+        code.add("val __hr = ")
+        code.add(
+            renderInvocation(invokeTargetExpression, slotExpression, abiArguments),
+        )
+        code.add("\n")
+        if (!callPlan.suppressHResultCheck) {
+            code.addStatement("%T(__hr).requireSuccess()", HRESULT_CLASS_NAME)
+        }
     }
     callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
         code.add("%L\n", postCallStatement)
@@ -198,6 +212,44 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
     }
     return code.build()
 }
+
+private fun KotlinProjectionRenderer.renderInlineDescriptorUnitIntrinsicInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    abiArguments: List<KotlinProjectionComArgument>,
+): CodeBlock? {
+    if (!useProjectionIntrinsics || abiArguments.isEmpty()) {
+        return null
+    }
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorUnitToken() ?: return null
+    }
+    return CodeBlock.builder()
+        .add("%T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", invokeTargetExpression)
+        .add("%L,\n", slotExpression)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .apply {
+            abiArguments.forEach { argument ->
+                add("%L,\n", argument.expression)
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionComArgumentKind.descriptorUnitToken(): String? =
+    when (this) {
+        KotlinProjectionComArgumentKind.Pointer -> "RawAddress"
+        KotlinProjectionComArgumentKind.Int8 -> "Byte"
+        KotlinProjectionComArgumentKind.Int32 -> "Int32"
+        KotlinProjectionComArgumentKind.Int64 -> "Int64"
+        KotlinProjectionComArgumentKind.Float -> "Float"
+        KotlinProjectionComArgumentKind.Double -> "Double"
+        KotlinProjectionComArgumentKind.Int16 -> null
+    }
 
 internal fun KotlinProjectionRenderer.renderComVtableInvocation(
     invokeTargetExpression: String,

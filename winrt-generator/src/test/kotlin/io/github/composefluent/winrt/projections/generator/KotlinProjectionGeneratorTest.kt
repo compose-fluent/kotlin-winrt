@@ -8054,6 +8054,68 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_raw_abi_unit_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IRoutedEvent",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555573"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "RoutedEvent",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IRoutedEvent",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IRoutedEvent",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IElement",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555574"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "AddHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("routedEvent", "Sample.UI.RoutedEvent"),
+                                        WinRtParameterDefinition("handler", "System.Object"),
+                                        WinRtParameterDefinition("handledEventsToo", "Boolean"),
+                                    ),
+                                    methodRowId = 19,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IElement.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(contents.contains("\"RawAddress,RawAddress,Byte\""))
+        assertTrue(contents.contains("PlatformAbi.fromRawComPtr((routedEvent as IWinRTObject).nativeObject.pointer)"))
+        assertTrue(contents.contains("__handlerMarshaler.abi"))
+        assertTrue(contents.contains("if (handledEventsToo) 1.toByte() else 0.toByte()"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_applies_winui_bindable_collection_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

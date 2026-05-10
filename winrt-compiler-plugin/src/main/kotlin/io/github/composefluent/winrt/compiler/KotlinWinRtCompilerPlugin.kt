@@ -1908,6 +1908,9 @@ class KotlinWinRtIrGenerationExtension(
                 }
                 return value.split(',').map { token ->
                     when (token) {
+                        "RawAddress" -> UnitCallAbiArgumentKind.RawAddress
+                        "RawComPtr" -> UnitCallAbiArgumentKind.RawComPtr
+                        "Byte" -> UnitCallAbiArgumentKind.Byte
                         "Int32" -> UnitCallAbiArgumentKind.Int32
                         "UInt32" -> UnitCallAbiArgumentKind.UInt32
                         "Int64" -> UnitCallAbiArgumentKind.Int64
