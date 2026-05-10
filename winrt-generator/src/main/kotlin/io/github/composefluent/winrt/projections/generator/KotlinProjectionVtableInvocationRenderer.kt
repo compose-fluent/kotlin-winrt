@@ -139,6 +139,51 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
         code.add("%L\n", opener)
         code.indent()
     }
+    val parameterAbiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
+        listOf(
+            KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind),
+        ) + marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
+            KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
+        }
+    }
+    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
+    val inlineProjectedObjectInvocation =
+        if (resultMarshaler != null && !callPlan.suppressHResultCheck) {
+            renderInlineDescriptorProjectedObjectIntrinsicInvocation(
+                invokeTargetExpression = invokeTargetExpression,
+                slotExpression = slotExpression,
+                returnBinding = resultMarshaler.typeBinding,
+                abiArguments = parameterAbiArguments,
+            )
+        } else {
+            null
+        }
+    if (inlineProjectedObjectInvocation != null) {
+        if (finallyStatements.isNotEmpty()) {
+            code.add("try {\n")
+            code.indent()
+        }
+        code.add("%L", inlineProjectedObjectInvocation)
+        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+            code.add("%L\n", postCallStatement)
+        }
+        code.add("return __result\n")
+        if (finallyStatements.isNotEmpty()) {
+            code.unindent()
+            code.add("} finally {\n")
+            code.indent()
+            finallyStatements.forEach { finallyStatement ->
+                code.add("%L\n", finallyStatement)
+            }
+            code.unindent()
+            code.add("}\n")
+        }
+        repeat(scopedParameterOpeners.size) {
+            code.unindent()
+            code.add("}\n")
+        }
+        return code.build()
+    }
     if (resultMarshaler != null) {
         code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
         code.indent()
@@ -146,18 +191,11 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
             code.add("%L", declarations)
         } ?: code.addStatement("val __resultOut = %L", requireNotNull(resultMarshaler.resultAllocation))
     }
-    val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
     if (finallyStatements.isNotEmpty()) {
         code.add("try {\n")
         code.indent()
     }
-    val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
-        listOf(
-            KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind),
-        ) + marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
-            KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
-        }
-    } + if (resultMarshaler != null) {
+    val abiArguments = parameterAbiArguments + if (resultMarshaler != null) {
         listOf(
             KotlinProjectionComArgument(resultMarshaler.abiArgumentExpression, resultMarshaler.abiArgumentKind),
         ) + resultMarshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
@@ -222,7 +260,7 @@ private fun KotlinProjectionRenderer.renderInlineDescriptorUnitIntrinsicInvocati
         return null
     }
     val argumentShapes = abiArguments.map { argument ->
-        argument.kind?.descriptorUnitToken() ?: return null
+        argument.kind?.descriptorAbiToken() ?: return null
     }
     return CodeBlock.builder()
         .add("%T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -240,7 +278,47 @@ private fun KotlinProjectionRenderer.renderInlineDescriptorUnitIntrinsicInvocati
         .build()
 }
 
-private fun KotlinProjectionComArgumentKind.descriptorUnitToken(): String? =
+private fun KotlinProjectionRenderer.renderInlineDescriptorProjectedObjectIntrinsicInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    abiArguments: List<KotlinProjectionComArgument>,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        abiArguments.isEmpty() ||
+        returnBinding.isNullableAbiReturn ||
+        customObjectAbi(returnBinding) != null
+    ) {
+        return null
+    }
+    val helperFunction = when (returnBinding.kind) {
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "callProjectedRuntimeClass"
+        KotlinProjectionAbiValueKind.ProjectedInterface -> "callProjectedInterface"
+        else -> return null
+    }
+    val returnType = resolvedReturnClassName(returnBinding) ?: return null
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorAbiToken() ?: return null
+    }
+    return CodeBlock.builder()
+        .add("val __result = %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
+        .indent()
+        .add("%L,\n", invokeTargetExpression)
+        .add("%L,\n", slotExpression)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("%T.Metadata::wrap,\n", returnType)
+        .apply {
+            abiArguments.forEach { argument ->
+                add("%L,\n", argument.expression)
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionComArgumentKind.descriptorAbiToken(): String? =
     when (this) {
         KotlinProjectionComArgumentKind.Pointer -> "RawAddress"
         KotlinProjectionComArgumentKind.Int8 -> "Byte"

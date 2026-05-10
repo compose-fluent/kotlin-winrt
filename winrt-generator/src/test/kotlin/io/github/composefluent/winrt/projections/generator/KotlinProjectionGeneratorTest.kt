@@ -8201,6 +8201,69 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_raw_abi_projected_object_returns_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555577"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555578"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateWidget",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("input", "System.Object"),
+                                        WinRtParameterDefinition("count", "UInt"),
+                                    ),
+                                    methodRowId = 23,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IWidgetFactory.kt")
+            .contents
+
+        assertTrue(contents.contains("winRtObjectMarshaler(input).use { __inputMarshaler ->"))
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
+        assertTrue(contents.contains("\"RawAddress,Int32\""))
+        assertTrue(contents.contains("Widget.Metadata::wrap"))
+        assertTrue(contents.contains("__inputMarshaler.abi"))
+        assertTrue(contents.contains("count.toInt()"))
+        assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_applies_winui_bindable_collection_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
