@@ -4067,6 +4067,54 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_instance_descriptor_boolean_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IPropertySet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "hasNamedValue",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("defaultValue", "Boolean"),
+                                        WinRtParameterDefinition("threshold", "Float"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val propertySetContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IPropertySet.kt")
+            .contents
+
+        assertTrue(propertySetContents.contains("fun hasNamedValue("))
+        assertTrue(propertySetContents.contains("name: String"))
+        assertTrue(propertySetContents.contains("defaultValue: Boolean"))
+        assertTrue(propertySetContents.contains("threshold: Float"))
+        assertTrue(propertySetContents.contains("WinRtProjectionIntrinsic.callBoolean("))
+        assertTrue(propertySetContents.contains("\"String,Boolean,Float\""))
+        assertTrue(propertySetContents.contains("name,"))
+        assertTrue(propertySetContents.contains("defaultValue,"))
+        assertTrue(propertySetContents.contains("threshold,"))
+        assertFalse(propertySetContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_instance_descriptor_projected_object_methods_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
