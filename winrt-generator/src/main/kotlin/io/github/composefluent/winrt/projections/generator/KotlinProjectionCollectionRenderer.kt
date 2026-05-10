@@ -931,6 +931,15 @@ internal fun KotlinProjectionRenderer.renderCollectionInvocation(
     returnBinding: KotlinProjectionAbiTypeBinding,
     parameterBindings: List<KotlinProjectionAbiParameterBinding> = emptyList(),
 ): CodeBlock {
+    val slotExpression = CodeBlock.of("%T.Metadata.%L", projectionClassName(slotInterfaceQualifiedName), slotConstantName)
+    renderInstanceDescriptorUnitIntrinsicInvocation(
+        referenceExpression = invokeTargetExpression,
+        slotExpression = slotExpression,
+        returnBinding = returnBinding,
+        parameterBindings = parameterBindings,
+        suppressHResultCheck = false,
+        includeReturn = false,
+    )?.let { return it }
     val callPlan = requireAbiCallPlan(
         bindingName = "${slotInterfaceQualifiedName.substringAfterLast('.')}_$slotConstantName",
         returnBinding = returnBinding,
@@ -938,7 +947,7 @@ internal fun KotlinProjectionRenderer.renderCollectionInvocation(
     )
     return renderInlineAbiInvocation(
         invokeTargetExpression = invokeTargetExpression,
-        slotExpression = CodeBlock.of("%T.Metadata.%L", projectionClassName(slotInterfaceQualifiedName), slotConstantName),
+        slotExpression = slotExpression,
         callPlan = callPlan,
     ) ?: error("Generator read-only collection parity failed to emit $slotInterfaceQualifiedName.$slotConstantName")
 }

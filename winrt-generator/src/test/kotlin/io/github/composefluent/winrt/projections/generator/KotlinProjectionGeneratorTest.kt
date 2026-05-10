@@ -9118,6 +9118,58 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_mutable_vector_unit_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IFloatVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IVector<Float>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "FloatVector",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IFloatVector",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IFloatVector",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("FloatVector.kt")
+            .contents
+
+        assertTrue(contents.contains("MutableList<Float>,"))
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(contents.contains("\"UInt32,Float\""))
+        assertTrue(contents.contains("\"Float\""))
+        assertTrue(contents.contains("IVector.Metadata.SETAT_SLOT"))
+        assertTrue(contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+        assertTrue(contents.contains("IVector.Metadata.APPEND_SLOT"))
+        assertFalse(contents.contains("return WinRtProjectionIntrinsic.callUnit("))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_uses_vector_interface_cache_for_observable_vector_runtime_collection_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

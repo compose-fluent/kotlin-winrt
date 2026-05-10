@@ -595,11 +595,12 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
     returnBinding: KotlinProjectionAbiTypeBinding,
     parameterBindings: List<KotlinProjectionAbiParameterBinding>,
     suppressHResultCheck: Boolean,
+    includeReturn: Boolean = true,
 ): CodeBlock? {
     if (
         !useProjectionIntrinsics ||
         returnBinding.kind != KotlinProjectionAbiValueKind.Unit ||
-        parameterBindings.size < 2 ||
+        parameterBindings.isEmpty() ||
         suppressHResultCheck
     ) {
         return null
@@ -614,7 +615,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
         return null
     }
     return CodeBlock.builder()
-        .add("return %T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .add("%L%T.callUnit(\n", if (includeReturn) "return " else "", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
