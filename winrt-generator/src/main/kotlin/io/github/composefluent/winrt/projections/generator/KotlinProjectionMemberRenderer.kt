@@ -763,7 +763,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorProjectedObjectInt
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorStructCapableArgumentShape(parameter.typeBinding)?.takeIf { it != "String" } ?: return null
+        descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
     }
     return CodeBlock.builder()
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
@@ -812,7 +812,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorAsyncIntrinsicInvo
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorStructCapableArgumentShape(parameter.typeBinding)?.takeIf { it != "String" } ?: return null
+        descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
     }
     val asyncExpression = asyncReferenceExpression(
         returnBinding = returnBinding,

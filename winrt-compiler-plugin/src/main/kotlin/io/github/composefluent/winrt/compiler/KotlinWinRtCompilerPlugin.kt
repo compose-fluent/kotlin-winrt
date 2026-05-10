@@ -387,7 +387,7 @@ class KotlinWinRtIrGenerationExtension(
             val slot = call.arguments.getOrNull(2) ?: return null
             val shape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (UnitCallAbiArgumentKind.String in argumentKinds || !symbols.canLower(argumentKinds)) {
+            if (!symbols.canLower(argumentKinds)) {
                 return null
             }
             val wrap = call.arguments.getOrNull(4) ?: return null
@@ -416,6 +416,7 @@ class KotlinWinRtIrGenerationExtension(
                         )
                         val structAbis =
                             mutableListOf<Pair<org.jetbrains.kotlin.ir.declarations.IrVariable, org.jetbrains.kotlin.ir.declarations.IrVariable>>()
+                        val stringAbis = mutableListOf<org.jetbrains.kotlin.ir.declarations.IrVariable>()
                         var valueIndex = 0
                         fun nextValue(): IrExpression = values[valueIndex++]
                         fun abiValueFor(argumentKind: UnitCallAbiArgumentKind): IrExpression {
@@ -461,7 +462,21 @@ class KotlinWinRtIrGenerationExtension(
                                     structAbis += adapter to valueAbi
                                     builder.irGet(valueAbi)
                                 }
-                                UnitCallAbiArgumentKind.String -> error("String arguments are not supported for descriptor projected-object calls.")
+                                UnitCallAbiArgumentKind.String -> {
+                                    val stringAbi = irTemporary(
+                                        value = builder.irCall(hStringCreateReference).apply {
+                                            arguments[0] = builder.irGetObject(hStringCompanion)
+                                            arguments[1] = value
+                                        },
+                                        nameHint = "value${valueIndex}Abi",
+                                        isMutable = false,
+                                        origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                                    )
+                                    stringAbis += stringAbi
+                                    builder.irCall(referencedHStringHandleGetter).apply {
+                                        arguments[0] = builder.irGet(stringAbi)
+                                    }
+                                }
                             }
                         }
                         val abiValues = argumentKinds.map(::abiValueFor)
@@ -502,7 +517,7 @@ class KotlinWinRtIrGenerationExtension(
                                 ),
                             )
                         }
-                        if (structAbis.isEmpty()) {
+                        if (structAbis.isEmpty() && stringAbis.isEmpty()) {
                             +readResultBlock
                         } else {
                             +builder.irTry(
@@ -514,6 +529,11 @@ class KotlinWinRtIrGenerationExtension(
                                         +builder.irCall(nativeStructAdapterDisposeAbi).apply {
                                             arguments[0] = builder.irGet(adapter)
                                             arguments[1] = builder.irGet(valueAbi)
+                                        }
+                                    }
+                                    stringAbis.forEach { stringAbi ->
+                                        +builder.irCall(referencedHStringClose).apply {
+                                            arguments[0] = builder.irGet(stringAbi)
                                         }
                                     }
                                 },

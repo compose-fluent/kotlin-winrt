@@ -616,7 +616,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorProjectedObjectIntrin
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorIntrinsicArgumentShape(parameter.typeBinding)?.takeIf { it != "String" } ?: return null
+        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
     }
     return CodeBlock.builder()
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
@@ -1080,20 +1080,71 @@ internal fun KotlinProjectionRenderer.renderActivationFactoryCreateFunctions(pla
                 parameterBindings = parameterBindings,
                 suppressHResultCheck = method.isNoException,
             )
+            val invocation = renderActivationFactoryCreateIntrinsicInvocation(
+                factoryClassName = factoryClassName,
+                factoryType = factoryType,
+                method = method,
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
+                suppressHResultCheck = method.isNoException,
+            ) ?: renderInlineAbiInvocation(
+                invokeTargetExpression = "acquire()",
+                slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                callPlan = callPlan,
+            ) ?: error("Generator ABI marshaler parity failed to emit factory ${factoryType.qualifiedName}.${method.name}")
             FunSpec.builder(factoryCreateFunctionName(method))
                 .addModifiers(KModifier.INTERNAL)
                 .addParameters(method.parameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
                 .returns(IINSPECTABLE_REFERENCE_CLASS_NAME)
-                .addCode(
-                    "%L\n",
-                    renderInlineAbiInvocation(
-                        invokeTargetExpression = "acquire()",
-                        slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
-                        callPlan = callPlan,
-                    ) ?: error("Generator ABI marshaler parity failed to emit factory ${factoryType.qualifiedName}.${method.name}"),
-                )
+                .addCode("%L\n", invocation)
                 .build()
         }
+}
+
+private fun KotlinProjectionRenderer.renderActivationFactoryCreateIntrinsicInvocation(
+    factoryClassName: TypeName,
+    factoryType: WinRtTypeDefinition,
+    method: WinRtMethodDefinition,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        suppressHResultCheck ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.InspectableReference ||
+        parameterBindings.isEmpty()
+    ) {
+        return null
+    }
+    val argumentShapes = parameterBindings.map { parameter ->
+        if (parameter.category != WinRtMetadataParameterCategory.In) {
+            return null
+        }
+        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+    }
+    return CodeBlock.builder()
+        .add("return %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("acquire(),\n")
+        .add("%T.Metadata.%L,\n", factoryClassName, method.abiSlotConstantName(factoryType.methods))
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("{ __result -> __result.use { it.asInspectable() } },\n")
+        .apply {
+            parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
+                when {
+                    shape == "Object" ->
+                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
+                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
+                        add("%L.abiValue,\n", parameter.name)
+                    else ->
+                        add("%L,\n", parameter.name)
+                }
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
 }
 
 internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(plan: KotlinTypeProjectionPlan): List<FunSpec> {

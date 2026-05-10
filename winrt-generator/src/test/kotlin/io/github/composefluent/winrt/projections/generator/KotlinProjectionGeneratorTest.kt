@@ -4409,6 +4409,15 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(WinRtParameterDefinition("pointerId", "UInt")),
                                     methodRowId = 11,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "fromNameAndSource",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("source", "Sample.Foundation.Widget"),
+                                    ),
+                                    methodRowId = 12,
+                                ),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -4436,12 +4445,88 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(widgetContents.contains("fun copy(source: Widget): Widget"))
         assertTrue(widgetContents.contains("fun fromPointerId(pointerId: UInt): Widget"))
+        assertTrue(widgetContents.contains("fun fromNameAndSource(name: String, source: Widget): Widget"))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
         assertTrue(widgetContents.contains("\"Object\""))
         assertTrue(widgetContents.contains("\"UInt32\""))
+        assertTrue(widgetContents.contains("\"String,Object\""))
         assertTrue(widgetContents.contains("Widget.Metadata::wrap"))
         assertTrue(widgetContents.contains("source as IWinRTObject"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callProjectedRuntimeClass("))
+    }
+
+    @Test
+    fun generator_routes_activation_factory_creates_through_projected_object_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetKind",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Default", 0u),
+                                WinRtEnumMemberDefinition("Advanced", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateWithId",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("kind", "Sample.Foundation.WidgetKind"),
+                                        WinRtParameterDefinition("width", "Int"),
+                                        WinRtParameterDefinition("id", "UInt"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("internal fun createWithId("))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
+        assertTrue(widgetContents.contains("acquire(),"))
+        assertTrue(widgetContents.contains("\"Int32,Int32,UInt32\""))
+        assertTrue(widgetContents.contains("{ __result -> __result.use { it.asInspectable() } },"))
+        assertTrue(widgetContents.contains("kind.abiValue"))
+        assertFalse(widgetContents.contains("ComVtableInvoker.invokeGenericArgs(instance = acquire().pointer"))
     }
 
     @Test
