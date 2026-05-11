@@ -7032,6 +7032,167 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_known_nullable_xaml_object_properties_as_nullable() {
+        val systemBackdropProperty = WinRtPropertyDefinition(
+            name = "SystemBackdrop",
+            typeName = "Microsoft.UI.Xaml.Media.SystemBackdrop",
+            getterMethodName = "get_SystemBackdrop",
+            setterMethodName = "put_SystemBackdrop",
+        )
+        val clipProperty = WinRtPropertyDefinition(
+            name = "Clip",
+            typeName = "Microsoft.UI.Xaml.Media.RectangleGeometry",
+            getterMethodName = "get_Clip",
+            setterMethodName = "put_Clip",
+        )
+        val contentProperty = WinRtPropertyDefinition(
+            name = "Content",
+            typeName = "System.Object",
+            getterMethodName = "get_Content",
+            setterMethodName = "put_Content",
+        )
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Media",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "ISystemBackdrop",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555580"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "SystemBackdrop",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Media.ISystemBackdrop",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Media.ISystemBackdrop", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "IRectangleGeometry",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555581"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Media",
+                            name = "RectangleGeometry",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Media.IRectangleGeometry",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Media.IRectangleGeometry", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IWindow",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555582"),
+                            properties = listOf(systemBackdropProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Window",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IWindow",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IWindow", isDefault = true),
+                            ),
+                            properties = listOf(systemBackdropProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IUIElement",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555583"),
+                            properties = listOf(clipProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "UIElement",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IUIElement",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IUIElement", isDefault = true),
+                            ),
+                            properties = listOf(clipProperty),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Controls",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "IContentControl",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555584"),
+                            properties = listOf(contentProperty),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "ContentControl",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Controls.IContentControl",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Controls.IContentControl", isDefault = true),
+                            ),
+                            properties = listOf(contentProperty),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val plansByName = KotlinProjectionPlanner().plan(model).associateBy { it.type.qualifiedName }
+        val renderer = KotlinProjectionRenderer()
+        val windowPlan = plansByName.getValue("Microsoft.UI.Xaml.Window")
+        val uiElementPlan = plansByName.getValue("Microsoft.UI.Xaml.UIElement")
+        val contentControlPlan = plansByName.getValue("Microsoft.UI.Xaml.Controls.ContentControl")
+
+        assertEquals(
+            "Microsoft.UI.Xaml.Media.SystemBackdrop?",
+            windowPlan.instanceMemberBindings.first { it.bindingName == "SYSTEMBACKDROP_GETTER_SLOT" }.returnBinding.typeName,
+        )
+        assertEquals(
+            "Microsoft.UI.Xaml.Media.RectangleGeometry?",
+            uiElementPlan.instanceMemberBindings.first { it.bindingName == "CLIP_SETTER_SLOT" }.parameterBindings.single().typeBinding.typeName,
+        )
+        assertEquals(
+            "System.Object?",
+            contentControlPlan.instanceMemberBindings.first { it.bindingName == "CONTENT_GETTER_SLOT" }.returnBinding.typeName,
+        )
+
+        val windowProperty = renderer.renderBoundProperty(windowPlan, systemBackdropProperty).toString()
+        val clipPropertySource = renderer.renderBoundProperty(uiElementPlan, clipProperty).toString()
+        val contentPropertySource = renderer.renderBoundProperty(contentControlPlan, contentProperty).toString()
+
+        assertTrue(windowProperty, windowProperty.contains("var systemBackdrop: microsoft.ui.xaml.media.SystemBackdrop?"))
+        assertTrue(windowProperty, windowProperty.contains("getNullableProjectedRuntimeClass("))
+        assertTrue(windowProperty, windowProperty.contains("value?.let"))
+        assertTrue(windowProperty, windowProperty.contains("PlatformAbi.nullPointer"))
+        assertFalse(windowProperty.contains("WINRT_E_NULL_ABI_RETURN"))
+
+        assertTrue(clipPropertySource, clipPropertySource.contains("var clip: microsoft.ui.xaml.media.RectangleGeometry?"))
+        assertTrue(clipPropertySource, clipPropertySource.contains("getNullableProjectedRuntimeClass("))
+        assertTrue(clipPropertySource, clipPropertySource.contains("value?.let"))
+        assertTrue(clipPropertySource, clipPropertySource.contains("PlatformAbi.nullPointer"))
+        assertFalse(clipPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
+
+        assertTrue(contentPropertySource, contentPropertySource.contains("var content: kotlin.Any?"))
+        assertTrue(contentPropertySource, contentPropertySource.contains("isNull(__resultPointer)) return null"))
+        assertFalse(contentPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
+    }
+
+    @Test
     fun generator_keeps_interface_proxy_custom_struct_getters_on_inline_abi_readback() {
         val interfaceType = WinRtTypeDefinition(
             namespace = "Sample.Foundation",

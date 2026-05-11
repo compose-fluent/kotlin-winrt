@@ -35,6 +35,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMappedTypeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
@@ -387,12 +388,13 @@ class KotlinProjectionPlanner(
                 )?.let(::add)
             }
             type.properties.filterNot { it.isStatic }.forEach { property ->
+                val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName)
                 if (property.getterMethodName != null) {
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
-                        returnBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
+                        returnBinding = classifyAbiTypeBinding(propertyTypeName, type.namespace, typesByQualifiedName),
                         parameterBindings = emptyList(),
                         suppressHResultCheckResolver = { interfaceType ->
                             interfaceType.properties
@@ -419,7 +421,7 @@ class KotlinProjectionPlanner(
                         parameterBindings = listOf(
                             KotlinProjectionAbiParameterBinding(
                                 name = "value",
-                                typeBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
+                                typeBinding = classifyAbiTypeBinding(propertyTypeName, type.namespace, typesByQualifiedName),
                             ),
                         ),
                         suppressHResultCheckResolver = { interfaceType ->
@@ -551,13 +553,14 @@ class KotlinProjectionPlanner(
             staticInterfaces.flatMap { staticInterface ->
                 staticInterface.properties.map { property -> staticInterface to property.copy(isStatic = true) }
             }.forEach { (staticInterface, property) ->
+                val propertyTypeName = property.projectedPropertyTypeName(staticInterface.qualifiedName)
                 if (property.getterMethodName != null) {
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
                         bindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT",
                         slotConstantName = "${property.name.uppercase()}_GETTER_SLOT",
-                        returnBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
+                        returnBinding = classifyAbiTypeBinding(propertyTypeName, type.namespace, typesByQualifiedName),
                         parameterBindings = emptyList(),
                         suppressHResultCheckResolver = { interfaceType ->
                             interfaceType.properties
@@ -580,7 +583,7 @@ class KotlinProjectionPlanner(
                         parameterBindings = listOf(
                             KotlinProjectionAbiParameterBinding(
                                 name = "value",
-                                typeBinding = classifyAbiTypeBinding(property.typeName, type.namespace, typesByQualifiedName),
+                                typeBinding = classifyAbiTypeBinding(propertyTypeName, type.namespace, typesByQualifiedName),
                             ),
                         ),
                         suppressHResultCheckResolver = { interfaceType ->

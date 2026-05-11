@@ -36,6 +36,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRtProjectedAttributeDescriptor
 import io.github.composefluent.winrt.metadata.projectedAttributes
+import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ActivationFactory
@@ -276,16 +277,27 @@ internal fun KotlinProjectionRenderer.renderRuntimeMethod(
 ): FunSpec =
     renderBoundMethod(plan, method) ?: renderStubMethod(method)
 
-internal fun KotlinProjectionRenderer.renderInterfaceProperty(property: WinRtPropertyDefinition): PropertySpec =
-    PropertySpec.builder(property.name.replaceFirstChar(Char::lowercase), resolveTypeName(property.typeName))
+internal fun KotlinProjectionRenderer.renderInterfaceProperty(
+    ownerTypeName: String,
+    property: WinRtPropertyDefinition,
+): PropertySpec =
+    PropertySpec.builder(
+        property.name.replaceFirstChar(Char::lowercase),
+        resolveTypeName(property.projectedPropertyTypeName(ownerTypeName)),
+    )
         .mutable(!property.isReadOnly)
         .addModifiers(KModifier.ABSTRACT)
         .build()
 
-internal fun KotlinProjectionRenderer.renderStubProperty(property: WinRtPropertyDefinition, override: Boolean = false): PropertySpec {
+internal fun KotlinProjectionRenderer.renderStubProperty(
+    ownerTypeName: String,
+    property: WinRtPropertyDefinition,
+    override: Boolean = false,
+): PropertySpec {
+    val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(property.typeName),
+        resolveTypeName(propertyTypeName),
     ).mutable(!property.isReadOnly)
     if (override) {
         builder.addModifiers(KModifier.OVERRIDE)
@@ -298,7 +310,7 @@ internal fun KotlinProjectionRenderer.renderStubProperty(property: WinRtProperty
     if (!property.isReadOnly) {
         builder.setter(
             FunSpec.setterBuilder()
-                .addParameter("value", resolveTypeName(property.typeName))
+                .addParameter("value", resolveTypeName(propertyTypeName))
                 .addCode("%L\n", missingAbiBindingError("property ${property.name} setter"))
                 .build(),
         )
@@ -310,7 +322,7 @@ internal fun KotlinProjectionRenderer.renderRuntimeProperty(
     plan: KotlinTypeProjectionPlan,
     property: WinRtPropertyDefinition,
 ): PropertySpec =
-    renderBoundProperty(plan, property) ?: renderStubProperty(property)
+    renderBoundProperty(plan, property) ?: renderStubProperty(plan.type.qualifiedName, property)
 
 internal fun KotlinProjectionRenderer.renderBoundMethod(
     plan: KotlinTypeProjectionPlan,
@@ -486,13 +498,14 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     plan: KotlinTypeProjectionPlan,
     property: WinRtPropertyDefinition,
 ): PropertySpec? {
-    val builder = PropertySpec.builder(
-        property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(property.typeName),
-    ).mutable(!property.isReadOnly)
     val getterBinding = plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
+    val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName)
+    val builder = PropertySpec.builder(
+        property.name.replaceFirstChar(Char::lowercase),
+        resolveTypeName(propertyTypeName),
+    ).mutable(!property.isReadOnly)
     builder.addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
     val getterInvocation = renderReferencePropertyGetter(getterBinding)
         ?: renderProjectedObjectPropertyGetter(getterBinding)
@@ -526,7 +539,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
         }
         builder.setter(
             FunSpec.setterBuilder()
-                .addParameter("value", resolveTypeName(property.typeName))
+                .addParameter("value", resolveTypeName(propertyTypeName))
                 .addCode(
                     "%L\n",
                     setterBinding?.let {
@@ -1402,11 +1415,12 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
                 .forEach { property ->
                     val substitutedProperty = requiredInterface.substitute(property)
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
+                    val propertyTypeName = substitutedProperty.projectedPropertyTypeName(requiredInterface.interfaceName)
                     propertyForwards[propertyName] = propertyForwards[propertyName]
                         ?.merge(requiredInterface.interfaceName, interfaceType, substitutedProperty)
                         ?: RequiredForwardProperty(
                             propertyName = propertyName,
-                            propertyTypeName = substitutedProperty.typeName,
+                            propertyTypeName = propertyTypeName,
                             getter = substitutedProperty.takeIf { it.getterMethodName != null }?.let {
                                 RequiredForwardPropertyAccessor(requiredInterface.interfaceName, interfaceType, it)
                             },
@@ -1483,8 +1497,9 @@ private data class RequiredForwardProperty(
         slotInterfaceType: WinRtTypeDefinition,
         property: WinRtPropertyDefinition,
     ): RequiredForwardProperty {
-        require(property.typeName == propertyTypeName) {
-            "Cannot merge required interface property '$propertyName' with incompatible types: $propertyTypeName vs ${property.typeName}"
+        val projectedTypeName = property.projectedPropertyTypeName(ownerInterfaceName)
+        require(projectedTypeName == propertyTypeName) {
+            "Cannot merge required interface property '$propertyName' with incompatible types: $propertyTypeName vs $projectedTypeName"
         }
         return copy(
             getter = getter ?: property.takeIf { it.getterMethodName != null }?.let {
@@ -1607,8 +1622,9 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         .orEmpty()
     builder.addProjectedAttributeAnnotations(projectedAttributes)
     property.getter?.let { getter ->
+        val getterTypeName = getter.property.projectedPropertyTypeName(getter.ownerInterfaceName)
         val callPlan = buildAbiCallPlan(
-            returnBinding = renderAbiTypeBinding(getter.property.typeName),
+            returnBinding = renderAbiTypeBinding(getterTypeName),
             parameterBindings = emptyList(),
             suppressHResultCheck = getter.property.isNoException,
         ) ?: return null
@@ -1620,9 +1636,10 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         builder.getter(FunSpec.getterBuilder().addCode("%L\n", invocation).build())
     }
     property.setter?.let { setter ->
+        val setterTypeName = setter.property.projectedPropertyTypeName(setter.ownerInterfaceName)
         val callPlan = buildAbiCallPlan(
             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setter.property.typeName))),
+            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setterTypeName))),
             suppressHResultCheck = setter.property.isNoException,
         ) ?: return null
         val invocation = renderInlineAbiInvocation(

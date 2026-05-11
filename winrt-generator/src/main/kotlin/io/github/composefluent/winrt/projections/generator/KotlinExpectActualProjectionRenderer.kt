@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
@@ -111,15 +112,16 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
                 .all { property ->
+                    val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName)
                     canBuildJvmFfmCallPlan(
-                        returnTypeName = property.typeName,
+                        returnTypeName = propertyTypeName,
                         parameters = emptyList(),
                         typesByQualifiedName = plan.typesByQualifiedName,
                     ) && (
                         property.isReadOnly ||
                             canBuildJvmFfmCallPlan(
                                 returnTypeName = "Unit",
-                                parameters = listOf("value" to property.typeName),
+                                parameters = listOf("value" to propertyTypeName),
                                 typesByQualifiedName = plan.typesByQualifiedName,
                             )
                         )
@@ -206,7 +208,9 @@ internal class KotlinExpectActualProjectionRenderer(
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
-                .map { property -> property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(property) }
+                .map { property ->
+                    property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(interfaceType.qualifiedName, property)
+                }
         }.toMap()
         val interfaceEvents = interfaceTypes.flatMap { interfaceType ->
             interfaceType.events
@@ -221,7 +225,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .filter { it.getterMethodName != null }
             .all { property ->
                 interfaceProperties[property.name.replaceFirstChar(Char::lowercase)] ==
-                    propertyCoverage(property)
+                    propertyCoverage(plan.type.qualifiedName, property)
             }
         val classEventsCovered = plan.type.events
             .filterNot(WinRtEventDefinition::isStatic)
@@ -253,7 +257,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filter { it.getterMethodName != null }
                 .forEach { property ->
                     val key = property.name.replaceFirstChar(Char::lowercase)
-                    val coverage = propertyCoverage(property)
+                    val coverage = propertyCoverage(interfaceType.qualifiedName, property)
                     val previous = properties.putIfAbsent(key, coverage)
                     if (previous != null && previous != coverage) {
                         return false
@@ -300,9 +304,12 @@ internal class KotlinExpectActualProjectionRenderer(
             isNoException = method.isNoException,
         )
 
-    private fun propertyCoverage(property: WinRtPropertyDefinition): RuntimeClassPropertyCoverage =
+    private fun propertyCoverage(
+        ownerTypeName: String,
+        property: WinRtPropertyDefinition,
+    ): RuntimeClassPropertyCoverage =
         RuntimeClassPropertyCoverage(
-            typeName = property.typeName,
+            typeName = property.projectedPropertyTypeName(ownerTypeName),
             isReadOnly = property.isReadOnly,
             getterMethodName = property.getterMethodName,
             setterMethodName = property.setterMethodName,
@@ -331,7 +338,7 @@ internal class KotlinExpectActualProjectionRenderer(
         plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
             .filter { it.getterMethodName != null }
-            .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(property)) }
+            .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(plan.type.qualifiedName, property)) }
         plan.type.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
             builder.addProperty(baseRenderer.renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             baseRenderer.renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
@@ -494,7 +501,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .forEach { property ->
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
                     if (emittedProperties.add(propertyName)) {
-                        builder.addProperty(renderJvmRuntimeClassForwardProperty(cacheName, property))
+                        builder.addProperty(renderJvmRuntimeClassForwardProperty(cacheName, interfaceType.qualifiedName, property))
                     }
                 }
             interfaceType.events
@@ -533,17 +540,19 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun renderJvmRuntimeClassForwardProperty(
         cacheName: String,
+        ownerTypeName: String,
         property: WinRtPropertyDefinition,
     ): PropertySpec {
         val propertyName = property.name.replaceFirstChar(Char::lowercase)
-        val builder = PropertySpec.builder(propertyName, baseRenderer.resolveTypeName(property.typeName))
+        val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName)
+        val builder = PropertySpec.builder(propertyName, baseRenderer.resolveTypeName(propertyTypeName))
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
             .getter(FunSpec.getterBuilder().addCode("return %L.%L\n", cacheName, propertyName).build())
         if (!property.isReadOnly) {
             builder.setter(
                 FunSpec.setterBuilder()
-                    .addParameter("value", baseRenderer.resolveTypeName(property.typeName))
+                    .addParameter("value", baseRenderer.resolveTypeName(propertyTypeName))
                     .addCode("%L.%L = value\n", cacheName, propertyName)
                     .build(),
             )
@@ -701,14 +710,15 @@ internal class KotlinExpectActualProjectionRenderer(
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): PropertySpec {
+        val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName)
         val builder = PropertySpec.builder(
             property.name.replaceFirstChar(Char::lowercase),
-            baseRenderer.resolveTypeName(property.typeName),
+            baseRenderer.resolveTypeName(propertyTypeName),
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
         val getterCallPlan = buildJvmInterfaceAbiCallPlan(
-            returnBinding = baseRenderer.renderAbiTypeBinding(property.typeName, typesByQualifiedName),
+            returnBinding = baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName),
             parameterBindings = emptyList(),
             suppressHResultCheck = property.isNoException,
             typesByQualifiedName = typesByQualifiedName,
@@ -729,13 +739,13 @@ internal class KotlinExpectActualProjectionRenderer(
         if (!property.isReadOnly) {
             val setterCallPlan = buildJvmInterfaceAbiCallPlan(
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", baseRenderer.renderAbiTypeBinding(property.typeName, typesByQualifiedName))),
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
                 suppressHResultCheck = property.isNoException,
                 typesByQualifiedName = typesByQualifiedName,
             ) ?: error("Generator interface proxy parity failed to plan setter ${slotInterfaceType.qualifiedName}.${property.name}")
             builder.setter(
                 FunSpec.setterBuilder()
-                    .addParameter("value", baseRenderer.resolveTypeName(property.typeName))
+                    .addParameter("value", baseRenderer.resolveTypeName(propertyTypeName))
                     .addCode(
                         "%L\n",
                         baseRenderer.renderInlineAbiInvocation(

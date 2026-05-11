@@ -34,6 +34,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.runtime.ActivationFactory
@@ -308,7 +309,7 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
             val projectedStaticEvents = mergedStaticEvents(plan, staticEvents)
             appendMetadataCompanionMembers(this, plan)
             projectedStaticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
-            projectedStaticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(it)) }
+            projectedStaticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(plan.type.qualifiedName, it)) }
             projectedStaticEvents.forEach { event ->
                 val eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic }
                 val addBinding = plan.staticMemberBindings.firstOrNull {
@@ -699,13 +700,14 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     plan: KotlinTypeProjectionPlan,
     property: WinRtPropertyDefinition,
 ): PropertySpec? {
-    val builder = PropertySpec.builder(
-        property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(property.typeName),
-    ).mutable(!property.isReadOnly)
     val getterBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
+    val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName)
+    val builder = PropertySpec.builder(
+        property.name.replaceFirstChar(Char::lowercase),
+        resolveTypeName(propertyTypeName),
+    ).mutable(!property.isReadOnly)
     val getterInvocation = renderStaticIntrinsicGetter(getterBinding)
         ?: renderBoundStaticInvocation(getterBinding)
     builder.addProjectedAttributeAnnotations(getterBinding.projectedAttributes)
@@ -720,7 +722,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
         }
         builder.setter(
             FunSpec.setterBuilder()
-                .addParameter("value", resolveTypeName(property.typeName))
+                .addParameter("value", resolveTypeName(propertyTypeName))
                 .addCode(
                     "%L\n",
                     setterBinding?.let {

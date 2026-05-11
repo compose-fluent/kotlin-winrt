@@ -369,7 +369,7 @@ private fun projectedInterfaceParameterMarshaler(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
-        abiArgumentExpression = CodeBlock.of("%T.fromRawComPtr((%L as %T).nativeObject.pointer)", PLATFORM_ABI_CLASS_NAME, parameterName, IWINRT_OBJECT_CLASS_NAME),
+        abiArgumentExpression = projectedObjectParameterAbiExpression(parameterName, parameterBinding),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
 
@@ -381,14 +381,30 @@ private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
-        abiArgumentExpression = CodeBlock.of(
+        abiArgumentExpression = projectedObjectParameterAbiExpression(parameterName, parameterBinding),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+    )
+
+private fun projectedObjectParameterAbiExpression(
+    parameterName: String,
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): CodeBlock =
+    if (parameterBinding.typeBinding.isNullableAbiTypeName) {
+        CodeBlock.of(
+            "%L?.let { %T.fromRawComPtr((it as %T).nativeObject.pointer) } ?: %T.nullPointer",
+            parameterName,
+            PLATFORM_ABI_CLASS_NAME,
+            IWINRT_OBJECT_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+        )
+    } else {
+        CodeBlock.of(
             "%T.fromRawComPtr((%L as %T).nativeObject.pointer)",
             PLATFORM_ABI_CLASS_NAME,
             parameterName,
             IWINRT_OBJECT_CLASS_NAME,
-        ),
-        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
-    )
+        )
+    }
 
 private fun genericParameterMarshaler(
     parameterName: String,
@@ -669,13 +685,16 @@ internal fun abiNullReturnReadback(binding: KotlinProjectionAbiTypeBinding): Cod
     }
 
 internal val KotlinProjectionAbiTypeBinding.isNullableAbiReturn: Boolean
+    get() = isNullableAbiTypeName
+
+internal val KotlinProjectionAbiTypeBinding.isNullableAbiTypeName: Boolean
     get() = typeName.trim().endsWith("?") || resolvedTypeName.trim().endsWith("?")
 
 internal fun KotlinProjectionRenderer.resolvedReturnClassName(
     returnBinding: KotlinProjectionAbiTypeBinding,
 ): ClassName? =
-    runCatching { resolveTypeName(returnBinding.typeName) as? ClassName }.getOrNull()
-        ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName) as? ClassName }.getOrNull()
+    runCatching { resolveTypeName(returnBinding.typeName.trim().removeSuffix("?")) as? ClassName }.getOrNull()
+        ?: runCatching { resolveTypeName(returnBinding.resolvedTypeName.trim().removeSuffix("?")) as? ClassName }.getOrNull()
 
 internal fun KotlinProjectionRenderer.mappedKeyValuePairReturnReadback(
     returnBinding: KotlinProjectionAbiTypeBinding,
