@@ -36,7 +36,7 @@ val winrtVersionProvider = resolveVersion()
 
 allprojects {
     group = "io.github.composefluent.winrt"
-    version = winrtVersionProvider.get()
+    version = winrtVersionProvider
 
     tasks.withType<Test>().configureEach {
         maxParallelForks = 1
