@@ -10,8 +10,8 @@ permissions:
 jobs:
   build-and-test:
     name: Build and Test
-    # windows-2022 is a Windows Server 2022 runner, which shares the Windows 11 kernel
-    # and is the closest GitHub-hosted runner to Windows 11 for x64 workloads.
+    # windows-2022 uses Windows Server 2022 and is the closest GitHub-hosted runner for
+    # testing Windows 10/11 API compatibility on x64.
     runs-on: windows-2022
 
     steps:

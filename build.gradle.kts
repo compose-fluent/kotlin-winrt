@@ -22,7 +22,7 @@ fun resolveVersion(): String {
             .redirectErrorStream(true)
             .start()
         val tag = process.inputStream.bufferedReader().readText().trim()
-        if (process.waitFor() == 0 && tag.matches(Regex("v\\d+.*"))) {
+        if (process.waitFor() == 0 && tag.matches(Regex("v\\d+\\.\\d+\\.\\d+(-.*)?+"))) {
             tag.removePrefix("v")
         } else {
             "$baseVersion-SNAPSHOT"

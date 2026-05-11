@@ -5,7 +5,7 @@ on:
     branches:
       - master
   schedule:
-    # Run every Sunday at 00:00 UTC (approximately every 7 days)
+    # Run every Sunday at 00:00 UTC.
     - cron: '0 0 * * 0'
 
 permissions:
