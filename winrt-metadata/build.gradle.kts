@@ -1,4 +1,5 @@
 plugins {
+    alias(libs.plugins.kotlinJvm)
     id("winrt.kotlin-jvm")
     id("winrt.publish")
 }

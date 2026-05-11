@@ -1,6 +1,7 @@
 import org.gradle.api.tasks.testing.Test
 
 plugins {
+    alias(libs.plugins.kotlinJvm)
     id("winrt.kotlin-jvm")
     id("winrt.publish")
     application

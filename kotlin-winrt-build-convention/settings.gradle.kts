@@ -1,4 +1,4 @@
-rootProject.name = "build-convention"
+rootProject.name = "kotlin-winrt-build-convention"
 
 dependencyResolutionManagement {
     repositories {
