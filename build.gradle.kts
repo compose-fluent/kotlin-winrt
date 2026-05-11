@@ -26,11 +26,11 @@ fun resolveVersion(): String {
     }
 }
 
-val winRtVersion = resolveVersion()
+val winrtVersion = resolveVersion()
 
 allprojects {
     group = "io.github.composefluent.winrt"
-    version = winRtVersion
+    version = winrtVersion
 
     tasks.withType<Test>().configureEach {
         maxParallelForks = 1
