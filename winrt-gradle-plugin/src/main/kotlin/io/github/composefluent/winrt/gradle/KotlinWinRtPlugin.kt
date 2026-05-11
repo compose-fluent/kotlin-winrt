@@ -48,6 +48,11 @@ private fun configureWinRtLibraryModel(
             task.metadataInputs.set(extension.metadataInputs)
             task.includeNamespaces.set(extension.includeNamespaces)
             task.includeTypes.set(extension.includeTypes)
+            task.projectionRegistrarFile.set(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/projection-registrar.tsv",
+                ),
+            )
             task.excludeNamespaces.set(extension.excludeNamespaces)
             task.excludeTypes.set(extension.excludeTypes)
             task.additionExcludeNamespaces.set(extension.additionExcludeNamespaces)

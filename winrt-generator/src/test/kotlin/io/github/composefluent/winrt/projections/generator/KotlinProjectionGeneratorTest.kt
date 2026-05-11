@@ -3291,8 +3291,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "ICompositionEasingFunction",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555562"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "CompositionEasingFunction",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ICompositionEasingFunction",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ICompositionEasingFunction", isDefault = true),
+                            ),
                         ),
                     ),
                 ),
@@ -3308,11 +3318,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
         assertTrue(interfaceContents, interfaceContents.contains("\"Float,String\","))
-        assertTrue(interfaceContents, interfaceContents.contains("\"Float,String,Object\","))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Float,String,RawAddress\","))
         assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
         assertTrue(interfaceContents, interfaceContents.contains("normalizedProgressKey,"))
         assertTrue(interfaceContents, interfaceContents.contains("value,"))
-        assertTrue(interfaceContents, interfaceContents.contains("easingFunction as IWinRTObject,"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRtProjectionMarshaler(easingFunction, \"Sample.Foundation.CompositionEasingFunction\""))
+        assertTrue(interfaceContents, interfaceContents.contains("Guid(\"11111111-2222-3333-4444-555555555562\")).use {"))
+        assertTrue(interfaceContents, interfaceContents.contains("__easingFunctionProjectionMarshaler ->"))
+        assertTrue(interfaceContents, interfaceContents.contains("__easingFunctionProjectionMarshaler.abi,"))
+        assertFalse(interfaceContents, interfaceContents.contains("easingFunction as IWinRTObject,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(value)"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
@@ -3431,8 +3445,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "ICompositionObject",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "CompositionObject",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ICompositionObject",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ICompositionObject", isDefault = true),
+                            ),
                         ),
                     ),
                 ),
@@ -3447,10 +3471,14 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(interfaceContents, interfaceContents.contains("\"String,Object\","))
+        assertTrue(interfaceContents, interfaceContents.contains("\"String,RawAddress\","))
         assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
         assertTrue(interfaceContents, interfaceContents.contains("key,"))
-        assertTrue(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
+        assertTrue(interfaceContents, interfaceContents.contains("winRtProjectionMarshaler(compositionObject, \"Sample.Foundation.CompositionObject\""))
+        assertTrue(interfaceContents, interfaceContents.contains("Guid(\"11111111-2222-3333-4444-555555555563\")).use {"))
+        assertTrue(interfaceContents, interfaceContents.contains("__compositionObjectProjectionMarshaler ->"))
+        assertTrue(interfaceContents, interfaceContents.contains("__compositionObjectProjectionMarshaler.abi,"))
+        assertFalse(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
         assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(key)"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.fromRawComPtr((compositionObject as IWinRTObject).nativeObject.pointer)"))
@@ -4017,9 +4045,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun show(element: Widget)"))
         assertTrue(widgetContents.contains("fun setVisible(element: Widget, visible: Boolean)"))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(widgetContents.contains("\"Object\""))
-        assertTrue(widgetContents.contains("\"Object,Boolean\""))
-        assertTrue(widgetContents.contains("element as IWinRTObject"))
+        assertTrue(widgetContents.contains("\"RawAddress\""))
+        assertTrue(widgetContents.contains("\"RawAddress,Boolean\""))
+        assertTrue(widgetContents.contains("winRtProjectionMarshaler(element, \"Sample.Foundation.Widget\""))
+        assertTrue(widgetContents.contains("Guid(\"11111111-1111-1111-1111-111111111111\")).use {"))
+        assertTrue(widgetContents.contains("__elementProjectionMarshaler ->"))
+        assertTrue(widgetContents.contains("__elementProjectionMarshaler.abi,"))
+        assertFalse(widgetContents.contains("element as IWinRTObject"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callUnit("))
     }
 
@@ -4103,9 +4135,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun listenerExists(status: Status): Boolean"))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.getBoolean("))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callBoolean("))
-        assertTrue(widgetContents.contains("\"Object\""))
+        assertTrue(widgetContents.contains("\"RawAddress\""))
         assertTrue(widgetContents.contains("\"Int32\""))
-        assertTrue(widgetContents.contains("element as IWinRTObject"))
+        assertTrue(widgetContents.contains("winRtProjectionMarshaler(element, \"Sample.Foundation.Widget\""))
+        assertTrue(widgetContents.contains("Guid(\"11111111-1111-1111-1111-111111111111\")).use {"))
+        assertTrue(widgetContents.contains("__elementProjectionMarshaler ->"))
+        assertTrue(widgetContents.contains("__elementProjectionMarshaler.abi,"))
+        assertFalse(widgetContents.contains("element as IWinRTObject"))
         assertTrue(widgetContents.contains("status.abiValue"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callBoolean("))
     }
@@ -4188,10 +4224,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callScalar("))
         assertTrue(widgetContents.contains("\"UInt32\""))
         assertTrue(widgetContents.contains("\"Double\""))
-        assertTrue(widgetContents.contains("\"Object\""))
+        assertTrue(widgetContents.contains("\"RawAddress\""))
         assertTrue(widgetContents.contains("\"Int32\""))
         assertTrue(widgetContents.contains("\"String\""))
-        assertTrue(widgetContents.contains("element as IWinRTObject"))
+        assertTrue(widgetContents.contains("winRtProjectionMarshaler(element, \"Sample.Foundation.Widget\""))
+        assertTrue(widgetContents.contains("Guid(\"11111111-1111-1111-1111-111111111111\")).use {"))
+        assertTrue(widgetContents.contains("__elementProjectionMarshaler ->"))
+        assertTrue(widgetContents.contains("__elementProjectionMarshaler.abi,"))
+        assertFalse(widgetContents.contains("element as IWinRTObject"))
         assertTrue(widgetContents.contains("status.abiValue"))
         assertFalse(widgetContents.contains("WinRtProjectionIntrinsic.callInt32("))
         assertFalse(widgetContents.contains("WinRtProjectionIntrinsic.callUInt32("))
@@ -4394,8 +4434,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "ICompositor",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "Compositor",
                             kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ICompositor",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ICompositor", isDefault = true),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -4428,9 +4478,13 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(easingContents.contains("fun createBackEasingFunction("))
         assertTrue(easingContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
-        assertTrue(easingContents.contains("\"Object,Int32,Float\""))
+        assertTrue(easingContents.contains("\"RawAddress,Int32,Float\""))
         assertTrue(easingContents.contains("BackEasingFunction.Metadata::wrap"))
-        assertTrue(easingContents.contains("owner as IWinRTObject"))
+        assertTrue(easingContents.contains("winRtProjectionMarshaler(owner, \"Sample.Foundation.Compositor\""))
+        assertTrue(easingContents.contains("Guid(\"33333333-3333-3333-3333-333333333333\")).use {"))
+        assertTrue(easingContents.contains("__ownerProjectionMarshaler ->"))
+        assertTrue(easingContents.contains("__ownerProjectionMarshaler.abi,"))
+        assertFalse(easingContents.contains("owner as IWinRTObject"))
         assertTrue(easingContents.contains("mode.abiValue"))
         assertTrue(easingContents.contains("amplitude,"))
         assertFalse(easingContents.contains("ComVtableInvoker.invokeGenericArgs"))
@@ -4635,11 +4689,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun fromPointerId(pointerId: UInt): Widget"))
         assertTrue(widgetContents.contains("fun fromNameAndSource(name: String, source: Widget): Widget"))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
-        assertTrue(widgetContents.contains("\"Object\""))
+        assertTrue(widgetContents.contains("\"RawAddress\""))
         assertTrue(widgetContents.contains("\"UInt32\""))
-        assertTrue(widgetContents.contains("\"String,Object\""))
+        assertTrue(widgetContents.contains("\"String,RawAddress\""))
         assertTrue(widgetContents.contains("Widget.Metadata::wrap"))
-        assertTrue(widgetContents.contains("source as IWinRTObject"))
+        assertTrue(widgetContents.contains("winRtProjectionMarshaler(source, \"Sample.Foundation.Widget\""))
+        assertTrue(widgetContents.contains("Guid(\"11111111-1111-1111-1111-111111111111\")).use {"))
+        assertTrue(widgetContents.contains("__sourceProjectionMarshaler ->"))
+        assertTrue(widgetContents.contains("__sourceProjectionMarshaler.abi,"))
+        assertFalse(widgetContents.contains("source as IWinRTObject"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callProjectedRuntimeClass("))
     }
 
@@ -4783,7 +4841,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_binds_projected_object_parameters_via_iwinrtobject() {
+    fun generator_binds_projected_runtime_class_parameters_via_projection_marshaler() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -4866,10 +4924,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("IWinRTObject"))
         assertTrue(widgetContents.contains("override val nativeObject: ComObjectReference"))
         assertTrue(widgetContents.contains("fun setValue(`value`: WidgetValue)"))
-        assertTrue(widgetContents, widgetContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
+        assertFalse(widgetContents, widgetContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
         assertTrue(widgetContents.contains("fun setNamedValue(name: String, `value`: WidgetValue)"))
-        assertTrue(widgetContents.contains("HString.createReference(name).use { __nameAbi ->"))
-        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
+        assertTrue(widgetInterfaceContents.contains("HString.createReference(name).use { __nameAbi ->"))
+        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("winRtProjectionMarshaler(value, \"Sample.Foundation.WidgetValue\""))
+        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("Guid(\"22222222-2222-2222-2222-222222222222\")).use {"))
+        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("__valueProjectionMarshaler ->"))
+        assertTrue(widgetInterfaceContents, widgetInterfaceContents.contains("__valueProjectionMarshaler.abi"))
+        assertFalse(widgetInterfaceContents, widgetInterfaceContents.contains("PlatformAbi.fromRawComPtr((value as IWinRTObject).nativeObject.pointer)"))
     }
 
     @Test
@@ -7261,14 +7323,16 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(windowProperty, windowProperty.contains("var systemBackdrop: microsoft.ui.xaml.media.SystemBackdrop?"))
         assertTrue(windowProperty, windowProperty.contains("getNullableProjectedRuntimeClass("))
-        assertTrue(windowProperty, windowProperty.contains("value?.let"))
-        assertTrue(windowProperty, windowProperty.contains("PlatformAbi.nullPointer"))
+        assertTrue(windowProperty, windowProperty.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.SystemBackdrop\""))
+        assertTrue(windowProperty, windowProperty.contains("Guid(\"11111111-2222-3333-4444-555555555580\")"))
+        assertTrue(windowProperty, windowProperty.contains("__valueProjectionMarshaler.abi"))
         assertFalse(windowProperty.contains("WINRT_E_NULL_ABI_RETURN"))
 
         assertTrue(clipPropertySource, clipPropertySource.contains("var clip: microsoft.ui.xaml.media.RectangleGeometry?"))
         assertTrue(clipPropertySource, clipPropertySource.contains("getNullableProjectedRuntimeClass("))
-        assertTrue(clipPropertySource, clipPropertySource.contains("value?.let"))
-        assertTrue(clipPropertySource, clipPropertySource.contains("PlatformAbi.nullPointer"))
+        assertTrue(clipPropertySource, clipPropertySource.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.RectangleGeometry\""))
+        assertTrue(clipPropertySource, clipPropertySource.contains("Guid(\"11111111-2222-3333-4444-555555555581\")"))
+        assertTrue(clipPropertySource, clipPropertySource.contains("__valueProjectionMarshaler.abi"))
         assertFalse(clipPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
 
         assertTrue(contentPropertySource, contentPropertySource.contains("var content: kotlin.Any?"))
@@ -8545,7 +8609,11 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
         assertTrue(contents.contains("\"RawAddress,RawAddress,Byte\""))
-        assertTrue(contents.contains("PlatformAbi.fromRawComPtr((routedEvent as IWinRTObject).nativeObject.pointer)"))
+        assertTrue(contents.contains("winRtProjectionMarshaler(routedEvent, \"Sample.UI.RoutedEvent\""))
+        assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555573\")).use {"))
+        assertTrue(contents.contains("__routedEventProjectionMarshaler ->"))
+        assertTrue(contents.contains("__routedEventProjectionMarshaler.abi"))
+        assertFalse(contents.contains("PlatformAbi.fromRawComPtr((routedEvent as IWinRTObject).nativeObject.pointer)"))
         assertTrue(contents.contains("__handlerMarshaler.abi"))
         assertTrue(contents.contains("if (handledEventsToo) 1.toByte() else 0.toByte()"))
         assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
@@ -10255,9 +10323,13 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
         assertTrue(contents.contains("\"Float,Struct\""))
-        assertTrue(contents.contains("\"Float,Struct,Object\""))
+        assertTrue(contents.contains("\"Float,Struct,RawAddress\""))
         assertTrue(contents.contains("Point.Metadata"))
-        assertTrue(contents.contains("easingFunction as IWinRTObject"))
+        assertTrue(contents.contains("winRtProjectionMarshaler(easingFunction, \"Sample.Foundation.EasingFunction\""))
+        assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555558\")).use {"))
+        assertTrue(contents.contains("__easingFunctionProjectionMarshaler ->"))
+        assertTrue(contents.contains("__easingFunctionProjectionMarshaler.abi"))
+        assertFalse(contents.contains("easingFunction as IWinRTObject"))
         assertFalse(contents.contains("PlatformAbi.allocateBytes"))
         assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
@@ -10460,9 +10532,17 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(contents.contains("\"Float,Object,Object\""))
-        assertTrue(contents.contains("path as IWinRTObject"))
-        assertTrue(contents.contains("easingFunction as IWinRTObject"))
+        assertTrue(contents.contains("\"Float,RawAddress,RawAddress\""))
+        assertTrue(contents.contains("winRtProjectionMarshaler(path, \"Sample.Foundation.Path\""))
+        assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555562\")).use {"))
+        assertTrue(contents.contains("__pathProjectionMarshaler ->"))
+        assertTrue(contents.contains("winRtProjectionMarshaler(easingFunction, \"Sample.Foundation.EasingFunction\""))
+        assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555563\")).use {"))
+        assertTrue(contents.contains("__easingFunctionProjectionMarshaler ->"))
+        assertTrue(contents.contains("__pathProjectionMarshaler.abi"))
+        assertTrue(contents.contains("__easingFunctionProjectionMarshaler.abi"))
+        assertFalse(contents.contains("path as IWinRTObject"))
+        assertFalse(contents.contains("easingFunction as IWinRTObject"))
         assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 

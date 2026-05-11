@@ -376,14 +376,34 @@ private fun projectedInterfaceParameterMarshaler(
 private fun KotlinProjectionRenderer.projectedRuntimeClassParameterMarshaler(
     parameterName: String,
     parameterBinding: KotlinProjectionAbiParameterBinding,
-): KotlinProjectionAbiMarshalerPlan =
-    KotlinProjectionAbiMarshalerPlan(
+): KotlinProjectionAbiMarshalerPlan {
+    val interfaceId = parameterBinding.typeBinding.interfaceId ?: return KotlinProjectionAbiMarshalerPlan(
         name = parameterName,
         typeBinding = parameterBinding.typeBinding,
         isReturn = false,
         abiArgumentExpression = projectedObjectParameterAbiExpression(parameterName, parameterBinding),
         abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
     )
+    val marshalerName = "__${parameterName}ProjectionMarshaler"
+    return KotlinProjectionAbiMarshalerPlan(
+        name = parameterName,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%L.abi", marshalerName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+        scopeOpeners = listOf(
+            CodeBlock.of(
+                "%M(%L, %S, %T(%S)).use { %L ->",
+                WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
+                parameterName,
+                parameterBinding.typeBinding.resolvedTypeName,
+                GUID_CLASS_NAME,
+                interfaceId.toString(),
+                marshalerName,
+            ),
+        ),
+    )
+}
 
 private fun projectedObjectParameterAbiExpression(
     parameterName: String,

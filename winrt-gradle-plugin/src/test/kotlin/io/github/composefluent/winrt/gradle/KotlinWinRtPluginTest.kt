@@ -174,6 +174,7 @@ class KotlinWinRtPluginTest {
         assertTrue(json.contains("\"authoredTargetArtifacts\": ["))
         assertTrue(json.contains("\"includeNamespaces\": [\"Windows.Foundation\", \"Microsoft\"]"))
         assertTrue(json.contains("\"includeTypes\": [\"Windows.Foundation.IStringable\""))
+        assertTrue(json.contains("\"projectedTypes\": ["))
         assertTrue(json.contains("Windows.UI.Xaml.Interop.Type"))
         assertTrue(json.contains("\"excludeNamespaces\": [\"Windows\"]"))
         assertTrue(json.contains("\"excludeTypes\": [\"Microsoft.UI.Xaml.Controls.WebView2\""))
@@ -260,6 +261,54 @@ class KotlinWinRtPluginTest {
                 "Microsoft.UI.Xaml.DependencyProperty",
                 "Windows.ApplicationModel.DataTransfer.DataPackageView",
             ),
+            dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
+        )
+    }
+
+    @Test
+    fun dependency_identity_projected_types_bound_downstream_suppression_to_actual_generated_types() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": ["Windows.Data.Json"],
+              "includeTypes": [],
+              "projectedTypes": ["SimpleMathComponent.SimpleMath"],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    "Windows.Data.Json",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "JsonObject",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    "SimpleMathComponent",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "SimpleMathComponent",
+                            name = "SimpleMath",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("SimpleMathComponent.SimpleMath"),
             dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
         )
     }

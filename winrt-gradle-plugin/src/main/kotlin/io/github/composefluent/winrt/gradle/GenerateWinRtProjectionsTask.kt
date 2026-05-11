@@ -385,17 +385,23 @@ internal fun dependencyProjectedTypeNames(
 private fun dependencyProjectedTypeNames(
     model: WinRtMetadataModel,
     identity: ProjectionSurfaceIdentity,
-): List<String> =
-    model.filterProjectionSurface(
+): List<String> {
+    identity.projectedTypes?.let { projectedTypes ->
+        return projectedTypes
+            .filter { typeName -> model.namespaces.any { namespace -> namespace.types.any { it.qualifiedName == typeName } } }
+    }
+    return model.filterProjectionSurface(
         namespaces = identity.includeNamespaces.toSet(),
         types = identity.includeTypes.toSet(),
         excludedNamespaces = identity.excludeNamespaces.toSet(),
         excludedTypes = identity.excludeTypes.toSet(),
     ).namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) }
+}
 
 internal data class ProjectionSurfaceIdentity(
     val includeNamespaces: List<String>,
     val includeTypes: List<String>,
+    val projectedTypes: List<String>?,
     val excludeNamespaces: List<String>,
     val excludeTypes: List<String>,
 )
@@ -405,14 +411,19 @@ internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): Projecti
     return ProjectionSurfaceIdentity(
         includeNamespaces = readIdentityStringArray(content, "includeNamespaces"),
         includeTypes = readIdentityStringArray(content, "includeTypes"),
+        projectedTypes = readOptionalIdentityStringArray(content, "projectedTypes"),
         excludeNamespaces = readIdentityStringArray(content, "excludeNamespaces"),
         excludeTypes = readIdentityStringArray(content, "excludeTypes"),
     )
 }
 
 private fun readIdentityStringArray(content: String, name: String): List<String> {
+    return readOptionalIdentityStringArray(content, name).orEmpty()
+}
+
+private fun readOptionalIdentityStringArray(content: String, name: String): List<String>? {
     val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
-        .find(content) ?: return emptyList()
+        .find(content) ?: return null
     return Regex(""""((?:\\.|[^"\\])*)"""")
         .findAll(match.groupValues[1])
         .map { it.groupValues[1].decodeIdentityJsonString() }

@@ -625,40 +625,26 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorUnitIntrinsicInvoc
     ) {
         return null
     }
-    val argumentShapes = parameterBindings.map { parameter ->
+    val arguments = parameterBindings.map { parameter ->
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
-    if (argumentShapes.count { it == "String" } > 1) {
+    if (arguments.count { it.shape == "String" } > 1) {
         return null
     }
     return CodeBlock.builder()
+        .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("%L%T.callUnit(\n", if (includeReturn) "return " else "", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
-        .add("%S,\n", argumentShapes.joinToString(","))
-        .apply {
-            parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                when {
-                    shape == "Object" ->
-                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                    shape == "Struct" -> {
-                        val structType = nativeStructClassName(parameter.typeBinding) ?: return null
-                        add("%L,\n", parameter.name)
-                        add("%T.Metadata,\n", structType)
-                    }
-                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                        add("%L.abiValue,\n", parameter.name)
-                    else ->
-                        add("%L,\n", parameter.name)
-                }
-            }
-        }
+        .add("%S,\n", arguments.joinToString(",") { it.shape })
+        .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
         .add(")\n")
+        .closeDescriptorIntrinsicArgumentScopes(arguments)
         .build()
 }
 
@@ -677,33 +663,24 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorScalarIntrinsicInv
         return null
     }
     val returnShape = scalarIntrinsicReturnShape(returnBinding) ?: return null
-    val argumentShapes = parameterBindings.map { parameter ->
+    val arguments = parameterBindings.map { parameter ->
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgument(parameter) ?: return null
     }
     return CodeBlock.builder()
+        .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("return %T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
         .add("%S,\n", returnShape)
-        .add("%S,\n", argumentShapes.joinToString(","))
-        .apply {
-            parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                when {
-                    shape == "Object" ->
-                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                        add("%L.abiValue,\n", parameter.name)
-                    else ->
-                        add("%L,\n", parameter.name)
-                }
-            }
-        }
+        .add("%S,\n", arguments.joinToString(",") { it.shape })
+        .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
         .add(")\n")
+        .closeDescriptorIntrinsicArgumentScopes(arguments)
         .build()
 }
 
@@ -722,32 +699,23 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorBooleanIntrinsicIn
     ) {
         return null
     }
-    val argumentShapes = parameterBindings.map { parameter ->
+    val arguments = parameterBindings.map { parameter ->
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgument(parameter) ?: return null
     }
     return CodeBlock.builder()
+        .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("return %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
-        .add("%S,\n", argumentShapes.joinToString(","))
-        .apply {
-            parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                when {
-                    shape == "Object" ->
-                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                        add("%L.abiValue,\n", parameter.name)
-                    else ->
-                        add("%L,\n", parameter.name)
-                }
-            }
-        }
+        .add("%S,\n", arguments.joinToString(",") { it.shape })
+        .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
         .add(")\n")
+        .closeDescriptorIntrinsicArgumentScopes(arguments)
         .build()
 }
 
@@ -772,38 +740,24 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorProjectedObjectInt
         else -> return null
     }
     val returnType = resolvedReturnClassName(returnBinding) ?: return null
-    val argumentShapes = parameterBindings.map { parameter ->
+    val arguments = parameterBindings.map { parameter ->
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
     return CodeBlock.builder()
+        .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("return %T.%L(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, helperFunction)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
-        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("%S,\n", arguments.joinToString(",") { it.shape })
         .add("%T.Metadata::wrap,\n", returnType)
-        .apply {
-            parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                when {
-                    shape == "Object" ->
-                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                    shape == "Struct" -> {
-                        val structType = nativeStructClassName(parameter.typeBinding) ?: return null
-                        add("%L,\n", parameter.name)
-                        add("%T.Metadata,\n", structType)
-                    }
-                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                        add("%L.abiValue,\n", parameter.name)
-                    else ->
-                        add("%L,\n", parameter.name)
-                }
-            }
-        }
+        .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
         .add(")\n")
+        .closeDescriptorIntrinsicArgumentScopes(arguments)
         .build()
 }
 
@@ -821,46 +775,32 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorAsyncIntrinsicInvo
     ) {
         return null
     }
-    val argumentShapes = parameterBindings.map { parameter ->
+    val arguments = parameterBindings.map { parameter ->
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
+        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
     val asyncExpression = asyncReferenceExpression(
         returnBinding = returnBinding,
         pointerExpression = CodeBlock.of("%T.fromRawComPtr(__asyncReference.pointer)", PLATFORM_ABI_CLASS_NAME),
     ) ?: return null
     return CodeBlock.builder()
+        .openDescriptorIntrinsicArgumentScopes(arguments)
         .add("return %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
         .indent()
         .add("%L,\n", referenceExpression)
         .add("%L,\n", slotExpression)
-        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("%S,\n", arguments.joinToString(",") { it.shape })
         .add("{ __asyncReference ->\n")
         .indent()
         .add("%L\n", asyncExpression)
         .unindent()
         .add("},\n")
-        .apply {
-            parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                when {
-                    shape == "Object" ->
-                        add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                    shape == "Struct" -> {
-                        val structType = nativeStructClassName(parameter.typeBinding) ?: return null
-                        add("%L,\n", parameter.name)
-                        add("%T.Metadata,\n", structType)
-                    }
-                    parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                        add("%L.abiValue,\n", parameter.name)
-                    else ->
-                        add("%L,\n", parameter.name)
-                }
-            }
-        }
+        .addDescriptorIntrinsicArgumentExpressions(arguments)
         .unindent()
         .add(")\n")
+        .closeDescriptorIntrinsicArgumentScopes(arguments)
         .build()
 }
 
@@ -874,6 +814,95 @@ internal fun scalarIntrinsicReturnShape(binding: KotlinProjectionAbiTypeBinding)
         KotlinProjectionAbiValueKind.Double -> "Double"
         else -> null
     }
+
+internal data class DescriptorIntrinsicArgument(
+    val shape: String,
+    val expressions: List<CodeBlock>,
+    val scopeOpeners: List<CodeBlock> = emptyList(),
+)
+
+internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
+    parameter: KotlinProjectionAbiParameterBinding,
+    includeStruct: Boolean = false,
+): DescriptorIntrinsicArgument? {
+    val binding = parameter.typeBinding
+    val shape = if (includeStruct) {
+        descriptorStructCapableArgumentShape(binding)
+    } else {
+        descriptorIntrinsicArgumentShape(binding)
+    } ?: return null
+    if (shape == "Object" && binding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
+        val interfaceId = binding.interfaceId ?: return null
+        val marshalerName = "__${parameter.name}ProjectionMarshaler"
+        return DescriptorIntrinsicArgument(
+            shape = "RawAddress",
+            expressions = listOf(CodeBlock.of("%L.abi", marshalerName)),
+            scopeOpeners = listOf(
+                CodeBlock.of(
+                    "%M(%L, %S, %T(%S)).use { %L ->",
+                    WINRT_PROJECTION_MARSHALER_FUNCTION_NAME,
+                    parameter.name,
+                    binding.resolvedTypeName,
+                    GUID_CLASS_NAME,
+                    interfaceId.toString(),
+                    marshalerName,
+                ),
+            ),
+        )
+    }
+    return when {
+        shape == "Object" -> DescriptorIntrinsicArgument(
+            shape = shape,
+            expressions = listOf(CodeBlock.of("%L as %T", parameter.name, IWINRT_OBJECT_CLASS_NAME)),
+        )
+        shape == "Struct" -> {
+            val structType = nativeStructClassName(binding) ?: return null
+            DescriptorIntrinsicArgument(
+                shape = shape,
+                expressions = listOf(CodeBlock.of("%L", parameter.name), CodeBlock.of("%T.Metadata", structType)),
+            )
+        }
+        binding.kind == KotlinProjectionAbiValueKind.Enum -> DescriptorIntrinsicArgument(
+            shape = shape,
+            expressions = listOf(CodeBlock.of("%L.abiValue", parameter.name)),
+        )
+        else -> DescriptorIntrinsicArgument(
+            shape = shape,
+            expressions = listOf(CodeBlock.of("%L", parameter.name)),
+        )
+    }
+}
+
+internal fun CodeBlock.Builder.openDescriptorIntrinsicArgumentScopes(
+    arguments: List<DescriptorIntrinsicArgument>,
+): CodeBlock.Builder {
+    arguments.flatMap(DescriptorIntrinsicArgument::scopeOpeners).forEach { scopeOpener ->
+        add("%L\n", scopeOpener)
+        indent()
+    }
+    return this
+}
+
+internal fun CodeBlock.Builder.closeDescriptorIntrinsicArgumentScopes(
+    arguments: List<DescriptorIntrinsicArgument>,
+): CodeBlock.Builder {
+    repeat(arguments.sumOf { it.scopeOpeners.size }) {
+        unindent()
+        add("}\n")
+    }
+    return this
+}
+
+internal fun CodeBlock.Builder.addDescriptorIntrinsicArgumentExpressions(
+    arguments: List<DescriptorIntrinsicArgument>,
+): CodeBlock.Builder {
+    arguments.forEach { argument ->
+        argument.expressions.forEach { expression ->
+            add("%L,\n", expression)
+        }
+    }
+    return this
+}
 
 internal fun descriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
     when (binding.kind) {
@@ -1144,38 +1173,24 @@ private fun KotlinProjectionRenderer.renderInstanceStructResultIntrinsicInvocati
     }
     val structType = nativeStructClassName(binding.returnBinding) ?: return null
     if (binding.parameterBindings.isNotEmpty()) {
-        val argumentShapes = binding.parameterBindings.map { parameter ->
+        val arguments = binding.parameterBindings.map { parameter ->
             if (parameter.category != WinRtMetadataParameterCategory.In) {
                 return null
             }
-            descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
+            descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
         }
         return CodeBlock.builder()
+            .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
             .indent()
             .add("%L,\n", binding.ownerCachePropertyName)
             .add("Metadata.%L,\n", binding.bindingName)
-            .add("%S,\n", argumentShapes.joinToString(","))
+            .add("%S,\n", arguments.joinToString(",") { it.shape })
             .add("%T.Metadata,\n", structType)
-            .apply {
-                binding.parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                    when {
-                        shape == "Object" ->
-                            add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                        shape == "Struct" -> {
-                            val parameterStructType = nativeStructClassName(parameter.typeBinding) ?: return null
-                            add("%L,\n", parameter.name)
-                            add("%T.Metadata,\n", parameterStructType)
-                        }
-                        parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                            add("%L.abiValue,\n", parameter.name)
-                        else ->
-                            add("%L,\n", parameter.name)
-                    }
-                }
-            }
+            .addDescriptorIntrinsicArgumentExpressions(arguments)
             .unindent()
             .add(")\n")
+            .closeDescriptorIntrinsicArgumentScopes(arguments)
             .build()
     }
     return CodeBlock.builder()
@@ -1211,13 +1226,14 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocatio
     }
     if (parameterBindings.isNotEmpty()) {
         val returnShape = if (helperFunction == "getInt32") "Int32" else "UInt32"
-        val argumentShapes = parameterBindings.map { parameter ->
+        val arguments = parameterBindings.map { parameter ->
             if (parameter.category != WinRtMetadataParameterCategory.In) {
                 return null
             }
-            descriptorIntrinsicArgumentShape(parameter.typeBinding) ?: return null
+            descriptorIntrinsicArgument(parameter) ?: return null
         }
         return CodeBlock.builder()
+            .openDescriptorIntrinsicArgumentScopes(arguments)
             .add("return %T.Metadata.fromAbi(\n", enumType)
             .indent()
             .add("%T.callScalar(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
@@ -1225,23 +1241,13 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocatio
             .add("%L,\n", referenceExpression)
             .add("%L,\n", slotExpression)
             .add("%S,\n", returnShape)
-            .add("%S,\n", argumentShapes.joinToString(","))
-            .apply {
-                parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                    when {
-                        shape == "Object" ->
-                            add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                        parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                            add("%L.abiValue,\n", parameter.name)
-                        else ->
-                            add("%L,\n", parameter.name)
-                    }
-                }
-            }
+            .add("%S,\n", arguments.joinToString(",") { it.shape })
+            .addDescriptorIntrinsicArgumentExpressions(arguments)
             .unindent()
             .add("),\n")
             .unindent()
             .add(")\n")
+            .closeDescriptorIntrinsicArgumentScopes(arguments)
             .build()
     }
     return CodeBlock.builder()

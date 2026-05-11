@@ -6,12 +6,14 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import java.io.File
 import java.nio.file.Files
 
 abstract class GenerateWinRtIdentityTask : DefaultTask() {
@@ -26,6 +28,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
 
     @get:Input
     abstract val includeTypes: ListProperty<String>
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectionRegistrarFile: RegularFileProperty
 
     @get:Input
     abstract val excludeNamespaces: ListProperty<String>
@@ -77,6 +84,7 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"metadataInputs\": ${metadataInputs.get().toJsonArray()},")
                 appendLine("  \"includeNamespaces\": ${includeNamespaces.get().toJsonArray()},")
                 appendLine("  \"includeTypes\": ${includeTypes.get().toJsonArray()},")
+                appendLine("  \"projectedTypes\": ${readProjectedTypeNames(projectionRegistrarFile.orNull?.asFile).toJsonArray()},")
                 appendLine("  \"excludeNamespaces\": ${excludeNamespaces.get().toJsonArray()},")
                 appendLine("  \"excludeTypes\": ${excludeTypes.get().toJsonArray()},")
                 appendLine("  \"additionExcludeNamespaces\": ${additionExcludeNamespaces.get().toJsonArray()},")
@@ -94,6 +102,16 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
         )
     }
 }
+
+internal fun readProjectedTypeNames(projectionRegistrarFile: File?): List<String> =
+    projectionRegistrarFile
+        ?.takeIf(File::isFile)
+        ?.readLines()
+        .orEmpty()
+        .drop(1)
+        .mapNotNull { line -> line.split('\t').getOrNull(1)?.takeIf(String::isNotBlank) }
+        .distinct()
+        .sorted()
 
 internal fun List<String>.toJsonArray(): String =
     joinToString(prefix = "[", postfix = "]") { it.toJsonString() }

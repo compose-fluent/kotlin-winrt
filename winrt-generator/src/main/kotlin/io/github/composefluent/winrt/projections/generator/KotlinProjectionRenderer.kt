@@ -479,39 +479,25 @@ class KotlinProjectionRenderer(
         }
         val structType = nativeStructClassName(returnBinding) ?: return null
         if (parameterBindings.isNotEmpty()) {
-            val argumentShapes = parameterBindings.map { parameter ->
-                if (parameter.category != WinRtMetadataParameterCategory.In) {
-                    return null
-                }
-                descriptorStructCapableArgumentShape(parameter.typeBinding) ?: return null
+        val arguments = parameterBindings.map { parameter ->
+            if (parameter.category != WinRtMetadataParameterCategory.In) {
+                return null
             }
-            return CodeBlock.builder()
-                .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
-                .indent()
-                .add("nativeObject,\n")
-                .add("%L,\n", slotExpression)
-                .add("%S,\n", argumentShapes.joinToString(","))
-                .add("%T.Metadata,\n", structType)
-                .apply {
-                    parameterBindings.zip(argumentShapes).forEach { (parameter, shape) ->
-                        when {
-                            shape == "Object" ->
-                                add("%L as %T,\n", parameter.name, IWINRT_OBJECT_CLASS_NAME)
-                            shape == "Struct" -> {
-                                val parameterStructType = nativeStructClassName(parameter.typeBinding) ?: return null
-                                add("%L,\n", parameter.name)
-                                add("%T.Metadata,\n", parameterStructType)
-                            }
-                            parameter.typeBinding.kind == KotlinProjectionAbiValueKind.Enum ->
-                                add("%L.abiValue,\n", parameter.name)
-                            else ->
-                                add("%L,\n", parameter.name)
-                        }
-                    }
-                }
-                .unindent()
-                .add(")\n")
-                .build()
+            descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
+        }
+        return CodeBlock.builder()
+            .openDescriptorIntrinsicArgumentScopes(arguments)
+            .add("return %T.callStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+            .indent()
+            .add("nativeObject,\n")
+            .add("%L,\n", slotExpression)
+            .add("%S,\n", arguments.joinToString(",") { it.shape })
+            .add("%T.Metadata,\n", structType)
+            .addDescriptorIntrinsicArgumentExpressions(arguments)
+            .unindent()
+            .add(")\n")
+            .closeDescriptorIntrinsicArgumentScopes(arguments)
+            .build()
         }
         return CodeBlock.builder()
             .add("return %T.getStruct(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)

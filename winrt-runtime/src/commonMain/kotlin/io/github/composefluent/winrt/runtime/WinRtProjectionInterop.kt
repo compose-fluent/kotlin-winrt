@@ -59,6 +59,24 @@ internal fun borrowedProjectionMarshaler(
         WinRtProjectionMarshaler.owned(reference)
     }
 
+fun winRtProjectionMarshaler(
+    value: Any?,
+    projectedTypeName: String,
+    interfaceId: Guid,
+): WinRtProjectionMarshaler {
+    if (value == null) {
+        return WinRtProjectionMarshaler(
+            lease = AbiReferenceLeaseSupport.create(PlatformAbi.nullPointer),
+        )
+    }
+    val typeHandle = WinRtTypeHandle(projectedTypeName, interfaceId)
+    return borrowedProjectionMarshaler(value, typeHandle)
+        ?: throw WinRtUnsupportedOperationException(
+            "Object cannot be marshaled as '$projectedTypeName'.",
+            KnownHResults.E_NOINTERFACE,
+        )
+}
+
 internal fun cloneComReference(reference: ComObjectReference): ComObjectReference =
     ComReferenceWrapperSupport.wrap(
         kind = reference.wrapperKind,
