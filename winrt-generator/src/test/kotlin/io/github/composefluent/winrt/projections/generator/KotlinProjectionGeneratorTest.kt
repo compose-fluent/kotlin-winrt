@@ -8540,6 +8540,124 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_struct_array_results_through_descriptor_call_unit() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "PointInt32",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Int32"),
+                                WinRtFieldDefinition("Y", "Int32"),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "RoundingMode",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Nearest", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "ICoordinateConverter",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "ConvertLocalToScreen",
+                                    returnTypeName = "Array<Sample.Foundation.PointInt32>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("localPoints", "Array<Sample.Foundation.Point>"),
+                                    ),
+                                    methodRowId = 31,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ConvertLocalToScreen",
+                                    returnTypeName = "Array<Sample.Foundation.PointInt32>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("localPoints", "Array<Sample.Foundation.Point>"),
+                                        WinRtParameterDefinition("roundingMode", "Sample.UI.RoundingMode"),
+                                    ),
+                                    methodRowId = 32,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "CoordinateConverter",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.ICoordinateConverter",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.UI.ICoordinateConverter",
+                                    isDefault = true,
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "ConvertLocalToScreen",
+                                    returnTypeName = "Array<Sample.Foundation.PointInt32>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("localPoints", "Array<Sample.Foundation.Point>"),
+                                    ),
+                                    methodRowId = 31,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ConvertLocalToScreen",
+                                    returnTypeName = "Array<Sample.Foundation.PointInt32>",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("localPoints", "Array<Sample.Foundation.Point>"),
+                                        WinRtParameterDefinition("roundingMode", "Sample.UI.RoundingMode"),
+                                    ),
+                                    methodRowId = 32,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("CoordinateConverter.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(contents.contains("\"Int32,RawAddress,RawAddress,RawAddress\""))
+        assertTrue(contents.contains("\"Int32,RawAddress,Int32,RawAddress,RawAddress\""))
+        assertTrue(contents.contains("localPoints.size"))
+        assertTrue(contents.contains("__localPointsArrayData"))
+        assertTrue(contents.contains("roundingMode.abiValue"))
+        assertTrue(contents.contains("Array(__arrayLength) { __index ->"))
+        assertTrue(contents.contains("PointInt32.Metadata.fromAbi("))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_applies_winui_bindable_collection_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

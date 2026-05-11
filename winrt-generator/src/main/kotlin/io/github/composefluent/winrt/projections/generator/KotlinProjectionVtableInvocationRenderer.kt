@@ -219,8 +219,8 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
     } else {
         emptyList()
     }
-    val intrinsicUnitInvocation =
-        if (resultMarshaler == null && !callPlan.suppressHResultCheck) {
+    val intrinsicHResultInvocation =
+        if (!callPlan.suppressHResultCheck) {
             renderInlineDescriptorUnitIntrinsicInvocation(
                 invokeTargetExpression = invokeTargetExpression,
                 slotExpression = slotExpression,
@@ -229,8 +229,8 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
         } else {
             null
         }
-    if (intrinsicUnitInvocation != null) {
-        code.add("%L", intrinsicUnitInvocation)
+    if (intrinsicHResultInvocation != null) {
+        code.add("%L", intrinsicHResultInvocation)
     } else {
         code.add("val __hr = ")
         code.add(
