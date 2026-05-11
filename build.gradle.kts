@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.mavenPublish) apply false
 }
 
+val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")
+
 /**
  * Resolves the project version:
  * - Release: read git tag name from CI environment (`GITHUB_REF_TYPE=tag`, `GITHUB_REF_NAME=vX.Y.Z`)
@@ -19,7 +21,7 @@ fun resolveVersion(): String {
             providers.environmentVariable("GITHUB_REF_NAME").orNull
         else -> providers.gradleProperty("winrt.releaseTag").orNull
     }
-    return if (releaseTag != null && releaseTag.matches(Regex("v\\d+\\.\\d+\\.\\d+(-.*)?"))) {
+    return if (releaseTag != null && releaseTag.matches(releaseTagRegex)) {
         releaseTag.removePrefix("v")
     } else {
         "$baseVersion-SNAPSHOT"

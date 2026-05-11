@@ -11,7 +11,7 @@ mavenPublishing {
     }
 
     pom {
-        name.set(provider { project.name })
+        name.set(project.name)
         // Each module sets its own `description` in its build.gradle.kts.
         description.set(provider { project.description ?: project.name })
         url.set("https://github.com/compose-fluent/kotlin-winrt")
