@@ -3,6 +3,7 @@ import org.gradle.api.tasks.testing.Test
 plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinJvm) apply false
+    alias(libs.plugins.mavenPublish) apply false
 }
 
 allprojects {
