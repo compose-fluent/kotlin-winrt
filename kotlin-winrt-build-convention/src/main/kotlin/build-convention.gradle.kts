@@ -3,7 +3,7 @@ import org.gradle.api.artifacts.VersionCatalogsExtension
 
 // Generic build convention plugin: centralizes shared constants/config only.
 // This plugin does NOT apply Kotlin plugins; each module keeps explicit plugin ownership.
-val jvmToolchainVersion: Int by lazy {
+val jvmToolchainVersionProvider = providers.provider {
     val rawVersion = extensions.getByType(VersionCatalogsExtension::class.java)
         .named("libs")
         .findVersion("jvmTarget")
@@ -17,12 +17,12 @@ val jvmToolchainVersion: Int by lazy {
 
 pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
     extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
-        jvmToolchain(jvmToolchainVersion)
+        jvmToolchain(jvmToolchainVersionProvider.get())
     }
 }
 
 pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
     extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension> {
-        jvmToolchain(jvmToolchainVersion)
+        jvmToolchain(jvmToolchainVersionProvider.get())
     }
 }

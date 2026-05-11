@@ -25,7 +25,7 @@ fun resolveVersion() = providers
             }
             .orElse(providers.gradleProperty("winrt.releaseTag").orElse("")),
     ) { baseVersion, releaseTag ->
-        if (releaseTag.matches(releaseTagRegex)) {
+        if (releaseTag.isNotBlank() && releaseTag.matches(releaseTagRegex)) {
             releaseTag.removePrefix("v")
         } else {
             "$baseVersion-SNAPSHOT"
