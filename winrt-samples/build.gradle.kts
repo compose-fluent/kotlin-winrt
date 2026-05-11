@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlinJvm)
+    id("winrt.kotlin-jvm")
     id("io.github.composefluent.winrt")
     application
 }
@@ -7,7 +7,6 @@ plugins {
 val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.windowsAppSdkVersion")
 
 kotlin {
-    jvmToolchain(25)
     if (sampleWindowsAppSdkVersion.orNull != null) {
         sourceSets.named("main") {
             kotlin.srcDir("src/winuiSample/kotlin")

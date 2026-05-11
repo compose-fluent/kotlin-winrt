@@ -6,9 +6,37 @@ plugins {
     alias(libs.plugins.mavenPublish) apply false
 }
 
+/**
+ * Resolves the project version:
+ * - If HEAD is on an exact git tag matching `v<semver>`, the version is the tag without the "v" prefix.
+ * - Otherwise, the version is `<winrt.baseVersion>-SNAPSHOT`.
+ *
+ * This allows CI release builds (triggered by pushing a version tag) to publish non-SNAPSHOT
+ * artifacts, while all other builds publish SNAPSHOTs.
+ */
+fun resolveVersion(): String {
+    val baseVersion = providers.gradleProperty("winrt.baseVersion").orNull ?: "0.1.0"
+    return try {
+        val process = ProcessBuilder("git", "describe", "--tags", "--exact-match", "HEAD")
+            .directory(rootDir)
+            .redirectErrorStream(true)
+            .start()
+        val tag = process.inputStream.bufferedReader().readText().trim()
+        if (process.waitFor() == 0 && tag.matches(Regex("v\\d+.*"))) {
+            tag.removePrefix("v")
+        } else {
+            "$baseVersion-SNAPSHOT"
+        }
+    } catch (_: Exception) {
+        "$baseVersion-SNAPSHOT"
+    }
+}
+
+val winRtVersion = resolveVersion()
+
 allprojects {
     group = "io.github.composefluent.winrt"
-    version = "0.1.0-SNAPSHOT"
+    version = winRtVersion
 
     tasks.withType<Test>().configureEach {
         maxParallelForks = 1

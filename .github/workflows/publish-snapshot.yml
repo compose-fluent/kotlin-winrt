@@ -64,6 +64,12 @@ jobs:
           WINDOWS_KITS_10_DIR: C:\Program Files (x86)\Windows Kits\10
         run: ./gradlew test -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@1.8.260317003
 
+      - name: Verify Publish to Maven Local
+        # Verify that the publication artifacts can be generated locally without signing.
+        # This catches POM/metadata configuration issues before attempting the real publish.
+        shell: bash
+        run: ./gradlew publishAllPublicationsToMavenLocalRepository
+
       - name: Publish Snapshot
         shell: bash
         env:
