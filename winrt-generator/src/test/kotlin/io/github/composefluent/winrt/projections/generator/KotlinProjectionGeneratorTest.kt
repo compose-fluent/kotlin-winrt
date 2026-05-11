@@ -2871,7 +2871,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("TYPE_NAME"))
         assertTrue(widgetContents.contains("isRuntimeClass = true"))
         assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
-        assertTrue(widgetContents.contains("internal fun wrap(instance: IInspectableReference): Widget = Widget(instance, kotlin.Unit)"))
+        assertTrue(widgetContents.contains("fun wrap(instance: IInspectableReference): Widget = Widget(instance, kotlin.Unit)"))
         assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
         assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
@@ -3001,7 +3001,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("TYPE_HANDLE: WinRtTypeHandle"))
         assertTrue(contents.contains("WinRtTypeHandle("))
         assertTrue(contents.contains("private class NativeProjection("))
-        assertTrue(contents.contains("internal fun wrap(instance: IUnknownReference): ICalculator = NativeProjection(instance)"))
+        assertTrue(contents.contains("fun wrap(instance: IUnknownReference): ICalculator = NativeProjection(instance)"))
         assertFalse(contents.contains("return object : ICalculator, IWinRTObject"))
     }
 
@@ -3029,7 +3029,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("private class NativeProjection("))
         assertTrue(contents, contents.contains("public companion object Metadata"))
         assertTrue(contents, contents.contains("TYPE_HANDLE: WinRtTypeHandle"))
-        assertTrue(contents, contents.contains("internal fun wrap(instance: IUnknownReference): IWidgetFactory = NativeProjection(instance)"))
+        assertTrue(contents, contents.contains("fun wrap(instance: IUnknownReference): IWidgetFactory = NativeProjection(instance)"))
         assertFalse(contents, contents.contains("Unresolved"))
     }
 
@@ -3418,7 +3418,7 @@ class KotlinProjectionGeneratorTest {
         val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
 
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("internal fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
         assertTrue(interfaceContents, interfaceContents.contains("override fun reset()"))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
         assertTrue(interfaceContents, interfaceContents.contains("\"\","))
@@ -3765,6 +3765,108 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("\"Sample.Foundation.IWidgetStatics\""))
         assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics()"))
         assertTrue(widgetContents.contains("STATIC_CHANGED_ADD_SLOT"))
+    }
+
+    @Test
+    fun generator_emits_static_runtime_class_forwarding_members_from_static_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.ApplicationModel.DataTransfer",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "IClipboardStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetContent",
+                                    returnTypeName = "Windows.ApplicationModel.DataTransfer.DataPackageView",
+                                    methodRowId = 1,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetContent",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            name = "content",
+                                            typeName = "Windows.ApplicationModel.DataTransfer.DataPackage",
+                                        ),
+                                    ),
+                                    methodRowId = 2,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Clear",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 3,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "IStandardDataFormatsStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Text",
+                                    typeName = "String",
+                                    getterMethodName = "get_Text",
+                                    getterMethodRowId = 4,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "Clipboard",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isStaticType = true,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Windows.ApplicationModel.DataTransfer.IClipboardStatics"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "StandardDataFormats",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isStaticType = true,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Windows.ApplicationModel.DataTransfer.IStandardDataFormatsStatics"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "DataPackageView",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "DataPackage",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        val clipboard = filesByName.getValue("Clipboard.kt").contents
+        assertTrue(clipboard.contains("static WinRT class shell"))
+        assertTrue(clipboard.contains("companion object Metadata"))
+        assertTrue(clipboard.contains("fun getContent(): DataPackageView"))
+        assertTrue(clipboard.contains("fun setContent(content: DataPackage)"))
+        assertTrue(clipboard.contains("fun clear()"))
+        assertTrue(clipboard.contains("StaticInterfaces.iClipboardStatics()"))
+        assertTrue(clipboard.contains("DataPackageView.Metadata.wrap"))
+
+        val standardDataFormats = filesByName.getValue("StandardDataFormats.kt").contents
+        assertTrue(standardDataFormats.contains("val text: String"))
+        assertTrue(standardDataFormats.contains("StaticInterfaces.iStandardDataFormatsStatics()"))
+        assertTrue(standardDataFormats.contains("STATIC_TEXT_GETTER_SLOT"))
     }
 
     @Test

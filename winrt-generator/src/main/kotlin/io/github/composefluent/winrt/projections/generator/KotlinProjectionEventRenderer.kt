@@ -1544,7 +1544,6 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         )
         builder.addFunction(
             FunSpec.builder("wrap")
-                .addModifiers(KModifier.INTERNAL)
                 .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .returns(projectedClassName)
                 .addCode("return %T(instance, kotlin.Unit)\n", projectedClassName)
@@ -1552,7 +1551,6 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         )
         builder.addFunction(
             FunSpec.builder("wrap")
-                .addModifiers(KModifier.INTERNAL)
                 .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
                 .returns(projectedClassName)
                 .addCode("return wrap(instance.asInspectable())\n")
@@ -1563,7 +1561,6 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
         builder.addFunction(
             FunSpec.builder("wrap")
-                .addModifiers(KModifier.INTERNAL)
                 .apply {
                     repeat(plan.type.genericParameterCount) { index ->
                         addTypeVariable(TypeVariableName("T$index"))

@@ -2274,7 +2274,14 @@ class KotlinProjectionRenderer(
                         .build(),
                 )
                 addKdoc("static WinRT class shell\n")
-                appendCompanionShells(this, plan)
+                val staticMethods = plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedStaticMethod)
+                val staticProperties = plan.type.properties.filter { it.isStatic }
+                val staticEvents = plan.type.events.filter { it.isStatic }
+                if (staticMethods.isNotEmpty() || staticProperties.isNotEmpty() || staticEvents.isNotEmpty() ||
+                    KotlinProjectionCompanionKind.Metadata in plan.companionKinds) {
+                    addType(buildMetadataCompanionShell(plan, staticMethods, staticProperties, staticEvents))
+                }
+                appendCompanionShells(this, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
             }
             .build()
 
