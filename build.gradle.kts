@@ -8,26 +8,20 @@ plugins {
 
 /**
  * Resolves the project version:
- * - If HEAD is on an exact git tag matching `v<semver>`, the version is the tag without the "v" prefix.
- * - Otherwise, the version is `<winrt.baseVersion>-SNAPSHOT`.
- *
- * This allows CI release builds (triggered by pushing a version tag) to publish non-SNAPSHOT
- * artifacts, while all other builds publish SNAPSHOTs.
+ * - Release: read git tag name from CI environment (`GITHUB_REF_TYPE=tag`, `GITHUB_REF_NAME=vX.Y.Z`)
+ *   or explicit `-Pwinrt.releaseTag=vX.Y.Z`, then strip leading `v`.
+ * - Otherwise: `<winrt.baseVersion>-SNAPSHOT`.
  */
 fun resolveVersion(): String {
     val baseVersion = providers.gradleProperty("winrt.baseVersion").orNull ?: "0.1.0"
-    return try {
-        val process = ProcessBuilder("git", "describe", "--tags", "--exact-match", "HEAD")
-            .directory(rootDir)
-            .redirectErrorStream(true)
-            .start()
-        val tag = process.inputStream.bufferedReader().readText().trim()
-        if (process.waitFor() == 0 && tag.matches(Regex("v\\d+\\.\\d+\\.\\d+(-.*)?+"))) {
-            tag.removePrefix("v")
-        } else {
-            "$baseVersion-SNAPSHOT"
-        }
-    } catch (_: Exception) {
+    val releaseTag = when {
+        providers.environmentVariable("GITHUB_REF_TYPE").orNull == "tag" ->
+            providers.environmentVariable("GITHUB_REF_NAME").orNull
+        else -> providers.gradleProperty("winrt.releaseTag").orNull
+    }
+    return if (releaseTag != null && releaseTag.matches(Regex("v\\d+\\.\\d+\\.\\d+(-.*)?"))) {
+        releaseTag.removePrefix("v")
+    } else {
         "$baseVersion-SNAPSHOT"
     }
 }

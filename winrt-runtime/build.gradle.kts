@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("winrt.kotlin-multiplatform")
+    id("build-convention")
     id("winrt.publish")
 }
 

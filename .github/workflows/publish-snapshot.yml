@@ -68,7 +68,7 @@ jobs:
         # Verify that the publication artifacts can be generated locally without signing.
         # This catches POM/metadata configuration issues before attempting the real publish.
         shell: bash
-        run: ./gradlew publishAllPublicationsToMavenLocalRepository
+        run: ./gradlew publishToMavenLocal
 
       - name: Publish Snapshot
         shell: bash

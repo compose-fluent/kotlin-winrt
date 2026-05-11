@@ -1,12 +1,9 @@
-import com.vanniktech.maven.publish.SonatypeHost
-
 plugins {
     id("com.vanniktech.maven.publish")
 }
 
 mavenPublishing {
-    // Publish to OSSRH S01 which supports both release and -SNAPSHOT versions.
-    publishToMavenCentral(SonatypeHost.S01)
+    publishToMavenCentral()
     // Sign only when the in-memory key property is present so that local mavenLocal
     // publishing (without credentials) works out of the box.
     if (providers.gradleProperty("signingInMemoryKey").isPresent) {
