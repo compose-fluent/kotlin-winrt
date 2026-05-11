@@ -1487,7 +1487,7 @@ class KotlinProjectionRenderer(
             .addModifiers(runtimeClassMemberModifiers(plan, getterBinding))
             .getter(
                 FunSpec.getterBuilder()
-                    .addCode("return %L.%L\n", target.projectionPropertyName, propertyName)
+                    .addCode("return %L.%N\n", target.projectionPropertyName, propertyName)
                     .build(),
             )
         if (!property.isReadOnly) {
@@ -1502,7 +1502,7 @@ class KotlinProjectionRenderer(
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", resolveTypeName(propertyTypeName))
-                    .addCode("%L.%L = value\n", setterTarget.projectionPropertyName, propertyName)
+                    .addCode("%L.%N = value\n", setterTarget.projectionPropertyName, propertyName)
                     .build(),
             )
         }

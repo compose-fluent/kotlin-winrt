@@ -548,12 +548,12 @@ internal class KotlinExpectActualProjectionRenderer(
         val builder = PropertySpec.builder(propertyName, baseRenderer.resolveTypeName(propertyTypeName))
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
-            .getter(FunSpec.getterBuilder().addCode("return %L.%L\n", cacheName, propertyName).build())
+            .getter(FunSpec.getterBuilder().addCode("return %L.%N\n", cacheName, propertyName).build())
         if (!property.isReadOnly) {
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", baseRenderer.resolveTypeName(propertyTypeName))
-                    .addCode("%L.%L = value\n", cacheName, propertyName)
+                    .addCode("%L.%N = value\n", cacheName, propertyName)
                     .build(),
             )
         }

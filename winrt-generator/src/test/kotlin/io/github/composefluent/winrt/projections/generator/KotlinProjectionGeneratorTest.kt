@@ -882,6 +882,90 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_escapes_keyword_property_access_in_single_source_runtime_class_forwarders() {
+        val model = keywordPackagePropertyModel(propertyTypeName = "Int")
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .first { it.relativePath.endsWith("AppInfo.kt") }
+            .contents
+
+        assertTrue(contents, contents.contains("override val `package`: Int"))
+        assertTrue(contents, contents.contains("_iAppInfoProjection.`package`"))
+        assertFalse(contents, contents.contains("_iAppInfoProjection.package"))
+    }
+
+    @Test
+    fun expect_actual_runtime_class_delegates_keyword_projected_object_properties() {
+        val model = keywordPackagePropertyModel(
+            propertyTypeName = "Windows.ApplicationModel.Package",
+            includePackageRuntimeClass = true,
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+        val commonInterface = filesByPath.getValue("commonMain/kotlin/windows/applicationmodel/IAppInfo.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/windows/applicationmodel/AppInfo.kt").contents
+
+        assertTrue(commonInterface, commonInterface.contains("public val `package`: Package"))
+        assertTrue(jvm, jvm.contains("IAppInfo by IAppInfoJvmProjection.wrap(Metadata.acquireInterface(_inner,"))
+        assertFalse(jvm, jvm.contains("_iAppInfo.package"))
+        assertFalse(jvm, jvm.contains("override val `package`: Package"))
+    }
+
+    private fun keywordPackagePropertyModel(
+        propertyTypeName: String,
+        includePackageRuntimeClass: Boolean = false,
+    ): WinRtMetadataModel {
+        val property = WinRtPropertyDefinition(
+            name = "Package",
+            typeName = propertyTypeName,
+            getterMethodName = "get_Package",
+            getterMethodRowId = 1,
+        )
+        return WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.ApplicationModel",
+                    types = buildList {
+                        add(
+                            WinRtTypeDefinition(
+                                namespace = "Windows.ApplicationModel",
+                                name = "IAppInfo",
+                                kind = WinRtTypeKind.Interface,
+                                iid = Guid("11111111-2222-3333-4444-555555555555"),
+                                properties = listOf(property),
+                            ),
+                        )
+                        add(
+                            WinRtTypeDefinition(
+                                namespace = "Windows.ApplicationModel",
+                                name = "AppInfo",
+                                kind = WinRtTypeKind.RuntimeClass,
+                                defaultInterfaceName = "Windows.ApplicationModel.IAppInfo",
+                                implementedInterfaces = listOf(
+                                    WinRtInterfaceImplementationDefinition("Windows.ApplicationModel.IAppInfo", isDefault = true),
+                                ),
+                                properties = listOf(property.copy(getterMethodRowId = null)),
+                            ),
+                        )
+                        if (includePackageRuntimeClass) {
+                            add(
+                                WinRtTypeDefinition(
+                                    namespace = "Windows.ApplicationModel",
+                                    name = "Package",
+                                    kind = WinRtTypeKind.RuntimeClass,
+                                ),
+                            )
+                        }
+                    },
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun expect_actual_runtime_class_slice_forwards_event_surface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
