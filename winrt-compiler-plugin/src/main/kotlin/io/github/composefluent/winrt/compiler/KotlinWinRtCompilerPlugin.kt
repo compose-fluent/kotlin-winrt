@@ -2448,28 +2448,20 @@ class KotlinWinRtIrGenerationExtension(
         }
 
         private class JvmFfmSymbols private constructor(
-            private val memoryLayoutType: org.jetbrains.kotlin.ir.types.IrType,
             private val memorySegmentType: org.jetbrains.kotlin.ir.types.IrType,
-            val linkerOptionType: org.jetbrains.kotlin.ir.types.IrType,
-            val linkerNativeLinker: IrSimpleFunctionSymbol,
-            val linkerDowncallHandle: IrSimpleFunctionSymbol,
-            private val functionDescriptorOf: IrSimpleFunctionSymbol,
             private val memorySegmentOfAddress: IrSimpleFunctionSymbol,
             private val memorySegmentReinterpret: IrSimpleFunctionSymbol,
             private val memorySegmentGetAddress: IrSimpleFunctionSymbol,
             private val memorySegmentGetAtIndexAddress: IrSimpleFunctionSymbol,
             val methodHandleInvoke: IrSimpleFunctionSymbol,
             private val valueLayoutAddress: JvmStaticLayoutValue,
-            private val valueLayoutJavaInt: JvmStaticLayoutValue,
-            private val valueLayoutJavaByte: JvmStaticLayoutValue,
-            private val valueLayoutJavaLong: JvmStaticLayoutValue,
-            private val valueLayoutJavaFloat: JvmStaticLayoutValue,
-            private val valueLayoutJavaDouble: JvmStaticLayoutValue,
             private val intToLong: IrSimpleFunctionSymbol,
             private val uintToInt: IrSimpleFunctionSymbol?,
             private val ulongToLong: IrSimpleFunctionSymbol?,
             private val rawComPtrValueGetter: IrSimpleFunctionSymbol,
             private val rawAddressValueGetter: IrSimpleFunctionSymbol,
+            private val winRtJvmFfmDowncallHandles: IrClassSymbol,
+            private val winRtJvmFfmDowncallHandlesHResult: IrSimpleFunctionSymbol,
         ) {
             fun segmentFromRawComPtr(
                 builder: DeclarationIrBuilder,
@@ -2497,27 +2489,33 @@ class KotlinWinRtIrGenerationExtension(
                     arguments[1] = builder.irLong(Long.MAX_VALUE)
                 }
 
-            fun functionDescriptor(
-                builder: DeclarationIrBuilder,
-                argumentKinds: List<UnitCallAbiArgumentKind>,
-            ): IrExpression =
-                builder.irCall(functionDescriptorOf).apply {
-                    arguments[0] = valueLayoutJavaInt.get(builder)
-                    arguments[1] = builder.irVararg(
-                        memoryLayoutType,
-                        listOf(valueLayoutAddress.get(builder)) +
-                            argumentKinds.map { kind -> kind.valueLayoutValue().get(builder) },
-                    )
+            private fun List<UnitCallAbiArgumentKind>.jvmFfmAbiShape(): String =
+                joinToString(",") { kind -> kind.jvmFfmAbiToken() }
+
+            private fun UnitCallAbiArgumentKind.jvmFfmAbiToken(): String =
+                when (this) {
+                    UnitCallAbiArgumentKind.RawAddress -> "RawAddress"
+                    UnitCallAbiArgumentKind.RawComPtr -> "RawComPtr"
+                    UnitCallAbiArgumentKind.Byte -> "Byte"
+                    UnitCallAbiArgumentKind.Int32 -> "Int32"
+                    UnitCallAbiArgumentKind.UInt32 -> "UInt32"
+                    UnitCallAbiArgumentKind.Int64 -> "Int64"
+                    UnitCallAbiArgumentKind.UInt64 -> "UInt64"
+                    UnitCallAbiArgumentKind.Float -> "Float"
+                    UnitCallAbiArgumentKind.Double -> "Double"
+                    UnitCallAbiArgumentKind.Boolean -> "Boolean"
+                    UnitCallAbiArgumentKind.String -> "String"
+                    UnitCallAbiArgumentKind.Struct -> "Struct"
+                    UnitCallAbiArgumentKind.Object -> "Object"
                 }
 
             fun downcallHandle(
                 builder: DeclarationIrBuilder,
                 argumentKinds: List<UnitCallAbiArgumentKind>,
             ): IrExpression =
-                builder.irCall(linkerDowncallHandle).apply {
-                    arguments[0] = builder.irCall(linkerNativeLinker)
-                    arguments[1] = functionDescriptor(builder, argumentKinds)
-                    arguments[2] = builder.irVararg(linkerOptionType, emptyList())
+                builder.irCall(winRtJvmFfmDowncallHandlesHResult).apply {
+                    arguments[0] = builder.irGetObject(winRtJvmFfmDowncallHandles)
+                    arguments[1] = builder.irString(argumentKinds.jvmFfmAbiShape())
                 }
 
             fun canLower(argumentKinds: List<UnitCallAbiArgumentKind>): Boolean =
@@ -2580,23 +2578,6 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
                 }
 
-            private fun UnitCallAbiArgumentKind.valueLayoutValue(): JvmStaticLayoutValue =
-                when (this) {
-                    UnitCallAbiArgumentKind.Byte,
-                    UnitCallAbiArgumentKind.Boolean -> valueLayoutJavaByte
-                    UnitCallAbiArgumentKind.Int32,
-                    UnitCallAbiArgumentKind.UInt32 -> valueLayoutJavaInt
-                    UnitCallAbiArgumentKind.Int64,
-                    UnitCallAbiArgumentKind.UInt64 -> valueLayoutJavaLong
-                    UnitCallAbiArgumentKind.Float -> valueLayoutJavaFloat
-                    UnitCallAbiArgumentKind.Double -> valueLayoutJavaDouble
-                    UnitCallAbiArgumentKind.RawAddress,
-                    UnitCallAbiArgumentKind.RawComPtr,
-                    UnitCallAbiArgumentKind.Struct,
-                    UnitCallAbiArgumentKind.String,
-                    UnitCallAbiArgumentKind.Object -> valueLayoutAddress
-                }
-
             private class JvmStaticLayoutValue(
                 private val field: IrField?,
                 private val getter: IrSimpleFunctionSymbol?,
@@ -2613,18 +2594,16 @@ class KotlinWinRtIrGenerationExtension(
                     rawAddressValueGetter: IrSimpleFunctionSymbol,
                 ): JvmFfmSymbols? {
                     fun missing(): Nothing? = null
-                    val memoryLayout = pluginContext.referenceClass(JAVA_MEMORY_LAYOUT_CLASS_ID) ?: return missing()
                     val memorySegment = pluginContext.referenceClass(JAVA_MEMORY_SEGMENT_CLASS_ID) ?: return missing()
-                    val linker = pluginContext.referenceClass(JAVA_LINKER_CLASS_ID) ?: return missing()
-                    val linkerOption = pluginContext.referenceClass(JAVA_LINKER_OPTION_CLASS_ID) ?: return missing()
-                    val functionDescriptor = pluginContext.referenceClass(JAVA_FUNCTION_DESCRIPTOR_CLASS_ID) ?: return missing()
                     val methodHandle = pluginContext.referenceClass(JAVA_METHOD_HANDLE_CLASS_ID) ?: return missing()
                     val valueLayout = pluginContext.referenceClass(JAVA_VALUE_LAYOUT_CLASS_ID) ?: return missing()
                     val addressLayout = pluginContext.referenceClass(JAVA_ADDRESS_LAYOUT_CLASS_ID) ?: return missing()
+                    val winRtJvmFfmDowncallHandles =
+                        pluginContext.referenceClass(WINRT_JVM_FFM_DOWNCALL_HANDLES_CLASS_ID) ?: return missing()
+                    val winRtJvmFfmDowncallHandlesHResult =
+                        winRtJvmFfmDowncallHandles.functionNamed("hResult") ?: return missing()
                     val uint = pluginContext.referenceClass(KOTLIN_UINT_CLASS_ID)
                     val ulong = pluginContext.referenceClass(KOTLIN_ULONG_CLASS_ID)
-                    val linkerDowncallHandle = linker.functionNamedWithRegularParameterCount("downcallHandle", 2)
-                        ?: return missing()
                     fun staticLayoutValue(classId: ClassId, owner: IrClassSymbol, name: String): JvmStaticLayoutValue? {
                         val property = owner.owner.declarations
                             .filterIsInstance<IrProperty>()
@@ -2646,12 +2625,7 @@ class KotlinWinRtIrGenerationExtension(
                         staticLayoutValue(JAVA_VALUE_LAYOUT_CLASS_ID, valueLayout, name)
                             ?: staticLayoutValue(JAVA_ADDRESS_LAYOUT_CLASS_ID, addressLayout, name)
                     return JvmFfmSymbols(
-                        memoryLayoutType = memoryLayout.owner.defaultType,
                         memorySegmentType = memorySegment.owner.defaultType,
-                        linkerOptionType = linkerOption.owner.defaultType,
-                        linkerNativeLinker = linker.functionNamed("nativeLinker") ?: return missing(),
-                        linkerDowncallHandle = linkerDowncallHandle,
-                        functionDescriptorOf = functionDescriptor.functionNamed("of") ?: return missing(),
                         memorySegmentOfAddress = memorySegment.functionNamedWithValueParameterTypes("ofAddress", KOTLIN_LONG_FQ_NAME)
                             ?: return missing(),
                         memorySegmentReinterpret = memorySegment.functionNamedWithValueParameterTypes("reinterpret", KOTLIN_LONG_FQ_NAME)
@@ -2669,11 +2643,6 @@ class KotlinWinRtIrGenerationExtension(
                         methodHandleInvoke = methodHandle.functionNamed("invoke") ?: return missing(),
                         valueLayoutAddress = valueLayout("ADDRESS")
                             ?: return missing(),
-                        valueLayoutJavaInt = valueLayout("JAVA_INT") ?: return missing(),
-                        valueLayoutJavaByte = valueLayout("JAVA_BYTE") ?: return missing(),
-                        valueLayoutJavaLong = valueLayout("JAVA_LONG") ?: return missing(),
-                        valueLayoutJavaFloat = valueLayout("JAVA_FLOAT") ?: return missing(),
-                        valueLayoutJavaDouble = valueLayout("JAVA_DOUBLE") ?: return missing(),
                         intToLong = pluginContext.irBuiltIns.intClass.owner.declarations
                             .filterIsInstance<IrSimpleFunction>()
                             .singleOrNull { function -> function.name.asString() == "toLong" }
@@ -2683,6 +2652,8 @@ class KotlinWinRtIrGenerationExtension(
                         ulongToLong = ulong?.functionNamedWithRegularParameterCount("toLong", 0),
                         rawComPtrValueGetter = rawComPtrValueGetter,
                         rawAddressValueGetter = rawAddressValueGetter,
+                        winRtJvmFfmDowncallHandles = winRtJvmFfmDowncallHandles,
+                        winRtJvmFfmDowncallHandlesHResult = winRtJvmFfmDowncallHandlesHResult,
                     )
                 }
             }
@@ -3074,23 +3045,14 @@ private val WINRT_MARSHALER_CLASS_ID =
 private val WINRT_HRESULT_CLASS_ID =
     ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("HResult"))
 
+private val WINRT_JVM_FFM_DOWNCALL_HANDLES_CLASS_ID =
+    ClassId(WINRT_RUNTIME_PACKAGE_FQ_NAME, Name.identifier("WinRtJvmFfmDowncallHandles"))
+
 private val JAVA_FOREIGN_PACKAGE_FQ_NAME =
     FqName("java.lang.foreign")
 
-private val JAVA_MEMORY_LAYOUT_CLASS_ID =
-    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("MemoryLayout"))
-
 private val JAVA_MEMORY_SEGMENT_CLASS_ID =
     ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("MemorySegment"))
-
-private val JAVA_LINKER_CLASS_ID =
-    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("Linker"))
-
-private val JAVA_LINKER_OPTION_CLASS_ID =
-    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, FqName("Linker.Option"), false)
-
-private val JAVA_FUNCTION_DESCRIPTOR_CLASS_ID =
-    ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("FunctionDescriptor"))
 
 private val JAVA_VALUE_LAYOUT_CLASS_ID =
     ClassId(JAVA_FOREIGN_PACKAGE_FQ_NAME, Name.identifier("ValueLayout"))
