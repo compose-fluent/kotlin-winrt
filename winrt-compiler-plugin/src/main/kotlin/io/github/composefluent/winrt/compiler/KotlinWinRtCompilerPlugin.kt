@@ -3472,15 +3472,9 @@ private fun ClassWriter.addEventProjectionRegistryChunk(
         )
         method.addEventSourceDescriptor(entry, withFactory = false)
         method.visitVarInsn(Opcodes.ASTORE, 0)
-        method.visitFieldInsn(
-            Opcodes.GETSTATIC,
-            "io/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime",
-            "INSTANCE",
-            "Lio/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime;",
-        )
         method.visitVarInsn(Opcodes.ALOAD, 0)
         method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
+            Opcodes.INVOKESTATIC,
             "io/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime",
             "createEventSourceFactory",
             "(Lio/github/composefluent/winrt/runtime/WinRtEventSourceDescriptor;)Lkotlin/jvm/functions/Function2;",

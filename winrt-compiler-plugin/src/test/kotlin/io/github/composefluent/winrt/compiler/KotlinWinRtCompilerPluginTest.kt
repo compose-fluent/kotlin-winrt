@@ -245,6 +245,43 @@ class KotlinWinRtCompilerPluginTest {
             )
             assertEquals("register", klass.getDeclaredMethod("register").name)
         }
+        val registryClass = ClassReader(
+            Files.readAllBytes(
+                outputDirectory.resolve(
+                    "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class",
+                ),
+            ),
+        )
+        val eventSourceRuntimeCalls = mutableListOf<Int>()
+        registryClass.accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(
+                    access: Int,
+                    name: String?,
+                    descriptor: String?,
+                    signature: String?,
+                    exceptions: Array<out String>?,
+                ): MethodVisitor =
+                    object : MethodVisitor(Opcodes.ASM9) {
+                        override fun visitMethodInsn(
+                            opcode: Int,
+                            owner: String?,
+                            name: String?,
+                            descriptor: String?,
+                            isInterface: Boolean,
+                        ) {
+                            if (
+                                owner == "io/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime" &&
+                                name == "createEventSourceFactory"
+                            ) {
+                                eventSourceRuntimeCalls.add(opcode)
+                            }
+                        }
+                    }
+            },
+            0,
+        )
+        assertEquals(listOf(Opcodes.INVOKESTATIC), eventSourceRuntimeCalls)
     }
 
     @Test
