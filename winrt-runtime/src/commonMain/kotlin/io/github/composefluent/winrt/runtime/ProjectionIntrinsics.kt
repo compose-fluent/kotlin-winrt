@@ -50,6 +50,14 @@ object WinRtProjectionIntrinsic {
     ): T =
         intrinsicNotLowered("callProjectedInterface", reference, slot, abiShape, wrap, *arguments)
 
+    fun callObject(
+        reference: ComObjectReference,
+        slot: Int,
+        abiShape: String,
+        vararg arguments: Any?,
+    ): Any? =
+        intrinsicNotLowered("callObject", reference, slot, abiShape, *arguments)
+
     fun getString(reference: ComObjectReference, slot: Int): String =
         intrinsicNotLowered("getString", reference, slot)
 

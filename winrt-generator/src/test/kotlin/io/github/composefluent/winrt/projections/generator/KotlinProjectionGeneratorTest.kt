@@ -8264,6 +8264,57 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_raw_abi_object_returns_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IValueConverter",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555579"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Convert",
+                                    returnTypeName = "System.Object",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "System.Object"),
+                                        WinRtParameterDefinition("targetType", "Windows.UI.Xaml.Interop.TypeName"),
+                                        WinRtParameterDefinition("parameter", "System.Object"),
+                                        WinRtParameterDefinition("language", "String"),
+                                    ),
+                                    methodRowId = 24,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IValueConverter.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("winRtObjectMarshaler(value).use { __valueMarshaler ->"))
+        assertTrue(contents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(targetType, __targetTypeAbi)"))
+        assertTrue(contents.contains("winRtObjectMarshaler(parameter).use { __parameterMarshaler ->"))
+        assertTrue(contents.contains("HString.createReference(language).use { __languageAbi ->"))
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callObject("))
+        assertTrue(contents.contains("\"RawAddress,RawAddress,RawAddress,RawAddress\""))
+        assertTrue(contents.contains("__valueMarshaler.abi"))
+        assertTrue(contents.contains("__targetTypeAbi"))
+        assertTrue(contents.contains("__parameterMarshaler.abi"))
+        assertTrue(contents.contains("__languageAbi.handle"))
+        assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_applies_winui_bindable_collection_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
