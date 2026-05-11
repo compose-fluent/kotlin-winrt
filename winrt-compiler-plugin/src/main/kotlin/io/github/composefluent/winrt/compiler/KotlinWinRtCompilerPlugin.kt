@@ -2210,7 +2210,11 @@ class KotlinWinRtIrGenerationExtension(
             (this as? IrConst)?.value as? String
 
         private fun IrCall.varargValues(expectedCount: Int, varargIndex: Int = 4): List<IrExpression>? {
-            val vararg = arguments.getOrNull(varargIndex) as? IrVararg ?: return null
+            val varargArgument = arguments.getOrNull(varargIndex)
+            if (expectedCount == 0 && varargArgument == null) {
+                return emptyList()
+            }
+            val vararg = varargArgument as? IrVararg ?: return null
             val values = vararg.elements.map { element -> element as? IrExpression ?: return null }
             return values.takeIf { it.size == expectedCount }
         }
@@ -2250,7 +2254,7 @@ class KotlinWinRtIrGenerationExtension(
         private object UnitCallAbiShape {
             fun parse(value: String): List<UnitCallAbiArgumentKind>? {
                 if (value.isBlank()) {
-                    return null
+                    return emptyList()
                 }
                 return value.split(',').map { token ->
                     when (token) {

@@ -3420,8 +3420,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("internal fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
         assertTrue(interfaceContents, interfaceContents.contains("override fun reset()"))
-        assertTrue(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"\","))
         assertTrue(interfaceContents, interfaceContents.contains("IWidget.Metadata.RESET_SLOT"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
         assertFalse(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.invokeUnit"))
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
         assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
@@ -6380,24 +6382,26 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val widgetContents = KotlinProjectionGenerator()
+        val filesByName = KotlinProjectionGenerator()
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("Widget.kt")
-            .contents
+        val widgetContents = filesByName.getValue("Widget.kt").contents
+        val interfaceContents = filesByName.getValue("IWidget.kt").contents
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("fun refresh()"))
         assertTrue(widgetContents.contains("Metadata.REFRESH_SLOT"))
+        assertTrue(widgetContents.contains("_iWidgetProjection.refresh()"))
         assertTrue(widgetContents.contains("fun version(): Int"))
         assertTrue(widgetContents.contains("Metadata.VERSION_SLOT"))
+        assertTrue(widgetContents.contains("_iWidgetProjection.version()"))
         assertTrue(widgetContents.contains("fun isReady(): Boolean"))
         assertTrue(widgetContents.contains("Metadata.ISREADY_SLOT"))
+        assertTrue(widgetContents.contains("_iWidgetProjection.isReady()"))
         assertTrue(widgetContents.contains("fun label(): String"))
-        assertTrue(widgetContents.contains("ComVtableInvoker.invoke"))
         assertFalse(widgetContents.contains("invokeAbi("))
-        assertTrue(widgetContents.contains("PlatformAbi.confinedScope().use { __scope ->"))
-        assertTrue(widgetContents.contains("HString.fromHandle("))
+        assertTrue(widgetContents.contains("_iWidgetProjection.label()"))
+        assertTrue(interfaceContents, interfaceContents.contains("HString.fromHandle("))
         assertTrue(widgetContents.contains("Metadata.LABEL_SLOT"))
         assertTrue(widgetContents.contains("Metadata.NAME_GETTER_SLOT"))
         assertTrue(widgetContents.contains("Metadata.COUNT_GETTER_SLOT"))

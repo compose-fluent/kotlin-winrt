@@ -271,7 +271,7 @@ private fun KotlinProjectionRenderer.renderInlineDescriptorUnitIntrinsicInvocati
     slotExpression: CodeBlock,
     abiArguments: List<KotlinProjectionComArgument>,
 ): CodeBlock? {
-    if (!useProjectionIntrinsics || abiArguments.isEmpty()) {
+    if (!useProjectionIntrinsics) {
         return null
     }
     val argumentShapes = abiArguments.map { argument ->
