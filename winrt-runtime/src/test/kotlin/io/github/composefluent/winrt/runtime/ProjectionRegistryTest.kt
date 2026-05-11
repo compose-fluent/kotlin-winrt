@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
+import io.github.composefluent.winrt.projections.support.GeneratedRegistrarInterfaceProjection
+import io.github.composefluent.winrt.projections.support.GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE
 import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -111,6 +113,24 @@ class ProjectionRegistryTest {
             GeneratedRegistrarRuntimeClass::class,
             TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarDerived"),
         )
+    }
+
+    @Test
+    fun generated_interface_projection_wrap_retries_compiler_generated_registry_on_miss() {
+        ComWrappersSupport.clearRegistriesForTests()
+        clearGeneratedInterfaceProjectionFactoriesForTest()
+        val nativeReference = IUnknownReference(
+            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
+            GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE.interfaceId,
+            preventReleaseOnDispose = true,
+        )
+
+        val projected = ComWrappersSupport.wrapGeneratedInterfaceProjection(
+            GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE,
+            nativeReference,
+        ) as GeneratedRegistrarInterfaceProjection
+
+        assertSame(nativeReference, projected.nativeObject)
     }
 
     @Test
@@ -405,5 +425,14 @@ class ProjectionRegistryTest {
             enumAbiValue = { value -> (value as TestProjectedEnum).abiValue },
             isWindowsRuntimeType = true,
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun clearGeneratedInterfaceProjectionFactoriesForTest() {
+        listOf("interfaceProjectionFactoriesByHandle", "interfaceProjectionFactoriesByTypeName").forEach { fieldName ->
+            val field = ComWrappersSupport::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            (field.get(ComWrappersSupport) as ConcurrentCacheMap<Any, Any>).clear()
+        }
     }
 }
