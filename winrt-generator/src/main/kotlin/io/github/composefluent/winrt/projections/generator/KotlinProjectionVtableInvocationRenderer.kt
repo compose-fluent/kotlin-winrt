@@ -154,6 +154,11 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
                 slotExpression = slotExpression,
                 returnBinding = resultMarshaler.typeBinding,
                 abiArguments = parameterAbiArguments,
+            ) ?: renderInlineDescriptorMappedCollectionIntrinsicInvocation(
+                invokeTargetExpression = invokeTargetExpression,
+                slotExpression = slotExpression,
+                returnBinding = resultMarshaler.typeBinding,
+                abiArguments = parameterAbiArguments,
             ) ?: renderInlineDescriptorInspectableReferenceIntrinsicInvocation(
                 invokeTargetExpression = invokeTargetExpression,
                 slotExpression = slotExpression,
@@ -352,6 +357,43 @@ private fun KotlinProjectionRenderer.renderInlineDescriptorObjectIntrinsicInvoca
         .add("%L,\n", invokeTargetExpression)
         .add("%L,\n", slotExpression)
         .add("%S,\n", argumentShapes.joinToString(","))
+        .apply {
+            abiArguments.forEach { argument ->
+                add("%L,\n", argument.expression)
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderInlineDescriptorMappedCollectionIntrinsicInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    abiArguments: List<KotlinProjectionComArgument>,
+): CodeBlock? {
+    if (!useProjectionIntrinsics || abiArguments.isEmpty() || !returnBinding.isMappedCollectionBinding()) {
+        return null
+    }
+    val collectionInitializer =
+        readOnlyCollectionBindingForReturn(returnBinding)?.let(::renderReadOnlyCollectionDelegateInitializer)
+            ?: mutableCollectionBindingForReturn(returnBinding)?.let(::renderMutableCollectionDelegateInitializer)
+            ?: return null
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorAbiToken() ?: return null
+    }
+    return CodeBlock.builder()
+        .add("val __result = %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", invokeTargetExpression)
+        .add("%L,\n", slotExpression)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("{ __collectionRef ->\n")
+        .indent()
+        .add("%L", collectionInitializer)
+        .unindent()
+        .add("},\n")
         .apply {
             abiArguments.forEach { argument ->
                 add("%L,\n", argument.expression)
