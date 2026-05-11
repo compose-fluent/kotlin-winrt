@@ -161,6 +161,9 @@ private fun configureWinRtApplicationTasks(
             }
         }
     }
+    project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(identityDependencies)
+    }
     val applicationIdentityTask = project.tasks.register(
         "generateWinRtApplicationIdentity",
         GenerateWinRtApplicationIdentityTask::class.java,

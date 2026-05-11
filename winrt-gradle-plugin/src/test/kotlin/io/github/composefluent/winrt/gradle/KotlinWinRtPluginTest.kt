@@ -1,6 +1,11 @@
 package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
+import io.github.composefluent.winrt.metadata.WinRtMetadataModel
+import io.github.composefluent.winrt.metadata.WinRtNamespace
+import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -179,6 +184,83 @@ class KotlinWinRtPluginTest {
             json.contains(
                 "\"nugetPackages\": [\"Microsoft.WindowsAppSDK@1.8.260416003\"]",
             ),
+        )
+    }
+
+    @Test
+    fun dependency_identity_projection_surface_suppresses_downstream_projection_types() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": ["Microsoft.UI.Xaml.Automation"],
+              "includeTypes": ["Windows.ApplicationModel.DataTransfer.DataPackageView"],
+              "excludeNamespaces": ["Microsoft.UI.Xaml.Controls"],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    "Microsoft.UI.Xaml",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "DependencyProperty",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    "Microsoft.UI.Xaml.Automation",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Automation",
+                            name = "AutomationProperties",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "AccessibilityViewProperty",
+                                    typeName = "Microsoft.UI.Xaml.DependencyProperty",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    "Microsoft.UI.Xaml.Controls",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "Button",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    "Windows.ApplicationModel.DataTransfer",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.ApplicationModel.DataTransfer",
+                            name = "DataPackageView",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "Microsoft.UI.Xaml.Automation.AutomationProperties",
+                "Microsoft.UI.Xaml.DependencyProperty",
+                "Windows.ApplicationModel.DataTransfer.DataPackageView",
+            ),
+            dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
         )
     }
 

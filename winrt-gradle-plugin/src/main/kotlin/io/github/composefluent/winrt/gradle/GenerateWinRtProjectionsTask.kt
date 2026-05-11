@@ -2,9 +2,11 @@ package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
+import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageIdentity
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
+import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.filterProjectionSurface
 import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import org.gradle.api.DefaultTask
@@ -60,6 +62,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
 
     @get:Input
     abstract val additionExcludeNamespaces: ListProperty<String>
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val dependencyIdentityFiles: ConfigurableFileCollection
 
     @get:Input
     @get:Optional
@@ -134,6 +141,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             )
             KotlinWinRtAuthoringCandidateFile.read(candidatesFile)
         }
+        val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, dependencyIdentityFiles.files)
         val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, authoringCandidates)
         KotlinWinRtAuthoringMetadataModel.writeDescriptor(
             candidates = authoringCandidates,
@@ -158,9 +166,12 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                 exclude = excludeNamespaces.get().toSet() + excludeTypes.get().toSet(),
                 additionExclude = additionExcludeNamespaces.get().toSet(),
             ),
-            suppressedProjectionTypeNames = authoringCandidates
-                .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
-                .filterTo(mutableSetOf(), String::isNotBlank),
+            suppressedProjectionTypeNames = (
+                dependencyProjectionTypeNames +
+                    authoringCandidates
+                        .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
+                        .filterTo(mutableSetOf(), String::isNotBlank)
+                ),
         ).generateTo(model, outputDirectory.get().asFile.toPath())
         writeAuthoringMetadataIndex(model, authoringMetadataIndex)
         if (authoringCandidates.isNotEmpty()) {
@@ -362,3 +373,51 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         logger = logger,
     )
 }
+
+internal fun dependencyProjectedTypeNames(
+    model: WinRtMetadataModel,
+    identityFiles: Iterable<java.io.File>,
+): Set<String> =
+    identityFiles
+        .flatMap { identityFile -> dependencyProjectedTypeNames(model, readProjectionSurfaceIdentity(identityFile)) }
+        .toSortedSet()
+
+private fun dependencyProjectedTypeNames(
+    model: WinRtMetadataModel,
+    identity: ProjectionSurfaceIdentity,
+): List<String> =
+    model.filterProjectionSurface(
+        namespaces = identity.includeNamespaces.toSet(),
+        types = identity.includeTypes.toSet(),
+        excludedNamespaces = identity.excludeNamespaces.toSet(),
+        excludedTypes = identity.excludeTypes.toSet(),
+    ).namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) }
+
+internal data class ProjectionSurfaceIdentity(
+    val includeNamespaces: List<String>,
+    val includeTypes: List<String>,
+    val excludeNamespaces: List<String>,
+    val excludeTypes: List<String>,
+)
+
+internal fun readProjectionSurfaceIdentity(identityFile: java.io.File): ProjectionSurfaceIdentity {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    return ProjectionSurfaceIdentity(
+        includeNamespaces = readIdentityStringArray(content, "includeNamespaces"),
+        includeTypes = readIdentityStringArray(content, "includeTypes"),
+        excludeNamespaces = readIdentityStringArray(content, "excludeNamespaces"),
+        excludeTypes = readIdentityStringArray(content, "excludeTypes"),
+    )
+}
+
+private fun readIdentityStringArray(content: String, name: String): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .map { it.groupValues[1].decodeIdentityJsonString() }
+        .toList()
+}
+
+private fun String.decodeIdentityJsonString(): String =
+    replace("\\\"", "\"").replace("\\\\", "\\")
