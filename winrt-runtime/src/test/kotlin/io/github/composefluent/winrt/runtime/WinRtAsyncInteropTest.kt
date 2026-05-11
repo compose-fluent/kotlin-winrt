@@ -60,12 +60,14 @@ class WinRtAsyncInteropTest {
                 action.complete(WinRtAsyncStatus.Completed)
                 awaitJob.join()
                 assertTrue(action.resultsCalled)
+                assertTrue(action.completedHandlerClosed())
 
                 val cancelledAction = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started)
                 val cancelledJob = launch(start = CoroutineStart.UNDISPATCHED) { cancelledAction.await() }
                 cancelledJob.cancel()
                 cancelledJob.join()
                 assertTrue(cancelledAction.cancelCalled)
+                assertTrue(cancelledAction.completedHandlerClosed())
             }
         }
     }
@@ -233,12 +235,13 @@ class WinRtAsyncInteropTest {
                     result = "done",
                 )
 
-                val awaitJob = launch {
+                val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
                     assertEquals("done", operation.await())
                 }
                 operation.complete(WinRtAsyncStatus.Completed)
                 awaitJob.join()
                 assertTrue(operation.resultsCalled)
+                assertTrue(operation.completedHandlerClosed())
 
                 val failedOperation = FakeAsyncOperationReference(
                     arena = arena,
@@ -284,6 +287,9 @@ class WinRtAsyncInteropTest {
             completedHandle = handle
         }
 
+        fun completedHandlerClosed(): Boolean =
+            completedHandle?.let(::isDelegateHandleClosedForTesting) == true
+
         fun complete(newStatus: WinRtAsyncStatus) {
             statusState = newStatus
             completedHandle?.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, newStatus.abiValue))
@@ -319,6 +325,9 @@ class WinRtAsyncInteropTest {
             completedHandle = handle
         }
 
+        fun completedHandlerClosed(): Boolean =
+            completedHandle?.let(::isDelegateHandleClosedForTesting) == true
+
         fun complete(newStatus: WinRtAsyncStatus) {
             statusState = newStatus
             completedHandle?.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, newStatus.abiValue))
@@ -327,3 +336,11 @@ class WinRtAsyncInteropTest {
         override fun close() = Unit
     }
 }
+
+private fun isDelegateHandleClosedForTesting(handle: WinRtDelegateHandle): Boolean =
+    try {
+        handle.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, WinRtAsyncStatus.Completed.abiValue))
+        false
+    } catch (_: IllegalStateException) {
+        true
+    }
