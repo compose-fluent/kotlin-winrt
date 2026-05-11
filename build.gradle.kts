@@ -14,25 +14,29 @@ val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")
  *   or explicit `-Pwinrt.releaseTag=vX.Y.Z`, then strip leading `v`.
  * - Otherwise: `<winrt.baseVersion>-SNAPSHOT`.
  */
-fun resolveVersion(): String {
-    val baseVersion = providers.gradleProperty("winrt.baseVersion").orNull ?: "0.1.0"
-    val releaseTag = when {
-        providers.environmentVariable("GITHUB_REF_TYPE").orNull == "tag" ->
-            providers.environmentVariable("GITHUB_REF_NAME").orNull
-        else -> providers.gradleProperty("winrt.releaseTag").orNull
+fun resolveVersion() = providers
+    .gradleProperty("winrt.baseVersion")
+    .orElse("0.1.0")
+    .zip(
+        providers
+            .environmentVariable("GITHUB_REF_TYPE")
+            .zip(providers.environmentVariable("GITHUB_REF_NAME")) { refType, refName ->
+                if (refType == "tag") refName else ""
+            }
+            .orElse(providers.gradleProperty("winrt.releaseTag").orElse("")),
+    ) { baseVersion, releaseTag ->
+        if (releaseTag.matches(releaseTagRegex)) {
+            releaseTag.removePrefix("v")
+        } else {
+            "$baseVersion-SNAPSHOT"
+        }
     }
-    return if (releaseTag != null && releaseTag.matches(releaseTagRegex)) {
-        releaseTag.removePrefix("v")
-    } else {
-        "$baseVersion-SNAPSHOT"
-    }
-}
 
-val winrtVersion = resolveVersion()
+val winrtVersionProvider = resolveVersion()
 
 allprojects {
     group = "io.github.composefluent.winrt"
-    version = winrtVersion
+    version = winrtVersionProvider.get()
 
     tasks.withType<Test>().configureEach {
         maxParallelForks = 1
