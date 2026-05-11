@@ -154,6 +154,11 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
                 slotExpression = slotExpression,
                 returnBinding = resultMarshaler.typeBinding,
                 abiArguments = parameterAbiArguments,
+            ) ?: renderInlineDescriptorInspectableReferenceIntrinsicInvocation(
+                invokeTargetExpression = invokeTargetExpression,
+                slotExpression = slotExpression,
+                returnBinding = resultMarshaler.typeBinding,
+                abiArguments = parameterAbiArguments,
             ) ?: renderInlineDescriptorObjectIntrinsicInvocation(
                 invokeTargetExpression = invokeTargetExpression,
                 slotExpression = slotExpression,
@@ -357,7 +362,41 @@ private fun KotlinProjectionRenderer.renderInlineDescriptorObjectIntrinsicInvoca
         .build()
 }
 
-private fun KotlinProjectionComArgumentKind.descriptorAbiToken(): String? =
+private fun KotlinProjectionRenderer.renderInlineDescriptorInspectableReferenceIntrinsicInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    abiArguments: List<KotlinProjectionComArgument>,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        abiArguments.isEmpty() ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.InspectableReference ||
+        resolvedReturnClassName(returnBinding) != IINSPECTABLE_REFERENCE_CLASS_NAME
+    ) {
+        return null
+    }
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorAbiToken() ?: return null
+    }
+    return CodeBlock.builder()
+        .add("val __result = %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", invokeTargetExpression)
+        .add("%L,\n", slotExpression)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .add("{ __result -> __result.use { it.asInspectable() } },\n")
+        .apply {
+            abiArguments.forEach { argument ->
+                add("%L,\n", argument.expression)
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+internal fun KotlinProjectionComArgumentKind.descriptorAbiToken(): String? =
     when (this) {
         KotlinProjectionComArgumentKind.Pointer -> "RawAddress"
         KotlinProjectionComArgumentKind.Int8 -> "Byte"

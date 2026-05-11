@@ -8315,6 +8315,166 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_raw_abi_inspectable_factory_returns_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555580"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Color",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("A", "Byte"),
+                                WinRtFieldDefinition("R", "Byte"),
+                                WinRtFieldDefinition("G", "Byte"),
+                                WinRtFieldDefinition("B", "Byte"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555581"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = emptyList(),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555582"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateWithHandler",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("title", "String"),
+                                        WinRtParameterDefinition("value", "System.Object"),
+                                        WinRtParameterDefinition("color", "Sample.UI.Color"),
+                                        WinRtParameterDefinition("handler", "Sample.UI.WidgetHandler"),
+                                    ),
+                                    methodRowId = 25,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.UI.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(contents.contains("HString.createReference(title).use { __titleAbi ->"))
+        assertTrue(contents.contains("winRtObjectMarshaler(value).use { __valueMarshaler ->"))
+        assertTrue(contents.contains("Color.Metadata.copyTo(color, __colorAbi)"))
+        assertTrue(contents.contains("WinRtDelegateBridge.createDelegate("))
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
+        assertTrue(contents.contains("\"RawAddress,RawAddress,RawAddress,RawAddress\""))
+        assertTrue(contents.contains("{ __result -> __result.use { it.asInspectable() } },"))
+        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs(instance = acquire().pointer"))
+    }
+
+    @Test
+    fun generator_routes_composable_factory_returns_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555583"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555584"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("firstIndex", "Int"),
+                                        WinRtParameterDefinition("length", "UInt"),
+                                        WinRtParameterDefinition("baseInterface", "System.Object"),
+                                        WinRtParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                    methodRowId = 26,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.UI.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+        val createInstance = contents.substringAfter("internal fun createInstance").substringBefore("public fun acquire")
+
+        assertTrue(createInstance.contains("val __innerOut = PlatformAbi.allocatePointerSlot(__scope)"))
+        assertTrue(createInstance.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
+        assertTrue(createInstance.contains("\"Int32,Int32,RawAddress,RawAddress\""))
+        assertTrue(createInstance.contains("{ __result -> __result.use {"))
+        assertTrue(createInstance.contains("ComWrappersSupport.initializeComposableReference(it.asInspectable())"))
+        assertTrue(createInstance.contains("PlatformAbi.nullPointer"))
+        assertTrue(createInstance.contains("__innerOut"))
+        assertTrue(createInstance.contains("return __result"))
+        assertFalse(createInstance.contains("__resultOut"))
+        assertFalse(createInstance.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_applies_winui_bindable_collection_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

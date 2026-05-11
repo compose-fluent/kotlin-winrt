@@ -1295,8 +1295,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     code.add("%T.confinedScope().use { __scope ->\n", PLATFORM_ABI_CLASS_NAME)
     code.indent()
     code.add("val __innerOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
-    code.add("val __resultOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
-    val abiArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
+    val composableInputArguments = callPlan.parameterMarshalers.flatMap { marshaler ->
         listOf(KotlinProjectionComArgument(marshaler.abiArgumentExpression, marshaler.abiArgumentKind)) +
             marshaler.extraAbiArgumentExpressions.mapIndexed { index, expression ->
                 KotlinProjectionComArgument(expression, marshaler.extraAbiArgumentKinds.getOrNull(index))
@@ -1304,43 +1303,52 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
     } + listOf(
         KotlinProjectionComArgument(CodeBlock.of("%T.nullPointer", PLATFORM_ABI_CLASS_NAME), KotlinProjectionComArgumentKind.Pointer),
         KotlinProjectionComArgument(CodeBlock.of("__innerOut"), KotlinProjectionComArgumentKind.Pointer),
-        KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer),
     )
     val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
-    if (finallyStatements.isNotEmpty()) {
-        code.add("try {\n")
-        code.indent()
-    }
-    code.add("val __hr = ")
-    code.add(
-        renderComVtableInvocation(
-            invokeTargetExpression = "__factory",
-            slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
-            abiArguments = abiArguments,
-        ),
+    val intrinsicInvocation = renderComposableFactoryInspectableIntrinsicInvocation(
+        factoryType = factoryType,
+        factoryClassName = factoryClassName,
+        method = method,
+        abiArguments = composableInputArguments,
+        postCallStatements = callPlan.parameterMarshalers.flatMap { it.postCallStatements },
+        finallyStatements = finallyStatements,
+        suppressHResultCheck = callPlan.suppressHResultCheck,
     )
-    code.add("\n")
-    if (!callPlan.suppressHResultCheck) {
-        code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
-    }
-    callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
-        code.add("%L\n", postCallStatement)
-    }
-    code.add("val __inner = %T.readPointer(__innerOut)\n", PLATFORM_ABI_CLASS_NAME)
-    code.add("if (__inner != %T.nullPointer) {\n", PLATFORM_ABI_CLASS_NAME)
-    code.indent()
-    code.add("%T(%T.toRawComPtr(__inner)).close()\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-    code.unindent()
-    code.add("}\n")
-    code.add("val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-    code.add("return __resultRef.use { %T.initializeComposableReference(it.asInspectable()) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
-    if (finallyStatements.isNotEmpty()) {
-        code.unindent()
-        code.add("} finally {\n")
-        code.indent()
-        finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
-        code.unindent()
-        code.add("}\n")
+    if (intrinsicInvocation != null) {
+        code.add("%L", intrinsicInvocation)
+    } else {
+        code.add("val __resultOut = %T.allocatePointerSlot(__scope)\n", PLATFORM_ABI_CLASS_NAME)
+        val abiArguments = composableInputArguments + KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer)
+        if (finallyStatements.isNotEmpty()) {
+            code.add("try {\n")
+            code.indent()
+        }
+        code.add("val __hr = ")
+        code.add(
+            renderComVtableInvocation(
+                invokeTargetExpression = "__factory",
+                slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                abiArguments = abiArguments,
+            ),
+        )
+        code.add("\n")
+        if (!callPlan.suppressHResultCheck) {
+            code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+        }
+        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+            code.add("%L\n", postCallStatement)
+        }
+        code.addComposableFactoryInnerCleanup()
+        code.add("val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+        code.add("return __resultRef.use { %T.initializeComposableReference(it.asInspectable()) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+        if (finallyStatements.isNotEmpty()) {
+            code.unindent()
+            code.add("} finally {\n")
+            code.indent()
+            finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
+            code.unindent()
+            code.add("}\n")
+        }
     }
     code.unindent()
     code.add("}\n")
@@ -1349,6 +1357,62 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         code.add("}\n")
     }
     return code.build()
+}
+
+private fun KotlinProjectionRenderer.renderComposableFactoryInspectableIntrinsicInvocation(
+    factoryType: WinRtTypeDefinition,
+    factoryClassName: TypeName,
+    method: WinRtMethodDefinition,
+    abiArguments: List<KotlinProjectionComArgument>,
+    postCallStatements: List<CodeBlock>,
+    finallyStatements: List<CodeBlock>,
+    suppressHResultCheck: Boolean,
+): CodeBlock? {
+    if (!useProjectionIntrinsics || suppressHResultCheck || abiArguments.isEmpty()) {
+        return null
+    }
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorAbiToken() ?: return null
+    }
+    val code = CodeBlock.builder()
+    if (finallyStatements.isNotEmpty()) {
+        code.add("try {\n")
+        code.indent()
+    }
+    code.add("val __result = %T.callProjectedInterface(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+    code.indent()
+    code.add("__factory,\n")
+    code.add("%T.Metadata.%L,\n", factoryClassName, method.abiSlotConstantName(factoryType.methods))
+    code.add("%S,\n", argumentShapes.joinToString(","))
+    code.add("{ __result -> __result.use { %T.initializeComposableReference(it.asInspectable()) } },\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+    abiArguments.forEach { argument ->
+        code.add("%L,\n", argument.expression)
+    }
+    code.unindent()
+    code.add(")\n")
+    postCallStatements.forEach { postCallStatement ->
+        code.add("%L\n", postCallStatement)
+    }
+    code.addComposableFactoryInnerCleanup()
+    code.add("return __result\n")
+    if (finallyStatements.isNotEmpty()) {
+        code.unindent()
+        code.add("} finally {\n")
+        code.indent()
+        finallyStatements.forEach { finallyStatement -> code.add("%L\n", finallyStatement) }
+        code.unindent()
+        code.add("}\n")
+    }
+    return code.build()
+}
+
+private fun CodeBlock.Builder.addComposableFactoryInnerCleanup() {
+    add("val __inner = %T.readPointer(__innerOut)\n", PLATFORM_ABI_CLASS_NAME)
+    add("if (__inner != %T.nullPointer) {\n", PLATFORM_ABI_CLASS_NAME)
+    indent()
+    add("%T(%T.toRawComPtr(__inner)).close()\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
+    unindent()
+    add("}\n")
 }
 
 private fun composableUserParameters(method: WinRtMethodDefinition): Pair<WinRtMethodDefinition, List<WinRtParameterDefinition>>? {
