@@ -143,6 +143,24 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_info_factory_exposes_cswinrt_ccw_suffix_interfaces() {
+        AsyncInfo.completedAction().use { action ->
+            listOf(
+                IID.IStringable,
+                IID.IWeakReferenceSource,
+                IID.IMarshal,
+                IID.IAgileObject,
+                IID.IInspectable,
+                IID.IReferenceTrackerTarget,
+            ).forEach { iid ->
+                action.queryInterface(iid).getOrThrow().use { queried ->
+                    assertTrue(queried.sameIdentity(action))
+                }
+            }
+        }
+    }
+
+    @Test
     fun async_info_factory_exposes_result_operation_through_abi_get_results() {
         AsyncInfo.fromResult(
             result = 42,

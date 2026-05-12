@@ -178,13 +178,14 @@ object AsyncInfo {
     private fun actionReference(
         adapter: WinRtTaskToAsyncInfoAdapter<Unit>,
     ): WinRtAsyncActionReference {
-        val host = WinRtInspectableComObject(
+        val host = createAsyncHost(
+            adapter = adapter,
+            defaultInterfaceId = WinRtAsyncInterfaceIds.IAsyncAction,
             interfaceDefinitions = listOf(
                 adapter.createAsyncInfoInterfaceDefinition(),
                 adapter.createAsyncActionInterfaceDefinition(),
             ),
             runtimeClassName = "Windows.Foundation.IAsyncAction",
-            managedValue = adapter,
         )
         adapter.selfReference = { host.createReference(WinRtAsyncInterfaceIds.IAsyncAction) }
         return WinRtAsyncActionReference(host.createReference(WinRtAsyncInterfaceIds.IAsyncAction).comPtr)
@@ -198,7 +199,9 @@ object AsyncInfo {
         val interfaceId = WinRtAsyncActionWithProgressReference.interfaceId(progressSignature)
         val progressHandlerInterfaceId = WinRtAsyncActionWithProgressReference.progressHandlerInterfaceId(progressSignature)
         val completedHandlerInterfaceId = WinRtAsyncActionWithProgressReference.completedHandlerInterfaceId(progressSignature)
-        val host = WinRtInspectableComObject(
+        val host = createAsyncHost(
+            adapter = adapter,
+            defaultInterfaceId = interfaceId,
             interfaceDefinitions = listOf(
                 adapter.createAsyncInfoInterfaceDefinition(),
                 adapter.createAsyncActionWithProgressInterfaceDefinition(
@@ -209,7 +212,6 @@ object AsyncInfo {
                 ),
             ),
             runtimeClassName = "Windows.Foundation.IAsyncActionWithProgress",
-            managedValue = adapter,
         )
         adapter.selfReference = { host.createReference(interfaceId) }
         return WinRtAsyncActionWithProgressReference(
@@ -226,7 +228,9 @@ object AsyncInfo {
     ): WinRtAsyncOperationReference<T> {
         val interfaceId = WinRtAsyncOperationReference.interfaceId(resultSignature)
         val completedHandlerInterfaceId = WinRtAsyncOperationReference.completedHandlerInterfaceId(resultSignature)
-        val host = WinRtInspectableComObject(
+        val host = createAsyncHost(
+            adapter = adapter,
+            defaultInterfaceId = interfaceId,
             interfaceDefinitions = listOf(
                 adapter.createAsyncInfoInterfaceDefinition(),
                 adapter.createAsyncOperationInterfaceDefinition(
@@ -236,7 +240,6 @@ object AsyncInfo {
                 ),
             ),
             runtimeClassName = "Windows.Foundation.IAsyncOperation",
-            managedValue = adapter,
         )
         adapter.selfReference = { host.createReference(interfaceId) }
         return WinRtAsyncOperationReference(
@@ -258,7 +261,9 @@ object AsyncInfo {
             WinRtAsyncOperationWithProgressReference.progressHandlerInterfaceId(resultSignature, progressSignature)
         val completedHandlerInterfaceId =
             WinRtAsyncOperationWithProgressReference.completedHandlerInterfaceId(resultSignature, progressSignature)
-        val host = WinRtInspectableComObject(
+        val host = createAsyncHost(
+            adapter = adapter,
+            defaultInterfaceId = interfaceId,
             interfaceDefinitions = listOf(
                 adapter.createAsyncInfoInterfaceDefinition(),
                 adapter.createAsyncOperationWithProgressInterfaceDefinition(
@@ -270,7 +275,6 @@ object AsyncInfo {
                 ),
             ),
             runtimeClassName = "Windows.Foundation.IAsyncOperationWithProgress",
-            managedValue = adapter,
         )
         adapter.selfReference = { host.createReference(interfaceId) }
         return WinRtAsyncOperationWithProgressReference(
@@ -278,6 +282,29 @@ object AsyncInfo {
             progressHandlerInterfaceId = progressHandlerInterfaceId,
             completedHandlerInterfaceId = completedHandlerInterfaceId,
             resultReader = { adapter.result() },
+        )
+    }
+
+    private fun createAsyncHost(
+        adapter: WinRtTaskToAsyncInfoAdapter<*>,
+        defaultInterfaceId: Guid,
+        interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
+        runtimeClassName: String,
+    ): WinRtInspectableComObject {
+        val definition = InteropRuntimeHooks.augmentInspectableDefinition(
+            value = adapter,
+            definition = WinRtCcwDefinition(
+                interfaceDefinitions = interfaceDefinitions,
+                defaultInterfaceId = defaultInterfaceId,
+                runtimeClassName = runtimeClassName,
+            ),
+        )
+        return WinRtInspectableComObject(
+            interfaceDefinitions = definition.interfaceDefinitions,
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+            defaultInterfaceId = definition.defaultInterfaceId,
+            runtimeClassName = definition.runtimeClassName,
+            managedValue = adapter,
         )
     }
 }
