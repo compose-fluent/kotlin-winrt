@@ -209,11 +209,7 @@ class KotlinProjectionRenderer(
             builder.addFunction(
                 FunSpec.builder("close")
                     .addModifiers(KModifier.OVERRIDE)
-                    .addCode(
-                        "val __hr = %T.invoke(instance = nativeObject.pointer, slot = 6)\n%T(__hr).requireSuccess()\n",
-                        COM_VTABLE_INVOKER_CLASS_NAME,
-                        HRESULT_CLASS_NAME,
-                    )
+                    .addCode("%L", renderNativeProjectionCloseInvocation())
                     .build(),
             )
         }
@@ -1912,6 +1908,25 @@ class KotlinProjectionRenderer(
             .map { it.substringBefore('<').removeSuffix("?") }
             .mapNotNull(::mappedTypeByAbiName)
             .any { it.descriptionName == "IClosable" }
+
+    private fun renderNativeProjectionCloseInvocation(): CodeBlock =
+        if (useProjectionIntrinsics) {
+            CodeBlock.builder()
+                .add("%T.callUnit(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+                .indent()
+                .add("nativeObject,\n")
+                .add("6,\n")
+                .add("%S,\n", "")
+                .unindent()
+                .add(")\n")
+                .build()
+        } else {
+            CodeBlock.of(
+                "val __hr = %T.invoke(instance = nativeObject.pointer, slot = 6)\n%T(__hr).requireSuccess()\n",
+                COM_VTABLE_INVOKER_CLASS_NAME,
+                HRESULT_CLASS_NAME,
+            )
+        }
 
     private val KotlinTypeProjectionPlan.usesMappedDataErrorInfoAugmentation: Boolean
         get() = requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().contains("INotifyDataErrorInfo")

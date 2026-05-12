@@ -3595,6 +3595,71 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_fallback_closable_close_through_descriptor_marker() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IClosable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Close", returnTypeName = "Unit", methodRowId = 6),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IChild",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.IClosable"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Child",
+                                    typeName = "Sample.Foundation.IChild",
+                                    getterMethodName = "get_Child",
+                                    getterMethodRowId = 10,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IWidget.kt")
+            .contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("public interface IWidget : AutoCloseable"))
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("override fun close()"))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(interfaceContents, interfaceContents.contains("nativeObject,"))
+        assertTrue(interfaceContents, interfaceContents.contains("6,"))
+        assertTrue(interfaceContents, interfaceContents.contains("\"\","))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
+    }
+
+    @Test
     fun generator_moves_inherited_interface_native_projection_to_compiler_artifact() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
