@@ -328,7 +328,10 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
 
     private val idValue: UInt = nextId()
 
-    fun id(): UInt = idValue
+    fun id(): UInt {
+        ensureNotClosed()
+        return idValue
+    }
 
     fun status(): WinRtAsyncStatus {
         ensureNotClosed()

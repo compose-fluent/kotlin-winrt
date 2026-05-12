@@ -205,6 +205,12 @@ class WinRtAsyncInteropTest {
             }
             assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, statusHr)
 
+            val idHr = PlatformAbi.confinedScope().use { scope ->
+                val idOut = PlatformAbi.allocateInt32Slot(scope)
+                ComVtableInvoker.invokeArgs(action.pointer, WinRtAsyncInfoVftblSlots.Id, idOut)
+            }
+            assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, idHr)
+
             val secondCloseHr = ComVtableInvoker.invoke(action.pointer, WinRtAsyncInfoVftblSlots.Close)
             assertEquals(KnownHResults.S_OK.value, secondCloseHr)
         }
