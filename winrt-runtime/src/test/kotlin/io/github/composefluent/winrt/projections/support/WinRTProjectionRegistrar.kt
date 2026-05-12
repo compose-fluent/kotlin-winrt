@@ -9,6 +9,8 @@ import io.github.composefluent.winrt.runtime.registerGeneratedProjectionTypeInde
 
 class GeneratedRegistrarRuntimeClass
 
+class FallbackIndexedRuntimeClass
+
 class GeneratedRegistrarInterfaceProjection(
     override val nativeObject: ComObjectReference,
 ) : IWinRTObject

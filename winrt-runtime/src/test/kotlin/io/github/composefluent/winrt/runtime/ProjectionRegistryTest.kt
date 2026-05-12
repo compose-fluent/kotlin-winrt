@@ -1,8 +1,9 @@
 package io.github.composefluent.winrt.runtime
 
-import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
-import io.github.composefluent.winrt.projections.support.GeneratedRegistrarInterfaceProjection
+import io.github.composefluent.winrt.projections.support.FallbackIndexedRuntimeClass
 import io.github.composefluent.winrt.projections.support.GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE
+import io.github.composefluent.winrt.projections.support.GeneratedRegistrarInterfaceProjection
+import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
 import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -112,6 +113,29 @@ class ProjectionRegistryTest {
         assertEquals(
             GeneratedRegistrarRuntimeClass::class,
             TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarDerived"),
+        )
+    }
+
+    @Test
+    fun compiler_generated_projection_loader_keeps_resource_indexes_after_fixed_registrar() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        registerCompilerGeneratedProjectionTypeIndexes()
+
+        val typeId = WinRtTypeRegistry.findByClass(FallbackIndexedRuntimeClass::class)
+        assertEquals("Contoso.FallbackIndexedRuntimeClass", typeId?.projectedTypeName)
+        assertEquals("Contoso.FallbackIndexedRuntimeClass", typeId?.runtimeClassName)
+        assertTrue(typeId?.isRuntimeClass == true)
+        assertEquals(
+            FallbackIndexedRuntimeClass::class,
+            TypeNameSupport.findRcwKClassByNameCached("Contoso.FallbackIndexedRuntimeClass"),
+        )
+        TypeNameSupport.registerProjectionTypeBaseTypeMapping(
+            mapOf("Contoso.FallbackIndexedDerived" to "Contoso.FallbackIndexedRuntimeClass"),
+        )
+        assertEquals(
+            FallbackIndexedRuntimeClass::class,
+            TypeNameSupport.findRcwKClassByNameCached("Contoso.FallbackIndexedDerived"),
         )
     }
 

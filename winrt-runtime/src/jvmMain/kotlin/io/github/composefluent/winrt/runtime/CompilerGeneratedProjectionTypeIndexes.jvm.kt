@@ -15,9 +15,8 @@ internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
         ?: return
     registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
     registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)
-    if (registerGeneratedProjectionRegistrar(classLoader)) {
-        return
-    }
+    registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
+    // A fixed registrar class can only represent one classpath entry; resources preserve dependency indexes.
     val resources = classLoader.getResources(WINRT_PROJECTION_TYPE_INDEX_RESOURCE).toList()
     resources.forEach { resource ->
         resource.openStream().bufferedReader().useLines { lines ->
@@ -25,10 +24,6 @@ internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
                 .forEach { line -> registerProjectionTypeIndexLine(classLoader, line) }
         }
     }
-}
-
-private fun registerGeneratedProjectionRegistrar(classLoader: ClassLoader): Boolean {
-    return registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
 }
 
 private fun registerGeneratedProjectionRegistry(
