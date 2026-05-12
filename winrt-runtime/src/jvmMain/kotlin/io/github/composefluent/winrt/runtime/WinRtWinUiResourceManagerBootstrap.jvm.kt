@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
 import java.nio.file.Path
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.io.path.isRegularFile
 
 /**
@@ -23,6 +25,7 @@ object WinRtWinUiResourceManagerBootstrap {
     private const val createResourceManagerFromFileSlot = 6
     private const val setCustomResourceManagerSlot = 7
 
+    @OptIn(ExperimentalAtomicApi::class)
     class Registration internal constructor(
         private val applicationReference: IUnknownReference,
         private val resourceManagerReference: IUnknownReference,
@@ -30,7 +33,12 @@ object WinRtWinUiResourceManagerBootstrap {
         private val token: EventRegistrationToken,
         val priPath: Path,
     ) : AutoCloseable {
+        private val closed = AtomicInt(0)
+
         override fun close() {
+            if (!closed.compareAndSet(0, 1)) {
+                return
+            }
             runCatching {
                 applicationReference.queryInterface(application2InterfaceId)
                     .getOrThrow()
