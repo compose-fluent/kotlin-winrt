@@ -266,7 +266,7 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
     return code.build()
 }
 
-private fun KotlinProjectionRenderer.renderInlineDescriptorUnitIntrinsicInvocation(
+internal fun KotlinProjectionRenderer.renderInlineDescriptorUnitIntrinsicInvocation(
     invokeTargetExpression: String,
     slotExpression: CodeBlock,
     abiArguments: List<KotlinProjectionComArgument>,

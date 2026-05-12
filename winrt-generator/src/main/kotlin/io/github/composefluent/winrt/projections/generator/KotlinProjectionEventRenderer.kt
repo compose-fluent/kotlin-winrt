@@ -1187,26 +1187,43 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryInvocation(
         KotlinProjectionComArgument(CodeBlock.of("__resultOut"), KotlinProjectionComArgumentKind.Pointer),
     )
     val finallyStatements = callPlan.parameterMarshalers.flatMap { it.finallyStatements }
+    val intrinsicInvocation = if (!callPlan.suppressHResultCheck) {
+        renderInlineDescriptorUnitIntrinsicInvocation(
+            invokeTargetExpression = "__factory",
+            slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+            abiArguments = abiArguments,
+        )
+    } else {
+        null
+    }
     if (finallyStatements.isNotEmpty()) {
         code.add("try {\n")
         code.indent()
     }
-    code.add("val __hr = ")
-    code.add(
-        renderComVtableInvocation(
-            invokeTargetExpression = "__factory",
-            slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
-            abiArguments = abiArguments,
-        ),
-    )
-    code.add("\n")
-    if (!callPlan.suppressHResultCheck) {
-        code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+    if (intrinsicInvocation != null) {
+        code.add("%L", intrinsicInvocation)
+        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+            code.add("%L\n", postCallStatement)
+        }
+        code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
+    } else {
+        code.add("val __hr = ")
+        code.add(
+            renderComVtableInvocation(
+                invokeTargetExpression = "__factory",
+                slotExpression = CodeBlock.of("%T.Metadata.%L", factoryClassName, method.abiSlotConstantName(factoryType.methods)),
+                abiArguments = abiArguments,
+            ),
+        )
+        code.add("\n")
+        if (!callPlan.suppressHResultCheck) {
+            code.add("%T(__hr).requireSuccess()\n", HRESULT_CLASS_NAME)
+        }
+        callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
+            code.add("%L\n", postCallStatement)
+        }
+        code.add("__hr\n")
     }
-    callPlan.parameterMarshalers.flatMap { it.postCallStatements }.forEach { postCallStatement ->
-        code.add("%L\n", postCallStatement)
-    }
-    code.add("__hr\n")
     if (finallyStatements.isNotEmpty()) {
         code.unindent()
         code.add("} finally {\n")

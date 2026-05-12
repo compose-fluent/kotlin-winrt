@@ -9085,6 +9085,78 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_derived_composable_factory_calls_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "System.Object"),
+                                        WinRtParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                    methodRowId = 27,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.UI.IWidget",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+        val createInstanceForSubclass = contents.substringAfter("internal fun createInstanceForSubclass")
+            .substringBefore("public fun acquire")
+
+        assertTrue(createInstanceForSubclass.contains("createComposableCCWForObject"))
+        assertTrue(createInstanceForSubclass.contains("outerInterfaceId"))
+        assertTrue(createInstanceForSubclass.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(createInstanceForSubclass.contains("\"RawAddress,RawAddress,RawAddress\""))
+        assertTrue(createInstanceForSubclass.contains("__baseInterface"))
+        assertTrue(createInstanceForSubclass.contains("__innerOut"))
+        assertTrue(createInstanceForSubclass.contains("__resultOut"))
+        assertTrue(createInstanceForSubclass.contains("KnownHResults.S_OK.value"))
+        assertFalse(createInstanceForSubclass.contains("ComVtableInvoker.invokeArgs"))
+        assertFalse(createInstanceForSubclass.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_mapped_collection_returns_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
