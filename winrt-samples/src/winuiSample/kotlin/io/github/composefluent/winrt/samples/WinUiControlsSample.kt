@@ -45,7 +45,9 @@ object WinUiControlsSample {
 
     fun launchForSmoke(): WinUiControlsSampleResult =
         RuntimeScope.initializeSingleThreaded().use {
-            WinUiControlsApp().launchWithResources()
+            WinUiControlsApp().use { app ->
+                app.launchWithResources()
+            }
         }
 
     private fun startApplication() {
@@ -57,10 +59,12 @@ object WinUiControlsSample {
             }
             println("winui-controls: application composed")
         }
+        activeApplication?.close()
+        activeApplication = null
     }
 }
 
-class WinUiControlsApp : Application() {
+class WinUiControlsApp : Application(), AutoCloseable {
     private var myWindow: Window? = null
     private var resourceManagerRegistration: WinRtWinUiResourceManagerBootstrap.Registration? = null
 
@@ -82,6 +86,12 @@ class WinUiControlsApp : Application() {
             installXamlResources()
         }
         return launchCore()
+    }
+
+    override fun close() {
+        resourceManagerRegistration?.close()
+        resourceManagerRegistration = null
+        myWindow = null
     }
 
     fun launchCore(): WinUiControlsSampleResult {
