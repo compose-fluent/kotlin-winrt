@@ -20,12 +20,8 @@ object WinRtObjectMarshaller {
             is WinRtProjectedDelegate -> createDelegateMarshaler(value)
             is RawAddress -> WinRtObjectMarshaler(value)
             is RawComPtr -> WinRtObjectMarshaler(value.asRawAddress())
-            is ComObjectReference -> cloneComReference(value).let { reference ->
-                WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
-            }
-            is IWinRTObject -> cloneComReference(value.nativeObject).let { reference ->
-                WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
-            }
+            is ComObjectReference -> createInspectableMarshaler(value)
+            is IWinRTObject -> createInspectableMarshaler(value.nativeObject)
             else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).let { reference ->
                 WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
             }
@@ -39,6 +35,22 @@ object WinRtObjectMarshaller {
                 ?: ComWrappersSupport.createRcwForComObject(pointer)
         }
 
+    fun fromManaged(value: Any?): RawAddress =
+        when (value) {
+            null -> PlatformAbi.nullPointer
+            is WinRtProjectedDelegate -> fromManagedDelegate(value)
+            is RawAddress -> value
+            is RawComPtr -> value.asRawAddress()
+            is ComObjectReference -> value.asInspectable().useAndGetRef()
+            is IWinRTObject -> value.nativeObject.asInspectable().useAndGetRef()
+            else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
+        }
+
+    private fun createInspectableMarshaler(reference: ComObjectReference): WinRtObjectMarshaler {
+        val inspectableReference = reference.asInspectable()
+        return WinRtObjectMarshaler(inspectableReference.pointer.asRawAddress(), inspectableReference::close)
+    }
+
     private fun createDelegateMarshaler(value: WinRtProjectedDelegate): WinRtObjectMarshaler {
         val handle = value.createWinRtDelegateHandle()
         ProjectedDelegateObjectRoots.retain(handle)
@@ -50,6 +62,17 @@ object WinRtObjectMarshaller {
             } finally {
                 reference.close()
             }
+        }
+    }
+
+    private fun fromManagedDelegate(value: WinRtProjectedDelegate): RawAddress {
+        val handle = value.createWinRtDelegateHandle()
+        ProjectedDelegateObjectRoots.retain(handle)
+        val reference = handle.createReference()
+        return try {
+            reference.asInspectable().useAndGetRef()
+        } finally {
+            reference.close()
         }
     }
 }

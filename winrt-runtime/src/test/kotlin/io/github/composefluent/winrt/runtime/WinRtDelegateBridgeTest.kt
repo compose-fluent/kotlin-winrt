@@ -3,10 +3,13 @@ package io.github.composefluent.winrt.runtime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WinRtDelegateBridgeTest {
+    private data class DelegateObjectPayload(val value: String)
+
     private data class TestPoint(val x: Float, val y: Float)
 
     private object TestPointAdapter : NativeStructAdapter<TestPoint> {
@@ -71,6 +74,31 @@ class WinRtDelegateBridgeTest {
         assertNull(captured[0])
         assertEquals(42L, captured[1])
         assertEquals("payload", captured[2])
+    }
+
+    @Test
+    fun delegate_handle_decodes_object_argument_through_object_marshaller() {
+        val payload = DelegateObjectPayload("argument")
+        var captured: Any? = null
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { args ->
+            captured = args.single()
+        }
+
+        ComWrappersSupport.createCCWForObject(payload, IID.IInspectable).use { objectReference ->
+            handle.use {
+                it.createReference().use { reference ->
+                    assertEquals(
+                        KnownHResults.S_OK,
+                        reference.invokeAbi(listOf(objectReference.pointer.asRawAddress())),
+                    )
+                }
+            }
+        }
+
+        assertSame(payload, captured)
     }
 
     @Test
@@ -414,6 +442,24 @@ class WinRtDelegateBridgeTest {
         handle.use {
             it.createReference().use { reference ->
                 assertEquals("value-42", reference.invoke(listOf(42)))
+            }
+        }
+    }
+
+    @Test
+    fun delegate_reference_decodes_object_return_value_through_object_marshaller() {
+        val payload = DelegateObjectPayload("return")
+        val handle = WinRtDelegateBridge.createDelegate(
+            iid = Guid("abababab-abab-abab-abab-abababababab"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.OBJECT,
+        ) {
+            payload
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertSame(payload, reference.invoke(emptyList()))
             }
         }
     }

@@ -131,9 +131,9 @@ internal object WinRtDelegateAbiMarshaller {
     fun decodeReturnValue(kind: WinRtDelegateValueKind, resultOut: RawAddress): Any? =
         when (kind) {
             WinRtDelegateValueKind.UNIT -> Unit
-            WinRtDelegateValueKind.OBJECT,
-            WinRtDelegateValueKind.IUNKNOWN,
-            -> {
+            WinRtDelegateValueKind.OBJECT -> WinRtObjectMarshaller.fromAbi(PlatformAbi.readPointer(resultOut))
+
+            WinRtDelegateValueKind.IUNKNOWN -> {
                 val pointer = PlatformAbi.readPointer(resultOut)
                 if (PlatformAbi.isNull(pointer)) null else IUnknownReference(pointer.asRawComPtr())
             }
@@ -200,7 +200,7 @@ internal object WinRtDelegateAbiMarshaller {
     ) {
         when (kind) {
             WinRtDelegateValueKind.UNIT -> Unit
-            WinRtDelegateValueKind.OBJECT -> PlatformAbi.writePointer(resultOut, encodeObject(value))
+            WinRtDelegateValueKind.OBJECT -> PlatformAbi.writePointer(resultOut, WinRtObjectMarshaller.fromManaged(value))
             WinRtDelegateValueKind.IUNKNOWN -> PlatformAbi.writePointer(resultOut, encodeUnknownReference(value))
             WinRtDelegateValueKind.IINSPECTABLE -> PlatformAbi.writePointer(resultOut, encodeInspectableReference(value))
             WinRtDelegateValueKind.BOOLEAN -> PlatformAbi.writeInt8(resultOut, encodeBoolean(value))
@@ -289,6 +289,26 @@ internal object WinRtDelegateAbiMarshaller {
 
     private fun decodeObject(abiValue: Any?): Any? = when (abiValue) {
         null -> null
+        is ComObjectReference -> WinRtObjectMarshaller.fromAbi(abiValue.pointer.asRawAddress())
+        is RawAddress ->
+            if (PlatformAbi.isNull(abiValue)) {
+                null
+            } else {
+                WinRtObjectMarshaller.fromAbi(abiValue)
+            }
+        else -> error("Unsupported ABI object argument: ${abiValue::class.qualifiedName}")
+    }
+
+    private fun decodeUnknownReference(abiValue: Any?): IUnknownReference? =
+        decodeObjectReference(abiValue)?.let { reference ->
+            reference as? IUnknownReference ?: IUnknownReference(reference.pointer)
+        }
+
+    private fun decodeInspectableReference(abiValue: Any?): IInspectableReference? =
+        decodeUnknownReference(abiValue)?.asInspectable()
+
+    private fun decodeObjectReference(abiValue: Any?): ComObjectReference? = when (abiValue) {
+        null -> null
         is ComObjectReference -> abiValue
         is RawAddress ->
             if (PlatformAbi.isNull(abiValue)) {
@@ -296,20 +316,8 @@ internal object WinRtDelegateAbiMarshaller {
             } else {
                 IUnknownReference(abiValue.asRawComPtr(), preventReleaseOnDispose = true)
             }
-        else -> error("Unsupported ABI object argument: ${abiValue::class.qualifiedName}")
+        else -> error("Unsupported ABI object reference argument: ${abiValue::class.qualifiedName}")
     }
-
-    private fun decodeUnknownReference(abiValue: Any?): IUnknownReference? =
-        decodeObject(abiValue)?.let { reference ->
-            when (reference) {
-                is IUnknownReference -> reference
-                is ComObjectReference -> IUnknownReference(reference.pointer)
-                else -> error("Unsupported ABI unknown reference argument: ${reference::class.qualifiedName}")
-            }
-        }
-
-    private fun decodeInspectableReference(abiValue: Any?): IInspectableReference? =
-        decodeUnknownReference(abiValue)?.asInspectable()
 
     private fun decodeBoolean(abiValue: Any?): Boolean = when (abiValue) {
         is Byte -> abiValue.toInt() != 0
@@ -417,20 +425,19 @@ internal object WinRtDelegateAbiMarshaller {
     private fun encodeObject(
         abiValue: Any?,
         cleanup: MutableList<() -> Unit>? = null,
-    ): RawAddress = when (abiValue) {
-        null -> PlatformAbi.nullPointer
-        is IWinRTObject -> abiValue.nativeObject.pointer.asRawAddress()
-        is ComObjectReference -> abiValue.pointer.asRawAddress()
-        is RawAddress -> abiValue
-        is RawComPtr -> abiValue.asRawAddress()
-        else -> {
-            check(cleanup != null) {
-                "Unsupported outbound ABI object argument: ${abiValue::class.qualifiedName}"
-            }
-            ComWrappersSupport.createCCWForObject(abiValue, IID.IInspectable).useAndGetRef().also { pointer ->
-                cleanup += { IUnknownReference(pointer.asRawComPtr()).close() }
+    ): RawAddress {
+        if (cleanup == null) {
+            return when (abiValue) {
+                null -> PlatformAbi.nullPointer
+                is RawAddress -> abiValue
+                is RawComPtr -> abiValue.asRawAddress()
+                else -> error("Outbound ABI object arguments require an EncodedDelegateArguments lease.")
             }
         }
+
+        val marshaler = WinRtObjectMarshaller.createMarshaler(abiValue)
+        cleanup += marshaler::close
+        return marshaler.abi
     }
 
     private fun encodeUnknownReference(abiValue: Any?): RawAddress = when (abiValue) {
