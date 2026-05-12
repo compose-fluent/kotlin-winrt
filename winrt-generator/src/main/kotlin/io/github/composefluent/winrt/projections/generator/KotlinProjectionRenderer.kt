@@ -187,8 +187,9 @@ class KotlinProjectionRenderer(
         repeat(plan.type.genericParameterCount) { index ->
             builder.addTypeVariable(TypeVariableName("T$index"))
         }
+        addInterfaceNativeProjectionCollectionCaches(builder, plan)
         plan.mutableCollectionBindings.forEach { binding ->
-            val nativeBinding = binding.copy(ownerCachePropertyName = "nativeObject")
+            val nativeBinding = interfaceNativeProjectionCollectionBinding(plan, binding)
             builder.addProperty(renderMutableCollectionDelegateProperty(nativeBinding))
             if (nativeBinding.kind == KotlinProjectionMutableCollectionKind.Map) {
                 builder.addSuperinterface(mapIterableType(nativeBinding))
@@ -200,7 +201,7 @@ class KotlinProjectionRenderer(
                 plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
             }
             .forEach { binding ->
-                val nativeBinding = binding.copy(ownerCachePropertyName = "nativeObject")
+                val nativeBinding = interfaceNativeProjectionCollectionBinding(plan, binding)
                 builder.addProperty(renderReadOnlyCollectionDelegateProperty(nativeBinding))
                 addReadOnlyCollectionForwardMembers(builder, nativeBinding)
             }
@@ -241,6 +242,81 @@ class KotlinProjectionRenderer(
         }
         return builder.build()
     }
+
+    private fun addInterfaceNativeProjectionCollectionCaches(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        interfaceNativeProjectionCollectionCacheBindings(plan).forEach { binding ->
+            builder.addProperty(
+                PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .delegate(
+                        CodeBlock.of(
+                            "lazy(%T.PUBLICATION) { nativeObject.queryInterface(%T.Metadata.IID).getOrThrow().use { %T(it.getRefPointer(), %T.Metadata.IID) } }",
+                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                            projectionClassName(binding.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+                            IUNKNOWN_REFERENCE_CLASS_NAME,
+                            projectionClassName(binding.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+                        ),
+                    )
+                    .build(),
+            )
+        }
+    }
+
+    private fun interfaceNativeProjectionCollectionCacheBindings(
+        plan: KotlinTypeProjectionPlan,
+    ): List<KotlinProjectionCollectionSlotBinding> =
+        (plan.mutableCollectionBindings.map(::KotlinProjectionCollectionSlotBinding) +
+            plan.readOnlyCollectionBindings
+                .filterNot { readOnlyBinding ->
+                    plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
+                }
+                .map(::KotlinProjectionCollectionSlotBinding))
+            .filter { binding -> binding.requiresInterfaceNativeProjectionCache(plan) }
+            .distinctBy { binding -> binding.ownerCachePropertyName }
+
+    private fun interfaceNativeProjectionCollectionBinding(
+        plan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionMutableCollectionBinding,
+    ): KotlinProjectionMutableCollectionBinding =
+        if (KotlinProjectionCollectionSlotBinding(binding).requiresInterfaceNativeProjectionCache(plan)) {
+            binding
+        } else {
+            binding.copy(ownerCachePropertyName = "nativeObject")
+        }
+
+    private fun interfaceNativeProjectionCollectionBinding(
+        plan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionReadOnlyCollectionBinding,
+    ): KotlinProjectionReadOnlyCollectionBinding =
+        if (KotlinProjectionCollectionSlotBinding(binding).requiresInterfaceNativeProjectionCache(plan)) {
+            binding
+        } else {
+            binding.copy(ownerCachePropertyName = "nativeObject")
+        }
+
+    private data class KotlinProjectionCollectionSlotBinding(
+        val ownerCachePropertyName: String,
+        val slotInterfaceQualifiedName: String,
+    ) {
+        constructor(binding: KotlinProjectionMutableCollectionBinding) : this(
+            ownerCachePropertyName = binding.ownerCachePropertyName,
+            slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+        )
+
+        constructor(binding: KotlinProjectionReadOnlyCollectionBinding) : this(
+            ownerCachePropertyName = binding.ownerCachePropertyName,
+            slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+        )
+    }
+
+    private fun KotlinProjectionCollectionSlotBinding.requiresInterfaceNativeProjectionCache(
+        plan: KotlinTypeProjectionPlan,
+    ): Boolean =
+        slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?") !=
+            plan.type.qualifiedName.substringBefore('<').removeSuffix("?")
 
     internal fun KotlinTypeProjectionPlan.projectedSelfTypeName(): TypeName {
         val className = ClassName(packageName, type.name)

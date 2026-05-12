@@ -9400,13 +9400,21 @@ class KotlinProjectionGeneratorTest {
 
         val observableVectorContents = filesByName.getValue("IObservableVector.kt").contents
         assertTrue(observableVectorContents, observableVectorContents.contains("MutableList<T0>,"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("private val _iVector: IUnknownReference"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("nativeObject.queryInterface(IVector.Metadata.IID)"))
         assertTrue(observableVectorContents, observableVectorContents.contains("private val __iObservableVectorVectorCollection"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.pointer)"))
+        assertFalse(observableVectorContents, observableVectorContents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(nativeObject.pointer)"))
         assertTrue(observableVectorContents, observableVectorContents.contains("override fun set(index: Int, element: T0): T0"))
         assertTrue(observableVectorContents, observableVectorContents.contains(".use { __elementAbiReference ->"))
 
         val observableMapContents = filesByName.getValue("IObservableMap.kt").contents
         assertTrue(observableMapContents, observableMapContents.contains("MutableMap<T0, T1>,"))
+        assertTrue(observableMapContents, observableMapContents.contains("private val _iMap: IUnknownReference"))
+        assertTrue(observableMapContents, observableMapContents.contains("nativeObject.queryInterface(IMap.Metadata.IID)"))
         assertTrue(observableMapContents, observableMapContents.contains("private val __iObservableMapMapCollection"))
+        assertTrue(observableMapContents, observableMapContents.contains("WinRtDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(_iMap.pointer)"))
+        assertFalse(observableMapContents, observableMapContents.contains("WinRtDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(nativeObject.pointer)"))
         assertTrue(observableMapContents, observableMapContents.contains("override fun put(key: T0, value: T1): T1?"))
         assertTrue(observableMapContents, observableMapContents.contains(".use { __keyAbiReference ->"))
         assertTrue(observableMapContents, observableMapContents.contains(".use { __valueAbiReference ->"))
