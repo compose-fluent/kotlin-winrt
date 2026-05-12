@@ -143,6 +143,42 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun task_to_async_completed_handler_rejects_second_assignment() {
+        val firstHandler = WinRtDelegateBridge.createUnitDelegate(
+            iid = WinRtAsyncInterfaceIds.AsyncActionCompletedHandler,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+        ) { }
+        val secondHandler = WinRtDelegateBridge.createUnitDelegate(
+            iid = WinRtAsyncInterfaceIds.AsyncActionCompletedHandler,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+        ) { }
+
+        firstHandler.use { first ->
+            secondHandler.use { second ->
+                AsyncInfo.completedAction().use { action ->
+                    first.createReference().use { reference ->
+                        val firstHr = ComVtableInvoker.invokeArgs(
+                            action.pointer,
+                            WinRtAsyncActionVftblSlots.PutCompleted,
+                            reference.pointer,
+                        )
+                        assertEquals(KnownHResults.S_OK.value, firstHr)
+                    }
+
+                    second.createReference().use { reference ->
+                        val secondHr = ComVtableInvoker.invokeArgs(
+                            action.pointer,
+                            WinRtAsyncActionVftblSlots.PutCompleted,
+                            reference.pointer,
+                        )
+                        assertEquals(KnownHResults.E_ILLEGAL_DELEGATE_ASSIGNMENT.value, secondHr)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun async_info_factory_exposes_cswinrt_ccw_suffix_interfaces() {
         AsyncInfo.completedAction().use { action ->
             listOf(

@@ -317,6 +317,7 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
 ) {
     private val state = AtomicInt(initialStatus.ordinal)
     private val completedInvoked = AtomicInt(0)
+    private val completedHandlerAssigned = AtomicInt(0)
     private var resultValue: T? = initialResult
     private var errorValue: Throwable? = initialError
     private var job: Job? = null
@@ -351,18 +352,36 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
     }
 
     fun setCompletedHandler(handlerPointer: RawAddress, handlerInterfaceId: Guid) {
-        completedHandler?.close()
-        completedHandler = null
-        if (!PlatformAbi.isNull(handlerPointer)) {
-            val borrowed = ComObjectReference(
-                pointer = handlerPointer.asRawComPtr(),
-                interfaceId = handlerInterfaceId,
-                preventReleaseOnDispose = true,
-            )
-            borrowed.addRef()
-            completedHandler = ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
+        if (PlatformAbi.isNull(handlerPointer)) {
+            if (completedHandlerAssigned.load() != 0) {
+                throw WinRtIllegalStateException(
+                    "Cannot set WinRT async completion handler more than once.",
+                    KnownHResults.E_ILLEGAL_DELEGATE_ASSIGNMENT,
+                )
+            }
+            return
         }
+
+        val newHandler = cloneCompletedHandler(handlerPointer, handlerInterfaceId)
+        if (!completedHandlerAssigned.compareAndSet(0, 1)) {
+            newHandler.close()
+            throw WinRtIllegalStateException(
+                "Cannot set WinRT async completion handler more than once.",
+                KnownHResults.E_ILLEGAL_DELEGATE_ASSIGNMENT,
+            )
+        }
+        completedHandler = newHandler
         status().takeIf { it != WinRtAsyncStatus.Started }?.let(::invokeCompletedHandlerOnce)
+    }
+
+    private fun cloneCompletedHandler(handlerPointer: RawAddress, handlerInterfaceId: Guid): ComObjectReference {
+        val borrowed = ComObjectReference(
+            pointer = handlerPointer.asRawComPtr(),
+            interfaceId = handlerInterfaceId,
+            preventReleaseOnDispose = true,
+        )
+        borrowed.addRef()
+        return ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
     }
 
     fun getCompletedHandler(resultOut: RawAddress) {
