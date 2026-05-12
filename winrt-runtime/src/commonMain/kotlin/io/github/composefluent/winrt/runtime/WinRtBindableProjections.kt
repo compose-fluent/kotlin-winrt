@@ -57,17 +57,14 @@ internal object WinRtBindableObjectMarshaller {
         if (value == null) {
             return null
         }
-        borrowInspectableReference(value)?.let { return WinRtBindableProjectionMarshaler.borrowed(it) }
-        val reference = platformCreateInspectableReference(value)
-        return WinRtBindableProjectionMarshaler.owned(reference)
+        return WinRtBindableProjectionMarshaler.objectMarshaler(WinRtObjectMarshaller.createMarshaler(value))
     }
 
     fun fromManaged(value: Any?): RawAddress {
         if (value == null) {
             return PlatformAbi.nullPointer
         }
-        borrowInspectableReference(value)?.use { return it.getRefPointer().asRawAddress() }
-        return platformCreateInspectableReference(value).useAndGetRef()
+        return WinRtObjectMarshaller.fromManaged(value)
     }
 
     fun fromOwnedAbi(pointer: RawAddress): Any? {

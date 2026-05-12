@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 class WinRtProjectionMarshaler internal constructor(
-    private val lease: AbiReferenceLease<ComObjectReference>,
+    private val lease: AbiReferenceLease<out AutoCloseable>,
 ) : AutoCloseable {
     val abi: RawAddress
         get() = lease.abi
@@ -41,6 +41,16 @@ class WinRtProjectionMarshaler internal constructor(
                 lease = AbiReferenceLeaseSupport.create(
                     abi = reference.pointer.asRawAddress(),
                     ownedReference = reference,
+                ),
+            )
+
+        internal fun objectMarshaler(
+            marshaler: WinRtObjectMarshaler,
+        ): WinRtProjectionMarshaler =
+            WinRtProjectionMarshaler(
+                lease = AbiReferenceLeaseSupport.create(
+                    abi = marshaler.abi,
+                    ownedReference = marshaler,
                 ),
             )
     }

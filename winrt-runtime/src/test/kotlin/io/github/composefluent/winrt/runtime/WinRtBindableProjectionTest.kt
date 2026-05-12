@@ -77,4 +77,50 @@ class WinRtBindableProjectionTest {
         (projected as? AutoCloseable)?.close()
         host.releaseManagedReference()
     }
+
+    @Test
+    fun bindable_object_marshaller_projects_delegate_objects_with_reference_interface() {
+        var callCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("ABABABAB-1111-2222-3333-ABABABABABAB"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            callCount += 1
+        }
+        val projected = object : WinRtProjectedDelegate {
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle = handle
+        }
+        val abi = WinRtBindableObjectMarshaller.fromManaged(projected)
+
+        try {
+            ComObjectReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { reference ->
+                reference.queryInterface(descriptor.referenceInterfaceId()).getOrThrow().use { delegateReferenceValue ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val valueOut = PlatformAbi.allocatePointerSlot(scope)
+                        val hr = ComVtableInvoker.invokeArgs(
+                            instance = delegateReferenceValue.pointer,
+                            slot = IInspectableVftblSlots.FirstCustom,
+                            arg0 = valueOut,
+                        )
+                        HResult(hr).requireSuccess()
+                        WinRtDelegateReference(PlatformAbi.readPointer(valueOut), descriptor).use { delegateReference ->
+                            delegateReference.invoke(emptyList())
+                        }
+                    }
+                }
+            }
+            assertEquals(1, callCount)
+        } finally {
+            try {
+                IUnknownReference(abi.asRawComPtr(), IID.IInspectable).close()
+            } finally {
+                handle.close()
+            }
+        }
+    }
 }
