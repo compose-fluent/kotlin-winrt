@@ -5,6 +5,8 @@ import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 actual class NativeScope internal constructor(
     internal val arena: Arena,
@@ -15,12 +17,17 @@ actual class NativeScope internal constructor(
     }
 }
 
+@OptIn(ExperimentalAtomicApi::class)
 actual class NativeCallbackHandle internal constructor(
     actual val pointer: RawAddress,
     private val onClose: () -> Unit,
 ) : AutoCloseable {
+    private val closed = AtomicInt(0)
+
     actual override fun close() {
-        onClose()
+        if (closed.compareAndSet(0, 1)) {
+            onClose()
+        }
     }
 }
 
