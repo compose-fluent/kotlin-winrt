@@ -251,6 +251,61 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_action_with_progress_await_faults_and_closes_completed_handler_when_get_results_fails() {
+        Arena.ofConfined().use { arena ->
+            val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
+            val action = FakeAsyncActionWithProgressReference(arena, WinRtAsyncStatus.Started, resultsFailure = failure)
+
+            runBlocking {
+                val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        action.await()
+                    } catch (error: WinRtIllegalStateException) {
+                        assertEquals(failure, error)
+                        return@launch
+                    }
+                    throw AssertionError("Expected getResults failure from await().")
+                }
+                action.complete(WinRtAsyncStatus.Completed)
+                awaitJob.join()
+            }
+
+            assertTrue(action.resultsCalled)
+            assertTrue(action.completedHandlerClosed())
+        }
+    }
+
+    @Test
+    fun async_operation_with_progress_await_faults_and_closes_completed_handler_when_get_results_fails() {
+        Arena.ofConfined().use { arena ->
+            val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
+            val operation = FakeAsyncOperationWithProgressReference(
+                arena = arena,
+                statusState = WinRtAsyncStatus.Started,
+                result = "ignored",
+                resultsFailure = failure,
+            )
+
+            runBlocking {
+                val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        operation.await()
+                    } catch (error: WinRtIllegalStateException) {
+                        assertEquals(failure, error)
+                        return@launch
+                    }
+                    throw AssertionError("Expected getResults failure from await().")
+                }
+                operation.complete(WinRtAsyncStatus.Completed)
+                awaitJob.join()
+            }
+
+            assertTrue(operation.resultsCalled)
+            assertTrue(operation.completedHandlerClosed())
+        }
+    }
+
+    @Test
     fun async_operation_await_completes_with_result_and_maps_error_status() {
         Arena.ofConfined().use { arena ->
             runBlocking {
@@ -382,6 +437,103 @@ class WinRtAsyncInteropTest {
 
         override fun registerCompletedHandler(handle: WinRtDelegateHandle) {
             completedHandle = handle
+        }
+
+        fun completedHandlerClosed(): Boolean =
+            completedHandle?.let(::isDelegateHandleClosedForTesting) == true
+
+        fun complete(newStatus: WinRtAsyncStatus) {
+            statusState = newStatus
+            completedHandle?.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, newStatus.abiValue))
+        }
+
+        override fun close() = Unit
+    }
+
+    private class FakeAsyncActionWithProgressReference(
+        arena: Arena,
+        private var statusState: WinRtAsyncStatus,
+        private val errorCode: HResult = KnownHResults.S_OK,
+        private val resultsFailure: Throwable? = null,
+    ) : WinRtAsyncActionWithProgressReference<Int>(
+        pointer = arena.allocate(8).asNativePointer(),
+        interfaceId = Guid("22222222-3333-4444-5555-666666666666"),
+        progressHandlerInterfaceId = Guid("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"),
+        completedHandlerInterfaceId = Guid("cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"),
+    ) {
+        var resultsCalled = false
+        private var completedHandle: WinRtDelegateHandle? = null
+
+        override fun status(): WinRtAsyncStatus = statusState
+
+        override fun errorCode(): HResult = errorCode
+
+        override fun getResults() {
+            resultsCalled = true
+            resultsFailure?.let { throw it }
+        }
+
+        override fun whenCompleted(
+            callback: (WinRtAsyncActionWithProgressReference<Int>, WinRtAsyncStatus) -> Unit,
+        ): WinRtDelegateHandle {
+            val handle = WinRtDelegateBridge.createUnitDelegate(
+                iid = Guid("cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"),
+                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+            ) { args ->
+                callback(this, WinRtAsyncStatus.fromAbi(args[1] as Int))
+            }
+            completedHandle = handle
+            return handle
+        }
+
+        fun completedHandlerClosed(): Boolean =
+            completedHandle?.let(::isDelegateHandleClosedForTesting) == true
+
+        fun complete(newStatus: WinRtAsyncStatus) {
+            statusState = newStatus
+            completedHandle?.invokeAbiForTesting(listOf(PlatformAbi.nullPointer, newStatus.abiValue))
+        }
+
+        override fun close() = Unit
+    }
+
+    private class FakeAsyncOperationWithProgressReference(
+        arena: Arena,
+        private var statusState: WinRtAsyncStatus,
+        private val result: String,
+        private val errorCode: HResult = KnownHResults.S_OK,
+        private val resultsFailure: Throwable? = null,
+    ) : WinRtAsyncOperationWithProgressReference<String, Int>(
+        pointer = arena.allocate(8).asNativePointer(),
+        interfaceId = Guid("33333333-4444-5555-6666-777777777777"),
+        progressHandlerInterfaceId = Guid("dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb"),
+        completedHandlerInterfaceId = Guid("eeeeeeee-ffff-aaaa-bbbb-cccccccccccc"),
+        resultReader = { error("Fake override should be used.") },
+    ) {
+        var resultsCalled = false
+        private var completedHandle: WinRtDelegateHandle? = null
+
+        override fun status(): WinRtAsyncStatus = statusState
+
+        override fun errorCode(): HResult = errorCode
+
+        override fun getResults(): String {
+            resultsCalled = true
+            resultsFailure?.let { throw it }
+            return result
+        }
+
+        override fun whenCompleted(
+            callback: (WinRtAsyncOperationWithProgressReference<String, Int>, WinRtAsyncStatus) -> Unit,
+        ): WinRtDelegateHandle {
+            val handle = WinRtDelegateBridge.createUnitDelegate(
+                iid = Guid("eeeeeeee-ffff-aaaa-bbbb-cccccccccccc"),
+                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+            ) { args ->
+                callback(this, WinRtAsyncStatus.fromAbi(args[1] as Int))
+            }
+            completedHandle = handle
+            return handle
         }
 
         fun completedHandlerClosed(): Boolean =
