@@ -6,6 +6,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
@@ -350,6 +351,38 @@ class KotlinWinRtPluginTest {
         val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
         val dependencyProjectPaths = identityConfiguration.dependencies
             .filterIsInstance<org.gradle.api.artifacts.ProjectDependency>()
+            .map { it.path }
+
+        assertEquals(listOf(":library"), dependencyProjectPaths)
+    }
+
+    @Test
+    fun application_plugin_collects_kmp_source_set_project_dependencies_with_identity_metadata() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val library = ProjectBuilder.builder().withName("library").withParent(root).build()
+        val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
+        val application = ProjectBuilder.builder().withName("application").withParent(root).build()
+
+        library.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        library.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        application.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        application.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        application.extensions.getByType(WinRtExtension::class.java).application {}
+        application.extensions.configure(
+            org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java,
+        ) { kotlin ->
+            kotlin.jvm("winuiJvm")
+            kotlin.sourceSets.named("commonMain").configure { sourceSet ->
+                sourceSet.dependencies {
+                    implementation(project(mapOf("path" to ":library")))
+                    implementation(project(mapOf("path" to ":runtime")))
+                }
+            }
+        }
+
+        val identityConfiguration = application.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
+        val dependencyProjectPaths = identityConfiguration.dependencies
+            .filterIsInstance<ProjectDependency>()
             .map { it.path }
 
         assertEquals(listOf(":library"), dependencyProjectPaths)
@@ -842,6 +875,129 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun plugin_validates_multiplatform_winrt_library_consumed_by_multiplatform_winrt_application() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-library-app-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-library-app-test"
+            include(":winrt-library")
+            include(":winrt-app")
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx512m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("winrt-library/build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("winrt-app/build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                            implementation(project(":winrt-library"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                application {}
+                type("Windows.Foundation.IStringable")
+            }
+
+            tasks.register("printApplicationIdentity") {
+                dependsOn("generateWinRtApplicationIdentity")
+                doLast {
+                    println(layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json").get().asFile.readText())
+                }
+            }
+            """.trimIndent(),
+        )
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments(
+                ":winrt-library:compileKotlinWinuiJvm",
+                ":winrt-app:compileKotlinWinuiJvm",
+                ":winrt-app:printApplicationIdentity",
+                "--stacktrace",
+            )
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-library:generateWinRtIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-library:compileKotlinWinuiJvm")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-app:generateWinRtApplicationIdentity")?.outcome)
+        assertTrue(
+            result.task(":winrt-app:compileKotlinWinuiJvm")?.outcome in
+                setOf(TaskOutcome.SUCCESS, TaskOutcome.NO_SOURCE),
+        )
+        assertTrue(result.output.contains("winrt-library"))
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve(
+                    "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IStringable.kt",
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun application_distribution_contains_windowsappsdk_runtime_resources() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-app-dist-test-")
         val nugetRoot = projectDir.resolve("nuget")
@@ -923,7 +1079,6 @@ class KotlinWinRtPluginTest {
             }
             """.trimIndent(),
         )
-
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()

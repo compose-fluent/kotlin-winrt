@@ -12,6 +12,7 @@ import org.gradle.api.file.CopySpec
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.io.File
 import org.gradle.jvm.tasks.Jar
@@ -158,16 +159,7 @@ private fun configureWinRtApplicationTasks(
             )
         },
     )
-    project.configurations.matching { it.name == "implementation" }.configureEach { configuration ->
-        configuration.dependencies.configureEach { dependency ->
-            if (dependency is ProjectDependency) {
-                val dependencyProject = project.findProject(dependency.path)
-                if (dependencyProject?.hasKotlinWinRtIdentityMetadata() == true) {
-                    identityDependencies.dependencies.add(dependency.copy())
-                }
-            }
-        }
-    }
+    configureWinRtIdentityProjectDependencies(project, identityDependencies)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(identityDependencies)
     }
@@ -470,6 +462,59 @@ private fun addGeneratedSourcesToKotlinMain(
     val mainSourceSet = sourceSets.getByName("main")
     val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return
     kotlinSourceDirectorySet.callOneArg("srcDir", generatedSources)
+}
+
+private fun configureWinRtIdentityProjectDependencies(
+    project: Project,
+    identityDependencies: org.gradle.api.artifacts.Configuration,
+) {
+    val registeredProjectPaths = linkedSetOf<String>()
+    fun registerDependency(dependency: ProjectDependency) {
+        val dependencyProject = project.findProject(dependency.path)
+        if (dependencyProject?.hasKotlinWinRtIdentityMetadata() == true &&
+            registeredProjectPaths.add(dependency.path)
+        ) {
+            identityDependencies.dependencies.add(dependency.copy())
+        }
+    }
+    fun observeConfiguration(configurationName: String) {
+        project.configurations.matching { it.name == configurationName }.configureEach { configuration ->
+            configuration.allDependencies.configureEach { dependency ->
+                if (dependency is ProjectDependency) {
+                    registerDependency(dependency)
+                }
+            }
+        }
+    }
+    fun scanConfiguration(configurationName: String) {
+        project.configurations.findByName(configurationName)?.allDependencies?.forEach { dependency ->
+            if (dependency is ProjectDependency) {
+                registerDependency(dependency)
+            }
+        }
+    }
+    fun kotlinSourceSetConfigurationNames(sourceSet: KotlinSourceSet): List<String> =
+        buildList {
+            add(sourceSet.apiConfigurationName)
+            add(sourceSet.implementationConfigurationName)
+            (sourceSet.callNoArg("getImplementationMetadataConfigurationName") as? String)?.let(::add)
+        }
+
+    observeConfiguration("api")
+    observeConfiguration("implementation")
+    project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return@withId
+        kotlinExtension.sourceSets.configureEach { sourceSet: KotlinSourceSet ->
+            kotlinSourceSetConfigurationNames(sourceSet).forEach(::observeConfiguration)
+        }
+    }
+    project.gradle.projectsEvaluated {
+        scanConfiguration("api")
+        scanConfiguration("implementation")
+        project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.sourceSets?.forEach { sourceSet ->
+            kotlinSourceSetConfigurationNames(sourceSet).forEach(::scanConfiguration)
+        }
+    }
 }
 
 private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
