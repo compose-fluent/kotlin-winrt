@@ -273,7 +273,7 @@ object ComWrappersSupport {
     }
 
     fun initializeComposableReference(instance: IInspectableReference): IInspectableReference =
-        instance.also { it.tryInitializeReferenceTracker() }
+        instance.also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
 
     fun createCCWForObject(
         value: Any,

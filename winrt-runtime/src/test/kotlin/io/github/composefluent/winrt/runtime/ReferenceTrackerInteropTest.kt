@@ -32,6 +32,24 @@ class ReferenceTrackerInteropTest {
         }
     }
 
+    @Test
+    fun composable_reference_initialization_tracks_without_addref_from_tracker_source() {
+        FakeReferenceTrackerHost.create().use { host ->
+            val reference = IInspectableReference(host.objectPointer.asRawAddress().asRawComPtr(), IID.IInspectable)
+
+            val initialized = ComWrappersSupport.initializeComposableReference(reference)
+
+            assertTrue(initialized.hasReferenceTracker)
+            assertEquals(0, host.trackerAddRefFromSourceCalls.get())
+
+            initialized.close()
+
+            assertEquals(0, host.trackerReleaseFromSourceCalls.get())
+            assertEquals(1, host.objectReleaseCalls.get())
+            assertEquals(2, host.trackerReleaseCalls.get())
+        }
+    }
+
     private class FakeReferenceTrackerHost private constructor(
         private val arena: Arena,
         val objectPointer: MemorySegment,
