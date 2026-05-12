@@ -126,6 +126,31 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun property_value_projection_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val pointer = WinRtPropertyValueProjection.fromManaged("projection-runtime")
+        try {
+            IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue, preventReleaseOnDispose = true).use { reference ->
+                listOf(
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IReferenceTrackerTarget,
+                ).forEach { iid ->
+                    reference.queryInterface(iid).getOrThrow().use { queried ->
+                        assertTrue(queried.sameIdentity(reference))
+                    }
+                }
+            }
+        } finally {
+            IUnknownReference(pointer.asRawComPtr(), IID.IPropertyValue).close()
+        }
+    }
+
+    @Test
     fun runtime_hooks_project_uri_and_iclosable_like_cswinrt() {
         assumeTrue(PlatformRuntime.isWindows)
         ComWrappersSupport.clearRegistriesForTests()

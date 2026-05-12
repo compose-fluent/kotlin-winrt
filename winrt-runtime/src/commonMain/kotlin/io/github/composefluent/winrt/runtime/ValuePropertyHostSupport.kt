@@ -1,13 +1,24 @@
 package io.github.composefluent.winrt.runtime
 
-internal fun createPropertyValueHost(value: Any): WinRtInspectableComObject =
-    WinRtInspectableComObject(
-        interfaceDefinitions = listOf(
-            createPropertyValueInterfaceDefinition(value),
+internal fun createPropertyValueHost(value: Any): WinRtInspectableComObject {
+    val definition = InteropRuntimeHooks.augmentInspectableDefinition(
+        value = value,
+        definition = WinRtCcwDefinition(
+            interfaceDefinitions = listOf(
+                createPropertyValueInterfaceDefinition(value),
+            ),
+            defaultInterfaceId = IID.IPropertyValue,
+            runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
         ),
-        runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(value::class),
+    )
+    return WinRtInspectableComObject(
+        interfaceDefinitions = definition.interfaceDefinitions,
+        hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+        defaultInterfaceId = definition.defaultInterfaceId,
+        runtimeClassName = definition.runtimeClassName,
         managedValue = value,
     )
+}
 
 internal fun createPropertyValueInterfaceDefinition(value: Any): WinRtInspectableInterfaceDefinition =
     WinRtInspectableInterfaceDefinition(
