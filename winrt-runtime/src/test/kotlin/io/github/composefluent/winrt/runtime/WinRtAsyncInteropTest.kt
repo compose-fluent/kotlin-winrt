@@ -179,6 +179,38 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun task_to_async_close_matches_terminal_state_rules() {
+        AsyncInfo.runAction(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)) {
+            kotlinx.coroutines.awaitCancellation()
+        }.use { action ->
+            val startedCloseHr = ComVtableInvoker.invoke(action.pointer, WinRtAsyncInfoVftblSlots.Close)
+            assertEquals(KnownHResults.E_ILLEGAL_STATE_CHANGE.value, startedCloseHr)
+
+            val statusHr = PlatformAbi.confinedScope().use { scope ->
+                val statusOut = PlatformAbi.allocateInt32Slot(scope)
+                ComVtableInvoker.invokeArgs(action.pointer, WinRtAsyncInfoVftblSlots.Status, statusOut)
+            }
+            assertEquals(KnownHResults.S_OK.value, statusHr)
+
+            action.cancel()
+        }
+
+        AsyncInfo.completedAction().use { action ->
+            val closeHr = ComVtableInvoker.invoke(action.pointer, WinRtAsyncInfoVftblSlots.Close)
+            assertEquals(KnownHResults.S_OK.value, closeHr)
+
+            val statusHr = PlatformAbi.confinedScope().use { scope ->
+                val statusOut = PlatformAbi.allocateInt32Slot(scope)
+                ComVtableInvoker.invokeArgs(action.pointer, WinRtAsyncInfoVftblSlots.Status, statusOut)
+            }
+            assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, statusHr)
+
+            val secondCloseHr = ComVtableInvoker.invoke(action.pointer, WinRtAsyncInfoVftblSlots.Close)
+            assertEquals(KnownHResults.S_OK.value, secondCloseHr)
+        }
+    }
+
+    @Test
     fun async_info_factory_exposes_cswinrt_ccw_suffix_interfaces() {
         AsyncInfo.completedAction().use { action ->
             listOf(
