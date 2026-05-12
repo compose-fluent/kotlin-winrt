@@ -512,20 +512,19 @@ object MarshalGenericParameter {
     fun <T> of(): Marshaler<T> =
         pointerMarshaler(
             category = WinRtAbiCategory.INSPECTABLE,
-            createMarshaler = { value -> WinRtGenericParameterProjection.createReference(value) },
+            createMarshaler = WinRtObjectMarshaller::createMarshaler,
             getAbiPointer = { value ->
                 when (value) {
                     null -> PlatformAbi.nullPointer
+                    is WinRtObjectMarshaler -> value.abi
                     is ComObjectReference -> value.pointer.asRawAddress()
                     is RawAddress -> value
                     else -> error("Expected generic parameter marshaler, got '${abiTypeName(value)}'.")
                 }
             },
             fromAbiPointer = { pointer -> WinRtGenericParameterProjection.fromAbi(pointer) },
-            fromManagedPointer = { value ->
-                WinRtGenericParameterProjection.createReference(value)?.useAndGetRef() ?: PlatformAbi.nullPointer
-            },
-            disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
+            fromManagedPointer = { value -> WinRtGenericParameterProjection.fromManaged(value) },
+            disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
             disposeAbiPointer = { pointer ->
                 if (!PlatformAbi.isNull(pointer)) {
                     IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()

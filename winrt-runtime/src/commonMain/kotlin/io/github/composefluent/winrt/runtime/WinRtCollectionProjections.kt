@@ -142,12 +142,11 @@ object WinRtReferenceValueAdapters {
 object WinRtGenericParameterProjection {
     @Suppress("UNCHECKED_CAST")
     fun <T> fromAbi(pointer: RawAddress): T {
-        if (PlatformAbi.isNull(pointer)) {
-            return null as T
-        }
-        return (WinRtInspectableComObject.findManagedValue(pointer)
-            ?: ComWrappersSupport.createRcwForComObject(pointer)) as T
+        return WinRtObjectMarshaller.fromAbi(pointer) as T
     }
+
+    fun <T> fromManaged(value: T): RawAddress =
+        WinRtObjectMarshaller.fromManaged(value)
 
     fun <T> createReference(value: T): ComObjectReference? =
         value?.let { ComWrappersSupport.createCCWForObject(it as Any, IID.IInspectable) }
