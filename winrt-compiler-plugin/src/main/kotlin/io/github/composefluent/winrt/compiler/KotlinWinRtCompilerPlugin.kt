@@ -198,6 +198,7 @@ class KotlinWinRtIrGenerationExtension(
         if (intrinsicFunctions.isEmpty()) {
             return
         }
+        var reportedMissingDirectLowering = false
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
@@ -213,7 +214,18 @@ class KotlinWinRtIrGenerationExtension(
                         ?.key
                         ?: call.projectionIntrinsicFunctionName()
                         ?: return call
-                    directLowerings?.lower(
+                    if (directLowerings == null) {
+                        if (!reportedMissingDirectLowering) {
+                            reportedMissingDirectLowering = true
+                            pluginContext.messageCollector.report(
+                                CompilerMessageSeverity.ERROR,
+                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with a JDK that exposes java.lang.foreign. Use JDK 22 or newer for Kotlin/JVM compilation; otherwise generated WinRT projection calls would remain as runtime fallback intrinsics.",
+                                null,
+                            )
+                        }
+                        return call
+                    }
+                    directLowerings.lower(
                         intrinsicName,
                         call,
                         pluginContext,

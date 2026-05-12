@@ -875,6 +875,121 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun plugin_lowers_projection_intrinsics_in_multiplatform_jvm_common_sources() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-intrinsic-lowering-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-intrinsic-lowering-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+
+            val writeIntrinsicProbe = tasks.register("writeIntrinsicProbe") {
+                dependsOn("generateWinRtProjections")
+                val outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/main/kotlin/sample/IntrinsicProbe.kt")
+                outputs.file(outputFile)
+                doLast {
+                    outputFile.get().asFile.apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            ${"\"\"\""}
+                            package sample
+
+                            import io.github.composefluent.winrt.runtime.ComObjectReference
+                            import io.github.composefluent.winrt.runtime.RawAddress
+                            import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
+
+                            object IntrinsicProbe {
+                                fun call(reference: ComObjectReference, value: RawAddress) {
+                                    WinRtProjectionIntrinsic.callUnit(reference, 7, "RawAddress", value)
+                                }
+                            }
+                            ${"\"\"\""}.trimIndent()
+                        )
+                    }
+                }
+            }
+
+            tasks.named("compileKotlinWinuiJvm") {
+                dependsOn(writeIntrinsicProbe)
+            }
+
+            tasks.register("verifyLoweredIntrinsic") {
+                dependsOn("compileKotlinWinuiJvm")
+                doLast {
+                    val classFile = layout.buildDirectory.file("classes/kotlin/winuiJvm/main/sample/IntrinsicProbe.class").get().asFile
+                    val contents = classFile.readBytes().toString(Charsets.ISO_8859_1)
+                    check(!contents.contains("WinRtProjectionIntrinsic")) {
+                        "KMP JVM class still contains WinRtProjectionIntrinsic fallback"
+                    }
+                    check(contents.contains("WinRtJvmFfmDowncallHandles")) {
+                        "KMP JVM class did not lower projection intrinsic to JVM FFM"
+                    }
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("verifyLoweredIntrinsic", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":compileKotlinWinuiJvm")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":verifyLoweredIntrinsic")?.outcome)
+    }
+
+    @Test
     fun plugin_validates_multiplatform_winrt_library_consumed_by_multiplatform_winrt_application() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-library-app-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
