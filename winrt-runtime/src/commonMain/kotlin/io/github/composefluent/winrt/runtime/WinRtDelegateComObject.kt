@@ -65,6 +65,7 @@ internal class WinRtDelegateComObject(
                             },
                         ),
                     ),
+                    createPropertyValueInterfaceDefinition(callback),
                     WinRtInspectableInterfaceDefinition(
                         interfaceId = IID.IInspectable,
                         methods = emptyList(),

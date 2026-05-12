@@ -206,10 +206,16 @@ class WinRtDelegateBridgeTest {
 
         handle.use {
             it.createReference().use { reference ->
-                listOf(IID.IWeakReferenceSource, IID.IMarshal, IID.IAgileObject, IID.IInspectable).forEach { iid ->
+                listOf(IID.IWeakReferenceSource, IID.IMarshal, IID.IAgileObject, IID.IInspectable, IID.IPropertyValue).forEach { iid ->
                     reference.queryInterface(iid).getOrThrow().use { queried ->
                         assertTrue(queried.sameIdentity(reference))
                     }
+                }
+                reference.queryInterface(IID.IPropertyValue).getOrThrow().use { propertyValue ->
+                    assertEquals(
+                        PropertyType.OtherType,
+                        WinRtPropertyValueReference(propertyValue.pointer.asRawAddress(), preventReleaseOnDispose = true).type(),
+                    )
                 }
             }
         }
@@ -308,6 +314,7 @@ class WinRtDelegateBridgeTest {
                                         IID.IReference,
                                         WinRtTypeSignature.delegate(delegateIid),
                                     ),
+                                    IID.IPropertyValue,
                                     IID.IStringable,
                                     IID.IWeakReferenceSource,
                                     IID.IMarshal,
