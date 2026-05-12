@@ -568,9 +568,7 @@ object MarshalDelegate {
         if (PlatformAbi.isNull(pointer)) {
             return
         }
-        if (!WinRtDelegateComObject.releaseLocalReference(pointer)) {
-            WinRtDelegateReference.fromAbi(pointer, descriptor)?.close()
-        }
+        WinRtDelegateReference.fromAbi(pointer, descriptor)?.close()
     }
 
     fun createMarshalerArray(values: Array<out WinRtDelegateReference?>?): WinRtAbiArray? =

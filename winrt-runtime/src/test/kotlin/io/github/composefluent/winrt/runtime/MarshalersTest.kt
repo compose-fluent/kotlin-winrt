@@ -168,6 +168,34 @@ class MarshalersTest {
         }
     }
 
+    @Test
+    fun delegate_abi_reference_outlives_closed_handle_until_dispose_abi() {
+        var callCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999998"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            callCount += 1
+        }
+
+        val abi = MarshalDelegate.fromManaged(handle)
+        handle.close()
+
+        try {
+            val projected = MarshalDelegate.fromAbi(abi, descriptor)
+                ?: error("Delegate reference should not be null.")
+            projected.invoke(emptyList())
+            assertEquals(1, callCount)
+        } finally {
+            MarshalDelegate.disposeAbi(abi, descriptor)
+        }
+    }
+
     private class TestProjectedWrapper(
         override val primaryTypeHandle: WinRtTypeHandle,
         private val inspectable: IInspectableReference,

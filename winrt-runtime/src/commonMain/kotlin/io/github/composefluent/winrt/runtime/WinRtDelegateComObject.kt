@@ -8,7 +8,6 @@ internal class WinRtDelegateComObject(
 
     fun createReference(): WinRtDelegateReference {
         val reference = host.createReference(descriptor.interfaceId)
-        registry[PlatformAbi.pointerKey(reference.pointer)] = this
         return WinRtDelegateReference(reference.comPtr, descriptor)
     }
 
@@ -80,17 +79,6 @@ internal class WinRtDelegateComObject(
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = descriptor.runtimeClassName ?: definition.runtimeClassName,
         )
-    }
-
-    companion object {
-        private val registry = ConcurrentCacheMap<Long, WinRtDelegateComObject>()
-
-        internal fun releaseLocalReference(pointer: RawAddress): Boolean {
-            val delegate = registry[PlatformAbi.pointerKey(pointer)] ?: return false
-            registry.remove(PlatformAbi.pointerKey(pointer))
-            delegate.releaseManagedReference()
-            return true
-        }
     }
 }
 
