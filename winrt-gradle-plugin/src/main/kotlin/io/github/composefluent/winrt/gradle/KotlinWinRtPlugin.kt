@@ -11,6 +11,8 @@ import org.gradle.api.distribution.DistributionContainer
 import org.gradle.api.file.CopySpec
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.io.File
 import org.gradle.jvm.tasks.Jar
 
@@ -382,7 +384,28 @@ private fun configureWinRtGeneration(
             compilerSupportClassOutputDirectory = project.layout.buildDirectory.dir("classes/kotlin/main"),
             typeIndexOutput = project.layout.buildDirectory.file("classes/kotlin/main/kotlin-winrt/type-index.tsv"),
         )
-        project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
+        project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
+            task.dependsOn(generateTask)
+        })
+    }
+
+    project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        project.configurations.findByName("kotlinCompilerPluginClasspath")?.let { compilerPluginConfiguration ->
+            project.dependencies.add(compilerPluginConfiguration.name, kotlinWinRtCompilerPluginDependency(project))
+        }
+        addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
+        configureKotlinWinRtCompilerPluginOptions(
+            project = project,
+            metadataIndex = generatedSources.map { directory ->
+                directory.file("kotlin-winrt-authoring/metadata-index.tsv")
+            },
+            compilerSupportManifest = generatedSources.map { directory ->
+                directory.file("kotlin-winrt-support/compiler-support.tsv")
+            },
+            compilerSupportClassOutputDirectory = project.layout.buildDirectory.dir("classes/kotlin/main"),
+            typeIndexOutput = project.layout.buildDirectory.file("classes/kotlin/main/kotlin-winrt/type-index.tsv"),
+        )
+        project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
         })
     }
@@ -449,6 +472,16 @@ private fun addGeneratedSourcesToKotlinMain(
     kotlinSourceDirectorySet.callOneArg("srcDir", generatedSources)
 }
 
+private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
+        sourceSet.kotlin.srcDir(generatedSources)
+    }
+}
+
 private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
@@ -456,40 +489,38 @@ private fun configureKotlinWinRtCompilerPluginOptions(
     compilerSupportClassOutputDirectory: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
     typeIndexOutput: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
-    project.tasks.matching { task -> task.name == "compileKotlin" }.configureEach(Action<Task> { task ->
-        val compilerOptions = task.callNoArg("getCompilerOptions") ?: return@Action
-        val freeCompilerArgs = compilerOptions.callNoArg("getFreeCompilerArgs") ?: return@Action
+    project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
+        val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
         val metadataIndexPath = metadataIndex.get().asFile.absolutePath
-        freeCompilerArgs.callOneArg("add", "-P")
-        freeCompilerArgs.callOneArg(
-            "add",
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:metadataIndex=$metadataIndexPath",
         )
         val typeIndexOutputPath = typeIndexOutput.get().asFile.absolutePath
-        freeCompilerArgs.callOneArg("add", "-P")
-        freeCompilerArgs.callOneArg(
-            "add",
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:typeIndexOutput=$typeIndexOutputPath",
         )
         val compilerSupportManifestPath = compilerSupportManifest.get().asFile.absolutePath
-        freeCompilerArgs.callOneArg("add", "-P")
-        freeCompilerArgs.callOneArg(
-            "add",
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportManifest=$compilerSupportManifestPath",
         )
         val compilerSupportClassOutputDirectoryPath = compilerSupportClassOutputDirectory.get().asFile.absolutePath
-        freeCompilerArgs.callOneArg("add", "-P")
-        freeCompilerArgs.callOneArg(
-            "add",
+        freeCompilerArgs.add("-P")
+        freeCompilerArgs.add(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportClassOutputDirectory=$compilerSupportClassOutputDirectoryPath",
         )
     })
 }
 
 private fun kotlinMainSourceDirs(project: Project): List<File> {
+    project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.let { kotlinExtension ->
+        return kotlinExtension.sourceSets.flatMap { sourceSet -> sourceSet.kotlin.srcDirs }
+    }
     val kotlinExtension = project.extensions.findByName("kotlin") ?: return emptyList()
     val sourceSets = kotlinExtension.callNoArg("getSourceSets") as? org.gradle.api.NamedDomainObjectContainer<*> ?: return emptyList()
-    val mainSourceSet = sourceSets.getByName("main")
+    val mainSourceSet = sourceSets.findByName("main") ?: return emptyList()
     val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return emptyList()
     return (kotlinSourceDirectorySet.callNoArg("getSrcDirs") as? Set<File>).orEmpty().toList()
 }

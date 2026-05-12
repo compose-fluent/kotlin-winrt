@@ -749,6 +749,99 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun plugin_injects_compiler_plugin_options_into_multiplatform_jvm_compilation() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-kmp-plugin-test-")
+        val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-kmp-plugin-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    val winuiJvmMain by getting {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
+
+            tasks.register("printWinuiJvmCompilerArgs") {
+                dependsOn("generateWinRtProjections")
+                doLast {
+                    val compileTask = tasks.named("compileKotlinWinuiJvm").get()
+                    val compilerOptions = compileTask.javaClass.methods
+                        .first { it.name == "getCompilerOptions" && it.parameterCount == 0 }
+                        .invoke(compileTask)
+                    val freeCompilerArgs = compilerOptions.javaClass.methods
+                        .first { it.name == "getFreeCompilerArgs" && it.parameterCount == 0 }
+                        .invoke(compilerOptions)
+                    val args = freeCompilerArgs.javaClass.methods
+                        .first { it.name == "get" && it.parameterCount == 0 }
+                        .invoke(freeCompilerArgs)
+                    println("WINUI_JVM_ARGS=" + args)
+                    println("COMMON_MAIN_SOURCES=" + kotlin.sourceSets.named("commonMain").get().kotlin.srcDirs)
+                }
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("printWinuiJvmCompilerArgs", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:metadataIndex="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:typeIndexOutput="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportManifest="))
+        assertTrue(result.output.contains("plugin:io.github.composefluent.winrt.compiler:compilerSupportClassOutputDirectory="))
+        assertTrue(result.output.replace("\\", "/").contains("build/generated/kotlin-winrt/src/main/kotlin"))
+    }
+
+    @Test
     fun application_distribution_contains_windowsappsdk_runtime_resources() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-app-dist-test-")
         val nugetRoot = projectDir.resolve("nuget")
