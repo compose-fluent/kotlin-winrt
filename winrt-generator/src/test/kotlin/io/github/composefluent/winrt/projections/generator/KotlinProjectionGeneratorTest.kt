@@ -3543,6 +3543,58 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_keeps_projected_object_and_collection_interface_native_projection_on_kotlin_fallback() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IChild",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Child",
+                                    typeName = "Sample.Foundation.IChild",
+                                    getterMethodName = "get_Child",
+                                    getterMethodRowId = 10,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "Items",
+                                    typeName = "Windows.Foundation.Collections.IVector<String>",
+                                    getterMethodName = "get_Items",
+                                    getterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IWidget.kt").contents
+        val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("override val child: IChild"))
+        assertTrue(interfaceContents, interfaceContents.contains("override val items: MutableList<String>"))
+        assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
+        assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
+        assertFalse(compilerInput, compilerInput.contains("Unsupported"))
+    }
+
+    @Test
     fun generator_moves_inherited_interface_native_projection_to_compiler_artifact() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
