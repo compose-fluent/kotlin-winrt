@@ -183,6 +183,61 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun generated_interface_projection_object_return_uses_object_marshaller_from_abi() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val typeHandle = WinRtTypeHandle("Contoso.IGeneratedObjectReturn", interfaceId)
+        val payload = GeneratedObjectPayload("payload")
+        val returnedReference = ComWrappersSupport.createCCWForObject(payload, IID.IInspectable)
+        var returnedPointer = PlatformAbi.nullPointer
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = interfaceId,
+                    methods = listOf(
+                        WinRtInspectableMethodDefinition(
+                            ComMethodSignature.of(ComAbiValueKind.Pointer),
+                        ) { args ->
+                            returnedPointer = PlatformAbi.fromRawComPtr(returnedReference.getRefPointer())
+                            PlatformAbi.writePointer(args[0] as RawAddress, returnedPointer)
+                            KnownHResults.S_OK.value
+                        },
+                    ),
+                ),
+            ),
+        )
+        val nativeReference = host.createReference(interfaceId)
+        val unknownReference = IUnknownReference(nativeReference.getRefPointer(), interfaceId)
+        try {
+            val projected = WinRtGeneratedInterfaceProjectionRuntime.create(
+                interfaceClass = GeneratedObjectReturnProjection::class.java,
+                typeHandle = typeHandle,
+                nativeObject = unknownReference,
+                members = listOf(
+                    GeneratedInterfaceProjectionMemberDescriptor(
+                        kind = GeneratedInterfaceProjectionMemberKind.Method,
+                        jvmName = "getObjectValue",
+                        slot = IInspectableVftblSlots.FirstCustom,
+                        returnKind = GeneratedInterfaceProjectionValueKind.Object,
+                        parameterKinds = emptyList(),
+                        suppressHResultCheck = false,
+                    ),
+                ),
+            ) as GeneratedObjectReturnProjection
+
+            assertSame(payload, projected.getObjectValue())
+        } finally {
+            if (!PlatformAbi.isNull(returnedPointer)) {
+                IUnknownReference(returnedPointer.asRawComPtr(), IID.IInspectable).close()
+            }
+            unknownReference.close()
+            nativeReference.close()
+            returnedReference.close()
+            host.close()
+        }
+    }
+
+    @Test
     fun type_name_support_uses_non_winrt_runtime_class_lookup_hooks() {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.registerTypeRuntimeClassNameLookup { type ->
@@ -359,9 +414,15 @@ class ProjectionRegistryTest {
 
     private interface SampleGeneratedInterface
 
+    private interface GeneratedObjectReturnProjection {
+        fun getObjectValue(): Any?
+    }
+
     private class SampleRuntimeClass
 
     private class SampleGenericRuntimeClass
+
+    private data class GeneratedObjectPayload(val value: String)
 
     private class SampleMappedTypeHelper
 

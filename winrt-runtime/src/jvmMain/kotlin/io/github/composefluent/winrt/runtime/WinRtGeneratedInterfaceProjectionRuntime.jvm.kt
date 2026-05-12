@@ -198,7 +198,11 @@ private class GeneratedInterfaceProjectionInvocationHandler(
             GeneratedInterfaceProjectionValueKind.Double -> java.lang.Double.doubleToRawLongBits(value as Double)
             GeneratedInterfaceProjectionValueKind.Char16 -> (value as Char).code.toLong()
             GeneratedInterfaceProjectionValueKind.String -> HString.createReference(value as String).also(ownedInputs::add).handle.let(PlatformAbi::pointerKey)
-            GeneratedInterfaceProjectionValueKind.Object -> marshalObjectArgument(value, ownedInputs)
+            GeneratedInterfaceProjectionValueKind.Object -> {
+                val marshaler = WinRtObjectMarshaller.createMarshaler(value)
+                ownedInputs += marshaler
+                PlatformAbi.pointerKey(marshaler.abi)
+            }
             GeneratedInterfaceProjectionValueKind.UnknownReference,
             GeneratedInterfaceProjectionValueKind.InspectableReference,
             -> PlatformAbi.pointerKey((value as IWinRTObject).nativeObject.pointer)
@@ -207,19 +211,6 @@ private class GeneratedInterfaceProjectionInvocationHandler(
             GeneratedInterfaceProjectionValueKind.Unsupported,
             -> unsupportedArgumentKind(kind)
         }
-
-    private fun marshalObjectArgument(
-        value: Any?,
-        ownedInputs: MutableList<AutoCloseable>,
-    ): Long {
-        if (value == null) {
-            return PlatformAbi.pointerKey(PlatformAbi.nullPointer)
-        }
-        val reference = ComWrappersSupport.tryUnwrapObject(value)
-            ?: ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
-        ownedInputs += reference
-        return PlatformAbi.pointerKey(reference.pointer)
-    }
 
     private fun unsupportedArgumentKind(kind: GeneratedInterfaceProjectionValueKind): Nothing =
         throw WinRtUnsupportedOperationException(
@@ -290,8 +281,7 @@ private class GeneratedInterfaceProjectionInvocationHandler(
                 }
             }
             GeneratedInterfaceProjectionValueKind.Object -> {
-                val pointer = PlatformAbi.readPointer(resultOut)
-                ComWrappersSupport.createRcwForComObject(pointer)
+                WinRtObjectMarshaller.fromAbi(PlatformAbi.readPointer(resultOut))
             }
             GeneratedInterfaceProjectionValueKind.UnknownReference -> {
                 val pointer = PlatformAbi.readPointer(resultOut)
