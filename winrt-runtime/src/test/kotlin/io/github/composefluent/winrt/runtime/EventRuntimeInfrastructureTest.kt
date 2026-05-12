@@ -62,6 +62,56 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
+    fun event_source_reregisters_when_cached_delegate_loses_native_references() {
+        EventSourceCache.clearForTests()
+
+        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        var registrations = 0
+        var removals = 0
+        var activeDelegate: WinRtDelegateReference? = null
+        val received = mutableListOf<String>()
+        val source =
+            TestIntEventSource(
+                owner = owner,
+                addHandler = { _, handler ->
+                    registrations += 1
+                    activeDelegate?.close()
+                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    EventRegistrationToken(registrations.toLong())
+                },
+                removeHandler = { _, _ ->
+                    removals += 1
+                    activeDelegate?.close()
+                    activeDelegate = null
+                },
+            )
+
+        val first: (Any?, Int) -> Unit = { _, value -> received += "first:$value" }
+        val second: (Any?, Int) -> Unit = { _, value -> received += "second:$value" }
+
+        try {
+            source.subscribe(first)
+            assertEquals(1, registrations)
+            activeDelegate!!.close()
+            activeDelegate = null
+
+            source.subscribe(second)
+            assertEquals(2, registrations)
+            assertEquals(0, removals)
+
+            activeDelegate!!.invoke(listOf("sender", 11))
+            assertEquals(listOf("second:11"), received)
+
+            source.unsubscribe(second)
+            assertEquals(1, removals)
+        } finally {
+            activeDelegate?.close()
+            owner.close()
+            EventSourceCache.clearForTests()
+        }
+    }
+
+    @Test
     fun standard_delegates_round_trip_event_token_through_vtable_slots() {
         TestEventHost().use { host ->
             host.createReference().use { owner ->

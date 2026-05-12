@@ -26,3 +26,8 @@ object ReferenceTrackerVftblSlots {
     const val ReleaseFromTrackerSource = 8
     const val PegFromTrackerSource = 9
 }
+
+internal object ReferenceTrackerTargetVftblSlots {
+    const val AddRefFromReferenceTracker = 3
+    const val ReleaseFromReferenceTracker = 4
+}

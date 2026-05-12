@@ -43,8 +43,9 @@ abstract class EventSource<T : Any> protected constructor(
     fun subscribe(handler: T) {
         lock.withLock {
             var state = getStateUnsafe()
-            val shouldRegister = state == null
-            if (state == null) {
+            val shouldRegister = state == null || !state.hasComReferences()
+            if (shouldRegister) {
+                state?.close()
                 state = createEventSourceState()
             }
             state.addHandler(handler)
@@ -55,6 +56,7 @@ abstract class EventSource<T : Any> protected constructor(
             val eventInvokeHandle = createMarshaler(state.eventInvoke)
             try {
                 eventInvokeHandle.createReference().use { reference ->
+                    state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
                     state.token = addHandler(objectReference, reference)
                 }
                 state.eventInvokeHandle = eventInvokeHandle
