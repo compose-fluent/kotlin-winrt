@@ -77,11 +77,47 @@ private class GeneratedEventSource(
         value: Any?,
     ): Any? =
         when (kind) {
-            WinRtDelegateValueKind.IINSPECTABLE -> (value as? IInspectableReference)
-                ?.let { reference -> ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress()) } ?: value
-            WinRtDelegateValueKind.IUNKNOWN -> (value as? IUnknownReference)
-                ?.let { reference -> ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress()) } ?: value
-            WinRtDelegateValueKind.OBJECT -> (value as? IUnknownReference)?.asInspectable() ?: value
+            WinRtDelegateValueKind.IINSPECTABLE -> projectInspectableArgument(value)
+            WinRtDelegateValueKind.IUNKNOWN -> projectUnknownArgument(value)
+            WinRtDelegateValueKind.OBJECT -> projectObjectArgument(value)
+            else -> value
+        }
+
+    private fun projectUnknownArgument(value: Any?): Any? =
+        when (value) {
+            is IUnknownReference -> value.use { reference ->
+                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+            }
+            is ComObjectReference -> ComWrappersSupport.createRcwForComObject(value.pointer.asRawAddress())
+            else -> value
+        }
+
+    private fun projectInspectableArgument(value: Any?): Any? =
+        when (value) {
+            is IInspectableReference -> value.use { reference ->
+                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+            }
+            is IUnknownReference -> value.asInspectable().use { reference ->
+                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+            }
+            is ComObjectReference -> value.tryAsInspectable()?.use { reference ->
+                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+            } ?: value
+            else -> value
+        }
+
+    private fun projectObjectArgument(value: Any?): Any? =
+        when (value) {
+            is IInspectableReference -> value.use { reference ->
+                WinRtObjectMarshaller.fromAbi(reference.pointer.asRawAddress())
+            }
+            is IUnknownReference -> value.asInspectable().use { reference ->
+                WinRtObjectMarshaller.fromAbi(reference.pointer.asRawAddress())
+            }
+            is ComObjectReference -> value.tryAsInspectable()?.use { reference ->
+                WinRtObjectMarshaller.fromAbi(reference.pointer.asRawAddress())
+            } ?: value
+            is RawAddress -> WinRtObjectMarshaller.fromAbi(value)
             else -> value
         }
 }
