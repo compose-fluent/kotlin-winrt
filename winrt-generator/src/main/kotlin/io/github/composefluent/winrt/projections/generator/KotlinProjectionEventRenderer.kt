@@ -1003,6 +1003,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                     )
                     constructor.addStatement("    _innerStorage = requireNotNull(_composableReference).instance")
                     constructor.addCode("}\n")
+                    constructor.addWinUiApplicationResourceManagerHook(plan)
                     constructor.build()
                 } else {
                     constructor

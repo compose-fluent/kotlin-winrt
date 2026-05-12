@@ -3,7 +3,6 @@ package io.github.composefluent.winrt.samples
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinUiXamlMetadataProvider
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
-import io.github.composefluent.winrt.runtime.WinRtWinUiResourceManagerBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
 import microsoft.ui.xaml.ResourceDictionary
@@ -52,11 +51,7 @@ object WinUiControlsSample {
 
     private fun startApplication() {
         Application.start {
-            activeApplication = WinUiControlsApp().also { app ->
-                if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWinUiResourceManager")) {
-                    app.ensureResourceManagerRegistered()
-                }
-            }
+            activeApplication = WinUiControlsApp()
             println("winui-controls: application composed")
         }
         activeApplication?.close()
@@ -66,20 +61,6 @@ object WinUiControlsSample {
 
 class WinUiControlsApp : Application(), AutoCloseable {
     private var myWindow: Window? = null
-    private var resourceManagerRegistration: WinRtWinUiResourceManagerBootstrap.Registration? = null
-
-    override fun onLaunched(args: LaunchActivatedEventArgs) {
-        println("winui-controls: onLaunched")
-        launchWithResources()
-        println("winui-controls: window activated")
-    }
-
-    fun ensureResourceManagerRegistered() {
-        if (resourceManagerRegistration != null) {
-            return
-        }
-        resourceManagerRegistration = WinRtWinUiResourceManagerBootstrap.registerForApplication(this)
-    }
 
     fun launchWithResources(): WinUiControlsSampleResult {
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipXamlResources")) {
@@ -89,9 +70,13 @@ class WinUiControlsApp : Application(), AutoCloseable {
     }
 
     override fun close() {
-        resourceManagerRegistration?.close()
-        resourceManagerRegistration = null
         myWindow = null
+    }
+
+    override fun onLaunched(args: LaunchActivatedEventArgs) {
+        println("winui-controls: onLaunched")
+        launchWithResources()
+        println("winui-controls: window activated")
     }
 
     fun launchCore(): WinUiControlsSampleResult {
@@ -123,10 +108,6 @@ class WinUiControlsApp : Application(), AutoCloseable {
     private fun installXamlResources() {
         println("winui-controls: install resources current")
         val application = Application.current
-        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWinUiResourceManager")) {
-            ensureResourceManagerRegistered()
-        }
-        println("winui-controls: resource manager registered=${resourceManagerRegistration != null}")
         println("winui-controls: initialize xaml metadata provider")
         val metadataProvider = WinUiXamlMetadataProvider.tryCreate()
         println("winui-controls: xaml metadata provider=${metadataProvider?.pointer ?: "not-created"}")

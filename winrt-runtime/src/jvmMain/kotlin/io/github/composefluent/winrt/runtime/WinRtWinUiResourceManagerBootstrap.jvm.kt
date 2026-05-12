@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.io.path.isRegularFile
@@ -24,9 +25,11 @@ object WinRtWinUiResourceManagerBootstrap {
     private const val removeResourceManagerRequestedSlot = 7
     private const val createResourceManagerFromFileSlot = 6
     private const val setCustomResourceManagerSlot = 7
+    private val applicationRegistrations = ConcurrentHashMap<Long, Registration>()
 
     @OptIn(ExperimentalAtomicApi::class)
     class Registration internal constructor(
+        private val applicationKey: Long,
         private val applicationReference: IUnknownReference,
         private val resourceManagerReference: IUnknownReference,
         private val delegateHandle: WinRtDelegateHandle,
@@ -53,6 +56,26 @@ object WinRtWinUiResourceManagerBootstrap {
             delegateHandle.close()
             resourceManagerReference.close()
             applicationReference.close()
+            applicationRegistrations.remove(applicationKey, this)
+        }
+    }
+
+    fun ensureRegisteredForApplication(
+        application: IWinRTObject,
+        runtimeAssetsRoot: Path? = WinRtWindowsAppSdkBootstrap.discoverRuntimeAssetsRoot(),
+    ): AutoCloseable? {
+        if (!PlatformRuntime.isWindows) {
+            return null
+        }
+        val applicationKey = PlatformAbi.pointerKey(application.nativeObject.pointer)
+        applicationRegistrations[applicationKey]?.let { return it }
+        val registration = registerForApplication(application, runtimeAssetsRoot) ?: return null
+        val existing = applicationRegistrations.putIfAbsent(applicationKey, registration)
+        return if (existing == null) {
+            registration
+        } else {
+            registration.close()
+            existing
         }
     }
 
@@ -86,6 +109,7 @@ object WinRtWinUiResourceManagerBootstrap {
                     }
                 }
             Registration(
+                applicationKey = PlatformAbi.pointerKey(application.nativeObject.pointer),
                 applicationReference = applicationReference,
                 resourceManagerReference = resourceManagerReference,
                 delegateHandle = delegateHandle,

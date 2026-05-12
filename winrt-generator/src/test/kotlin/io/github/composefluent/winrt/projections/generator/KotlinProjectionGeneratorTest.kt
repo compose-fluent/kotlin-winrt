@@ -5190,6 +5190,80 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_wires_winui_application_resource_manager_to_application_lifecycle() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IApplication",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IApplicationOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IApplicationFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Microsoft.UI.Xaml.Application",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "System.Object"),
+                                        WinRtParameterDefinition("innerInterface", "System.Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "Application",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.IApplication",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Microsoft.UI.Xaml.IApplication",
+                                    isDefault = true,
+                                ),
+                                WinRtInterfaceImplementationDefinition(
+                                    "Microsoft.UI.Xaml.IApplicationOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                            activation = WinRtActivationShape(
+                                composableFactoryInterfaceName = "Microsoft.UI.Xaml.IApplicationFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val application = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.substringAfterLast('/') == "Application.kt" }
+            .contents
+
+        assertTrue(application, application.contains("private var _winUiResourceManagerRegistration: AutoCloseable? = null"))
+        assertEquals(
+            2,
+            Regex("""WinRtWinUiResourceManagerBootstrap\s*\.\s*ensureRegisteredForApplication\(this\)""")
+                .findAll(application)
+                .count(),
+        )
+        assertTrue(application, application.contains("internal constructor(_inner: IInspectableReference, __winrtWrapper: Unit)"))
+        assertTrue(application, application.contains("public constructor()"))
+    }
+
+    @Test
     fun generator_skips_special_name_accessors_as_ordinary_methods() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
