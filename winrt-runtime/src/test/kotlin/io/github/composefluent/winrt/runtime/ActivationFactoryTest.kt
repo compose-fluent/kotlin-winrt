@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class ActivationFactoryTest {
     @Test
@@ -46,6 +47,30 @@ class ActivationFactoryTest {
         }
 
         assertEquals(0, DllModule.cachedModuleCount())
+    }
+
+    @Test
+    fun jvm_module_path_prefers_runtime_assets_root_property() {
+        val root = Files.createTempDirectory("kotlin-winrt-runtime-assets-")
+        val asset = root.resolve("SimpleMathComponent.dll")
+        Files.write(asset, byteArrayOf(0))
+        withSystemProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, root.toString()) {
+            assertEquals(asset.toString(), WinRtPlatformApi.resolveModulePathRaw(asset.fileName.toString()))
+        }
+    }
+
+    @Test
+    fun jvm_module_path_uses_working_directory_runtime_assets() {
+        val workingDirectory = Files.createTempDirectory("kotlin-winrt-working-dir-")
+        val assetsRoot = workingDirectory.resolve(WinRtRuntimeAssets.runtimeAssetsDirectoryName)
+        Files.createDirectories(assetsRoot)
+        val asset = assetsRoot.resolve("SimpleMathComponent.dll")
+        Files.write(asset, byteArrayOf(0))
+        withSystemProperty("user.dir", workingDirectory.toString()) {
+            withSystemProperty(WinRtRuntimeAssets.runtimeAssetsRootPropertyName, null) {
+                assertEquals(asset.toString(), WinRtPlatformApi.resolveModulePathRaw(asset.fileName.toString()))
+            }
+        }
     }
 
     @Test
@@ -116,6 +141,28 @@ class ActivationFactoryTest {
             instance.use {
                 assertEquals("Windows.Data.Json.JsonObject", it.getRuntimeClassName())
             }
+        }
+    }
+}
+
+private fun withSystemProperty(
+    name: String,
+    value: String?,
+    block: () -> Unit,
+) {
+    val previous = System.getProperty(name)
+    try {
+        if (value == null) {
+            System.clearProperty(name)
+        } else {
+            System.setProperty(name, value)
+        }
+        block()
+    } finally {
+        if (previous == null) {
+            System.clearProperty(name)
+        } else {
+            System.setProperty(name, previous)
         }
     }
 }

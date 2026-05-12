@@ -8,6 +8,7 @@ import java.lang.foreign.SymbolLookup
 import java.lang.foreign.ValueLayout
 import java.lang.invoke.MethodHandle
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 
 /**
  * JVM actual for the WinRT platform boundary.
@@ -980,10 +981,9 @@ actual object WinRtPlatformApi {
     }
 
     fun resolveModulePath(fileName: String): String =
-        kotlinx.io.files.Path(
-            System.getProperty("user.dir") ?: ".",
-            fileName,
-        ).toString()
+        (WinRtRuntimeAssets.resolveAssetPath(fileName)
+            ?: Path.of(System.getProperty("user.dir") ?: ".", fileName))
+            .toString()
 
     private fun readUtf16Message(pointer: MemorySegment, charCount: Int): String {
         val sized = pointer.reinterpret(charCount.toLong() * ValueLayout.JAVA_CHAR.byteSize())

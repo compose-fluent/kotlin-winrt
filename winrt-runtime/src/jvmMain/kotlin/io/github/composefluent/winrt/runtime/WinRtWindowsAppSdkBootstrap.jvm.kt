@@ -15,7 +15,7 @@ import kotlin.io.path.name
 object WinRtWindowsAppSdkBootstrap {
     private const val defaultMajorMinorVersion = 0x00010008
     private const val defaultMinVersion = 0x1F40032608CC0000L
-    private const val runtimeAssetsResource = "kotlin-winrt-runtime-assets/Microsoft.WindowsAppRuntime.Bootstrap.dll"
+    private const val bootstrapDllName = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
     private const val versionInfoHeaderRelativePath = "include/WindowsAppSDK-VersionInfo.h"
     private val releaseMajorMinorRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJORMINOR\s+(0x[0-9A-Fa-f]+)""")
     private val releaseVersionTagRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_VERSION_TAG_W\s+L"([^"]*)"""")
@@ -98,17 +98,7 @@ object WinRtWindowsAppSdkBootstrap {
     }
 
     fun discoverRuntimeAssetsRoot(): Path? {
-        System.getProperty("kotlin.winrt.runtimeAssetsRoot")
-            ?.takeIf { it.isNotBlank() }
-            ?.let { return Path.of(it) }
-        val resource = Thread.currentThread().contextClassLoader
-            ?.getResource(runtimeAssetsResource)
-            ?: WinRtWindowsAppSdkBootstrap::class.java.classLoader?.getResource(runtimeAssetsResource)
-            ?: return null
-        if (resource.protocol != "file") {
-            return null
-        }
-        return Path.of(resource.toURI()).parent
+        return WinRtRuntimeAssets.discoverRuntimeAssetsRoot(bootstrapDllName)
     }
 
     private fun shutdown(lookup: SymbolLookup) {
@@ -125,7 +115,7 @@ object WinRtWindowsAppSdkBootstrap {
         if (root.isDirectory()) {
             Files.walk(root).use { stream ->
                 stream
-                    .filter { it.isRegularFile() && it.name.equals("Microsoft.WindowsAppRuntime.Bootstrap.dll", ignoreCase = true) }
+                    .filter { it.isRegularFile() && it.name.equals(bootstrapDllName, ignoreCase = true) }
                     .sorted()
                     .toList()
             }
