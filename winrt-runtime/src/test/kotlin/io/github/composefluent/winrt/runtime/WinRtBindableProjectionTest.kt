@@ -51,6 +51,33 @@ class WinRtBindableProjectionTest {
     }
 
     @Test
+    fun bindable_vector_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+        val abi = WinRtBindableVectorProjection.fromManaged(mutableListOf<Any?>("one"))
+        try {
+            ComObjectReference(
+                abi.asRawComPtr(),
+                WinRtBindableInterfaceIds.IBindableVector,
+                preventReleaseOnDispose = true,
+            ).use { reference ->
+                listOf(
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IReferenceTrackerTarget,
+                ).forEach { iid ->
+                    reference.queryInterface(iid).getOrThrow().use { queried ->
+                        assertTrue(queried.sameIdentity(reference))
+                    }
+                }
+            }
+        } finally {
+            IUnknownReference(abi.asRawComPtr(), WinRtBindableInterfaceIds.IBindableVector).close()
+        }
+    }
+
+    @Test
     fun bindable_object_marshaller_round_trips_plain_managed_values_and_external_inspectables() {
         val boxedValue = WinRtBindableObjectMarshaller.fromOwnedAbi(WinRtBindableObjectMarshaller.fromManaged(42))
         assertEquals(42, boxedValue)

@@ -150,7 +150,9 @@ object WinRtBindableIterableProjection {
     internal class ToAbiHelper(
         private val managed: Iterable<Any?>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createBindableHost(
+            managedValue = managed,
+            defaultInterfaceId = WinRtBindableInterfaceIds.IBindableIterable,
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
                     interfaceId = WinRtBindableInterfaceIds.IBindableIterable,
@@ -226,7 +228,9 @@ object WinRtBindableIteratorProjection {
         managed: Iterator<Any?>,
     ) {
         private val state = ManagedIteratorState(managed)
-        private val host = WinRtInspectableComObject(
+        private val host = createBindableHost(
+            managedValue = state,
+            defaultInterfaceId = WinRtBindableInterfaceIds.IBindableIterator,
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
                     interfaceId = WinRtBindableInterfaceIds.IBindableIterator,
@@ -342,7 +346,9 @@ object WinRtBindableVectorViewProjection {
     internal class ToAbiHelper(
         private val managed: List<Any?>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createBindableHost(
+            managedValue = managed,
+            defaultInterfaceId = WinRtBindableInterfaceIds.IBindableVectorView,
             interfaceDefinitions = listOf(
                 bindableIterableDefinition { managed.iterator() },
                 WinRtInspectableInterfaceDefinition(
@@ -471,7 +477,9 @@ object WinRtBindableVectorProjection {
     internal class ToAbiHelper(
         private val managed: MutableList<Any?>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createBindableHost(
+            managedValue = managed,
+            defaultInterfaceId = WinRtBindableInterfaceIds.IBindableVector,
             interfaceDefinitions = listOf(
                 bindableIterableDefinition { managed.iterator() },
                 WinRtInspectableInterfaceDefinition(
@@ -618,6 +626,26 @@ private val bindableVectorViewTypeHandle =
 
 private val bindableVectorTypeHandle =
     WinRtTypeHandle("kotlin.collections.MutableList<kotlin.Any?>", WinRtBindableInterfaceIds.IBindableVector)
+
+private fun createBindableHost(
+    managedValue: Any,
+    defaultInterfaceId: Guid,
+    interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
+): WinRtInspectableComObject {
+    val definition = InteropRuntimeHooks.augmentInspectableDefinition(
+        value = managedValue,
+        definition = WinRtCcwDefinition(
+            interfaceDefinitions = interfaceDefinitions,
+            defaultInterfaceId = defaultInterfaceId,
+        ),
+    )
+    return WinRtInspectableComObject(
+        interfaceDefinitions = definition.interfaceDefinitions,
+        hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+        defaultInterfaceId = definition.defaultInterfaceId,
+        managedValue = managedValue,
+    )
+}
 
 private fun bindableIterableDefinition(
     iteratorFactory: () -> Iterator<Any?>,
