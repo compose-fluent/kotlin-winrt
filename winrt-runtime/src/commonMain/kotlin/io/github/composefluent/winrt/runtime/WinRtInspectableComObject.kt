@@ -245,29 +245,11 @@ internal class WinRtInspectableComObject(
         rawArguments: List<Any?>,
     ): Int = runCatching {
         trace("Invoke interface=$interfaceId methodIndex=$methodIndex runtimeClassName=$runtimeClassName")
-        if (interfaceId == IID.IReferenceTrackerTarget) {
-            return@runCatching invokeReferenceTrackerTarget(methodIndex)
-        }
         allInterfaces.getValue(interfaceId).methods[methodIndex].handler(rawArguments)
     }.getOrElse { error ->
         platformSetErrorInfo(error)
         platformHResultFromThrowable(error).value
     }
-
-    private fun invokeReferenceTrackerTarget(methodIndex: Int): Int =
-        when (methodIndex) {
-            0 -> addReference()
-            1 -> releaseReference()
-            2 -> {
-                addReference()
-                KnownHResults.S_OK.value
-            }
-            3 -> {
-                releaseReference()
-                KnownHResults.S_OK.value
-            }
-            else -> KnownHResults.E_BOUNDS.value
-        }
 
     private fun cleanup() {
         externalPointerAliases.forEach { key ->

@@ -1,5 +1,8 @@
 package io.github.composefluent.winrt.runtime
 
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+
 internal object InteropRuntimeHooks {
     fun augmentInspectableDefinition(
         value: Any,
@@ -36,17 +39,44 @@ internal object InteropRuntimeHooks {
         IID.IUnknown,
     )
 
-    private fun createReferenceTrackerTargetInterfaceDefinition(): WinRtInspectableInterfaceDefinition =
-        WinRtInspectableInterfaceDefinition(
+    private fun createReferenceTrackerTargetInterfaceDefinition(): WinRtInspectableInterfaceDefinition {
+        val state = ReferenceTrackerTargetState()
+        return WinRtInspectableInterfaceDefinition(
             interfaceId = IID.IReferenceTrackerTarget,
             baseKind = WinRtComInterfaceBaseKind.IUnknown,
             methods = listOf(
-                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { 1 },
-                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { 1 },
+                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { state.addRefFromReferenceTracker() },
+                WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { state.releaseFromReferenceTracker() },
                 WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
                 WinRtInspectableMethodDefinition(ComMethodSignatures.HResult) { KnownHResults.S_OK.value },
             ),
         )
+    }
+
+    @OptIn(ExperimentalAtomicApi::class)
+    private class ReferenceTrackerTargetState {
+        private val trackerReferences = AtomicInt(0)
+
+        fun addRefFromReferenceTracker(): Int {
+            while (true) {
+                val current = trackerReferences.load()
+                val next = if (current == Int.MAX_VALUE) current else current + 1
+                if (trackerReferences.compareAndSet(current, next)) {
+                    return next
+                }
+            }
+        }
+
+        fun releaseFromReferenceTracker(): Int {
+            while (true) {
+                val current = trackerReferences.load()
+                val next = if (current <= 0) 0 else current - 1
+                if (trackerReferences.compareAndSet(current, next)) {
+                    return next
+                }
+            }
+        }
+    }
 
     private fun createWeakReferenceSourceInterfaceDefinition(
         value: Any,

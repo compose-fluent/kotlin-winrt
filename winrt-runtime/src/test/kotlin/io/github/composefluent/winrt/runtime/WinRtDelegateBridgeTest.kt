@@ -454,6 +454,49 @@ class WinRtDelegateBridgeTest {
     }
 
     @Test
+    fun delegate_reference_tracker_target_tracks_reference_tracker_refs() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = Guid("9de1c534-6ae1-11e0-84e1-18a905bcc53f"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT),
+        ) { }
+
+        handle.use {
+            it.createReference().use { reference ->
+                reference.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
+                    assertEquals(
+                        1,
+                        ComVtableInvoker.invoke(
+                            trackerTarget.pointer,
+                            ReferenceTrackerTargetVftblSlots.AddRefFromReferenceTracker,
+                        ),
+                    )
+                    assertEquals(
+                        2,
+                        ComVtableInvoker.invoke(
+                            trackerTarget.pointer,
+                            ReferenceTrackerTargetVftblSlots.AddRefFromReferenceTracker,
+                        ),
+                    )
+                    assertEquals(
+                        1,
+                        ComVtableInvoker.invoke(
+                            trackerTarget.pointer,
+                            ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker,
+                        ),
+                    )
+                    assertEquals(
+                        0,
+                        ComVtableInvoker.invoke(
+                            trackerTarget.pointer,
+                            ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
     fun delegate_reference_decodes_object_return_value_through_object_marshaller() {
         val payload = DelegateObjectPayload("return")
         val handle = WinRtDelegateBridge.createDelegate(

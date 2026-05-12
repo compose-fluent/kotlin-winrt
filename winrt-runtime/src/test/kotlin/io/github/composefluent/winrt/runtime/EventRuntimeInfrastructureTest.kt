@@ -112,6 +112,35 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
+    fun event_source_state_treats_reference_tracker_refs_as_native_refs() {
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = testEventInterfaceId,
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+        ) { }
+        val state =
+            object : EventSourceState<(Any?, Int) -> Unit>(PlatformAbi.nullPointer, 61) {
+                override fun createEventInvoke(): (Any?, Int) -> Unit = { _, _ -> }
+            }
+
+        handle.use {
+            it.createReference().use { reference ->
+                state.initializeReferenceTracking(PlatformAbi.fromRawComPtr(reference.pointer))
+                reference.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
+                    val trackerPointer = trackerTarget.pointer
+                    trackerTarget.close()
+                    reference.close()
+
+                    assertEquals(false, state.hasComReferences())
+                    ComVtableInvoker.invoke(trackerPointer, ReferenceTrackerTargetVftblSlots.AddRefFromReferenceTracker)
+                    assertEquals(true, state.hasComReferences())
+                    ComVtableInvoker.invoke(trackerPointer, ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker)
+                    assertEquals(false, state.hasComReferences())
+                }
+            }
+        }
+    }
+
+    @Test
     fun generated_event_source_projects_object_arguments_with_marshal_inspectable_object_semantics() {
         EventSourceCache.clearForTests()
 

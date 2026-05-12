@@ -95,7 +95,7 @@ abstract class EventSourceState<T : Any> protected constructor(
                 trackerTargetPointer.asRawComPtr(),
                 ReferenceTrackerTargetVftblSlots.ReleaseFromReferenceTracker,
             ).toUInt()
-            if (countAfterRelease > managedReferenceCount) {
+            if (countAfterRelease != 0u) {
                 return true
             }
         }
