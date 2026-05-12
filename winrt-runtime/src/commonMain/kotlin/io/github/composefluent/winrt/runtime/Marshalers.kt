@@ -487,33 +487,19 @@ object MarshalInspectable {
     fun any(): Marshaler<Any?> =
         pointerMarshaler(
             category = WinRtAbiCategory.INSPECTABLE,
-            createMarshaler = { value ->
-                when (value) {
-                    null -> null
-                    else ->
-                        ComWrappersSupport.tryUnwrapObject(value)
-                            ?: ComWrappersSupport.createCCWForObject(value, IID.IInspectable)
-                }
-            },
+            createMarshaler = WinRtObjectMarshaller::createMarshaler,
             getAbiPointer = { value ->
                 when (value) {
                     null -> PlatformAbi.nullPointer
+                    is WinRtObjectMarshaler -> value.abi
                     is ComObjectReference -> value.pointer.asRawAddress()
                     is RawAddress -> value
                     else -> error("Expected inspectable marshaler, got '${abiTypeName(value)}'.")
                 }
             },
-            fromAbiPointer = { pointer ->
-                WinRtInspectableComObject.findManagedValue(pointer)
-                    ?: ComWrappersSupport.createRcwForComObject(pointer)
-            },
-            fromManagedPointer = { value ->
-                when (value) {
-                    null -> PlatformAbi.nullPointer
-                    else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).useAndGetRef()
-                }
-            },
-            disposeMarshaler = { value -> (value as? ComObjectReference)?.close() },
+            fromAbiPointer = WinRtObjectMarshaller::fromAbi,
+            fromManagedPointer = WinRtObjectMarshaller::fromManaged,
+            disposeMarshaler = { value -> (value as? AutoCloseable)?.close() },
             disposeAbiPointer = { pointer ->
                 if (!PlatformAbi.isNull(pointer)) {
                     IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
@@ -857,6 +843,7 @@ private fun abiPointer(value: Any?): RawAddress =
         is ReferencedHString -> value.handle
         is HString -> value.handle
         is ComObjectReference -> value.pointer.asRawAddress()
+        is WinRtObjectMarshaler -> value.abi
         else -> error("Expected pointer-backed ABI value, got '${abiTypeName(value)}'.")
     }
 

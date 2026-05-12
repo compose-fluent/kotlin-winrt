@@ -139,6 +139,54 @@ class MarshalersTest {
     }
 
     @Test
+    fun inspectable_marshaler_projects_delegate_objects_with_reference_interface() {
+        var callCount = 0
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("99999999-9999-9999-9999-999999999997"),
+            parameterKinds = emptyList(),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+        val handle = WinRtDelegateBridge.createUnitDelegate(
+            iid = descriptor.interfaceId,
+            parameterKinds = emptyList(),
+        ) {
+            callCount += 1
+        }
+        val projected = object : WinRtProjectedDelegate {
+            override fun createWinRtDelegateHandle(): WinRtDelegateHandle = handle
+        }
+        val marshaler = Marshaler.inspectableAny()
+        val abi = marshaler.fromManaged(projected) as NativePointer
+
+        try {
+            ComObjectReference(abi.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { reference ->
+                reference.queryInterface(descriptor.referenceInterfaceId()).getOrThrow().use { delegateReferenceValue ->
+                    PlatformAbi.confinedScope().use { scope ->
+                        val valueOut = PlatformAbi.allocatePointerSlot(scope)
+                        val hr = ComVtableInvoker.invokeArgs(
+                            instance = delegateReferenceValue.pointer,
+                            slot = IInspectableVftblSlots.FirstCustom,
+                            arg0 = valueOut,
+                        )
+                        HResult(hr).requireSuccess()
+                        WinRtDelegateReference(PlatformAbi.readPointer(valueOut), descriptor).use { delegateReference ->
+                            delegateReference.invoke(emptyList())
+                        }
+                    }
+                }
+            }
+
+            assertEquals(1, callCount)
+        } finally {
+            try {
+                marshaler.disposeAbi(abi)
+            } finally {
+                handle.close()
+            }
+        }
+    }
+
+    @Test
     fun delegate_marshaler_round_trips_handle_to_reference_and_invokes() {
         var callCount = 0
         val descriptor = WinRtDelegateDescriptor(
