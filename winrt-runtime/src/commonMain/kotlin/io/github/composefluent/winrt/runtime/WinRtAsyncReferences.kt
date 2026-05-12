@@ -101,8 +101,12 @@ open class WinRtAsyncActionReference internal constructor(
         when (currentStatus) {
             WinRtAsyncStatus.Started -> Unit
             WinRtAsyncStatus.Completed -> {
-                getResults()
-                onCompleted()
+                try {
+                    getResults()
+                    onCompleted()
+                } catch (error: Throwable) {
+                    onError(error)
+                }
             }
             WinRtAsyncStatus.Canceled ->
                 onCancelled()
@@ -164,7 +168,12 @@ open class WinRtAsyncOperationReference<T> internal constructor(
     ) {
         when (currentStatus) {
             WinRtAsyncStatus.Started -> Unit
-            WinRtAsyncStatus.Completed -> onCompleted(getResults())
+            WinRtAsyncStatus.Completed ->
+                try {
+                    onCompleted(getResults())
+                } catch (error: Throwable) {
+                    onError(error)
+                }
             WinRtAsyncStatus.Canceled ->
                 onCancelled()
             WinRtAsyncStatus.Error ->
@@ -502,8 +511,12 @@ suspend fun <TProgress> WinRtAsyncActionWithProgressReference<TProgress>.await()
             when (status) {
                 WinRtAsyncStatus.Started -> Unit
                 WinRtAsyncStatus.Completed -> {
-                    getResults()
-                    awaitState.resume(Unit)
+                    try {
+                        getResults()
+                        awaitState.resume(Unit)
+                    } catch (error: Throwable) {
+                        awaitState.resumeWithException(error)
+                    }
                 }
                 WinRtAsyncStatus.Canceled ->
                     awaitState.resumeWithException(
@@ -564,7 +577,12 @@ suspend fun <T, TProgress> WinRtAsyncOperationWithProgressReference<T, TProgress
         fun complete(status: WinRtAsyncStatus) {
             when (status) {
                 WinRtAsyncStatus.Started -> Unit
-                WinRtAsyncStatus.Completed -> awaitState.resume(getResults())
+                WinRtAsyncStatus.Completed ->
+                    try {
+                        awaitState.resume(getResults())
+                    } catch (error: Throwable) {
+                        awaitState.resumeWithException(error)
+                    }
                 WinRtAsyncStatus.Canceled ->
                     awaitState.resumeWithException(
                         WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED),

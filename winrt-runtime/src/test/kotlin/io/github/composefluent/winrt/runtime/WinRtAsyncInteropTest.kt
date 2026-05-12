@@ -73,6 +73,31 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_action_await_faults_and_closes_completed_handler_when_get_results_fails() {
+        Arena.ofConfined().use { arena ->
+            val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
+            val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Started, resultsFailure = failure)
+
+            runBlocking {
+                val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        action.await()
+                    } catch (error: WinRtIllegalStateException) {
+                        assertEquals(failure, error)
+                        return@launch
+                    }
+                    throw AssertionError("Expected getResults failure from await().")
+                }
+                action.complete(WinRtAsyncStatus.Completed)
+                awaitJob.join()
+            }
+
+            assertTrue(action.resultsCalled)
+            assertTrue(action.completedHandlerClosed())
+        }
+    }
+
+    @Test
     fun async_join_uses_common_await_owner() {
         Arena.ofConfined().use { arena ->
             val action = FakeAsyncActionReference(arena, WinRtAsyncStatus.Completed)
@@ -261,10 +286,41 @@ class WinRtAsyncInteropTest {
         }
     }
 
+    @Test
+    fun async_operation_await_faults_and_closes_completed_handler_when_get_results_fails() {
+        Arena.ofConfined().use { arena ->
+            val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
+            val operation = FakeAsyncOperationReference(
+                arena = arena,
+                statusState = WinRtAsyncStatus.Started,
+                result = "ignored",
+                resultsFailure = failure,
+            )
+
+            runBlocking {
+                val awaitJob = launch(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        operation.await()
+                    } catch (error: WinRtIllegalStateException) {
+                        assertEquals(failure, error)
+                        return@launch
+                    }
+                    throw AssertionError("Expected getResults failure from await().")
+                }
+                operation.complete(WinRtAsyncStatus.Completed)
+                awaitJob.join()
+            }
+
+            assertTrue(operation.resultsCalled)
+            assertTrue(operation.completedHandlerClosed())
+        }
+    }
+
     private class FakeAsyncActionReference(
         arena: Arena,
         private var statusState: WinRtAsyncStatus,
         private val errorCode: HResult = KnownHResults.S_OK,
+        private val resultsFailure: Throwable? = null,
     ) : WinRtAsyncActionReference(arena.allocate(8).asNativePointer()) {
         var resultsCalled = false
         var cancelCalled = false
@@ -276,6 +332,7 @@ class WinRtAsyncInteropTest {
 
         override fun getResults() {
             resultsCalled = true
+            resultsFailure?.let { throw it }
         }
 
         override fun cancel() {
@@ -303,6 +360,7 @@ class WinRtAsyncInteropTest {
         private var statusState: WinRtAsyncStatus,
         private val result: String,
         private val errorCode: HResult = KnownHResults.S_OK,
+        private val resultsFailure: Throwable? = null,
     ) : WinRtAsyncOperationReference<String>(
         pointer = arena.allocate(8).asNativePointer(),
         interfaceId = Guid("11111111-2222-3333-4444-555555555555"),
@@ -318,6 +376,7 @@ class WinRtAsyncInteropTest {
 
         override fun getResults(): String {
             resultsCalled = true
+            resultsFailure?.let { throw it }
             return result
         }
 
