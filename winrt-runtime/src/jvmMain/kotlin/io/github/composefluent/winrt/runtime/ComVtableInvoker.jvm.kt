@@ -577,11 +577,16 @@ actual object ComVtableInvoker {
         rawArguments: Array<Any?>,
     ): Int {
         val registered = callbackEntries[callbackId] ?: return KnownHResults.E_POINTER.value
-        val converted =
-            registered.signature.parameterKinds.zip(rawArguments.asList()).map { (kind, value) ->
-                fromCarrier(kind, value)
-            }
-        return registered.callback(converted)
+        return try {
+            val converted =
+                registered.signature.parameterKinds.zip(rawArguments.asList()).map { (kind, value) ->
+                    fromCarrier(kind, value)
+                }
+            registered.callback(converted)
+        } catch (error: Throwable) {
+            platformSetErrorInfo(error)
+            platformHResultFromThrowable(error).value
+        }
     }
 }
 

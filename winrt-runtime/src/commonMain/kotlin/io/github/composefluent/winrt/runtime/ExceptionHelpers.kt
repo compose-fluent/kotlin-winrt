@@ -262,5 +262,7 @@ internal fun platformHResultFromThrowable(error: Throwable): HResult =
 
 internal fun platformSetErrorInfo(error: Throwable) {
     if (!PlatformRuntime.isWindows) return
-    ManagedExceptionInterop.setErrorInfo(error)
+    runCatching {
+        ManagedExceptionInterop.setErrorInfo(error)
+    }
 }
