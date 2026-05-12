@@ -180,7 +180,9 @@ object WinRtIterableProjection {
         private val managed: Iterable<T>,
         private val elementAdapter: WinRtReferenceValueAdapter<T>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createCollectionHost(
+            managedValue = managed,
+            defaultInterfaceId = iterableInterfaceId(elementAdapter),
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
                     interfaceId = iterableInterfaceId(elementAdapter),
@@ -301,7 +303,9 @@ object WinRtIteratorProjection {
         private val elementAdapter: WinRtReferenceValueAdapter<T>,
     ) {
         private val state = IteratorState(managed)
-        private val host = WinRtInspectableComObject(
+        private val host = createCollectionHost(
+            managedValue = state,
+            defaultInterfaceId = iteratorInterfaceId(elementAdapter),
             interfaceDefinitions = listOf(
                 WinRtInspectableInterfaceDefinition(
                     interfaceId = iteratorInterfaceId(elementAdapter),
@@ -432,7 +436,9 @@ object WinRtReadOnlyListProjection {
         private val managed: List<T>,
         private val elementAdapter: WinRtReferenceValueAdapter<T>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createCollectionHost(
+            managedValue = managed,
+            defaultInterfaceId = vectorViewInterfaceId(elementAdapter),
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = elementAdapter,
@@ -583,7 +589,9 @@ object WinRtListProjection {
         private val managed: MutableList<T>,
         private val elementAdapter: WinRtReferenceValueAdapter<T>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createCollectionHost(
+            managedValue = managed,
+            defaultInterfaceId = vectorInterfaceId(elementAdapter),
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = elementAdapter,
@@ -807,7 +815,9 @@ object WinRtReadOnlyDictionaryProjection {
         private val keyAdapter: WinRtReferenceValueAdapter<K>,
         private val valueAdapter: WinRtReferenceValueAdapter<V>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createCollectionHost(
+            managedValue = managed,
+            defaultInterfaceId = mapViewInterfaceId(keyAdapter, valueAdapter),
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = winRtKeyValuePairAdapter(keyAdapter, valueAdapter),
@@ -960,7 +970,9 @@ object WinRtDictionaryProjection {
         private val keyAdapter: WinRtReferenceValueAdapter<K>,
         private val valueAdapter: WinRtReferenceValueAdapter<V>,
     ) {
-        private val host = WinRtInspectableComObject(
+        private val host = createCollectionHost(
+            managedValue = managed,
+            defaultInterfaceId = mapInterfaceId(keyAdapter, valueAdapter),
             interfaceDefinitions = listOf(
                 iterableInterfaceDefinition(
                     elementAdapter = winRtKeyValuePairAdapter(keyAdapter, valueAdapter),
@@ -1164,7 +1176,9 @@ fun <K, V> winRtKeyValuePairAdapter(
             }
         },
         marshaller = { entry ->
-            WinRtInspectableComObject(
+            createCollectionHost(
+                managedValue = entry,
+                defaultInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                 interfaceDefinitions = listOf(
                     WinRtInspectableInterfaceDefinition(
                         interfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
@@ -1191,6 +1205,26 @@ fun <K, V> winRtKeyValuePairAdapter(
             }
         },
     )
+
+private fun createCollectionHost(
+    managedValue: Any,
+    defaultInterfaceId: Guid,
+    interfaceDefinitions: List<WinRtInspectableInterfaceDefinition>,
+): WinRtInspectableComObject {
+    val definition = InteropRuntimeHooks.augmentInspectableDefinition(
+        value = managedValue,
+        definition = WinRtCcwDefinition(
+            interfaceDefinitions = interfaceDefinitions,
+            defaultInterfaceId = defaultInterfaceId,
+        ),
+    )
+    return WinRtInspectableComObject(
+        interfaceDefinitions = definition.interfaceDefinitions,
+        hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
+        defaultInterfaceId = definition.defaultInterfaceId,
+        managedValue = managedValue,
+    )
+}
 
 private fun iterableInterfaceDefinition(
     elementAdapter: WinRtReferenceValueAdapter<*>,

@@ -130,6 +130,37 @@ class WinRtCollectionProjectionTest {
     }
 
     @Test
+    fun vector_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+        val allocated = mutableListOf<AutoCloseable>()
+        val adapter = labelAdapter(allocated)
+        val abi = WinRtListProjection.fromManaged(mutableListOf("one"), adapter)
+
+        try {
+            ComObjectReference(
+                abi.asRawComPtr(),
+                vectorInterfaceIdFor(adapter),
+                preventReleaseOnDispose = true,
+            ).use { reference ->
+                listOf(
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IReferenceTrackerTarget,
+                ).forEach { iid ->
+                    reference.queryInterface(iid).getOrThrow().use { queried ->
+                        assertTrue(queried.sameIdentity(reference))
+                    }
+                }
+            }
+        } finally {
+            IUnknownReference(abi.asRawComPtr(), vectorInterfaceIdFor(adapter)).close()
+            allocated.closeAll()
+        }
+    }
+
+    @Test
     fun read_only_dictionary_helpers_round_trip_through_from_managed_and_from_abi() {
         val allocated = mutableListOf<AutoCloseable>()
         val keyAdapter = labelAdapter(allocated)
