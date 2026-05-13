@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.io.File
 import org.gradle.jvm.tasks.Jar
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
@@ -549,6 +550,8 @@ private fun configureKotlinWinRtCompilerPluginOptions(
     typeIndexOutput: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
+        task.compilerOptions.jvmTarget.set(JvmTarget.JVM_22)
+        task.compilerOptions.freeCompilerArgs.add("-Xjdk-release=22")
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
         val metadataIndexPath = metadataIndex.get().asFile.absolutePath
         freeCompilerArgs.add("-P")

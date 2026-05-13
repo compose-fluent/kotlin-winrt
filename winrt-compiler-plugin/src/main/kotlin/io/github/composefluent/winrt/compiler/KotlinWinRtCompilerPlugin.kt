@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.backend.common.extensions.IrGenerationExtension
 import org.jetbrains.kotlin.backend.common.extensions.IrPluginContext
 import org.jetbrains.kotlin.backend.common.IrElementTransformerVoidWithContext
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
+import org.jetbrains.kotlin.backend.jvm.JvmLoweredDeclarationOrigin
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.compiler.plugin.AbstractCliOption
 import org.jetbrains.kotlin.compiler.plugin.CliOption
@@ -35,6 +36,9 @@ import org.jetbrains.kotlin.ir.builders.irAs
 import org.jetbrains.kotlin.ir.builders.irBlock
 import org.jetbrains.kotlin.ir.builders.irBoolean
 import org.jetbrains.kotlin.ir.builders.irByte
+import org.jetbrains.kotlin.ir.builders.declarations.buildFun
+import org.jetbrains.kotlin.ir.builders.declarations.buildValueParameter
+import org.jetbrains.kotlin.ir.builders.declarations.IrValueParameterBuilder
 import org.jetbrains.kotlin.ir.types.classFqName
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
 import org.jetbrains.kotlin.ir.util.defaultType
@@ -51,7 +55,6 @@ import org.jetbrains.kotlin.ir.builders.irString
 import org.jetbrains.kotlin.ir.builders.irTemporary
 import org.jetbrains.kotlin.ir.builders.irTry
 import org.jetbrains.kotlin.ir.builders.irUnit
-import org.jetbrains.kotlin.ir.builders.irVararg
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
@@ -199,6 +202,7 @@ class KotlinWinRtIrGenerationExtension(
             return
         }
         var reportedMissingDirectLowering = false
+        var reportedUnloweredIntrinsic = false
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitCall(expression: IrCall): IrExpression {
@@ -225,6 +229,17 @@ class KotlinWinRtIrGenerationExtension(
                         }
                         return call
                     }
+                    if (!directLowerings.hasJvmFfmSymbols) {
+                        if (!reportedMissingDirectLowering) {
+                            reportedMissingDirectLowering = true
+                            pluginContext.messageCollector.report(
+                                CompilerMessageSeverity.ERROR,
+                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with JVM target 22 and a JDK that exposes java.lang.foreign. The compiler plugin loaded, but JVM FFM symbols were not visible to IR lowering; remove lower -Xjdk-release values such as -Xjdk-release=17 for WinRT JVM compilation.",
+                                null,
+                            )
+                        }
+                        return call
+                    }
                     directLowerings.lower(
                         intrinsicName,
                         call,
@@ -232,6 +247,14 @@ class KotlinWinRtIrGenerationExtension(
                         builderScope = currentScope?.scope?.scopeOwnerSymbol,
                     )
                         ?.let { return it }
+                    if (!reportedUnloweredIntrinsic) {
+                        reportedUnloweredIntrinsic = true
+                        pluginContext.messageCollector.report(
+                            CompilerMessageSeverity.ERROR,
+                            "kotlin-winrt projection intrinsic $intrinsicName was recognized but could not be lowered. This would leave a runtime fallback call in generated projection bytecode.",
+                            null,
+                        )
+                    }
                     return call
                 }
             },
@@ -302,6 +325,9 @@ class KotlinWinRtIrGenerationExtension(
         private val ulongConstructor: IrConstructorSymbol?,
         private val jvmFfmSymbols: JvmFfmSymbols?,
     ) {
+        val hasJvmFfmSymbols: Boolean
+            get() = jvmFfmSymbols != null
+
         fun lower(
             intrinsicName: String,
             call: IrCall,
@@ -2196,16 +2222,15 @@ class KotlinWinRtIrGenerationExtension(
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 +builder.irAs(
-                    builder.irCall(symbols.methodHandleInvoke).apply {
-                        arguments[0] = builder.irGet(handle)
-                        arguments[1] = builder.irVararg(
-                            pluginContext.irBuiltIns.anyNType,
-                            listOf(builder.irGet(function), builder.irGet(instanceSegment)) +
-                                values.mapIndexed { index, value ->
-                                    symbols.jvmCarrier(builder, argumentKinds[index], value)
-                                },
-                        )
-                    },
+                    symbols.invokeHResultDowncall(
+                        builder = builder,
+                        pluginContext = pluginContext,
+                        handle = builder.irGet(handle),
+                        arguments = listOf(builder.irGet(function), builder.irGet(instanceSegment)) +
+                            values.mapIndexed { index, value ->
+                                symbols.jvmCarrier(builder, argumentKinds[index], value)
+                            },
+                    ),
                     pluginContext.irBuiltIns.intType,
                 )
             }
@@ -2593,6 +2618,40 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.String,
                     UnitCallAbiArgumentKind.Object -> segmentFromRawAddress(builder, value)
                 }
+
+            fun invokeHResultDowncall(
+                builder: DeclarationIrBuilder,
+                pluginContext: IrPluginContext,
+                handle: IrExpression,
+                arguments: List<IrExpression>,
+            ): IrExpression {
+                val original = methodHandleInvoke.owner
+                val receiverParameters = original.parameters.filter { parameter ->
+                    parameter.kind != IrParameterKind.Regular
+                }
+                val instantiated = pluginContext.irFactory.buildFun {
+                    updateFrom(original)
+                    name = original.name
+                    origin = JvmLoweredDeclarationOrigin.POLYMORPHIC_SIGNATURE_INSTANTIATION
+                    returnType = pluginContext.irBuiltIns.intType
+                }.apply {
+                    parent = original.parent
+                    parameters = receiverParameters + arguments.mapIndexed { index, argument ->
+                        pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                            name = Name.identifier("\$$index")
+                            type = argument.type
+                            origin = JvmLoweredDeclarationOrigin.POLYMORPHIC_SIGNATURE_INSTANTIATION
+                            kind = IrParameterKind.Regular
+                        }, this)
+                    }
+                }
+                return builder.irCall(instantiated.symbol, pluginContext.irBuiltIns.intType).apply {
+                    this.arguments[0] = handle
+                    arguments.forEachIndexed { index, argument ->
+                        this.arguments[index + 1] = argument
+                    }
+                }
+            }
 
             private class JvmStaticLayoutValue(
                 private val field: IrField?,

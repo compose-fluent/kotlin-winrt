@@ -1001,6 +1001,16 @@ class KotlinWinRtPluginTest {
                     check(contents.contains("WinRtJvmFfmDowncallHandles")) {
                         "KMP JVM class did not lower projection intrinsic to JVM FFM"
                     }
+                    check(!contents.contains("([Ljava/lang/Object;)Ljava/lang/Object;")) {
+                        "KMP JVM class lowered MethodHandle.invoke as a single Object[] vararg call"
+                    }
+                    check(
+                        contents.contains(
+                            "(Ljava/lang/foreign/MemorySegment;Ljava/lang/foreign/MemorySegment;Ljava/lang/foreign/MemorySegment;)I",
+                        ),
+                    ) {
+                        "KMP JVM class did not lower MethodHandle.invoke with expanded FFM carrier parameters"
+                    }
                 }
             }
             """.trimIndent(),
