@@ -12047,6 +12047,115 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_resolves_required_iterator_projected_runtime_class_elements() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IKeyValuePair",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555583"),
+                            genericParameterCount = 2,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Key",
+                                    typeName = "T0",
+                                    getterMethodName = "get_Key",
+                                    getterMethodRowId = 6,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "T1",
+                                    getterMethodName = "get_Value",
+                                    getterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterator",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555584"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "MoveNext", returnTypeName = "Boolean", methodRowId = 8),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Current",
+                                    typeName = "T0",
+                                    getterMethodName = "get_Current",
+                                    getterMethodRowId = 6,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "HasCurrent",
+                                    typeName = "Boolean",
+                                    getterMethodName = "get_HasCurrent",
+                                    getterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INamedResource",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NamedResource",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.INamedResource",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.INamedResource", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IResourceIteratorOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Windows.Foundation.Collections.IIterator<Windows.Foundation.Collections.IKeyValuePair<String, Sample.Foundation.NamedResource>>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ResourceIteratorOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IResourceIteratorOwner",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IResourceIteratorOwner", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ResourceIteratorOwner.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("Iterator<Map.Entry<String, NamedResource>>,"))
+        assertTrue(contents, contents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+        assertTrue(contents, contents.contains("NamedResource.Metadata.wrap"))
+        assertFalse(contents, contents.contains("Unsupported"))
+    }
+
+    @Test
     fun generator_substitutes_required_interface_generic_closure_members() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

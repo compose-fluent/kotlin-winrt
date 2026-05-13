@@ -2115,7 +2115,7 @@ class KotlinProjectionRenderer(
                 required.genericArguments.single()
                     .normalized()
                     .typeName
-                    .let(::renderAbiTypeBinding)
+                    .let { typeName -> renderAbiTypeBinding(typeName, plan.typesByQualifiedName) }
                     .takeIf(KotlinProjectionAbiTypeBinding::isSupportedReadOnlyCollectionElementBinding)
                     ?.let { elementBinding ->
                         RequiredIteratorBinding(
