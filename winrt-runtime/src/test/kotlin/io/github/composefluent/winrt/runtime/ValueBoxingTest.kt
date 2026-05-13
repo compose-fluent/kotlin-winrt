@@ -194,6 +194,24 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun object_marshaler_unboxes_native_like_property_value_strings() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(createPropertyValueInterfaceDefinition("button content")),
+            defaultInterfaceId = IID.IPropertyValue,
+            runtimeClassName = WinRtValueBoxing.boxedRuntimeClassNameForType(String::class),
+        )
+        val reference = host.createReference(IID.IInspectable)
+        try {
+            assertEquals("button content", WinRtObjectMarshaller.fromAbi(reference.pointer.asRawAddress()))
+        } finally {
+            reference.close()
+            host.close()
+        }
+    }
+
+    @Test
     fun boxed_reference_runtime_names_round_trip_type_exception_and_enum_values() {
         ComWrappersSupport.clearRegistriesForTests()
         registerEnumDescriptors()

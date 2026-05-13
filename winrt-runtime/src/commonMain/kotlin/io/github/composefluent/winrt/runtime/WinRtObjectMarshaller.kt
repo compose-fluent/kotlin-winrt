@@ -32,6 +32,7 @@ object WinRtObjectMarshaller {
             null
         } else {
             WinRtInspectableComObject.findManagedValue(pointer)
+                ?: tryProjectBorrowedInspectableValue(pointer)
                 ?: ComWrappersSupport.createRcwForComObject(pointer)
         }
 
