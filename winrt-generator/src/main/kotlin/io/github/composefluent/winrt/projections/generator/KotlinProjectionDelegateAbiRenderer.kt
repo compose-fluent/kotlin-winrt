@@ -320,6 +320,7 @@ internal fun KotlinProjectionRenderer.delegateValueKindCode(typeBinding: KotlinP
     KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.STRUCT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
     KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.MappedAsyncAction,
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
@@ -369,6 +370,7 @@ internal fun KotlinProjectionRenderer.delegateInvokeValueKindCode(typeBinding: K
     KotlinProjectionAbiValueKind.Struct -> CodeBlock.of("%T.STRUCT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum -> delegateEnumValueKindCode(typeBinding)
     KotlinProjectionAbiValueKind.Object -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("%T.OBJECT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedInterface -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncAction,
@@ -463,6 +465,7 @@ internal fun KotlinProjectionRenderer.delegateInvokeArgumentCode(
     KotlinProjectionAbiValueKind.GuidValue,
     KotlinProjectionAbiValueKind.Struct,
     KotlinProjectionAbiValueKind.Object,
+    KotlinProjectionAbiValueKind.GenericParameter,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference,
     KotlinProjectionAbiValueKind.MappedAsyncAction,
@@ -537,6 +540,8 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IUNKNOWN_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.Object ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
+    KotlinProjectionAbiValueKind.GenericParameter ->
+        CodeBlock.of("return %L as %T\n", nativeInvokeExpression, resolveTypeName(returnBinding.typeName))
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, IINSPECTABLE_REFERENCE_CLASS_NAME)
     KotlinProjectionAbiValueKind.MappedAsyncAction ->
@@ -641,6 +646,7 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
     KotlinProjectionAbiValueKind.MappedVectorView,
     KotlinProjectionAbiValueKind.MappedMapView -> delegateCollectionCallbackArgumentCode(index, typeBinding)
     KotlinProjectionAbiValueKind.Array -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
+    KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
     KotlinProjectionAbiValueKind.Object -> CodeBlock.of(
         "(__args[%L] as %T).asInspectable()",
         index,

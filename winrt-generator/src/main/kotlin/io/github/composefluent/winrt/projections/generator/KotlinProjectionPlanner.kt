@@ -1157,6 +1157,7 @@ class KotlinProjectionPlanner(
             resolvedType != null
         ) {
             val invokeMethod = requireDelegateInvokeMethod(resolvedType)
+            val delegateGenericArguments = typeArguments
             KotlinProjectionDelegateInvokeShape(
                 interfaceId = resolvedType.iid,
                 parameterBindings = invokeMethod.parameters.map { parameter ->
@@ -1167,7 +1168,7 @@ class KotlinProjectionPlanner(
                             currentNamespace = resolvedType.namespace,
                             typesByQualifiedName = typesByQualifiedName,
                             includeDelegateInvokeShape = false,
-                        ),
+                        ).withDelegateGenericArgumentProjection(delegateGenericArguments),
                     )
                 },
                 returnBinding = classifyAbiTypeBinding(
@@ -1175,7 +1176,7 @@ class KotlinProjectionPlanner(
                     currentNamespace = resolvedType.namespace,
                     typesByQualifiedName = typesByQualifiedName,
                     includeDelegateInvokeShape = false,
-                ),
+                ).withDelegateGenericArgumentProjection(delegateGenericArguments),
             )
         } else {
             null
@@ -1203,6 +1204,20 @@ class KotlinProjectionPlanner(
 
     private fun String.isGenericTypeParameterName(): Boolean =
         (startsWith("T") || startsWith("M")) && drop(1).toIntOrNull() != null
+
+    private fun KotlinProjectionAbiTypeBinding.withDelegateGenericArgumentProjection(
+        genericArguments: List<KotlinProjectionAbiTypeBinding>,
+    ): KotlinProjectionAbiTypeBinding {
+        if (kind != KotlinProjectionAbiValueKind.GenericParameter || genericArguments.isEmpty()) {
+            return this
+        }
+        val argument = genericArguments.getOrNull(typeName.drop(1).toIntOrNull() ?: return this) ?: return this
+        return copy(
+            typeName = argument.typeName,
+            resolvedTypeName = argument.resolvedTypeName,
+            sourceTypeKind = argument.sourceTypeKind,
+        )
+    }
 
     private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
         when (kind) {
@@ -1676,6 +1691,7 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding()
     KotlinProjectionAbiValueKind.MappedVectorView,
     KotlinProjectionAbiValueKind.MappedMapView,
     KotlinProjectionAbiValueKind.Array,
+    KotlinProjectionAbiValueKind.GenericParameter,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> kind != KotlinProjectionAbiValueKind.Array || isSupportedDelegateArrayBinding()
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
@@ -1711,6 +1727,7 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateBinding(
     KotlinProjectionAbiValueKind.MappedVectorView,
     KotlinProjectionAbiValueKind.MappedMapView,
     KotlinProjectionAbiValueKind.Array,
+    KotlinProjectionAbiValueKind.GenericParameter,
     KotlinProjectionAbiValueKind.UnknownReference,
     KotlinProjectionAbiValueKind.InspectableReference -> kind != KotlinProjectionAbiValueKind.Array || isSupportedDelegateArrayBinding()
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true

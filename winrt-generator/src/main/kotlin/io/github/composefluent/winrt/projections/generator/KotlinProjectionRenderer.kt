@@ -3247,6 +3247,7 @@ private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshallerAr
         KotlinProjectionAbiValueKind.MappedMap,
         KotlinProjectionAbiValueKind.MappedVectorView,
         KotlinProjectionAbiValueKind.MappedMapView -> true
+        KotlinProjectionAbiValueKind.GenericParameter -> true
         KotlinProjectionAbiValueKind.Array -> typeBinding.typeArguments.singleOrNull()?.kind == KotlinProjectionAbiValueKind.UInt8
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> true

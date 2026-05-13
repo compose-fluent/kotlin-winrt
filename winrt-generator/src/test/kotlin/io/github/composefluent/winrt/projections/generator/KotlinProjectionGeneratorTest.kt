@@ -6112,6 +6112,82 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_delegate_generic_parameter_arguments_and_returns() {
+        // Mirrors .cswinrt generic parameter ABI behavior: a bare T parameter is marshaled as
+        // inspectable object ABI, not rejected just because it is not wrapped in a collection.
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "GenericHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "T0",
+                                    parameters = listOf(WinRtParameterDefinition("value", "T0")),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IGenericHandlerSource",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.GenericHandler<String>")),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "GenericHandlerSource",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IGenericHandlerSource",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IGenericHandlerSource", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.GenericHandler<String>")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val delegateContents = filesByName.getValue("GenericHandler.kt").contents
+        val sourceContents = filesByName.getValue("GenericHandlerSource.kt").contents
+
+        assertTrue(delegateContents, delegateContents.contains("public fun interface GenericHandler<T0>"))
+        assertTrue(delegateContents, delegateContents.contains("public operator fun invoke(`value`: T0): T0"))
+        assertTrue(delegateContents, delegateContents.contains("listOf(WinRtDelegateValueKind.OBJECT)"))
+        assertTrue(delegateContents, delegateContents.contains("returnKind = WinRtDelegateValueKind.OBJECT"))
+        assertTrue(delegateContents, delegateContents.contains("return __native.invoke(listOf(value)) as T0"))
+        assertTrue(sourceContents, sourceContents.contains("WinRtDelegateBridge.createDelegate"))
+        assertTrue(sourceContents, sourceContents.contains("parameterKinds = listOf(WinRtDelegateValueKind.OBJECT)"))
+        assertTrue(sourceContents, sourceContents.contains("returnKind = WinRtDelegateValueKind.OBJECT"))
+        assertTrue(sourceContents, sourceContents.contains("handler(__args[0] as String)"))
+        assertFalse(sourceContents, sourceContents.contains("fun setHandler(handler: GenericHandler<String>) = error(\"WinRT ABI binding is unavailable\")"))
+    }
+
+    @Test
     fun generator_rejects_delegates_without_a_single_invoke_method() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
