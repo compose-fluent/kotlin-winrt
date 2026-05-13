@@ -366,9 +366,7 @@ private fun configureWinRtGeneration(
     )
 
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
-        project.configurations.findByName("kotlinCompilerPluginClasspath")?.let { compilerPluginConfiguration ->
-            project.dependencies.add(compilerPluginConfiguration.name, kotlinWinRtCompilerPluginDependency(project))
-        }
+        configureKotlinWinRtCompilerPluginClasspath(project)
         addGeneratedSourcesToKotlinMain(project, generatedSources)
         configureKotlinWinRtCompilerPluginOptions(
             project = project,
@@ -387,9 +385,7 @@ private fun configureWinRtGeneration(
     }
 
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
-        project.configurations.findByName("kotlinCompilerPluginClasspath")?.let { compilerPluginConfiguration ->
-            project.dependencies.add(compilerPluginConfiguration.name, kotlinWinRtCompilerPluginDependency(project))
-        }
+        configureKotlinWinRtCompilerPluginClasspath(project)
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
         configureKotlinWinRtCompilerPluginOptions(
             project = project,
@@ -415,6 +411,19 @@ private fun configureWinRtGeneration(
             task.dependsOn(generateTask)
         })
     }
+}
+
+private fun configureKotlinWinRtCompilerPluginClasspath(project: Project) {
+    val configuredConfigurations = mutableSetOf<String>()
+    project.configurations
+        .matching { configuration ->
+            configuration.name.contains("compilerPluginClasspath", ignoreCase = true)
+        }
+        .configureEach { configuration ->
+            if (configuredConfigurations.add(configuration.name)) {
+                project.dependencies.add(configuration.name, kotlinWinRtCompilerPluginDependency(project))
+            }
+        }
 }
 
 private fun kotlinWinRtCompilerPluginClasspath(project: Project) =

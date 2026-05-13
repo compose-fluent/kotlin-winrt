@@ -17,6 +17,12 @@ kotlin {
                 implementation(project(":winrt-samples:winui-kmp-library"))
             }
         }
+        val winuiMain by creating {
+            dependsOn(commonMain.get())
+        }
+        named("winuiJvmMain") {
+            dependsOn(winuiMain)
+        }
     }
 }
 

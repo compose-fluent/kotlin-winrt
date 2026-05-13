@@ -351,6 +351,17 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun plugin_registers_compiler_plugin_dependency_for_late_kmp_compiler_plugin_classpath_configurations() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+        val targetConfiguration = project.configurations.create("kotlinCompilerPluginClasspathWinuiJvm")
+
+        assertTrue(targetConfiguration.dependencies.isNotEmpty())
+    }
+
+    @Test
     fun application_plugin_collects_only_dependencies_with_kotlin_winrt_identity_metadata() {
         val root = ProjectBuilder.builder().withName("root").build()
         val library = ProjectBuilder.builder().withName("library").withParent(root).build()
