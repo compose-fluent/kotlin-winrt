@@ -393,6 +393,7 @@ internal fun KotlinProjectionRenderer.abiResultAllocationForAsyncOperationResult
     KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.allocateBytes(%L, 4)", PLATFORM_ABI_CLASS_NAME, scopeName)
     KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.allocateDoubleSlot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
     KotlinProjectionAbiValueKind.Char16 -> CodeBlock.of("%T.allocateBytes(%L, 2)", PLATFORM_ABI_CLASS_NAME, scopeName)
+    KotlinProjectionAbiValueKind.GuidValue -> CodeBlock.of("%T.allocateBytes(%L, %T.BYTE_SIZE.toLong())", PLATFORM_ABI_CLASS_NAME, scopeName, GUID_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum -> bindingAllocationForAsyncEnum(resultBinding, scopeName)
     KotlinProjectionAbiValueKind.Struct ->
         nativeStructClassName(resultBinding)?.let { resultType ->
@@ -473,6 +474,8 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
         CodeBlock.of("%T.readDouble(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
     KotlinProjectionAbiValueKind.Char16 ->
         CodeBlock.of("%T.readChar16(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
+    KotlinProjectionAbiValueKind.GuidValue ->
+        CodeBlock.of("%T.readGuid(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
     KotlinProjectionAbiValueKind.Enum ->
         asyncEnumResultReadbackExpression(resultBinding)
     KotlinProjectionAbiValueKind.Struct ->

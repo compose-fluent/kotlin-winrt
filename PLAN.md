@@ -50,6 +50,7 @@
 - [x] Application packaging-only projection boundary: application modules that only declare `application {}` plus NuGet packages for runtime staging no longer expand those NuGet packages into a full projection surface; app modules consume dependency identity and stage assets while library modules own the generated WinUI projection surface.
 - [x] Compose-winui-shaped KMP compiler plugin classpath: the dual-module WinUI validation now mirrors compose-ui's `commonMain -> winuiMain -> winuiJvmMain` source-set layering, SDK version/extension settings, projection type list, and `sourceRoots` override; the Gradle plugin also injects the compiler plugin into late-created KMP compiler-plugin classpath configurations instead of assuming only `kotlinCompilerPluginClasspath` exists.
 - [x] WinUI controls activation regression: `buildWinRtAuthoringHost` remains a mandatory `winrt-samples:run` prerequisite; no-arg `Unit` projection methods now stay on the generator inline vtable path after `WinRtProjectionIntrinsic.invokeUnit` regressed `Microsoft.UI.Xaml.Window.Activate`.
+- [x] Static overload ABI slot binding: runtime-class static method shells now bind through the matched declaring static interface method row when computing generated slot constants, so overloaded statics such as `Windows.System.Launcher.launchUriAsync(uri)` no longer miss existing `ILauncherStatics` ABI bindings; async operation result readback also covers `System.Guid` so newly exposed static/interface paths can project `IAsyncOperation<Guid>` results.
 
 ## Completed Baseline
 

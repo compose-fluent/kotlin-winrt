@@ -1378,6 +1378,22 @@ internal fun KotlinProjectionRenderer.renderBoundStaticInvocation(
     ) ?: error("Generator ABI marshaler parity failed to emit ${binding.bindingName}")
 }
 
+internal fun KotlinProjectionRenderer.renderBoundStaticInvocationOrNull(
+    binding: KotlinProjectionStaticMemberBinding,
+): CodeBlock? {
+    val callPlan = buildAbiCallPlan(
+        returnBinding = binding.returnBinding,
+        parameterBindings = binding.parameterBindings,
+        marshalerPlanDescriptor = binding.marshalerPlanDescriptor,
+        suppressHResultCheck = binding.suppressHResultCheck,
+    ) ?: return null
+    return renderInlineAbiInvocation(
+        invokeTargetExpression = "StaticInterfaces.${binding.ownerAccessorName}()",
+        slotExpression = binding.bindingName,
+        callPlan = callPlan,
+    )
+}
+
 internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
     plan: KotlinTypeProjectionPlan,
     suppressedMemberNames: Set<String>,

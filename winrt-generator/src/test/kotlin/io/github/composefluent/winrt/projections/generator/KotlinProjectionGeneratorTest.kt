@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.projections.generator
 
+import com.squareup.kotlinpoet.CodeBlock
 import io.github.composefluent.winrt.metadata.WinRtActivationShape
 import io.github.composefluent.winrt.metadata.WinRtAvailabilityMetadata
 import io.github.composefluent.winrt.metadata.WinRtContractVersionMetadata
@@ -912,6 +913,80 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("IAppInfo by IAppInfoJvmProjection.wrap(Metadata.acquireInterface(_inner,"))
         assertFalse(jvm, jvm.contains("_iAppInfo.package"))
         assertFalse(jvm, jvm.contains("override val `package`: Package"))
+    }
+
+    @Test
+    fun static_runtime_class_overload_binding_uses_declaring_static_interface_row_id() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ILauncherStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "LaunchAsync",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(WinRtParameterDefinition("uri", "String")),
+                                    methodRowId = 10,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "LaunchAsync",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("uri", "String"),
+                                        WinRtParameterDefinition("options", "String"),
+                                    ),
+                                    methodRowId = 11,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Launcher",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.ILauncherStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "LaunchAsync",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(WinRtParameterDefinition("uri", "String")),
+                                    isStatic = true,
+                                    methodRowId = 100,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "LaunchAsync",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("uri", "String"),
+                                        WinRtParameterDefinition("options", "String"),
+                                    ),
+                                    isStatic = true,
+                                    methodRowId = 101,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val launcher = KotlinProjectionGenerator()
+            .generate(model)
+            .first { it.relativePath.endsWith("Launcher.kt") }
+            .contents
+
+        assertTrue(launcher, launcher.contains("STATIC_LAUNCHASYNC_10_SLOT"))
+        assertTrue(launcher, launcher.contains("STATIC_LAUNCHASYNC_11_SLOT"))
+        assertFalse(launcher, launcher.contains("STATIC_LAUNCHASYNC_100_SLOT"))
+        assertFalse(launcher, launcher.contains("STATIC_LAUNCHASYNC_101_SLOT"))
+        assertFalse(launcher, launcher.contains("ABI binding is unavailable for method LaunchAsync"))
     }
 
     private fun keywordPackagePropertyModel(
@@ -8653,8 +8728,8 @@ class KotlinProjectionGeneratorTest {
 
         val interfaceContents = KotlinProjectionGenerator()
             .generate(model)
-            .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("IWidget.kt")
+            .associateBy { it.relativePath }
+            .getValue("sample/foundation/IWidget.kt")
             .contents
 
         assertFalse(interfaceContents.contains("CompletableFuture"))
@@ -8685,6 +8760,28 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents.contains("WinRtTypeSignature.string()"))
         assertTrue(interfaceContents.contains("WinRtTypeSignature.uint32()"))
         assertFalse(interfaceContents.contains("WinRtAsyncOperationWithProgressVftblSlots.GetResults, __operationResultOut)"))
+    }
+
+    @Test
+    fun generator_emits_guid_async_operation_result_readback() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<System.Guid>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.GuidValue,
+                    typeName = "System.Guid",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("WinRtAsyncProjectionInterop.operation<io.github.composefluent.winrt.runtime.Guid>"))
+        assertTrue(expression, expression.contains("resultSignature = io.github.composefluent.winrt.runtime.WinRtTypeSignature.guidValue()"))
+        assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.PlatformAbi.allocateBytes(__operationScope, io.github.composefluent.winrt.runtime.Guid.BYTE_SIZE.toLong())"))
+        assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.PlatformAbi.readGuid(__operationResultOut)"))
     }
 
     @Test

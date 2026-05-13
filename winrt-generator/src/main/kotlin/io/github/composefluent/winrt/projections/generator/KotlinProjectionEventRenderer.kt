@@ -428,7 +428,8 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
         ?: renderStaticDescriptorScalarIntrinsicInvocation(binding)
         ?: renderStaticDescriptorProjectedObjectIntrinsicInvocation(binding)
-        ?: renderBoundStaticInvocation(binding)
+        ?: renderBoundStaticInvocationOrNull(binding)
+        ?: return null
     return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method)
@@ -652,12 +653,19 @@ private fun staticMethodBindingName(
     plan: KotlinTypeProjectionPlan,
     method: WinRtMethodDefinition,
 ): String {
-    val declaringStaticInterface = plan.staticInterfaceNames
+    val declaringStaticMethod = plan.staticInterfaceNames
         .mapNotNull(plan.typesByQualifiedName::get)
-        .firstOrNull { staticInterface ->
-            staticInterface.methods.any { it.projectionSignatureIgnoringStaticKey() == method.projectionSignatureIgnoringStaticKey() }
+        .firstNotNullOfOrNull { staticInterface ->
+            staticInterface.methods
+                .firstOrNull { it.projectionSignatureIgnoringStaticKey() == method.projectionSignatureIgnoringStaticKey() }
+                ?.let { staticInterface to it }
         }
-    return "STATIC_${method.abiSlotConstantName(declaringStaticInterface?.methods ?: plan.type.methods)}"
+    return if (declaringStaticMethod != null) {
+        val (staticInterface, staticMethod) = declaringStaticMethod
+        "STATIC_${staticMethod.abiSlotConstantName(staticInterface.methods)}"
+    } else {
+        "STATIC_${method.abiSlotConstantName(plan.type.methods)}"
+    }
 }
 
 internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
