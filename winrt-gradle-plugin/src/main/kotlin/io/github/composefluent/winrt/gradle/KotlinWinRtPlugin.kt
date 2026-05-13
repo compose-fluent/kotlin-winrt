@@ -334,6 +334,11 @@ private fun configureWinRtGeneration(
                     }
                 },
             )
+            task.projectModel.set(
+                project.provider {
+                    if ((extension as? WinRtExtension)?.applicationEnabled?.get() == true) "application" else "library"
+                },
+            )
             task.authoringAssemblyName.set(project.name)
             task.authoringTargetArtifactName.set(
                 project.provider {

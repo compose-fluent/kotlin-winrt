@@ -29,4 +29,6 @@ include(
     ":winrt-compiler-plugin",
     ":winrt-projections",
     ":winrt-samples",
+    ":winrt-samples:winui-kmp-library",
+    ":winrt-samples:winui-kmp-app",
 )

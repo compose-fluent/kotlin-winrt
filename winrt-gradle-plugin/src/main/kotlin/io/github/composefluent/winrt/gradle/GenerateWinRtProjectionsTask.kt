@@ -97,6 +97,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     abstract val nugetPackages: ListProperty<String>
 
     @get:Input
+    abstract val projectModel: Property<String>
+
+    @get:Input
     abstract val authoringAssemblyName: Property<String>
 
     @get:Input
@@ -184,6 +187,12 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {
+        val applicationPackagingOnly = projectModel.get() == "application" &&
+            metadataInputs.get().isEmpty() &&
+            includeNamespaces.get().isEmpty() &&
+            includeTypes.get().isEmpty() &&
+            !windowsSdkVersion.isPresent &&
+            !includeWindowsSdkExtensions.get()
         val explicitSources = metadataInputs.get().map(WinRtMetadataSource::parse)
         val sdkSource = if (windowsSdkVersion.isPresent || includeWindowsSdkExtensions.get()) {
             listOf(
@@ -197,7 +206,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }
         val explicitNuGetRoots = nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
-        val packageIdentities = nugetPackages.get().map(::parseNuGetPackageIdentity)
+        val packageIdentities = if (applicationPackagingOnly) {
+            emptyList()
+        } else {
+            nugetPackages.get().map(::parseNuGetPackageIdentity)
+        }
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
         val restoredPackageDirectories = if (restoreNuGetPackages.get() && packageIdentities.isNotEmpty()) {
             restoreNuGetPackages(packageIdentities)
@@ -223,8 +236,11 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             )
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
-        return (explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources).ifEmpty {
-            listOf(WinRtMetadataSource.windowsSdk())
+        val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
+        return if (applicationPackagingOnly) {
+            sources
+        } else {
+            sources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
         }
     }
 

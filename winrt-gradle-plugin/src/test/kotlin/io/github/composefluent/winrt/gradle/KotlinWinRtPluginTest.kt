@@ -334,6 +334,23 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_packaging_only_nuget_does_not_expand_projection_surface() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val extension = project.extensions.getByType(WinRtExtension::class.java)
+        extension.application {}
+        extension.nugetPackage("Microsoft.WindowsAppSDK", "1.8.260416003")
+
+        val task = project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).get()
+        task.generate()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertFalse(Files.exists(outputRoot.resolve("microsoft")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")))
+    }
+
+    @Test
     fun application_plugin_collects_only_dependencies_with_kotlin_winrt_identity_metadata() {
         val root = ProjectBuilder.builder().withName("root").build()
         val library = ProjectBuilder.builder().withName("library").withParent(root).build()
