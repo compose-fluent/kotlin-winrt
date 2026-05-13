@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.nio.file.Files
 
 class EventRuntimeInfrastructureTest {
     @Test
@@ -108,6 +109,94 @@ class EventRuntimeInfrastructureTest {
             activeDelegate?.close()
             owner.close()
             EventSourceCache.clearForTests()
+        }
+    }
+
+    @Test
+    fun event_source_shutdown_registry_removes_active_native_registration() {
+        EventSourceCache.clearForTests()
+        EventSourceShutdownRegistry.clearForTests()
+
+        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        var removals = 0
+        var activeDelegate: WinRtDelegateReference? = null
+        val token = EventRegistrationToken(0x33445566_00000001)
+        val source =
+            TestIntEventSource(
+                owner = owner,
+                addHandler = { _, handler ->
+                    activeDelegate?.close()
+                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    token
+                },
+                removeHandler = { _, removedToken ->
+                    removals += 1
+                    assertEquals(token, removedToken)
+                    activeDelegate?.close()
+                    activeDelegate = null
+                },
+            )
+
+        try {
+            source.subscribe { _, _ -> }
+
+            assertNotNull(activeDelegate)
+
+            EventSourceShutdownRegistry.closeAllForTests()
+
+            assertEquals(1, removals)
+            assertNull(activeDelegate)
+        } finally {
+            activeDelegate?.close()
+            owner.close()
+            EventSourceCache.clearForTests()
+            EventSourceShutdownRegistry.clearForTests()
+        }
+    }
+
+    @Test
+    fun windows_app_sdk_bootstrap_scope_close_removes_active_event_source_registration() {
+        EventSourceCache.clearForTests()
+        EventSourceShutdownRegistry.clearForTests()
+
+        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        val bootstrapDll = Files.createTempFile("kotlin-winrt-bootstrap", ".dll")
+        var removals = 0
+        var activeDelegate: WinRtDelegateReference? = null
+        val token = EventRegistrationToken(0x44556677_00000002)
+        val source =
+            TestIntEventSource(
+                owner = owner,
+                addHandler = { _, handler ->
+                    activeDelegate?.close()
+                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    token
+                },
+                removeHandler = { _, removedToken ->
+                    removals += 1
+                    assertEquals(token, removedToken)
+                    activeDelegate?.close()
+                    activeDelegate = null
+                },
+            )
+
+        try {
+            source.subscribe { _, _ -> }
+
+            WinRtWindowsAppSdkBootstrap.Scope(
+                bootstrapDll = bootstrapDll,
+                activationContexts = emptyList(),
+                lookup = null,
+            ).close()
+
+            assertEquals(1, removals)
+            assertNull(activeDelegate)
+        } finally {
+            activeDelegate?.close()
+            owner.close()
+            EventSourceCache.clearForTests()
+            EventSourceShutdownRegistry.clearForTests()
+            Files.deleteIfExists(bootstrapDll)
         }
     }
 

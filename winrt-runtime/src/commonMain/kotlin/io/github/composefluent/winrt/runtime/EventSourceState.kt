@@ -19,6 +19,7 @@ abstract class EventSourceState<T : Any> protected constructor(
     private var handlers: List<T> = emptyList()
     private var eventInvokePointer: RawAddress = PlatformAbi.nullPointer
     private var referenceTrackerTargetPointer: RawAddress = PlatformAbi.nullPointer
+    private var shutdownRegistration: AutoCloseable? = null
 
     internal var token: EventRegistrationToken = EventRegistrationToken()
     internal var eventInvokeHandle: WinRtDelegateHandle? = null
@@ -71,6 +72,26 @@ abstract class EventSourceState<T : Any> protected constructor(
         }
     }
 
+    internal fun installShutdownRegistration(registration: AutoCloseable) {
+        val previous =
+            lock.withLock {
+                shutdownRegistration.also {
+                    shutdownRegistration = registration
+                }
+            }
+        previous?.close()
+    }
+
+    internal fun clearShutdownRegistration() {
+        val previous =
+            lock.withLock {
+                shutdownRegistration.also {
+                    shutdownRegistration = null
+                }
+            }
+        previous?.close()
+    }
+
     internal fun hasComReferences(): Boolean {
         val pointers =
             lock.withLock {
@@ -104,7 +125,7 @@ abstract class EventSourceState<T : Any> protected constructor(
 
     override fun close() {
         var alreadyDisposed = false
-        val handleToClose =
+        val resourcesToClose =
             lock.withLock {
                 if (disposed) {
                     alreadyDisposed = true
@@ -116,14 +137,19 @@ abstract class EventSourceState<T : Any> protected constructor(
                 cacheCleanupRegistration.close()
                 eventInvokePointer = PlatformAbi.nullPointer
                 referenceTrackerTargetPointer = PlatformAbi.nullPointer
-                eventInvokeHandle.also {
+                val handle = eventInvokeHandle.also {
                     eventInvokeHandle = null
                 }
+                val registration = shutdownRegistration.also {
+                    shutdownRegistration = null
+                }
+                handle to registration
             }
         if (alreadyDisposed) {
             return
         }
-        handleToClose?.close()
+        resourcesToClose?.second?.close()
+        resourcesToClose?.first?.close()
     }
 
     private data class CacheCleanup(

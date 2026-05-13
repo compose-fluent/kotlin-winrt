@@ -60,6 +60,12 @@ abstract class EventSource<T : Any> protected constructor(
                     state.token = addHandler(objectReference, reference)
                 }
                 state.eventInvokeHandle = eventInvokeHandle
+                state.installShutdownRegistration(
+                    EventSourceShutdownRegistry.register {
+                        removeHandler(objectReference, state.token)
+                        state.close()
+                    },
+                )
                 val stateReference = state.getWeakReferenceForCache()
                 this.state = stateReference
                 EventSourceCache.create(objectReference, index, stateReference)
@@ -80,6 +86,7 @@ abstract class EventSource<T : Any> protected constructor(
                 return@withLock
             }
             removeHandler(objectReference, resolvedState.token)
+            resolvedState.clearShutdownRegistration()
             resolvedState.close()
             this.state = null
         }
