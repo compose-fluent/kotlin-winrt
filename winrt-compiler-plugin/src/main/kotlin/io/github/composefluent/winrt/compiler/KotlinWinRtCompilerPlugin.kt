@@ -264,14 +264,10 @@ class KotlinWinRtIrGenerationExtension(
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun IrCall.projectionIntrinsicFunctionName(): String? {
         val name = symbol.owner.name.asString()
-        if (name !in WINRT_PROJECTION_INTRINSIC_FUNCTIONS) {
+        if (!isProjectionIntrinsicFunction(name, (symbol.owner.parent as? IrClass)?.fqNameWhenAvailable?.asString())) {
             return null
         }
-        val ownerClass = symbol.owner.parent as? IrClass
-        return name.takeIf {
-            ownerClass?.fqNameWhenAvailable == WINRT_PROJECTION_INTRINSIC_FQ_NAME ||
-                name in WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS
-        }
+        return name
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -3176,6 +3172,13 @@ private val WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS = listOf(
 )
 
 private val WINRT_PROJECTION_INTRINSIC_FUNCTIONS = WINRT_PROJECTION_INTRINSIC_DIRECT_FUNCTIONS
+
+internal fun isProjectionIntrinsicFunction(
+    name: String,
+    ownerFqName: String?,
+): Boolean =
+    name in WINRT_PROJECTION_INTRINSIC_FUNCTIONS &&
+        ownerFqName == WINRT_PROJECTION_INTRINSIC_FQ_NAME.asString()
 
 internal fun generatedSourceRootFromMetadataIndex(metadataIndexPath: String?): String? {
     val indexPath = metadataIndexPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return null

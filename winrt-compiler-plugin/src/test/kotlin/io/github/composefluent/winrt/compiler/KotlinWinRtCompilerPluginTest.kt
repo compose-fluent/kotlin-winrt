@@ -128,6 +128,22 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_intrinsic_matching_requires_intrinsic_owner() {
+        assertTrue(
+            isProjectionIntrinsicFunction(
+                "getString",
+                "io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic",
+            ),
+        )
+        assertFalse(
+            isProjectionIntrinsicFunction(
+                "getString",
+                "windows.data.json.IJsonValue",
+            ),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_records_generated_support_tables() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-", ".tsv")
         Files.writeString(
