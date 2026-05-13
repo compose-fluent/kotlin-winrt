@@ -281,7 +281,7 @@ class KotlinWinRtCompilerPluginTest {
             },
             0,
         )
-        assertEquals(listOf(Opcodes.INVOKESTATIC), eventSourceRuntimeCalls)
+        assertEquals(listOf(Opcodes.INVOKEVIRTUAL), eventSourceRuntimeCalls)
     }
 
     @Test

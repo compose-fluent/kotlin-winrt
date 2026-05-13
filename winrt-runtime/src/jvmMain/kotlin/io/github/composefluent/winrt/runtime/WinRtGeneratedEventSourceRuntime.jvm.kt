@@ -5,7 +5,6 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
 object WinRtGeneratedEventSourceRuntime {
-    @JvmStatic
     fun createEventSourceFactory(descriptor: WinRtEventSourceDescriptor): WinRtEventSourceFactory? {
         if (descriptor.interfaceId == null || descriptor.parameterKinds.isEmpty()) {
             return null
