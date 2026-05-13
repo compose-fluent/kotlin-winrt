@@ -29,6 +29,7 @@ object WinRtWindowsAppSdkBootstrap {
         private val lookup: SymbolLookup?,
     ) : AutoCloseable {
         override fun close() {
+            WinRtWinUiResourceManagerBootstrap.closeAllRegistrations()
             lookup?.let(::shutdown)
             activationContexts.asReversed().forEach { context ->
                 context.close()

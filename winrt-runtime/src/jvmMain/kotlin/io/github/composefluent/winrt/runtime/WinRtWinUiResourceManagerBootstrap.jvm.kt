@@ -27,6 +27,17 @@ object WinRtWinUiResourceManagerBootstrap {
     private const val setCustomResourceManagerSlot = 7
     private val applicationRegistrations = ConcurrentHashMap<Long, Registration>()
 
+    init {
+        Runtime.getRuntime().addShutdownHook(
+            Thread(
+                {
+                    closeAllRegistrations()
+                },
+                "kotlin-winrt-winui-resource-manager-shutdown",
+            ),
+        )
+    }
+
     @OptIn(ExperimentalAtomicApi::class)
     class Registration internal constructor(
         private val applicationKey: Long,
@@ -121,6 +132,14 @@ object WinRtWinUiResourceManagerBootstrap {
             resourceManagerReference.close()
             applicationReference.close()
             throw error
+        }
+    }
+
+    internal fun closeAllRegistrations() {
+        applicationRegistrations.values.toList().forEach { registration ->
+            runCatching {
+                registration.close()
+            }
         }
     }
 

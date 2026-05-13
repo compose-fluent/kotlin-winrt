@@ -109,6 +109,7 @@
 - [x] Authoring activation factory runtime contract: Kotlin now has a `WinRtActivationFactory` CCW surface for cswinrt-style server factories that implement `IActivationFactory.ActivateInstance`.
 - [x] WinUI unpackaged resource manager bootstrap: JVM runtime owns the raw `Application.ResourceManagerRequested` hook and creates `Microsoft.Windows.ApplicationModel.Resources.ResourceManager` from staged `Microsoft.UI.pri`/`Microsoft.UI.Xaml.Controls.pri`, mirroring the app-model resource service that cswinrt packaged WinUI apps get outside projection code; generator-owned Application lifecycle wiring validates `XamlControlsResources` installation and live `TextBox` composition without sample-side registration.
 - [x] WinUI resource-manager registration close idempotence: the runtime-owned `ResourceManagerRequested` registration now ignores repeated close calls before removing the native event handler and releasing COM/delegate references, keeping helper teardown stable when application and sample scopes both attempt cleanup.
+- [x] WinUI resource-manager shutdown ordering: JVM runtime now closes all runtime-owned `Application.ResourceManagerRequested` registrations from the WindowsAppSDK bootstrap close path and a JVM shutdown hook before `MddBootstrapShutdown` / VM teardown, narrowing KWINRT-013-style native-thread upcall races for the callback surface owned by kotlin-winrt.
 
 ## Generator Gaps
 
