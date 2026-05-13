@@ -33,6 +33,7 @@ const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRtCompi
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
+private const val KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION: String = "kotlinWinRtLibraryDependencyIdentity"
 
 private fun configureWinRtLibraryModel(
     project: Project,
@@ -52,7 +53,7 @@ private fun configureWinRtLibraryModel(
             task.metadataInputs.set(extension.metadataInputs)
             task.includeNamespaces.set(extension.includeNamespaces)
             task.includeTypes.set(extension.includeTypes)
-            task.projectionRegistrarFile.set(
+            task.projectionRegistrarFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-support/projection-registrar.tsv",
                 ),
@@ -99,6 +100,22 @@ private fun configureWinRtLibraryModel(
             })
         },
     )
+    configureWinRtIdentityProjectDependencies(project, identityElements)
+    val dependencyIdentities = project.configurations.create(
+        KOTLIN_WINRT_LIBRARY_DEPENDENCY_IDENTITY_CONFIGURATION,
+        Action { configuration ->
+            configuration.isCanBeConsumed = false
+            configuration.isCanBeResolved = true
+            configuration.attributes.attribute(
+                Usage.USAGE_ATTRIBUTE,
+                project.objects.named(Usage::class.java, KOTLIN_WINRT_IDENTITY_USAGE),
+            )
+        },
+    )
+    configureWinRtIdentityProjectDependencies(project, dependencyIdentities)
+    project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentities)
+    }
     project.extensions.extraProperties["kotlinWinRtIdentityElements"] = identityElements.name
     extension.whenApplicationConfigured {
         identityElements.isCanBeConsumed = false

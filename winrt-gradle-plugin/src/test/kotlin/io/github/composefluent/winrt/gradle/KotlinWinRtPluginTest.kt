@@ -143,6 +143,28 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun library_identity_variant_publishes_transitive_winrt_identity_project_dependencies() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val libA = ProjectBuilder.builder().withName("liba").withParent(root).build()
+        val libB = ProjectBuilder.builder().withName("libb").withParent(root).build()
+        val runtime = ProjectBuilder.builder().withName("runtime").withParent(root).build()
+
+        libA.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        runtime.pluginManager.apply("java")
+        libB.pluginManager.apply("java")
+        libB.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        libB.dependencies.add("implementation", libB.dependencies.project(mapOf("path" to ":liba")))
+        libB.dependencies.add("implementation", libB.dependencies.project(mapOf("path" to ":runtime")))
+
+        val identityElements = libB.configurations.getByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)
+        val dependencyProjectPaths = identityElements.dependencies
+            .filterIsInstance<ProjectDependency>()
+            .map { it.path }
+
+        assertEquals(listOf(":liba"), dependencyProjectPaths)
+    }
+
+    @Test
     fun identity_task_writes_projection_identity_json() {
         val project = ProjectBuilder.builder().build()
 
@@ -1051,6 +1073,7 @@ class KotlinWinRtPluginTest {
                 }
             }
             rootProject.name = "kotlin-winrt-kmp-library-app-test"
+            include(":winrt-base-library")
             include(":winrt-library")
             include(":winrt-app")
             """.trimIndent(),
@@ -1062,6 +1085,30 @@ class KotlinWinRtPluginTest {
             org.gradle.daemon=false
             org.gradle.workers.max=1
             kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("winrt-base-library/build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+
+            kotlin {
+                jvm("winuiJvm")
+                sourceSets {
+                    commonMain {
+                        dependencies {
+                            implementation(files("$runtimeJar"))
+                        }
+                    }
+                }
+            }
+
+            winRt {
+                type("Windows.Foundation.IStringable")
+            }
             """.trimIndent(),
         )
         writeGradleFile(
@@ -1078,6 +1125,7 @@ class KotlinWinRtPluginTest {
                     commonMain {
                         dependencies {
                             implementation(files("$runtimeJar"))
+                            implementation(project(":winrt-base-library"))
                         }
                     }
                 }
@@ -1125,6 +1173,7 @@ class KotlinWinRtPluginTest {
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
             .withArguments(
+                ":winrt-base-library:compileKotlinWinuiJvm",
                 ":winrt-library:compileKotlinWinuiJvm",
                 ":winrt-app:compileKotlinWinuiJvm",
                 ":winrt-app:printApplicationIdentity",
@@ -1133,16 +1182,29 @@ class KotlinWinRtPluginTest {
             .forwardOutput()
             .build()
 
+        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-base-library:generateWinRtIdentity")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-base-library:compileKotlinWinuiJvm")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-library:generateWinRtIdentity")?.outcome)
-        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-library:compileKotlinWinuiJvm")?.outcome)
+        assertTrue(
+            result.task(":winrt-library:compileKotlinWinuiJvm")?.outcome in
+                setOf(TaskOutcome.SUCCESS, TaskOutcome.NO_SOURCE),
+        )
         assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-app:generateWinRtApplicationIdentity")?.outcome)
         assertTrue(
             result.task(":winrt-app:compileKotlinWinuiJvm")?.outcome in
                 setOf(TaskOutcome.SUCCESS, TaskOutcome.NO_SOURCE),
         )
+        assertTrue(result.output.contains("winrt-base-library"))
         assertTrue(result.output.contains("winrt-library"))
         assertTrue(
             Files.isRegularFile(
+                projectDir.resolve(
+                    "winrt-base-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IStringable.kt",
+                ),
+            ),
+        )
+        assertFalse(
+            Files.exists(
                 projectDir.resolve(
                     "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IStringable.kt",
                 ),
