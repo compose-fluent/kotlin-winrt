@@ -6033,6 +6033,85 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_binds_delegate_mapped_collection_and_uint8_array_parameters() {
+        // Mirrors .cswinrt/src/cswinrt/code_writers.h delegate ABI marshaling: WinRT collection
+        // parameters stay interface pointers, while arrays expand to their ABI length/data pair.
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "TokenizingHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("tokens", "Windows.Foundation.Collections.IIterable<String>"),
+                                        WinRtParameterDefinition("payload", "Array<UByte>"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ITokenizer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.TokenizingHandler")),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Tokenizer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.ITokenizer",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.ITokenizer", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.TokenizingHandler")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val delegateContents = filesByName.getValue("TokenizingHandler.kt").contents
+        val tokenizerContents = filesByName.getValue("Tokenizer.kt").contents
+
+        assertTrue(delegateContents, delegateContents.contains("operator fun invoke(tokens: Iterable<String>, payload: Array<UByte>)"))
+        assertTrue(delegateContents, delegateContents.contains("WinRtDelegateValueKind.IUNKNOWN"))
+        assertTrue(delegateContents, delegateContents.contains("WinRtDelegateValueKind.UINT8_ARRAY"))
+        assertTrue(delegateContents, delegateContents.contains("WinRtIterableProjection.createMarshaler(tokens"))
+        assertTrue(delegateContents, delegateContents.contains("__tokensMarshaler?.abi ?: PlatformAbi.nullPointer"))
+        assertTrue(delegateContents, delegateContents.contains("__native.invoke(listOf(__tokensMarshaler?.abi ?: PlatformAbi.nullPointer, payload))"))
+        assertTrue(tokenizerContents, tokenizerContents.contains("WinRtDelegateBridge.createDelegate"))
+        assertTrue(tokenizerContents, tokenizerContents.contains("WinRtIterableProjection.fromAbi(PlatformAbi.fromRawComPtr(__collectionRef.pointer)"))
+        assertTrue(tokenizerContents, tokenizerContents.contains("handler(run {"))
+        assertTrue(tokenizerContents, tokenizerContents.contains("__args[1] as Array<UByte>"))
+        assertFalse(tokenizerContents, tokenizerContents.contains("fun setHandler(handler: TokenizingHandler) = error(\"WinRT ABI binding is unavailable\")"))
+    }
+
+    @Test
     fun generator_rejects_delegates_without_a_single_invoke_method() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

@@ -2,8 +2,8 @@ package io.github.composefluent.winrt.runtime
 
 internal object WinRtDelegateAbiMarshaller {
     fun functionSignature(descriptor: WinRtDelegateDescriptor): ComMethodSignature {
-        val parameterKinds = descriptor.parameterKinds.mapIndexed { index, kind ->
-            abiKindFor(kind, descriptor.parameterStructAdapter(index))
+        val parameterKinds = descriptor.parameterKinds.flatMapIndexed { index, kind ->
+            abiKindsForParameter(kind, descriptor.parameterStructAdapter(index))
         }
         val trailingKinds = if (descriptor.returnKind == WinRtDelegateValueKind.UNIT) {
             emptyList()
@@ -20,26 +20,22 @@ internal object WinRtDelegateAbiMarshaller {
         parameterKinds: List<WinRtDelegateValueKind>,
         abiArguments: List<Any?>,
     ): List<Any?> {
-        require(parameterKinds.size == abiArguments.size) {
-            "ABI argument count ${abiArguments.size} must match delegate parameter count ${parameterKinds.size}."
+        require(expectedAbiArgumentCount(parameterKinds) == abiArguments.size) {
+            "ABI argument count ${abiArguments.size} must match delegate ABI parameter count ${expectedAbiArgumentCount(parameterKinds)}."
         }
 
-        return parameterKinds.zip(abiArguments).map { (kind, value) ->
-            decodeArgument(kind, value, adapter = null)
-        }
+        return decodeArgumentList(parameterKinds, abiArguments) { _, _ -> null }
     }
 
     fun decodeArguments(
         descriptor: WinRtDelegateDescriptor,
         abiArguments: List<Any?>,
     ): List<Any?> {
-        require(descriptor.parameterKinds.size == abiArguments.size) {
-            "ABI argument count ${abiArguments.size} must match delegate parameter count ${descriptor.parameterKinds.size}."
+        require(expectedAbiArgumentCount(descriptor.parameterKinds) == abiArguments.size) {
+            "ABI argument count ${abiArguments.size} must match delegate ABI parameter count ${expectedAbiArgumentCount(descriptor.parameterKinds)}."
         }
 
-        return descriptor.parameterKinds.zip(abiArguments).mapIndexed { index, (kind, value) ->
-            decodeArgument(kind, value, descriptor.parameterStructAdapter(index))
-        }
+        return decodeArgumentList(descriptor.parameterKinds, abiArguments) { index, _ -> descriptor.parameterStructAdapter(index) }
     }
 
     fun encodeArguments(
@@ -50,9 +46,7 @@ internal object WinRtDelegateAbiMarshaller {
             "ABI argument count ${abiArguments.size} must match delegate parameter count ${parameterKinds.size}."
         }
 
-        return parameterKinds.zip(abiArguments).map { (kind, value) ->
-            encodeArgument(kind, value, cleanup = null, adapter = null)
-        }
+        return encodeArgumentList(parameterKinds, abiArguments, mutableListOf()) { _, _ -> null }
     }
 
     fun encodeArgumentsLease(
@@ -64,9 +58,7 @@ internal object WinRtDelegateAbiMarshaller {
         }
 
         val cleanup = mutableListOf<() -> Unit>()
-        val values = parameterKinds.zip(abiArguments).map { (kind, value) ->
-            encodeArgument(kind, value, cleanup, adapter = null)
-        }
+        val values = encodeArgumentList(parameterKinds, abiArguments, cleanup) { _, _ -> null }
         return EncodedDelegateArguments(values, cleanup)
     }
 
@@ -79,9 +71,7 @@ internal object WinRtDelegateAbiMarshaller {
         }
 
         val cleanup = mutableListOf<() -> Unit>()
-        val values = descriptor.parameterKinds.zip(abiArguments).mapIndexed { index, (kind, value) ->
-            encodeArgument(kind, value, cleanup, descriptor.parameterStructAdapter(index))
-        }
+        val values = encodeArgumentList(descriptor.parameterKinds, abiArguments, cleanup) { index, _ -> descriptor.parameterStructAdapter(index) }
         return EncodedDelegateArguments(values, cleanup)
     }
 
@@ -95,6 +85,7 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.HSTRING,
             WinRtDelegateValueKind.IUNKNOWN,
             WinRtDelegateValueKind.IINSPECTABLE,
+            WinRtDelegateValueKind.UINT8_ARRAY,
             -> PlatformAbi.allocatePointerSlot(scope)
             WinRtDelegateValueKind.GUID -> PlatformAbi.allocateBytes(scope, Guid.BYTE_SIZE.toLong())
             WinRtDelegateValueKind.STRUCT -> error("STRUCT return allocation requires a NativeStructAdapter.")
@@ -161,6 +152,7 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.CHAR16 -> PlatformAbi.readInt16(resultOut).toInt().toChar()
             WinRtDelegateValueKind.GUID -> PlatformAbi.readGuid(resultOut)
             WinRtDelegateValueKind.STRUCT -> error("STRUCT return decode requires a NativeStructAdapter.")
+            WinRtDelegateValueKind.UINT8_ARRAY -> error("UINT8_ARRAY return decode requires array length metadata.")
             WinRtDelegateValueKind.HSTRING -> {
                 val handle = PlatformAbi.readPointer(resultOut)
                 if (PlatformAbi.isNull(handle)) {
@@ -217,6 +209,7 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.CHAR16 -> PlatformAbi.writeInt16(resultOut, encodeChar16(value))
             WinRtDelegateValueKind.GUID -> PlatformAbi.writeGuid(resultOut, encodeGuid(value))
             WinRtDelegateValueKind.STRUCT -> error("STRUCT return write requires a NativeStructAdapter.")
+            WinRtDelegateValueKind.UINT8_ARRAY -> error("UINT8_ARRAY return write requires array length metadata.")
             WinRtDelegateValueKind.HSTRING -> PlatformAbi.writePointer(resultOut, encodeHStringValue(value))
         }
     }
@@ -253,6 +246,7 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.CHAR16 -> decodeChar16(abiValue)
             WinRtDelegateValueKind.GUID -> decodeGuid(abiValue)
             WinRtDelegateValueKind.STRUCT -> decodeStruct(abiValue, adapter)
+            WinRtDelegateValueKind.UINT8_ARRAY -> error("UINT8_ARRAY argument decode requires length and data ABI arguments.")
             WinRtDelegateValueKind.HSTRING -> decodeHString(abiValue)
         }
 
@@ -284,6 +278,7 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.CHAR16 -> encodeChar16(abiValue)
             WinRtDelegateValueKind.GUID -> encodeGuidArgument(abiValue, cleanup)
             WinRtDelegateValueKind.STRUCT -> encodeStructArgument(abiValue, cleanup, adapter)
+            WinRtDelegateValueKind.UINT8_ARRAY -> error("UINT8_ARRAY argument encode requires flattened length and data ABI arguments.")
             WinRtDelegateValueKind.HSTRING -> encodeHStringArgument(abiValue, cleanup)
         }
 
@@ -620,6 +615,7 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.HSTRING,
             WinRtDelegateValueKind.IUNKNOWN,
             WinRtDelegateValueKind.IINSPECTABLE,
+            WinRtDelegateValueKind.UINT8_ARRAY,
             -> ComAbiValueKind.Pointer
 
             WinRtDelegateValueKind.BOOLEAN ->
@@ -656,6 +652,72 @@ internal object WinRtDelegateAbiMarshaller {
             WinRtDelegateValueKind.STRUCT ->
                 ComAbiValueKind.Struct((adapter ?: error("STRUCT ABI kind requires a NativeStructAdapter.")).layout.abiLayout)
         }
+
+    private fun abiKindsForParameter(kind: WinRtDelegateValueKind, adapter: NativeStructAdapter<*>?): List<ComAbiValueKind> =
+        when (kind) {
+            WinRtDelegateValueKind.UINT8_ARRAY -> listOf(ComAbiValueKind.Int32, ComAbiValueKind.Pointer)
+            else -> listOf(abiKindFor(kind, adapter))
+        }
+
+    private fun expectedAbiArgumentCount(parameterKinds: List<WinRtDelegateValueKind>): Int =
+        parameterKinds.sumOf { kind -> if (kind == WinRtDelegateValueKind.UINT8_ARRAY) 2 else 1 }
+
+    private inline fun decodeArgumentList(
+        parameterKinds: List<WinRtDelegateValueKind>,
+        abiArguments: List<Any?>,
+        adapterAt: (Int, WinRtDelegateValueKind) -> NativeStructAdapter<*>?,
+    ): List<Any?> {
+        val decoded = ArrayList<Any?>(parameterKinds.size)
+        var abiIndex = 0
+        parameterKinds.forEachIndexed { parameterIndex, kind ->
+            if (kind == WinRtDelegateValueKind.UINT8_ARRAY) {
+                decoded.add(decodeUInt8Array(abiArguments[abiIndex], abiArguments[abiIndex + 1]))
+                abiIndex += 2
+            } else {
+                decoded.add(decodeArgument(kind, abiArguments[abiIndex], adapterAt(parameterIndex, kind)))
+                abiIndex += 1
+            }
+        }
+        return decoded
+    }
+
+    private inline fun encodeArgumentList(
+        parameterKinds: List<WinRtDelegateValueKind>,
+        abiArguments: List<Any?>,
+        cleanup: MutableList<() -> Unit>,
+        adapterAt: (Int, WinRtDelegateValueKind) -> NativeStructAdapter<*>?,
+    ): List<Any?> {
+        val encoded = ArrayList<Any?>(expectedAbiArgumentCount(parameterKinds))
+        parameterKinds.zip(abiArguments).forEachIndexed { parameterIndex, (kind, value) ->
+            if (kind == WinRtDelegateValueKind.UINT8_ARRAY) {
+                val array = encodeUInt8ArrayArgument(value, cleanup)
+                encoded += array.length
+                encoded += array.data
+            } else {
+                encoded += encodeArgument(kind, value, cleanup, adapterAt(parameterIndex, kind))
+            }
+        }
+        return encoded
+    }
+
+    private fun decodeUInt8Array(lengthAbi: Any?, dataAbi: Any?): Array<UByte> {
+        val length = decodeInt32(lengthAbi)
+        val data = dataAbi as? RawAddress
+            ?: error("Unsupported ABI UInt8 array data argument: ${dataAbi?.let { it::class.qualifiedName } ?: "null"}")
+        return Marshaler.uint8().fromAbiArray(length, data)?.filterNotNull()?.toTypedArray() ?: emptyArray()
+    }
+
+    private fun encodeUInt8ArrayArgument(value: Any?, cleanup: MutableList<() -> Unit>): WinRtAbiArray {
+        val values = when (value) {
+            null -> emptyArray()
+            is Array<*> -> value.filterIsInstance<UByte>().toTypedArray()
+            is ByteArray -> value.map { it.toUByte() }.toTypedArray()
+            else -> error("Unsupported outbound ABI UInt8 array argument: ${value::class.qualifiedName}")
+        }
+        val array = Marshaler.uint8().createMarshalerArray(values) ?: WinRtAbiArray(0, PlatformAbi.nullPointer)
+        cleanup += array::close
+        return array
+    }
 }
 
 private fun WinRtDelegateDescriptor.requireReturnStructAdapter(): NativeStructAdapter<*> =

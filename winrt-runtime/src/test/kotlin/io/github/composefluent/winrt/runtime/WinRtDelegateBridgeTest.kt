@@ -579,4 +579,25 @@ class WinRtDelegateBridgeTest {
             assertEquals(TestPoint(3.5f, 4.5f), WinRtDelegateAbiMarshaller.decodeReturnValue(descriptor, resultOut))
         }
     }
+
+    @Test
+    fun delegate_descriptor_expands_uint8_array_parameters() {
+        val descriptor = WinRtDelegateDescriptor(
+            interfaceId = Guid("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
+            parameterKinds = listOf(WinRtDelegateValueKind.UINT8_ARRAY),
+            returnKind = WinRtDelegateValueKind.UNIT,
+        )
+
+        assertEquals(
+            listOf(ComAbiValueKind.Int32, ComAbiValueKind.Pointer),
+            WinRtDelegateAbiMarshaller.functionSignature(descriptor).explicitParameterKinds,
+        )
+
+        val values = arrayOf(1.toUByte(), 2.toUByte(), 255.toUByte())
+        WinRtDelegateAbiMarshaller.encodeArgumentsLease(descriptor, listOf(values)).use { encoded ->
+            assertEquals(2, encoded.values.size)
+            assertEquals(3, encoded.values[0])
+            assertEquals(values.toList(), (WinRtDelegateAbiMarshaller.decodeArguments(descriptor, encoded.values).single() as Array<*>).toList())
+        }
+    }
 }

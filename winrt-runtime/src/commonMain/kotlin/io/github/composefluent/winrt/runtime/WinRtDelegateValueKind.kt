@@ -20,4 +20,5 @@ enum class WinRtDelegateValueKind {
     HSTRING,
     IUNKNOWN,
     IINSPECTABLE,
+    UINT8_ARRAY,
 }

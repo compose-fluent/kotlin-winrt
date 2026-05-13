@@ -718,6 +718,7 @@ private fun abiKindForDelegateValue(kind: WinRtDelegateValueKind): ComAbiValueKi
         WinRtDelegateValueKind.HSTRING,
         WinRtDelegateValueKind.IUNKNOWN,
         WinRtDelegateValueKind.IINSPECTABLE,
+        WinRtDelegateValueKind.UINT8_ARRAY,
         -> ComAbiValueKind.Pointer
         WinRtDelegateValueKind.INT8,
         WinRtDelegateValueKind.UINT8,

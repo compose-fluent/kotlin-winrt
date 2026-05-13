@@ -1670,8 +1670,14 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedDelegateCallbackBinding()
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
     KotlinProjectionAbiValueKind.MappedAsyncOperation,
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView,
+    KotlinProjectionAbiValueKind.Array,
     KotlinProjectionAbiValueKind.UnknownReference,
-    KotlinProjectionAbiValueKind.InspectableReference -> true
+    KotlinProjectionAbiValueKind.InspectableReference -> kind != KotlinProjectionAbiValueKind.Array || isSupportedDelegateArrayBinding()
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
 }
@@ -1699,14 +1705,24 @@ internal fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateBinding(
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
     KotlinProjectionAbiValueKind.MappedAsyncOperation,
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView,
+    KotlinProjectionAbiValueKind.Array,
     KotlinProjectionAbiValueKind.UnknownReference,
-    KotlinProjectionAbiValueKind.InspectableReference -> true
+    KotlinProjectionAbiValueKind.InspectableReference -> kind != KotlinProjectionAbiValueKind.Array || isSupportedDelegateArrayBinding()
     KotlinProjectionAbiValueKind.Enum -> enumUnderlyingType?.isSupportedProjectedEnumAbi() == true
     else -> false
 }
 
 internal fun KotlinProjectionAbiTypeBinding.isSupportedProjectedDelegateReturnBinding(): Boolean =
-    isSupportedProjectedDelegateBinding() || kind == KotlinProjectionAbiValueKind.Unit
+    kind == KotlinProjectionAbiValueKind.Unit ||
+        (kind != KotlinProjectionAbiValueKind.Array && isSupportedProjectedDelegateBinding())
+
+private fun KotlinProjectionAbiTypeBinding.isSupportedDelegateArrayBinding(): Boolean =
+    typeArguments.singleOrNull()?.kind == KotlinProjectionAbiValueKind.UInt8
 
 internal fun KotlinProjectionAbiTypeBinding.isMappedCollectionBinding(): Boolean =
     mappedTypeByAbiKind(kind)?.let { mappedType ->

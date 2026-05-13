@@ -71,4 +71,5 @@ private fun WinRtDelegateValueKind.isSupportedDelegateReturnKind(): Boolean =
         WinRtDelegateValueKind.IUNKNOWN,
         WinRtDelegateValueKind.IINSPECTABLE,
         -> true
+        WinRtDelegateValueKind.UINT8_ARRAY -> false
     }

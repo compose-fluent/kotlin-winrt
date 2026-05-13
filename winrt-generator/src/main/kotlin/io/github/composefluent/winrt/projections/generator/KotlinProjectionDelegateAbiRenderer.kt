@@ -325,7 +325,13 @@ internal fun KotlinProjectionRenderer.delegateValueKindCode(typeBinding: KotlinP
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
     KotlinProjectionAbiValueKind.MappedAsyncOperation,
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView,
     KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Array -> delegateArrayValueKindCode(typeBinding)
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
@@ -368,7 +374,13 @@ internal fun KotlinProjectionRenderer.delegateInvokeValueKindCode(typeBinding: K
     KotlinProjectionAbiValueKind.MappedAsyncAction,
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
     KotlinProjectionAbiValueKind.MappedAsyncOperation,
-    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    KotlinProjectionAbiValueKind.Array -> delegateArrayValueKindCode(typeBinding)
     KotlinProjectionAbiValueKind.UnknownReference -> CodeBlock.of("%T.IUNKNOWN", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.IINSPECTABLE", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
     else -> error("Unsupported projected delegate ABI kind: ${typeBinding.describeAbiKind()}")
@@ -377,6 +389,9 @@ internal fun KotlinProjectionRenderer.delegateInvokeValueKindCode(typeBinding: K
 internal fun KotlinProjectionRenderer.delegateInvokeBodyCode(
     invokeShape: KotlinProjectionDelegateInvokeShape,
 ): CodeBlock {
+    val collectionMarshalerBindings = invokeShape.parameterBindings.mapIndexedNotNull { index, parameterBinding ->
+        delegateInvokeCollectionMarshalerCode(index, parameterBinding)
+    }
     val argumentList = CodeBlock.builder()
         .add("listOf(")
         .apply {
@@ -390,7 +405,43 @@ internal fun KotlinProjectionRenderer.delegateInvokeBodyCode(
         .add(")")
         .build()
     val nativeInvokeExpression = CodeBlock.of("__native.invoke(%L)", argumentList)
-    return delegateInvokeReturnCode(invokeShape.returnBinding, nativeInvokeExpression)
+    val invokeCode = delegateInvokeReturnCode(invokeShape.returnBinding, nativeInvokeExpression)
+    if (collectionMarshalerBindings.isEmpty()) {
+        return invokeCode
+    }
+    return CodeBlock.builder()
+        .apply {
+            collectionMarshalerBindings.forEach { (name, initializer) ->
+                addStatement("val %L = %L", name, initializer)
+            }
+        }
+        .add("try {\n")
+        .indent()
+        .add("%L", invokeCode)
+        .unindent()
+        .add("} finally {\n")
+        .indent()
+        .apply {
+            collectionMarshalerBindings.asReversed().forEach { (name, _) ->
+                addStatement("%L?.close()", name)
+            }
+        }
+        .unindent()
+        .add("}\n")
+        .build()
+}
+
+private data class DelegateCollectionMarshalerBinding(
+    val name: String,
+    val initializer: CodeBlock,
+)
+
+private fun KotlinProjectionRenderer.delegateInvokeCollectionMarshalerCode(
+    index: Int,
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+): DelegateCollectionMarshalerBinding? {
+    val initializer = collectionMarshalerCode(parameterBinding.typeBinding, CodeBlock.of("%L", parameterBinding.name)) ?: return null
+    return DelegateCollectionMarshalerBinding("__${parameterBinding.name}Marshaler", initializer)
 }
 
 internal fun KotlinProjectionRenderer.delegateInvokeArgumentCode(
@@ -418,6 +469,16 @@ internal fun KotlinProjectionRenderer.delegateInvokeArgumentCode(
     KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
     KotlinProjectionAbiValueKind.MappedAsyncOperation,
     KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> CodeBlock.of("%L", parameterBinding.name)
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView -> CodeBlock.of(
+        "__%LMarshaler?.abi ?: %T.nullPointer",
+        parameterBinding.name,
+        PLATFORM_ABI_CLASS_NAME,
+    )
+    KotlinProjectionAbiValueKind.Array -> CodeBlock.of("%L", parameterBinding.name)
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> CodeBlock.of("%L", parameterBinding.name)
     KotlinProjectionAbiValueKind.Enum -> {
@@ -493,6 +554,11 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
         val progressType = returnBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
         CodeBlock.of("return %L as %T\n", nativeInvokeExpression, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
     }
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView -> delegateCollectionReturnCode(returnBinding, nativeInvokeExpression)
     else -> error("Unsupported projected delegate return ABI kind: ${returnBinding.describeAbiKind()}")
 }
 
@@ -569,6 +635,12 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
         val progressType = typeBinding.typeArguments.getOrNull(1)?.let { resolveTypeName(it.typeName) } ?: ANY.copy(nullable = true)
         CodeBlock.of("__args[%L] as %T", index, WINRT_ASYNC_OPERATION_WITH_PROGRESS_REFERENCE_CLASS_NAME.parameterizedBy(resultType, progressType))
     }
+    KotlinProjectionAbiValueKind.MappedIterable,
+    KotlinProjectionAbiValueKind.MappedVector,
+    KotlinProjectionAbiValueKind.MappedMap,
+    KotlinProjectionAbiValueKind.MappedVectorView,
+    KotlinProjectionAbiValueKind.MappedMapView -> delegateCollectionCallbackArgumentCode(index, typeBinding)
+    KotlinProjectionAbiValueKind.Array -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
     KotlinProjectionAbiValueKind.Object -> CodeBlock.of(
         "(__args[%L] as %T).asInspectable()",
         index,
@@ -577,6 +649,95 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("__args[%L] as %T", index, IINSPECTABLE_REFERENCE_CLASS_NAME)
     else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
 }
+
+internal fun KotlinProjectionRenderer.delegateArrayValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock {
+    val elementKind = typeBinding.typeArguments.singleOrNull()?.kind
+    if (elementKind == KotlinProjectionAbiValueKind.UInt8) {
+        return CodeBlock.of("%T.UINT8_ARRAY", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
+    }
+    error("Unsupported delegate array ABI kind: ${typeBinding.describeAbiKind()}")
+}
+
+internal fun KotlinProjectionRenderer.delegateCollectionCallbackArgumentCode(
+    index: Int,
+    typeBinding: KotlinProjectionAbiTypeBinding,
+): CodeBlock {
+    val initializer =
+        readOnlyCollectionBindingForReturn(typeBinding)?.let(::renderReadOnlyCollectionDelegateInitializer)
+            ?: mutableCollectionBindingForReturn(typeBinding)?.let(::renderMutableCollectionDelegateInitializer)
+            ?: error("Delegate collection callback binding requires runtime collection projection for ${typeBinding.describeAbiKind()}")
+    return CodeBlock.of(
+        "run {\nval __collectionRef = __args[%L] as %T\n%L}",
+        index,
+        IUNKNOWN_REFERENCE_CLASS_NAME,
+        initializer,
+    )
+}
+
+internal fun KotlinProjectionRenderer.delegateCollectionReturnCode(
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    nativeInvokeExpression: CodeBlock,
+): CodeBlock {
+    val initializer =
+        readOnlyCollectionBindingForReturn(returnBinding)?.let(::renderReadOnlyCollectionDelegateInitializer)
+            ?: mutableCollectionBindingForReturn(returnBinding)?.let(::renderMutableCollectionDelegateInitializer)
+            ?: error("Delegate collection return binding requires runtime collection projection for ${returnBinding.describeAbiKind()}")
+    return CodeBlock.of(
+        "val __collectionRef = %L as %T\nreturn %L",
+        nativeInvokeExpression,
+        IUNKNOWN_REFERENCE_CLASS_NAME,
+        initializer,
+    )
+}
+
+internal fun KotlinProjectionRenderer.collectionMarshalerCode(
+    typeBinding: KotlinProjectionAbiTypeBinding,
+    valueExpression: CodeBlock,
+): CodeBlock? {
+    readOnlyCollectionBindingForReturn(typeBinding)?.let { binding ->
+        return readOnlyCollectionMarshalerCode(binding, valueExpression)
+    }
+    mutableCollectionBindingForReturn(typeBinding)?.let { binding ->
+        return mutableCollectionMarshalerCode(binding, valueExpression)
+    }
+    return null
+}
+
+private fun KotlinProjectionRenderer.readOnlyCollectionMarshalerCode(
+    binding: KotlinProjectionReadOnlyCollectionBinding,
+    valueExpression: CodeBlock,
+): CodeBlock? =
+    when (binding.kind) {
+        KotlinProjectionReadOnlyCollectionKind.Iterable -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of("%T.createMarshaler(%L, %L)", WINRT_ITERABLE_PROJECTION_CLASS_NAME, valueExpression, elementAdapter)
+        }
+        KotlinProjectionReadOnlyCollectionKind.VectorView -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of("%T.createMarshaler(%L, %L)", WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME, valueExpression, elementAdapter)
+        }
+        KotlinProjectionReadOnlyCollectionKind.MapView -> {
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            CodeBlock.of("%T.createMarshaler(%L, %L, %L)", WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME, valueExpression, keyAdapter, valueAdapter)
+        }
+    }
+
+private fun KotlinProjectionRenderer.mutableCollectionMarshalerCode(
+    binding: KotlinProjectionMutableCollectionBinding,
+    valueExpression: CodeBlock,
+): CodeBlock? =
+    when (binding.kind) {
+        KotlinProjectionMutableCollectionKind.Vector -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of("%T.createMarshaler(%L, %L)", WINRT_LIST_PROJECTION_CLASS_NAME, valueExpression, elementAdapter)
+        }
+        KotlinProjectionMutableCollectionKind.Map -> {
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            CodeBlock.of("%T.createMarshaler(%L, %L, %L)", WINRT_DICTIONARY_PROJECTION_CLASS_NAME, valueExpression, keyAdapter, valueAdapter)
+        }
+    }
 
 internal fun KotlinProjectionRenderer.delegateEnumCallbackArgumentCode(
     index: Int,

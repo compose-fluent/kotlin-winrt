@@ -3241,7 +3241,13 @@ private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshallerAr
         KotlinProjectionAbiValueKind.MappedAsyncAction,
         KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress,
         KotlinProjectionAbiValueKind.MappedAsyncOperation,
-        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> true
+        KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress,
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMapView -> true
+        KotlinProjectionAbiValueKind.Array -> typeBinding.typeArguments.singleOrNull()?.kind == KotlinProjectionAbiValueKind.UInt8
         KotlinProjectionAbiValueKind.ProjectedInterface,
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> true
         else -> false

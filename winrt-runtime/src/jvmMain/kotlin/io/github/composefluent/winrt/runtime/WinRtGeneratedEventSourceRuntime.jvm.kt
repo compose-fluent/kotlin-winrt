@@ -169,5 +169,6 @@ private fun defaultReturnValue(kind: WinRtDelegateValueKind): Any? =
         WinRtDelegateValueKind.OBJECT,
         WinRtDelegateValueKind.IUNKNOWN,
         WinRtDelegateValueKind.IINSPECTABLE,
+        WinRtDelegateValueKind.UINT8_ARRAY,
         -> null
     }
