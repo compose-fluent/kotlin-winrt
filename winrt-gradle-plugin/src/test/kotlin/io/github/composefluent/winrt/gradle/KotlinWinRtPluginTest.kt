@@ -560,6 +560,12 @@ class KotlinWinRtPluginTest {
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
         }.get()
+        Files.createDirectories(task.outputDirectory.get().asFile.toPath().resolve("registrations/stale"))
+        Files.writeString(task.outputDirectory.get().asFile.toPath().resolve("resources.pri"), "stale")
+        Files.writeString(
+            task.outputDirectory.get().asFile.toPath().resolve("registrations/stale/LiftedWinRTClassRegistrations.xml"),
+            "stale",
+        )
         task.stage()
 
         val outputRoot = task.outputDirectory.get().asFile.toPath()
@@ -611,7 +617,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun runtime_assets_task_stages_generic_runtime_assets_without_windowsappsdk_framework_layout() {
+    fun runtime_assets_task_stages_package_declared_framework_layout() {
         val project = ProjectBuilder.builder().build()
         val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
         val packageRoot = globalPackagesRoot.resolve("sample.package").resolve("1.0.0")
@@ -633,6 +639,8 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml"))
         Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Controls.pri"), "pri")
         Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml/Controls.pri"), "nested")
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.writeString(packageRoot.resolve("build/native/LiftedWinRTClassRegistrations.xml"), "<Registrations />")
         Files.createDirectories(packageRoot.resolve("include"))
         Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
@@ -660,9 +668,15 @@ class KotlinWinRtPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("Sample.Package.dll")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Runtime.Native.dll")))
-        assertFalse(Files.exists(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
-        assertFalse(Files.exists(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
         assertFalse(Files.exists(outputRoot.resolve("resources.pri")))
+        assertFalse(Files.exists(outputRoot.resolve("registrations/stale/LiftedWinRTClassRegistrations.xml")))
+        assertTrue(
+            Files.isRegularFile(
+                outputRoot.resolve("registrations/Sample.Package/build/native/LiftedWinRTClassRegistrations.xml"),
+            ),
+        )
         assertFalse(Files.exists(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
 
@@ -686,6 +700,8 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml"))
         Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml.Controls.pri"), "pri")
         Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Microsoft.UI.Xaml/Controls.pri"), "nested")
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.writeString(packageRoot.resolve("build/native/LiftedWinRTClassRegistrations.xml"), "<Registrations />")
         Files.createDirectories(packageRoot.resolve("include"))
         Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
@@ -713,7 +729,14 @@ class KotlinWinRtPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
+        assertFalse(Files.exists(outputRoot.resolve("resources.pri")))
+        assertTrue(
+            Files.isRegularFile(
+                outputRoot.resolve(
+                    "registrations/Microsoft.WindowsAppSDK.WinUI/build/native/LiftedWinRTClassRegistrations.xml",
+                ),
+            ),
+        )
         assertFalse(Files.exists(outputRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
 
@@ -1253,6 +1276,7 @@ class KotlinWinRtPluginTest {
             packageId = "Microsoft.WindowsAppSDK.WinUI",
             version = "1.8.260415005",
             includeWinUiFrameworkAssets = true,
+            includeLiftedRegistrations = true,
         )
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
@@ -1316,9 +1340,16 @@ class KotlinWinRtPluginTest {
         assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtRuntimeAssets")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":installDist")?.outcome)
         val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY")
-        assertTrue(Files.isRegularFile(assetsRoot.resolve("resources.pri")))
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
+        assertFalse(Files.exists(assetsRoot.resolve("resources.pri")))
+        assertTrue(
+            Files.isRegularFile(
+                assetsRoot.resolve(
+                    "registrations/Microsoft.WindowsAppSDK.WinUI/build/native/LiftedWinRTClassRegistrations.xml",
+                ),
+            ),
+        )
         assertFalse(Files.exists(assetsRoot.resolve("include/WindowsAppSDK-VersionInfo.h")))
     }
 }
@@ -1341,6 +1372,7 @@ private fun writeWindowsAppSdkPackage(
     packageId: String,
     version: String,
     includeWinUiFrameworkAssets: Boolean = false,
+    includeLiftedRegistrations: Boolean = false,
     dependencies: List<Pair<String, String>> = emptyList(),
 ) {
     val packageRoot = nugetRoot.resolve(packageId.lowercase()).resolve(version)
@@ -1364,6 +1396,10 @@ private fun writeWindowsAppSdkPackage(
         Files.writeString(nativeRoot.resolve("Microsoft.UI.Xaml/Controls.pri"), "nested")
         Files.createDirectories(packageRoot.resolve("include"))
         Files.writeString(packageRoot.resolve("include/WindowsAppSDK-VersionInfo.h"), "version")
+    }
+    if (includeLiftedRegistrations) {
+        Files.createDirectories(packageRoot.resolve("build/native"))
+        Files.writeString(packageRoot.resolve("build/native/LiftedWinRTClassRegistrations.xml"), "<Registrations />")
     }
 }
 

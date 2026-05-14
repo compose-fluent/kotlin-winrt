@@ -17,6 +17,7 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Comparator
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -81,6 +82,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @TaskAction
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
+        cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
         (runtimeAssets.get() + dependencyIdentityFiles.files.flatMap(::readRuntimeAssets))
             .map(Path::of)
@@ -136,18 +138,15 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
             stageRuntimeNativeDlls(resolved.packageRoot.resolve("runtimes").resolve(rid).resolve("native"), outputRoot)
-            if (resolved.identity.isWindowsAppSdkPackage()) {
-                if (resolved.identity.isWindowsAppSdkRootPackage()) {
-                    stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
-                    stageWindowsAppSdkLiftedRegistrations(resolved.packageRoot, outputRoot)
-                }
-                stageWindowsAppSdkFrameworkAssets(
-                    resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
-                    outputRoot,
-                )
+            if (resolved.identity.isWindowsAppSdkRootPackage()) {
+                stageWindowsAppSdkVersionInfo(resolved.packageRoot, outputRoot)
             }
+            stageLiftedRegistrations(resolved.identity, resolved.packageRoot, outputRoot)
+            stageFrameworkNativeAssets(
+                resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
+                outputRoot,
+            )
         }
-        stageResourcesPriAlias(outputRoot)
     }
 
     private fun resolveNuGetPackages(
@@ -221,7 +220,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
-    private fun stageWindowsAppSdkFrameworkAssets(nativeRoot: Path, outputRoot: Path) {
+    private fun stageFrameworkNativeAssets(nativeRoot: Path, outputRoot: Path) {
         if (!nativeRoot.isDirectory()) {
             return
         }
@@ -239,24 +238,41 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
-    private fun stageWindowsAppSdkLiftedRegistrations(packageRoot: Path, outputRoot: Path) {
+    private fun stageLiftedRegistrations(
+        identity: WinRtNuGetPackageIdentity,
+        packageRoot: Path,
+        outputRoot: Path,
+    ) {
         Files.walk(packageRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
-        }
-    }
-
-    private fun stageResourcesPriAlias(outputRoot: Path) {
-        val controlsPri = outputRoot.resolve("Microsoft.UI.Xaml.Controls.pri")
-        if (controlsPri.isRegularFile()) {
-            copyFile(controlsPri, outputRoot.resolve("resources.pri"))
+                .forEach { source ->
+                    copyFile(
+                        source,
+                        outputRoot
+                            .resolve("registrations")
+                            .resolve(identity.normalizedPackageId)
+                            .resolve(source.relativeTo(packageRoot)),
+                    )
+                }
         }
     }
 
     private fun copyFile(source: Path, target: Path) {
         Files.createDirectories(target.parent)
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    private fun cleanDirectory(directory: Path) {
+        if (!directory.isDirectory()) {
+            return
+        }
+        Files.walk(directory).use { stream ->
+            stream
+                .sorted(Comparator.reverseOrder())
+                .filter { it != directory }
+                .forEach(Files::deleteIfExists)
+        }
     }
 
     private fun stageAuthoringHostRuntimeConfigs(
@@ -341,10 +357,6 @@ private data class AuthoringHostRuntimeConfig(
     val assemblyName: String,
     val activatableClasses: Map<String, String>,
 )
-
-private fun WinRtNuGetPackageIdentity.isWindowsAppSdkPackage(): Boolean =
-    normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true) ||
-        normalizedPackageId.startsWith("Microsoft.WindowsAppSDK.", ignoreCase = true)
 
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkRootPackage(): Boolean =
     normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true)

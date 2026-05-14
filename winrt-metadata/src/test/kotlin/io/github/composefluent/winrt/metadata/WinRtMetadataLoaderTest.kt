@@ -874,6 +874,18 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun nuget_resolver_prefers_longest_version_suffix_for_cli_install_directories() {
+        assertEquals(
+            WinRtNuGetPackageIdentity("Microsoft.WindowsAppSDK.WinUI", "1.8.260415005"),
+            WinRtNuGetPackageResolver.parsePackageIdentityFromInstallName("Microsoft.WindowsAppSDK.WinUI.1.8.260415005"),
+        )
+        assertEquals(
+            WinRtNuGetPackageIdentity("Sample.Package", "1.0.0"),
+            WinRtNuGetPackageResolver.parsePackageIdentityFromInstallName("Sample.Package.1.0.0"),
+        )
+    }
+
+    @Test
     fun loads_cli_metadata_with_auxiliary_tables_used_by_real_winmd_caches() {
         val assembly = buildAuxiliaryTableMetadataSample()
 

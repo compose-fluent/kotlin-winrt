@@ -410,12 +410,25 @@ object WinRtNuGetPackageResolver {
                 .firstOrNull { it.endsWith(".nupkg", ignoreCase = true) }
                 ?.removeSuffix(".nupkg")
         } ?: packageRoot.fileName.toString()
-        val match = Regex("""^(.+)\.([0-9]+(?:\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?)$""").matchEntire(packageName)
+        return parsePackageIdentityFromInstallName(packageName)
             ?: throw IllegalArgumentException("NuGet package root '$packageRoot' does not contain a .nuspec file and its directory name is not '<id>.<version>'.")
-        return WinRtNuGetPackageIdentity(
-            packageId = match.groupValues[1],
-            version = match.groupValues[2],
-        )
+    }
+
+    internal fun parsePackageIdentityFromInstallName(packageName: String): WinRtNuGetPackageIdentity? {
+        val versionPattern = Regex("""^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?$""")
+        return packageName.indices
+            .asSequence()
+            .filter { packageName[it] == '.' && it > 0 && it < packageName.lastIndex }
+            .mapNotNull { separator ->
+                val packageId = packageName.substring(0, separator)
+                val version = packageName.substring(separator + 1)
+                if (versionPattern.matches(version)) {
+                    WinRtNuGetPackageIdentity(packageId, version)
+                } else {
+                    null
+                }
+            }
+            .firstOrNull()
     }
 
     private fun findNuspec(packageRoot: Path): Path? =
