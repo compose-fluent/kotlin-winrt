@@ -877,7 +877,7 @@ class KotlinWinRtPluginTest {
             kotlin {
                 jvm("winuiJvm")
                 sourceSets {
-                    val winuiJvmMain by getting {
+                    commonMain {
                         dependencies {
                             implementation(files("$runtimeJar"))
                         }
@@ -906,13 +906,25 @@ class KotlinWinRtPluginTest {
                     println("COMMON_MAIN_SOURCES=" + kotlin.sourceSets.named("commonMain").get().kotlin.srcDirs)
                 }
             }
+
+            tasks.register("verifyWinuiJvmCompilerSupportOutput") {
+                dependsOn("compileKotlinWinuiJvm")
+                doLast {
+                    val winuiRegistry = layout.buildDirectory.file(
+                        "classes/kotlin/winuiJvm/main/io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry.class",
+                    ).get().asFile
+                    check(winuiRegistry.isFile) {
+                        "Expected compiler support registry in WinUI JVM output: " + winuiRegistry
+                    }
+                }
+            }
             """.trimIndent(),
         )
 
         val result = GradleRunner.create()
             .withProjectDir(projectDir.toFile())
             .withPluginClasspath()
-            .withArguments("printWinuiJvmCompilerArgs", "--stacktrace")
+            .withArguments("printWinuiJvmCompilerArgs", "verifyWinuiJvmCompilerSupportOutput", "--stacktrace")
             .forwardOutput()
             .build()
 

@@ -394,8 +394,6 @@ private fun configureWinRtGeneration(
             compilerSupportManifest = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-support/compiler-support.tsv")
             },
-            compilerSupportClassOutputDirectory = project.layout.buildDirectory.dir("classes/kotlin/main"),
-            typeIndexOutput = project.layout.buildDirectory.file("classes/kotlin/main/kotlin-winrt/type-index.tsv"),
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
@@ -413,8 +411,6 @@ private fun configureWinRtGeneration(
             compilerSupportManifest = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-support/compiler-support.tsv")
             },
-            compilerSupportClassOutputDirectory = project.layout.buildDirectory.dir("classes/kotlin/main"),
-            typeIndexOutput = project.layout.buildDirectory.file("classes/kotlin/main/kotlin-winrt/type-index.tsv"),
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
@@ -563,8 +559,6 @@ private fun configureKotlinWinRtCompilerPluginOptions(
     project: Project,
     metadataIndex: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
-    compilerSupportClassOutputDirectory: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
-    typeIndexOutput: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
         task.compilerOptions.jvmTarget.set(JvmTarget.JVM_22)
@@ -575,21 +569,21 @@ private fun configureKotlinWinRtCompilerPluginOptions(
         freeCompilerArgs.add(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:metadataIndex=$metadataIndexPath",
         )
-        val typeIndexOutputPath = typeIndexOutput.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
-        freeCompilerArgs.add(
-            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:typeIndexOutput=$typeIndexOutputPath",
-        )
+        freeCompilerArgs.add(project.provider {
+            val outputDirectory = task.destinationDirectory.get()
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:typeIndexOutput=${outputDirectory.file("kotlin-winrt/type-index.tsv").asFile.absolutePath}"
+        })
         val compilerSupportManifestPath = compilerSupportManifest.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
         freeCompilerArgs.add(
             "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportManifest=$compilerSupportManifestPath",
         )
-        val compilerSupportClassOutputDirectoryPath = compilerSupportClassOutputDirectory.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
-        freeCompilerArgs.add(
-            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportClassOutputDirectory=$compilerSupportClassOutputDirectoryPath",
-        )
+        freeCompilerArgs.add(project.provider {
+            val outputDirectory = task.destinationDirectory.get()
+            "plugin:$KOTLIN_WINRT_COMPILER_PLUGIN_ID:compilerSupportClassOutputDirectory=${outputDirectory.asFile.absolutePath}"
+        })
     })
 }
 

@@ -42,6 +42,7 @@ winRt {
         type("Windows.ApplicationModel.DataTransfer.DataPackage")
         type("Windows.ApplicationModel.DataTransfer.DataPackageView")
         type("Windows.ApplicationModel.DataTransfer.StandardDataFormats")
+        type("Windows.System.Display.DisplayRequest")
         type("Windows.System.Launcher")
         type("Microsoft.UI.Xaml.Application")
         type("Microsoft.UI.Xaml.DependencyProperty")
