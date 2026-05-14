@@ -67,6 +67,8 @@ object WinUiKmpLibrarySample {
                     println("winui-kmp-library: canvas attached positioning set")
                     AutomationProperties.setAccessibilityView(button, AccessibilityView.Raw)
                     println("winui-kmp-library: detached automation accessibility view set")
+                    button.clearValue(AutomationProperties.accessibilityViewProperty)
+                    println("winui-kmp-library: detached automation accessibility view cleared")
                     window.content = panel
                     println("winui-kmp-library: window content set")
                     activeWindow = window
