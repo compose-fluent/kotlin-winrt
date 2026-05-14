@@ -34,12 +34,26 @@ object WinUiKmpLibrarySample {
 
                     button.content = "KMP library WinUI"
                     println("winui-kmp-library: button content set")
+                    check(button.content == "KMP library WinUI") {
+                        "Button.content did not round-trip assigned string: ${button.content}"
+                    }
+                    println("winui-kmp-library: button content round-trip")
                     textBox.text = "initial"
                     println("winui-kmp-library: textBox initial text set")
                     panel.children.add(button)
                     println("winui-kmp-library: button added")
                     panel.children.add(textBox)
                     println("winui-kmp-library: textBox added")
+                    check(panel.children[0] is Button) {
+                        "Canvas.children[0] did not recover the Button runtime-class wrapper: ${panel.children[0]::class.qualifiedName}"
+                    }
+                    println("winui-kmp-library: child runtime class recovered")
+                    Canvas.setLeft(button, 24.0)
+                    Canvas.setTop(button, 12.0)
+                    check(Canvas.getLeft(button) == 24.0 && Canvas.getTop(button) == 12.0) {
+                        "Canvas attached positioning did not round-trip"
+                    }
+                    println("winui-kmp-library: canvas attached positioning set")
                     window.content = panel
                     println("winui-kmp-library: window content set")
                     activeWindow = window

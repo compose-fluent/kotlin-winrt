@@ -23,7 +23,8 @@ object WinRtObjectMarshaller {
             is ComObjectReference -> createInspectableMarshaler(value)
             is IWinRTObject -> createInspectableMarshaler(value.nativeObject)
             else -> ComWrappersSupport.createCCWForObject(value, IID.IInspectable).let { reference ->
-                WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
+                ProjectedObjectValueRoots.retain(reference)
+                WinRtObjectMarshaler(reference.pointer.asRawAddress())
             }
         }
 
@@ -83,6 +84,15 @@ private object ProjectedDelegateObjectRoots {
 
     fun retain(handle: WinRtDelegateHandle) {
         roots.add(handle)
+    }
+}
+
+private object ProjectedObjectValueRoots {
+    private val roots = SnapshotList<ComObjectReference>()
+
+    fun retain(reference: ComObjectReference) {
+        // XAML dependency properties can return the same object pointer after the setter call returns.
+        roots.add(reference)
     }
 }
 

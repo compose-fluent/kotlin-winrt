@@ -47,7 +47,9 @@ internal object EventSourceShutdownRegistry {
 
     private fun unregister(registration: Registration) {
         lock.withLock {
-            registrations.remove(registration.id, registration)
+            if (registrations[registration.id] === registration) {
+                registrations.remove(registration.id)
+            }
         }
     }
 

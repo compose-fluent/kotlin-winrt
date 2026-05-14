@@ -970,9 +970,17 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
     }
     val projectedType = resolveTypeName(typeBinding.resolvedTypeName)
     val projectedTypeName = typeBinding.resolvedTypeName
+    if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
+        return CodeBlock.of(
+            "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
+            WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
+            projectedType,
+            projectedTypeName,
+            projectedType,
+            projectedType,
+        )
+    }
     val projector = when (typeBinding.kind) {
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
-            CodeBlock.of("%T.Metadata.wrap(it!!.asInspectable())", projectedType)
         KotlinProjectionAbiValueKind.ProjectedInterface ->
             CodeBlock.of("%T.Metadata.wrap(it!!)", projectedType)
         KotlinProjectionAbiValueKind.UnknownReference ->

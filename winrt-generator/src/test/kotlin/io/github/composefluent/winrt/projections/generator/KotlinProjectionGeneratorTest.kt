@@ -11672,6 +11672,97 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_uses_runtime_class_collection_adapter_for_concrete_rcw_recovery() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetSink",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setWidgets",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "widgets",
+                                            "Windows.Foundation.Collections.IIterable<Sample.Foundation.Widget>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetSink",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetSink",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setWidgets",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "widgets",
+                                            "Windows.Foundation.Collections.IIterable<Sample.Foundation.Widget>",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidgetSink",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+
+        val runtimeClassContents = filesByName
+            .getValue("WidgetSink.kt")
+            .contents
+        val interfaceContents = filesByName
+            .getValue("IWidgetSink.kt")
+            .contents
+
+        assertTrue(runtimeClassContents, runtimeClassContents.contains("fun setWidgets(widgets: Iterable<Widget>)"))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtReferenceValueAdapters.runtimeClass("))
+        assertTrue(interfaceContents, interfaceContents.contains("Widget::class"))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Sample.Foundation.Widget\""))
+        assertTrue(interfaceContents, interfaceContents.contains("Widget.Metadata.DEFAULT_INTERFACE_IID"))
+        assertTrue(interfaceContents, interfaceContents.contains("Widget.Metadata.wrap(it)"))
+    }
+
+    @Test
     fun generator_marshals_string_collection_parameters_with_runtime_value_adapter() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

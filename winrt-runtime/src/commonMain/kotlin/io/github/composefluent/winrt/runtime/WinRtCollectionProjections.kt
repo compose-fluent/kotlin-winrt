@@ -122,6 +122,47 @@ object WinRtReferenceValueAdapters {
         )
 
     @Suppress("UNCHECKED_CAST")
+    fun <T : Any> runtimeClass(
+        projectedType: KClass<T>,
+        projectedTypeName: String,
+        defaultInterfaceId: Guid,
+        fallbackProjector: (IInspectableReference) -> T,
+    ): WinRtReferenceValueAdapter<T> =
+        WinRtReferenceValueAdapter(
+            projectedTypeName = projectedTypeName,
+            typeSignature = WinRtTypeSignature.object_(),
+            projector = { reference ->
+                val inspectable = reference?.asInspectable()
+                    ?: throw WinRtInvalidCastException(
+                        "Expected non-null $projectedTypeName value.",
+                        HResult(TYPE_E_TYPEMISMATCH),
+                    )
+                var transferredToFallback = false
+                try {
+                    val projected = ComWrappersSupport.createRcwForComObject(
+                        inspectable.pointer.asRawAddress(),
+                        WinRtTypeHandle(projectedTypeName, defaultInterfaceId),
+                    ) ?: run {
+                        transferredToFallback = true
+                        fallbackProjector(inspectable)
+                    }
+                    if (!projectedType.isInstance(projected)) {
+                        throw WinRtInvalidCastException(
+                            "Unable to project $projectedTypeName value.",
+                            HResult(TYPE_E_TYPEMISMATCH),
+                        )
+                    }
+                    projected as T
+                } finally {
+                    if (!transferredToFallback) {
+                        inspectable.close()
+                    }
+                }
+            },
+            marshaller = { value -> IUnknownReference((value as IWinRTObject).nativeObject.getRefPointer()) },
+        )
+
+    @Suppress("UNCHECKED_CAST")
     fun <T> genericParameter(projectedTypeName: String): WinRtReferenceValueAdapter<T> =
         WinRtReferenceValueAdapter(
             projectedTypeName = projectedTypeName,
