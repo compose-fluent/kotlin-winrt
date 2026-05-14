@@ -74,12 +74,6 @@ class WinRtTimeoutException(
     restrictedErrorInfo: WinRtRestrictedErrorInfo? = null,
 ) : WinRtRuntimeException(message, hResult, restrictedErrorInfo = restrictedErrorInfo)
 
-class WinRtClipboardUnavailableException(
-    message: String,
-    hResult: HResult,
-    restrictedErrorInfo: WinRtRestrictedErrorInfo? = null,
-) : WinRtRuntimeException(message, hResult, restrictedErrorInfo = restrictedErrorInfo)
-
 class WinRtCancelledException(
     message: String,
     hResult: HResult,

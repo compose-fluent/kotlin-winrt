@@ -27,5 +27,4 @@ object KnownHResults {
     val ERROR_CANCELLED = HResult(0x800704C7.toInt())
     val ERROR_TIMEOUT = HResult(0x800705B4.toInt())
     val APPMODEL_ERROR_NO_PACKAGE = HResult(0x80073D54.toInt())
-    val CLIPBRD_E_CANT_OPEN = HResult(0x800401D0.toInt())
 }

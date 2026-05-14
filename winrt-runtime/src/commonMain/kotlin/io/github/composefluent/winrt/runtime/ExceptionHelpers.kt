@@ -36,7 +36,6 @@ object ExceptionHelpers {
     val ERROR_CANCELLED = KnownHResults.ERROR_CANCELLED
     val ERROR_TIMEOUT = KnownHResults.ERROR_TIMEOUT
     val APPMODEL_ERROR_NO_PACKAGE = KnownHResults.APPMODEL_ERROR_NO_PACKAGE
-    val CLIPBRD_E_CANT_OPEN = KnownHResults.CLIPBRD_E_CANT_OPEN
     val WEB_E_JSON_VALUE_NOT_FOUND = KnownHResults.WEB_E_JSON_VALUE_NOT_FOUND
 
     fun throwExceptionForHR(
@@ -93,7 +92,6 @@ object ExceptionHelpers {
             ERROR_BAD_FORMAT -> WinRtBadImageFormatException(message, hResult, restrictedErrorInfo)
             ERROR_CANCELLED -> WinRtCancelledException(message, hResult, restrictedErrorInfo)
             ERROR_TIMEOUT -> WinRtTimeoutException(message, hResult, restrictedErrorInfo)
-            CLIPBRD_E_CANT_OPEN -> WinRtClipboardUnavailableException(message, hResult, restrictedErrorInfo)
             else -> WinRtRuntimeException(message, hResult, restrictedErrorInfo = restrictedErrorInfo)
         }
     }
