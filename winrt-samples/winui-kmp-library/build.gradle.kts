@@ -73,6 +73,7 @@ winRt {
         type("Microsoft.UI.Xaml.Controls.TextBox")
         type("Microsoft.UI.Xaml.Controls.ToggleSwitch")
         type("Microsoft.UI.Xaml.Controls.UIElementCollection")
+        type("Microsoft.UI.Xaml.Controls.XamlControlsResources")
         type("Windows.Foundation.Rect")
         type("Windows.Foundation.Size")
         type("Windows.UI.ViewManagement.UISettings")

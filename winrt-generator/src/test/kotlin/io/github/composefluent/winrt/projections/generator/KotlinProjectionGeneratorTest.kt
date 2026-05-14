@@ -5332,7 +5332,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_wires_winui_application_resource_manager_to_application_lifecycle() {
+    fun generator_leaves_winui_application_resource_initialization_to_xaml_pipeline() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -5394,13 +5394,8 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.substringAfterLast('/') == "Application.kt" }
             .contents
 
-        assertTrue(application, application.contains("private var _winUiResourceManagerRegistration: AutoCloseable? = null"))
-        assertEquals(
-            2,
-            Regex("""WinRtWinUiResourceManagerBootstrap\s*\.\s*ensureRegisteredForApplication\(this\)""")
-                .findAll(application)
-                .count(),
-        )
+        assertFalse(application, application.contains("WinRtWinUiResourceManagerBootstrap"))
+        assertFalse(application, application.contains("_winUiResourceManagerRegistration"))
         assertTrue(application, application.contains("internal constructor(_inner: IInspectableReference, __winrtWrapper: Unit)"))
         assertTrue(application, application.contains("public constructor()"))
     }

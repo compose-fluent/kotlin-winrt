@@ -1168,15 +1168,6 @@ class KotlinProjectionRenderer(
                     .initializer("null")
                     .build(),
             )
-            if (plan.isWinUiApplicationRuntimeClass()) {
-                builder.addProperty(
-                    PropertySpec.builder("_winUiResourceManagerRegistration", AUTO_CLOSEABLE_CLASS_NAME.copy(nullable = true))
-                        .addModifiers(KModifier.PRIVATE)
-                        .mutable(true)
-                        .initializer("null")
-                        .build(),
-                )
-            }
             builder.addProperty(
                 PropertySpec.builder("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
                     .addModifiers(KModifier.PRIVATE)
@@ -1190,7 +1181,6 @@ class KotlinProjectionRenderer(
             builder.addFunction(
                 constructorBuilder
                     .addStatement("this._innerStorage = _inner")
-                    .addWinUiApplicationResourceManagerHook(plan)
                     .build(),
             )
         } else {
@@ -3190,21 +3180,6 @@ internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): B
     classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor -> descriptor.isOverridableInterface } == true &&
         type.baseTypeName?.takeUnless { it == "System.Object" || it == "Any" } == null &&
         KotlinProjectionCompanionKind.ComposableFactory in companionKinds
-
-internal fun KotlinTypeProjectionPlan.isWinUiApplicationRuntimeClass(): Boolean =
-    type.qualifiedName == "Microsoft.UI.Xaml.Application"
-
-internal fun FunSpec.Builder.addWinUiApplicationResourceManagerHook(
-    plan: KotlinTypeProjectionPlan,
-): FunSpec.Builder {
-    if (plan.isWinUiApplicationRuntimeClass()) {
-        addStatement(
-            "_winUiResourceManagerRegistration = %T.ensureRegisteredForApplication(this)",
-            WINRT_WINUI_RESOURCE_MANAGER_BOOTSTRAP_CLASS_NAME,
-        )
-    }
-    return this
-}
 
 private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshaller(
     plan: KotlinTypeProjectionPlan,

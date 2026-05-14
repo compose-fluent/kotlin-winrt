@@ -1,7 +1,6 @@
 package io.github.composefluent.winrt.samples
 
 import io.github.composefluent.winrt.runtime.RuntimeScope
-import io.github.composefluent.winrt.runtime.WinUiXamlMetadataProvider
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.LaunchActivatedEventArgs
@@ -108,10 +107,6 @@ class WinUiControlsApp : Application(), AutoCloseable {
     private fun installXamlResources() {
         println("winui-controls: install resources current")
         val application = Application.current
-        println("winui-controls: initialize xaml metadata provider")
-        val metadataProvider = WinUiXamlMetadataProvider.tryCreate()
-        println("winui-controls: xaml metadata provider=${metadataProvider?.pointer ?: "not-created"}")
-        metadataProvider?.close()
         println("winui-controls: install resources dictionary")
         val resources = application.resources
         println("winui-controls: install resources merged dictionaries")
