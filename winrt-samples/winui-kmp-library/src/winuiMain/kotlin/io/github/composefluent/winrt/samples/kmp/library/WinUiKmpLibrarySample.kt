@@ -3,12 +3,14 @@ package io.github.composefluent.winrt.samples.kmp.library
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import io.github.composefluent.winrt.runtime.WinRtUri
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.FocusState
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
+import windows.system.Launcher
 
 object WinUiKmpLibrarySample {
     private var activeWindow: Window? = null
@@ -38,6 +40,12 @@ object WinUiKmpLibrarySample {
                         "Button.content did not round-trip assigned string: ${button.content}"
                     }
                     println("winui-kmp-library: button content round-trip")
+                    button.content = null
+                    check(button.content == null) {
+                        "Button.content did not round-trip cleared null content: ${button.content}"
+                    }
+                    println("winui-kmp-library: button null content round-trip")
+                    button.content = "KMP library WinUI"
                     textBox.text = "initial"
                     println("winui-kmp-library: textBox initial text set")
                     panel.children.add(button)
@@ -71,6 +79,11 @@ object WinUiKmpLibrarySample {
             activeWindow = null
             activeEventTokens.clear()
         }
+    }
+
+    @Suppress("unused")
+    private fun launcherProjectionCompileSmoke() {
+        Launcher.launchUriAsync(WinRtUri("https://example.invalid/"))
     }
 
     private fun registerCallbackSmoke(
