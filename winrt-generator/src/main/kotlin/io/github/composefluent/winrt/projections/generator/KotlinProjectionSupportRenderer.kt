@@ -466,7 +466,7 @@ class KotlinProjectionSupportRenderer {
                 entry.abiEventTypeName,
                 entry.genericArgumentTypeNames.joinToString(","),
                 entry.usesSharedEventHandlerSource.toString(),
-                invokeShape?.interfaceId?.toString().orEmpty(),
+                entry.interfaceId?.toString() ?: invokeShape?.interfaceId?.toString().orEmpty(),
                 invokeShape?.parameterBindings.orEmpty().joinToString(",") { binding -> eventSourceDelegateValueKindEnumName(binding.typeBinding) },
                 invokeShape?.returnBinding?.let(::eventSourceDelegateValueKindEnumName).orEmpty(),
                 invokeShape?.parameterBindings.orEmpty().joinToString(",") { binding -> binding.typeBinding.typeName },
@@ -741,6 +741,19 @@ class KotlinProjectionSupportRenderer {
             .addFunctions(eventProjectionHelperFunctions())
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
             .addGeneratedProjectionSuppressions()
+        val plansByType = plans.associateBy { it.type.qualifiedName }
+        val typesByQualifiedName = model.namespaces.flatMap(WinRtNamespace::types).associateBy { it.qualifiedName }
+        eventSourceEntries
+            .filterNot(WinRtEventHelperSubclassDescriptor::usesSharedEventHandlerSource)
+            .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
+            .forEach { descriptor ->
+                val delegatePlan = plansByType[descriptor.projectedEventTypeName.substringBefore('<')] ?: return@forEach
+                val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
+                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
+                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
+                }
+            }
+        fileBuilder.addType(eventProjectionRegistryType(eventSourceEntries, plansByType, typesByQualifiedName))
         val fileSpec = fileBuilder
             .addType(objectBuilder.build())
             .build()
@@ -2902,6 +2915,93 @@ class KotlinProjectionSupportRenderer {
                 .build(),
         )
 
+    private fun eventProjectionRegistryType(
+        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): TypeSpec {
+        val descriptorClass = ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceDescriptor")
+        val factoryClass = ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceFactory")
+        return TypeSpec.objectBuilder("WinRTEventProjectionRegistry")
+            .addModifiers(KModifier.INTERNAL)
+            .addProperty(
+                PropertySpec.builder("registered", Boolean::class)
+                    .addModifiers(KModifier.PRIVATE)
+                    .mutable()
+                    .initializer("false")
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(descriptorClass))
+                    .addModifiers(KModifier.PRIVATE)
+                    .initializer("%L", eventSourceDescriptorListCode(subclassDescriptors, typesByQualifiedName))
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("register")
+                    .addAnnotation(JvmStatic::class)
+                    .addAnnotation(Synchronized::class)
+                    .addCode(
+                        """
+                        if (registered) return
+                        ENTRIES.forEach { entry ->
+                            val factory = eventSourceFactoryFor(entry) ?: return@forEach
+                            io.github.composefluent.winrt.runtime.WinRtEventSourceRuntime.registerEventSource(entry.copy(eventSourceFactory = factory))
+                        }
+                        registered = true
+                        """.trimIndent() + "\n",
+                    )
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("eventSourceFactoryFor")
+                    .addModifiers(KModifier.PRIVATE)
+                    .addParameter("entry", descriptorClass)
+                    .returns(factoryClass.copy(nullable = true))
+                    .addCode("%L", eventSourceFactoryForCode(subclassDescriptors, plansByType, typesByQualifiedName))
+                    .build(),
+            )
+            .addFunction(
+                FunSpec.builder("eventHandlerEventSourceFactoryFor")
+                    .addModifiers(KModifier.PRIVATE)
+                    .addParameter("entry", descriptorClass)
+                    .returns(factoryClass.copy(nullable = true))
+                    .addCode("%L", eventHandlerEventSourceFactoryForCode(subclassDescriptors, typesByQualifiedName))
+                    .build(),
+            )
+            .build()
+    }
+
+    private fun eventSourceDescriptorListCode(
+        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        val descriptorClass = ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceDescriptor")
+        val code = CodeBlock.builder()
+        code.add("listOf(\n")
+        code.indent()
+        subclassDescriptors.forEach { descriptor ->
+            val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName)
+            code.add(
+                "%T(eventType = %S, ownerType = %S, sourceClass = %S, abiEventType = %S, genericArguments = %L, usesSharedEventHandlerSource = %L, interfaceId = %L, parameterKinds = %L, returnKind = %L, parameterTypeNames = %L),\n",
+                descriptorClass,
+                descriptor.eventTypeName,
+                descriptor.ownerTypeName,
+                descriptor.sourceClassName,
+                descriptor.abiEventTypeName,
+                stringListCode(descriptor.genericArgumentTypeNames),
+                descriptor.usesSharedEventHandlerSource,
+                descriptor.interfaceId?.let { CodeBlock.of("%T(%S)", GUID_CLASS_NAME, it.toString()) } ?: CodeBlock.of("null"),
+                invokeShape?.parameterBindings?.map { it.typeBinding }?.let(::eventSourceDelegateValueKindList)?.let(CodeBlock::of) ?: CodeBlock.of("emptyList()"),
+                invokeShape?.returnBinding?.let(::delegateValueKindName)?.let(CodeBlock::of) ?: CodeBlock.of("%T.UNIT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME),
+                stringListCode(invokeShape?.parameterBindings?.map { it.typeBinding.typeName }.orEmpty()),
+            )
+        }
+        code.unindent()
+        code.add(")")
+        return code.build()
+    }
+
     private fun eventSourceSubclassType(
         descriptor: WinRtEventHelperSubclassDescriptor,
         delegatePlan: KotlinTypeProjectionPlan,
@@ -3105,7 +3205,9 @@ class KotlinProjectionSupportRenderer {
         if (subclassDescriptors.any { it.usesSharedEventHandlerSource }) {
             code.add("%S -> eventHandlerEventSourceFactoryFor(entry)\n", "EventHandlerEventSource")
         }
-        subclassDescriptors.filterNot { it.usesSharedEventHandlerSource }.forEach { descriptor ->
+        subclassDescriptors.filterNot { it.usesSharedEventHandlerSource }
+            .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
+            .forEach { descriptor ->
             val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
             val delegatePlan = plansByType[rawEventType] ?: return@forEach
             val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
@@ -3219,7 +3321,9 @@ class KotlinProjectionSupportRenderer {
         val code = CodeBlock.builder()
         code.add("return when (entry.eventType) {\n")
         code.indent()
-        subclassDescriptors.filter { it.usesSharedEventHandlerSource }.forEach { descriptor ->
+        subclassDescriptors.filter { it.usesSharedEventHandlerSource }
+            .distinctBy(WinRtEventHelperSubclassDescriptor::eventTypeName)
+            .forEach { descriptor ->
             code.add(sharedEventHandlerFactoryCode(descriptor, typesByQualifiedName))
         }
         code.add("else -> null\n")

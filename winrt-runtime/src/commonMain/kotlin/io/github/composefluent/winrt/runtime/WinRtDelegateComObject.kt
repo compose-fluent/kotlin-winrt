@@ -32,6 +32,10 @@ internal class WinRtDelegateComObject(
             }
             KnownHResults.S_OK.value
         } catch (error: Throwable) {
+            if (FeatureSwitches.traceCcw) {
+                println("winrt-delegate: Invoke failed for ${descriptor.runtimeClassName ?: descriptor.interfaceId}: ${error::class.qualifiedName}: ${error.message}")
+                error.printStackTrace()
+            }
             platformSetErrorInfo(error)
             platformHResultFromThrowable(error).value
         }

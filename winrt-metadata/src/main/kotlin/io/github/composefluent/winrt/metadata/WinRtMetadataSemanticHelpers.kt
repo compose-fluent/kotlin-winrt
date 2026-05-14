@@ -212,6 +212,7 @@ data class WinRtEventHelperSubclassDescriptor(
     val sourceClassName: String,
     val genericArgumentTypeNames: List<String>,
     val usesSharedEventHandlerSource: Boolean,
+    val interfaceId: io.github.composefluent.winrt.runtime.Guid?,
 )
 
 data class WinRtPlatformGuardDescriptor(
@@ -1517,6 +1518,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 },
                 genericArgumentTypeNames = eventType.typeArguments.map { it.normalized().typeName },
                 usesSharedEventHandlerSource = usesSharedEventHandlerSource,
+                interfaceId = eventDelegateInterfaceId(eventType, type.namespace),
             )
         }.distinctBy { it.eventTypeName to it.ownerTypeName }
 
@@ -2312,6 +2314,23 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         return definition?.let(::guidSignatureFragment)
             ?: fundamentalGuidSignatureFragment(resolvedType.displayName)
             ?: ""
+    }
+
+    private fun eventDelegateInterfaceId(
+        type: WinRtTypeRef,
+        currentNamespace: String,
+    ): io.github.composefluent.winrt.runtime.Guid? {
+        val normalizedType = type.normalized()
+        val resolvedType = resolveTypeReference(normalizedType, currentNamespace, typesByQualifiedName)
+        val definition = resolvedType.definitionType
+        if (normalizedType.typeArguments.isEmpty()) {
+            return definition?.iid
+        }
+        val signature = guidSignatureFragmentForTypeRef(normalizedType, currentNamespace)
+        if (signature.isBlank()) {
+            return definition?.iid
+        }
+        return io.github.composefluent.winrt.runtime.ParameterizedInterfaceId.createFromSignature(signature)
     }
 
     private fun guidSignatureFragmentForGuid(guid: io.github.composefluent.winrt.runtime.Guid): String =

@@ -53,4 +53,7 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
         "kotlin.winrt.samples.autoExitWinUi",
         providers.systemProperty("kotlin.winrt.samples.autoExitWinUi").orElse("true").get(),
     )
+    providers.systemProperty("KOTLIN_WINRT_TRACE_CCW").orNull?.let { value ->
+        systemProperty("KOTLIN_WINRT_TRACE_CCW", value)
+    }
 }

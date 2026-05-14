@@ -647,11 +647,7 @@ internal fun KotlinProjectionRenderer.delegateCallbackArgumentCode(
     KotlinProjectionAbiValueKind.MappedMapView -> delegateCollectionCallbackArgumentCode(index, typeBinding)
     KotlinProjectionAbiValueKind.Array -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
     KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("__args[%L] as %T", index, resolveTypeName(typeBinding.typeName))
-    KotlinProjectionAbiValueKind.Object -> CodeBlock.of(
-        "(__args[%L] as %T).asInspectable()",
-        index,
-        IUNKNOWN_REFERENCE_CLASS_NAME,
-    )
+    KotlinProjectionAbiValueKind.Object -> CodeBlock.of("__args[%L]", index)
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("__args[%L] as %T", index, IINSPECTABLE_REFERENCE_CLASS_NAME)
     else -> error("Unsupported delegate callback ABI kind: ${typeBinding.describeAbiKind()}")
 }
