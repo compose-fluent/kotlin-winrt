@@ -31,6 +31,9 @@ winRt {
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
+        type("Microsoft.UI.Xaml.Automation.AutomationProperties")
+        type("Microsoft.UI.Xaml.Controls.Button")
+        type("Microsoft.UI.Xaml.Controls.TextBox")
     }
 }
 
