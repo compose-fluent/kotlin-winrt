@@ -10,7 +10,6 @@ import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
-import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.Launcher
 
 object WinUiKmpLibrarySample {
@@ -26,7 +25,7 @@ object WinUiKmpLibrarySample {
                     println("winui-kmp-library: application callback invoked")
                     val app = Application()
                     println("winui-kmp-library: application created")
-                    installXamlControlsResources(app)
+                    loadAppXamlResources(app)
                     val window = Window()
                     println("winui-kmp-library: window created")
                     val panel = Canvas()
@@ -88,10 +87,9 @@ object WinUiKmpLibrarySample {
         Launcher.launchUriAsync(WinRtUri("https://example.invalid/"))
     }
 
-    private fun installXamlControlsResources(app: Application) {
-        val controlsResources = XamlControlsResources()
-        app.resources.mergedDictionaries.add(controlsResources)
-        println("winui-kmp-library: xaml controls resources installed")
+    private fun loadAppXamlResources(app: Application) {
+        Application.loadComponent(app, WinRtUri("ms-appx:///App.xaml"))
+        println("winui-kmp-library: app xaml loaded")
     }
 
     private fun registerCallbackSmoke(

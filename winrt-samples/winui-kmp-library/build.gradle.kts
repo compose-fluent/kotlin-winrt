@@ -79,5 +79,6 @@ winRt {
         type("Windows.UI.ViewManagement.UISettings")
         type("Windows.UI.Xaml.Interop.Type")
         type("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction")
+        runtimeAsset(layout.projectDirectory.file("src/winuiMain/xaml/App.xaml").asFile.absolutePath)
     }
 }

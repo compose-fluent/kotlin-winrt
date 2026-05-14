@@ -18,6 +18,7 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
+import java.util.zip.ZipFile
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -146,6 +147,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
                 outputRoot,
             )
+            stageWindowsAppRuntimeResourceIndex(resolved.identity, resolved.packageRoot, rid, outputRoot)
         }
     }
 
@@ -238,6 +240,34 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
+    private fun stageWindowsAppRuntimeResourceIndex(
+        identity: WinRtNuGetPackageIdentity,
+        packageRoot: Path,
+        runtimeIdentifier: String,
+        outputRoot: Path,
+    ) {
+        if (!identity.normalizedPackageId.equals("Microsoft.WindowsAppSDK.Runtime", ignoreCase = true)) {
+            return
+        }
+        val msixRoot = packageRoot.resolve("tools").resolve("MSIX").resolve(runtimeIdentifier.toMsixPlatform())
+        if (!msixRoot.isDirectory()) {
+            return
+        }
+        Files.list(msixRoot).use { stream ->
+            stream.asSequence()
+                .filter {
+                    it.isRegularFile() &&
+                        it.name.startsWith("Microsoft.WindowsAppRuntime.", ignoreCase = true) &&
+                        it.name.endsWith(".msix", ignoreCase = true) &&
+                        ".DDLM." !in it.name &&
+                        ".Main." !in it.name &&
+                        ".Singleton." !in it.name
+                }
+                .sortedBy { it.name.lowercase() }
+                .firstOrNull()
+        }?.let { msix -> copyZipEntry(msix, "resources.pri", outputRoot.resolve("resources.pri")) }
+    }
+
     private fun stageLiftedRegistrations(
         identity: WinRtNuGetPackageIdentity,
         packageRoot: Path,
@@ -261,6 +291,16 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     private fun copyFile(source: Path, target: Path) {
         Files.createDirectories(target.parent)
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    private fun copyZipEntry(zipPath: Path, entryName: String, target: Path) {
+        ZipFile(zipPath.toFile()).use { zip ->
+            val entry = zip.getEntry(entryName) ?: return
+            Files.createDirectories(target.parent)
+            zip.getInputStream(entry).use { input ->
+                Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
     }
 
     private fun cleanDirectory(directory: Path) {
@@ -360,6 +400,15 @@ private data class AuthoringHostRuntimeConfig(
 
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkRootPackage(): Boolean =
     normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true)
+
+private fun String.toMsixPlatform(): String =
+    when (lowercase()) {
+        "win-x64", "win10-x64" -> "win10-x64"
+        "win-x86", "win10-x86" -> "win10-x86"
+        "win-arm64", "win10-arm64" -> "win10-arm64"
+        "win-arm64ec", "win10-arm64ec" -> "win10-arm64ec"
+        else -> this
+    }
 
 internal fun currentWindowsRuntimeIdentifier(): String {
     val arch = System.getProperty("os.arch").lowercase()
