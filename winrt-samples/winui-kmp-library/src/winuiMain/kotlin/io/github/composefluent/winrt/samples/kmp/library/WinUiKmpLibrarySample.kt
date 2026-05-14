@@ -12,6 +12,7 @@ import microsoft.ui.xaml.automation.peers.AccessibilityView
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
+import windows.system.display.DisplayRequest
 import windows.system.Launcher
 
 object WinUiKmpLibrarySample {
@@ -91,6 +92,8 @@ object WinUiKmpLibrarySample {
     @Suppress("unused")
     private fun launcherProjectionCompileSmoke() {
         Launcher.launchUriAsync(WinRtUri("https://example.invalid/"))
+        DisplayRequest().requestActive()
+        DisplayRequest().requestRelease()
     }
 
     private fun loadAppXamlResources(app: Application) {

@@ -238,6 +238,53 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun generated_interface_projection_no_arg_unit_uses_fixed_vtable_primitive() {
+        val interfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeef")
+        val typeHandle = WinRtTypeHandle("Contoso.IGeneratedNoArgUnit", interfaceId)
+        var invocationCount = 0
+        val host = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = interfaceId,
+                    methods = listOf(
+                        WinRtInspectableMethodDefinition(ComMethodSignature()) {
+                            invocationCount += 1
+                            KnownHResults.S_OK.value
+                        },
+                    ),
+                ),
+            ),
+        )
+        val nativeReference = host.createReference(interfaceId)
+        val unknownReference = IUnknownReference(nativeReference.getRefPointer(), interfaceId)
+        try {
+            val projected = WinRtGeneratedInterfaceProjectionRuntime.create(
+                interfaceClass = GeneratedNoArgUnitProjection::class.java,
+                typeHandle = typeHandle,
+                nativeObject = unknownReference,
+                members = listOf(
+                    GeneratedInterfaceProjectionMemberDescriptor(
+                        kind = GeneratedInterfaceProjectionMemberKind.Method,
+                        jvmName = "invoke",
+                        slot = IInspectableVftblSlots.FirstCustom,
+                        returnKind = GeneratedInterfaceProjectionValueKind.Unit,
+                        parameterKinds = emptyList(),
+                        suppressHResultCheck = false,
+                    ),
+                ),
+            ) as GeneratedNoArgUnitProjection
+
+            projected.invoke()
+
+            assertEquals(1, invocationCount)
+        } finally {
+            unknownReference.close()
+            nativeReference.close()
+            host.close()
+        }
+    }
+
+    @Test
     fun type_name_support_uses_non_winrt_runtime_class_lookup_hooks() {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.registerTypeRuntimeClassNameLookup { type ->
@@ -416,6 +463,10 @@ class ProjectionRegistryTest {
 
     private interface GeneratedObjectReturnProjection {
         fun getObjectValue(): Any?
+    }
+
+    private interface GeneratedNoArgUnitProjection {
+        fun invoke()
     }
 
     private class SampleRuntimeClass

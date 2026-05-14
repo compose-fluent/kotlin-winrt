@@ -147,6 +147,13 @@ private class GeneratedInterfaceProjectionInvocationHandler(
                 KnownHResults.E_NOTIMPL,
             )
         }
+        if (descriptor.returnKind == GeneratedInterfaceProjectionValueKind.Unit && descriptor.parameterKinds.isEmpty()) {
+            val hResult = ComVtableInvoker.invoke(nativeObject.pointer, descriptor.slot)
+            if (!descriptor.suppressHResultCheck) {
+                HResult(hResult).requireSuccess()
+            }
+            return Unit
+        }
         PlatformAbi.confinedScope().use { scope ->
             val ownedInputs = mutableListOf<AutoCloseable>()
             try {
