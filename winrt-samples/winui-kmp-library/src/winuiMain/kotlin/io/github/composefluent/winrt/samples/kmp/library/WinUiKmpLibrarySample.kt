@@ -7,6 +7,8 @@ import io.github.composefluent.winrt.runtime.WinRtUri
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.FocusState
 import microsoft.ui.xaml.Window
+import microsoft.ui.xaml.automation.AutomationProperties
+import microsoft.ui.xaml.automation.peers.AccessibilityView
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
@@ -63,6 +65,8 @@ object WinUiKmpLibrarySample {
                         "Canvas attached positioning did not round-trip"
                     }
                     println("winui-kmp-library: canvas attached positioning set")
+                    AutomationProperties.setAccessibilityView(button, AccessibilityView.Raw)
+                    println("winui-kmp-library: detached automation accessibility view set")
                     window.content = panel
                     println("winui-kmp-library: window content set")
                     activeWindow = window
