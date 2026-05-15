@@ -47,6 +47,7 @@ object WinUiKmpLibrarySample {
 class WinUiKmpLibraryApp : Application(), AutoCloseable {
     private var activeWindow: Window? = null
     private val activeEventTokens = mutableListOf<EventRegistrationToken>()
+    private var focusSmokeCompleted = false
 
     override fun onLaunched(args: LaunchActivatedEventArgs) {
         launchWithResources()
@@ -55,6 +56,7 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
     override fun close() {
         activeWindow = null
         activeEventTokens.clear()
+        focusSmokeCompleted = false
     }
 
     private fun launchWithResources() {
@@ -127,17 +129,6 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: callbacks registered")
         window.activate()
         println("winui-kmp-library: window activated native")
-        println("winui-kmp-library: focusing textBox")
-        textBox.focus(FocusState.Programmatic)
-        println("winui-kmp-library: textBox focused")
-        textBox.text = "changed"
-        println("winui-kmp-library: textBox changed after focus")
-        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-            window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
-                println("winui-kmp-library: auto exit enqueued")
-                exit()
-            })
-        }
     }
 
     private fun registerCallbackSmoke(
@@ -161,6 +152,10 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: registering button layout")
         activeEventTokens += button.layoutUpdated.add { _, _ ->
             println("winui-kmp-library: button layout callback")
+            if (!focusSmokeCompleted) {
+                focusSmokeCompleted = true
+                runFocusSmoke(window, button, textBox)
+            }
         }
         println("winui-kmp-library: registering button focus")
         activeEventTokens += button.gotFocus.add { _, _ ->
@@ -199,6 +194,31 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
                     exit()
                 })
             }
+        }
+    }
+
+    private fun runFocusSmoke(
+        window: Window,
+        button: Button,
+        textBox: TextBox,
+    ) {
+        button.isTabStop = true
+        textBox.isTabStop = true
+        println("winui-kmp-library: focus smoke starting")
+        val buttonFocused = button.focus(FocusState.Programmatic)
+        println("winui-kmp-library: button focus result=$buttonFocused state=${button.focusState}")
+        val textBoxFocused = textBox.focus(FocusState.Programmatic)
+        println("winui-kmp-library: textBox focus result=$textBoxFocused state=${textBox.focusState}")
+        check(buttonFocused || textBoxFocused) {
+            "WinUI controls rejected programmatic focus after layout"
+        }
+        textBox.text = "changed"
+        println("winui-kmp-library: textBox changed after focus")
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+            window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+                println("winui-kmp-library: auto exit enqueued")
+                exit()
+            })
         }
     }
 }
