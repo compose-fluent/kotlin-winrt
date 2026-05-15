@@ -3025,7 +3025,7 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.OVERRIDE)
                     .addParameter("handler", delegateType)
                     .returns(ClassName("io.github.composefluent.winrt.runtime", "WinRtDelegateHandle"))
-                    .addCode(eventSourceCreateMarshalerCode(invokeShape))
+                    .addCode(eventSourceCreateMarshalerCode(descriptor, invokeShape))
                     .build(),
             )
             .addFunction(
@@ -3038,10 +3038,14 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
-    private fun eventSourceCreateMarshalerCode(invokeShape: KotlinProjectionDelegateInvokeShape): CodeBlock {
+    private fun eventSourceCreateMarshalerCode(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        invokeShape: KotlinProjectionDelegateInvokeShape,
+    ): CodeBlock {
         val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
             eventSourceCallbackArgumentCode(index, binding.typeBinding).toString()
         }
+        val interfaceId = descriptor.interfaceId ?: invokeShape.interfaceId
         return CodeBlock.of(
             """
             if (handler is io.github.composefluent.winrt.runtime.WinRtProjectedDelegate) {
@@ -3055,7 +3059,7 @@ class KotlinProjectionSupportRenderer {
                 handler.invoke(%L)
             }
             """.trimIndent() + "\n",
-            invokeShape.interfaceId.toString(),
+            interfaceId.toString(),
             eventSourceDelegateValueKindList(invokeShape.parameterBindings.map { it.typeBinding }),
             delegateValueKindName(invokeShape.returnBinding),
             callbackArguments.joinToString(", "),

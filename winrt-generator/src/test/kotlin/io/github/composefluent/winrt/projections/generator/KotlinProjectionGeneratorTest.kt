@@ -10457,6 +10457,8 @@ class KotlinProjectionGeneratorTest {
             eventSources.contains("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget,Int>\tSample.Foundation.Widget,Int\tfalse\t$typedEventHandlerIid\tIINSPECTABLE,INT32") ||
                 eventSources.contains("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget, Int>\tSample.Foundation.Widget,Int\tfalse\t$typedEventHandlerIid\tIINSPECTABLE,INT32"),
         )
+        assertTrue(eventProjectionHelpers.contains("iid = io.github.composefluent.winrt.runtime.Guid(\"$typedEventHandlerIid\")"))
+        assertFalse(eventProjectionHelpers.contains("iid = io.github.composefluent.winrt.runtime.Guid(\"11111111-2222-3333-4444-555555555556\")"))
         assertTrue(eventSources.contains("Sample.Foundation.WidgetHandler\tSample.Foundation.IWidget\t_EventSource_Sample_Foundation_WidgetHandler"))
         assertTrue(eventSources.contains("\tOBJECT,INT32\tUNIT\tAny,Int"))
         assertTrue(eventSources.contains("\tINT32\tUNIT\tInt"))
