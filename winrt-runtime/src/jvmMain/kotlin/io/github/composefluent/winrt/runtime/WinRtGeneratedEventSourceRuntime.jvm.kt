@@ -77,31 +77,40 @@ private class GeneratedEventSource(
         value: Any?,
     ): Any? =
         when (kind) {
-            WinRtDelegateValueKind.IINSPECTABLE -> projectInspectableArgument(value)
-            WinRtDelegateValueKind.IUNKNOWN -> projectUnknownArgument(value)
+            WinRtDelegateValueKind.IINSPECTABLE -> projectInspectableArgument(typeName, value)
+            WinRtDelegateValueKind.IUNKNOWN -> projectUnknownArgument(typeName, value)
             WinRtDelegateValueKind.OBJECT -> projectObjectArgument(value)
             else -> value
         }
 
-    private fun projectUnknownArgument(value: Any?): Any? =
+    private fun projectUnknownArgument(typeName: String, value: Any?): Any? =
         when (value) {
-            is IUnknownReference -> value.use { reference ->
-                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
-            }
+            is IUnknownReference ->
+                projectTypedReference(typeName, value)
+                    ?: value.use { reference ->
+                        ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+                    }
             is ComObjectReference -> ComWrappersSupport.createRcwForComObject(value.pointer.asRawAddress())
             else -> value
         }
 
-    private fun projectInspectableArgument(value: Any?): Any? =
+    private fun projectInspectableArgument(typeName: String, value: Any?): Any? =
         when (value) {
-            is IInspectableReference -> value.use { reference ->
-                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
-            }
-            is IUnknownReference -> value.asInspectable().use { reference ->
-                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+            is IInspectableReference ->
+                projectTypedReference(typeName, value)
+                    ?: value.use { reference ->
+                        ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+                    }
+            is IUnknownReference -> {
+                val reference = value.asInspectable()
+                projectTypedReference(typeName, reference)
+                    ?: reference.use {
+                        ComWrappersSupport.createRcwForComObject(it.pointer.asRawAddress())
+                    }
             }
             is ComObjectReference -> value.tryAsInspectable()?.use { reference ->
-                ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
+                projectTypedReference(typeName, reference)
+                    ?: ComWrappersSupport.createRcwForComObject(reference.pointer.asRawAddress())
             } ?: value
             else -> value
         }
@@ -122,10 +131,39 @@ private class GeneratedEventSource(
         }
 }
 
+internal fun projectTypedReference(
+    typeName: String,
+    reference: ComObjectReference,
+): Any? {
+    if (typeName.isBlank() || typeName == "System.Object") {
+        return null
+    }
+    val projectedClass = runCatching {
+        Class.forName(projectedJvmClassName(typeName), true, generatedProjectionClassLoader())
+    }.getOrNull() ?: return null
+    val metadata = runCatching {
+        projectedClass.getDeclaredField("Metadata").also { it.isAccessible = true }.get(null)
+    }.getOrNull() ?: return null
+    val metadataClass = metadata.javaClass
+    val wrap = metadataClass.methods.firstOrNull { method ->
+        method.name == "wrap" &&
+            method.parameterCount == 1 &&
+            method.parameterTypes[0].isAssignableFrom(reference.javaClass)
+    } ?: return null
+    return runCatching {
+        wrap.isAccessible = true
+        wrap.invoke(metadata, reference)
+    }.getOrNull()
+}
+
 private fun generatedEventInterface(eventType: String): Class<*> {
     val rawTypeName = eventType.substringBefore('<')
-    return Class.forName(projectedJvmClassName(rawTypeName))
+    return Class.forName(projectedJvmClassName(rawTypeName), true, generatedProjectionClassLoader())
 }
+
+private fun generatedProjectionClassLoader(): ClassLoader =
+    Thread.currentThread().contextClassLoader
+        ?: WinRtGeneratedEventSourceRuntime::class.java.classLoader
 
 internal fun projectedJvmClassName(typeName: String): String {
     val packageName = typeName.substringBeforeLast('.', missingDelimiterValue = "")
@@ -140,19 +178,51 @@ internal fun invokeHandler(
     handler: Any,
     arguments: List<Any?>,
 ): Any? {
-    val method = handler.javaClass.methods.firstOrNull { method ->
+    val methods = handler.javaClass.methods.filter { method ->
         method.name == "invoke" && method.parameterCount == arguments.size
-    } ?: throw WinRtUnsupportedOperationException(
+    }
+    val method = methods.firstOrNull { method -> method.acceptsArguments(arguments) }
+        ?: methods.firstOrNull()
+        ?: throw WinRtUnsupportedOperationException(
         "Generated event handler '${handler.javaClass.name}' does not expose invoke/${arguments.size}.",
         KnownHResults.E_NOTIMPL,
     )
     return try {
         method.isAccessible = true
         method.invoke(handler, *arguments.toTypedArray())
+    } catch (exception: IllegalArgumentException) {
+        if (FeatureSwitches.traceCcw) {
+            println(
+                "winrt-event-source: Invoke argument mismatch handler=${handler.javaClass.name} " +
+                    "parameters=${method.parameterTypes.joinToString { it.name }} " +
+                    "arguments=${arguments.joinToString { it?.javaClass?.name ?: "null" }}",
+            )
+        }
+        throw exception
     } catch (exception: InvocationTargetException) {
         throw exception.cause ?: exception
     }
 }
+
+private fun Method.acceptsArguments(arguments: List<Any?>): Boolean =
+    parameterTypes.asSequence()
+        .zip(arguments.asSequence())
+        .all { (parameterType, argument) ->
+            argument == null || boxedJavaType(parameterType).isInstance(argument)
+        }
+
+private fun boxedJavaType(type: Class<*>): Class<*> =
+    when (type) {
+        java.lang.Boolean.TYPE -> java.lang.Boolean::class.java
+        java.lang.Byte.TYPE -> java.lang.Byte::class.java
+        java.lang.Short.TYPE -> java.lang.Short::class.java
+        java.lang.Integer.TYPE -> java.lang.Integer::class.java
+        java.lang.Long.TYPE -> java.lang.Long::class.java
+        java.lang.Float.TYPE -> java.lang.Float::class.java
+        java.lang.Double.TYPE -> java.lang.Double::class.java
+        java.lang.Character.TYPE -> java.lang.Character::class.java
+        else -> type
+    }
 
 private fun defaultReturnValue(kind: WinRtDelegateValueKind): Any? =
     when (kind) {

@@ -179,6 +179,19 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun generated_event_source_runtime_wraps_declared_projected_event_argument_type() {
+        val reference = IInspectableReference(
+            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
+            preventReleaseOnDispose = true,
+        )
+
+        val projected = projectTypedReference("Contoso.GeneratedEventArgs", reference)
+
+        assertTrue(projected is contoso.GeneratedEventArgs)
+        assertSame(reference, (projected as contoso.GeneratedEventArgs).reference)
+    }
+
+    @Test
     fun generated_interface_projection_wrap_retries_compiler_generated_registry_on_miss() {
         ComWrappersSupport.clearRegistriesForTests()
         clearGeneratedInterfaceProjectionFactoriesForTest()

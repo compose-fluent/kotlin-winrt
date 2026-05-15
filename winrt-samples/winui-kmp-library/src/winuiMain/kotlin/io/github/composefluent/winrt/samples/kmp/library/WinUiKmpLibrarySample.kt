@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import io.github.composefluent.winrt.runtime.WinRtUri
+import microsoft.ui.dispatching.DispatcherQueueHandler
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.FocusState
 import microsoft.ui.xaml.Window
@@ -77,10 +78,16 @@ object WinUiKmpLibrarySample {
                     println("winui-kmp-library: callbacks registered")
                     window.activate()
                     println("winui-kmp-library: window activated native")
+                    println("winui-kmp-library: focusing textBox")
                     textBox.focus(FocusState.Programmatic)
+                    println("winui-kmp-library: textBox focused")
                     textBox.text = "changed"
+                    println("winui-kmp-library: textBox changed after focus")
                     if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-                        app.exit()
+                        window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+                            println("winui-kmp-library: auto exit enqueued")
+                            app.exit()
+                        })
                     }
                 }
             }
@@ -156,7 +163,10 @@ object WinUiKmpLibrarySample {
         activeEventTokens += textBox.unloaded.add { _, _ ->
             println("winui-kmp-library: text unloaded callback")
             if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-                app.exit()
+                window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+                    println("winui-kmp-library: unloaded auto exit enqueued")
+                    app.exit()
+                })
             }
         }
     }
