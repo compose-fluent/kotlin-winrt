@@ -21,6 +21,7 @@ kotlin {
             dependencies {
                 implementation(project(":winrt-runtime"))
                 implementation(project(":winrt-authoring"))
+                implementation(project(":winrt-samples:winui-kmp-base-library"))
             }
         }
         val winuiMain by creating {
@@ -37,13 +38,11 @@ winRt {
         windowsSdk(sampleWindowsSdkVersion.get(), includeExtensions = false)
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
         type("Windows.Foundation.IStringable")
-        type("Windows.Foundation.Uri")
         type("Windows.ApplicationModel.DataTransfer.Clipboard")
         type("Windows.ApplicationModel.DataTransfer.DataPackage")
         type("Windows.ApplicationModel.DataTransfer.DataPackageView")
         type("Windows.ApplicationModel.DataTransfer.StandardDataFormats")
         type("Windows.System.Display.DisplayRequest")
-        type("Windows.System.Launcher")
         type("Microsoft.UI.Xaml.Application")
         type("Microsoft.UI.Xaml.DependencyProperty")
         type("Microsoft.UI.Xaml.FrameworkElement")

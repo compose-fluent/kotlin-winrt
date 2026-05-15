@@ -2385,7 +2385,6 @@ class KotlinProjectionRenderer(
                     )
                     addProperty(
                         PropertySpec.builder("abiValue", resolveIntegralTypeName(underlyingType))
-                            .addModifiers(KModifier.INTERNAL)
                             .initializer("abiValue")
                             .build(),
                     )
@@ -2401,7 +2400,6 @@ class KotlinProjectionRenderer(
                         TypeSpec.companionObjectBuilder("Metadata")
                             .addFunction(
                                 FunSpec.builder("fromAbi")
-                                    .addModifiers(KModifier.INTERNAL)
                                     .addParameter("value", resolveIntegralTypeName(underlyingType))
                                     .returns(resolveTypeName(plan.type.qualifiedName))
                                     .addCode(
@@ -2418,7 +2416,6 @@ class KotlinProjectionRenderer(
                             )
                             .addFunction(
                                 FunSpec.builder("toAbi")
-                                    .addModifiers(KModifier.INTERNAL)
                                     .addParameter("value", resolveTypeName(plan.type.qualifiedName))
                                     .returns(resolveIntegralTypeName(underlyingType))
                                     .addCode("return value.abiValue\n")
@@ -2523,7 +2520,6 @@ class KotlinProjectionRenderer(
             )
             .addFunction(
                 FunSpec.builder("fromAbi")
-                    .addModifiers(KModifier.INTERNAL)
                     .addParameter("source", RAW_ADDRESS_CLASS_NAME)
                     .returns(structTypeName)
                     .addCode("return read(source)\n")
@@ -2531,7 +2527,6 @@ class KotlinProjectionRenderer(
             )
             .addFunction(
                 FunSpec.builder("copyTo")
-                    .addModifiers(KModifier.INTERNAL)
                     .addParameter("value", structTypeName)
                     .addParameter("destination", RAW_ADDRESS_CLASS_NAME)
                     .addCode("write(value, destination)\n")

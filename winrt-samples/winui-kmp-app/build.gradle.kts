@@ -31,9 +31,29 @@ winRt {
     }
     sampleWindowsAppSdkVersion.orNull?.let { windowsAppSdkVersion ->
         nugetPackage("Microsoft.WindowsAppSDK", windowsAppSdkVersion)
+        type("Windows.Foundation.Uri")
+        type("Windows.System.Launcher")
         type("Microsoft.UI.Xaml.Automation.AutomationProperties")
         type("Microsoft.UI.Xaml.Controls.Button")
         type("Microsoft.UI.Xaml.Controls.TextBox")
+    }
+}
+
+val verifyWinuiKmpTransitiveProjectionSuppression by tasks.registering {
+    group = "verification"
+    description = "Verifies the KMP WinUI application suppresses projection types owned by transitive WinRT libraries."
+    dependsOn("generateWinRtProjections")
+    val generatedSources = layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    inputs.files(generatedSources)
+
+    doLast {
+        val generatedRoot = generatedSources.get().asFile
+        check(!generatedRoot.resolve("windows/system/Launcher.kt").exists()) {
+            "Application regenerated Windows.System.Launcher owned by the transitive KMP base library."
+        }
+        check(!generatedRoot.resolve("microsoft/ui/xaml/controls/Button.kt").exists()) {
+            "Application regenerated Microsoft.UI.Xaml.Controls.Button owned by the direct KMP WinUI library."
+        }
     }
 }
 
@@ -59,4 +79,8 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     providers.systemProperty("KOTLIN_WINRT_TRACE_CCW").orNull?.let { value ->
         systemProperty("KOTLIN_WINRT_TRACE_CCW", value)
     }
+}
+
+tasks.named("check") {
+    dependsOn(verifyWinuiKmpTransitiveProjectionSuppression)
 }

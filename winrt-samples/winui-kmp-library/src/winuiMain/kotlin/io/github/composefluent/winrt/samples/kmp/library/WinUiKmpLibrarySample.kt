@@ -3,7 +3,7 @@ package io.github.composefluent.winrt.samples.kmp.library
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
-import io.github.composefluent.winrt.runtime.WinRtUri
+import io.github.composefluent.winrt.samples.kmp.base.WinUiKmpBaseLibrarySample
 import microsoft.ui.dispatching.DispatcherQueueHandler
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.FocusState
@@ -17,7 +17,6 @@ import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
-import windows.system.Launcher
 
 object WinUiKmpLibrarySample {
     private var activeApplication: WinUiKmpLibraryApp? = null
@@ -39,7 +38,7 @@ object WinUiKmpLibrarySample {
 
     @Suppress("unused")
     private fun launcherProjectionCompileSmoke() {
-        Launcher.launchUriAsync(WinRtUri("https://example.invalid/"))
+        WinUiKmpBaseLibrarySample.launcherProjectionCompileSmoke()
         DisplayRequest().requestActive()
         DisplayRequest().requestRelease()
     }

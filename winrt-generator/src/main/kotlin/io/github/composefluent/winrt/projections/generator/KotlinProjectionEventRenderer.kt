@@ -1571,7 +1571,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         method.methodRowId?.let { rowId ->
             builder.addProperty(
                 PropertySpec.builder(method.methodRowConstantName(plan.type.methods), Int::class)
-                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .addModifiers(KModifier.CONST)
                     .initializer("%L", rowId)
                     .build(),
             )
@@ -1581,7 +1581,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         property.getterMethodRowId?.let { rowId ->
             builder.addProperty(
                 PropertySpec.builder("${property.name.uppercase()}_GETTER_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .addModifiers(KModifier.CONST)
                     .initializer("%L", rowId)
                     .build(),
             )
@@ -1589,7 +1589,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         property.setterMethodRowId?.let { rowId ->
             builder.addProperty(
                 PropertySpec.builder("${property.name.uppercase()}_SETTER_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .addModifiers(KModifier.CONST)
                     .initializer("%L", rowId)
                     .build(),
             )
@@ -1599,7 +1599,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         event.addMethodRowId?.let { rowId ->
             builder.addProperty(
                 PropertySpec.builder("${event.name.uppercase()}_ADD_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .addModifiers(KModifier.CONST)
                     .initializer("%L", rowId)
                     .build(),
             )
@@ -1607,7 +1607,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         event.removeMethodRowId?.let { rowId ->
             builder.addProperty(
                 PropertySpec.builder("${event.name.uppercase()}_REMOVE_METHOD_ROW_ID", Int::class)
-                    .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                    .addModifiers(KModifier.CONST)
                     .initializer("%L", rowId)
                     .build(),
             )
@@ -1616,7 +1616,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     plan.abiSlotBindings.forEach { binding ->
         builder.addProperty(
             PropertySpec.builder(binding.constantName, Int::class)
-                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .addModifiers(KModifier.CONST)
                 .initializer("%L", binding.slot)
                 .build(),
         )
@@ -1631,19 +1631,18 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         .forEach { binding ->
         builder.addProperty(
             PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
-                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .addModifiers(KModifier.CONST)
                 .initializer("%S", binding.ownerInterfaceQualifiedName)
                 .build(),
         )
         builder.addProperty(
             PropertySpec.builder("${binding.bindingName}_OWNER_CACHE", String::class)
-                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .addModifiers(KModifier.CONST)
                 .initializer("%S", binding.ownerCachePropertyName)
                 .build(),
         )
         builder.addProperty(
             PropertySpec.builder(binding.bindingName, Int::class)
-                .addModifiers(KModifier.INTERNAL)
                 .initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
                 .build(),
         )
@@ -1651,25 +1650,24 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     plan.staticMemberBindings.forEach { binding ->
         builder.addProperty(
             PropertySpec.builder("${binding.bindingName}_OWNER_INTERFACE", String::class)
-                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .addModifiers(KModifier.CONST)
                 .initializer("%S", binding.ownerInterfaceQualifiedName)
                 .build(),
         )
         builder.addProperty(
             PropertySpec.builder("${binding.bindingName}_OWNER_ACCESSOR", String::class)
-                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .addModifiers(KModifier.CONST)
                 .initializer("%S", binding.ownerAccessorName)
                 .build(),
         )
         builder.addProperty(
             PropertySpec.builder("${binding.bindingName}_OWNER_CACHE", String::class)
-                .addModifiers(KModifier.INTERNAL, KModifier.CONST)
+                .addModifiers(KModifier.CONST)
                 .initializer("%S", binding.ownerCachePropertyName)
                 .build(),
         )
         builder.addProperty(
             PropertySpec.builder(binding.bindingName, Int::class)
-                .addModifiers(KModifier.INTERNAL)
                 .initializer("%L", metadataSlotExpression(binding.slotInterfaceQualifiedName, binding.slotConstantName))
                 .build(),
         )
