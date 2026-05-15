@@ -2886,6 +2886,46 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_projects_flags_enums_as_bitmask_value_types() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.System",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.System",
+                            name = "VirtualKeyModifiers",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.UInt32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Control", 1u),
+                                WinRtEnumMemberDefinition("Shift", 2u),
+                            ),
+                            customAttributes = listOf(WinRtCustomAttributeDefinition("System.FlagsAttribute")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("VirtualKeyModifiers.kt") }
+            .contents
+
+        assertTrue(contents, contents.contains("@JvmInline"))
+        assertTrue(contents, contents.contains("public value class VirtualKeyModifiers("))
+        assertTrue(contents, contents.contains("public val abiValue: UInt"))
+        assertTrue(contents, contents.contains("public val Control: VirtualKeyModifiers = VirtualKeyModifiers(1.toUInt())"))
+        assertTrue(contents, contents.contains("public fun fromAbi(abiValue: UInt): VirtualKeyModifiers"))
+        assertTrue(contents, contents.contains("VirtualKeyModifiers(abiValue)"))
+        assertTrue(contents, contents.contains("public fun hasFlag(flag: VirtualKeyModifiers): Boolean"))
+        assertTrue(contents, contents.contains("public infix fun or(other: VirtualKeyModifiers): VirtualKeyModifiers"))
+        assertFalse(contents, contents.contains("enum class VirtualKeyModifiers"))
+        assertFalse(contents, contents.contains("Unknown Windows.System.VirtualKeyModifiers ABI value"))
+    }
+
+    @Test
     fun renderer_uses_visibility_modifiers_and_metadata_companion_shells() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

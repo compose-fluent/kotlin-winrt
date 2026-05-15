@@ -138,6 +138,7 @@ import kotlin.collections.AbstractList
 import kotlin.collections.AbstractMap
 import kotlin.LazyThreadSafetyMode
 import kotlin.io.path.extension
+import kotlin.jvm.JvmInline
 import kotlin.reflect.KClass
 
 internal val ROOT_PACKAGE_SEGMENTS = emptyList<String>()
@@ -155,6 +156,7 @@ internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectabl
 internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRtInspectableMethodDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTGenericTypeInstantiations")
+internal val JVM_INLINE_CLASS_NAME = JvmInline::class.asClassName()
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
 internal val HSTRING_CLASS_NAME = HString::class.asClassName()
 internal val IID_CLASS_NAME = IID::class.asClassName()

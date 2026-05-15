@@ -2370,6 +2370,13 @@ class KotlinProjectionRenderer(
             .build()
 
     internal fun renderEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec =
+        if (plan.type.customAttributes.any { it.typeName == "System.FlagsAttribute" }) {
+            renderFlagsEnumShell(plan)
+        } else {
+            renderClosedEnumShell(plan)
+        }
+
+    private fun renderClosedEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec =
         TypeSpec.enumBuilder(plan.type.name)
             .apply {
                 applyCommonTypeShape(this, plan)
@@ -2424,6 +2431,83 @@ class KotlinProjectionRenderer(
                             .build(),
                     )
                 }
+            }
+            .build()
+
+    private fun renderFlagsEnumShell(plan: KotlinTypeProjectionPlan): TypeSpec =
+        TypeSpec.classBuilder(plan.type.name)
+            .addAnnotation(JVM_INLINE_CLASS_NAME)
+            .addModifiers(KModifier.VALUE)
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("abiValue", KOTLIN_UINT_CLASS_NAME)
+                    .build(),
+            )
+            .addProperty(
+                PropertySpec.builder("abiValue", KOTLIN_UINT_CLASS_NAME)
+                    .initializer("abiValue")
+                    .build(),
+            )
+            .apply {
+                applyCommonTypeShape(this, plan)
+                addFunction(
+                    FunSpec.builder("contains")
+                        .addModifiers(KModifier.OPERATOR)
+                        .addParameter("flag", resolveTypeName(plan.type.qualifiedName))
+                        .returns(Boolean::class)
+                        .addCode("return (abiValue and flag.abiValue) == flag.abiValue\n")
+                        .build(),
+                )
+                addFunction(
+                    FunSpec.builder("hasFlag")
+                        .addParameter("flag", resolveTypeName(plan.type.qualifiedName))
+                        .returns(Boolean::class)
+                        .addCode("return flag in this\n")
+                        .build(),
+                )
+                addFunction(
+                    FunSpec.builder("or")
+                        .addModifiers(KModifier.INFIX)
+                        .addParameter("other", resolveTypeName(plan.type.qualifiedName))
+                        .returns(resolveTypeName(plan.type.qualifiedName))
+                        .addCode("return %T(abiValue or other.abiValue)\n", resolveTypeName(plan.type.qualifiedName))
+                        .build(),
+                )
+                addFunction(
+                    FunSpec.builder("and")
+                        .addModifiers(KModifier.INFIX)
+                        .addParameter("other", resolveTypeName(plan.type.qualifiedName))
+                        .returns(resolveTypeName(plan.type.qualifiedName))
+                        .addCode("return %T(abiValue and other.abiValue)\n", resolveTypeName(plan.type.qualifiedName))
+                        .build(),
+                )
+                addType(
+                    TypeSpec.companionObjectBuilder("Metadata")
+                        .apply {
+                            plan.type.enumMembers.forEach { member ->
+                                addProperty(
+                                    PropertySpec.builder(enumConstantName(member.name), resolveTypeName(plan.type.qualifiedName))
+                                        .initializer("%T(%L)", resolveTypeName(plan.type.qualifiedName), integralLiteral(member.valueBits, WinRtIntegralType.UInt32))
+                                        .build(),
+                                )
+                            }
+                        }
+                        .addFunction(
+                            FunSpec.builder("fromAbi")
+                                .addParameter("abiValue", KOTLIN_UINT_CLASS_NAME)
+                                .returns(resolveTypeName(plan.type.qualifiedName))
+                                .addCode("return %T(abiValue)\n", resolveTypeName(plan.type.qualifiedName))
+                                .build(),
+                        )
+                        .addFunction(
+                            FunSpec.builder("toAbi")
+                                .addParameter("flags", resolveTypeName(plan.type.qualifiedName))
+                                .returns(KOTLIN_UINT_CLASS_NAME)
+                                .addCode("return flags.abiValue\n")
+                                .build(),
+                        )
+                        .build(),
+                )
             }
             .build()
 
