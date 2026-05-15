@@ -62,8 +62,11 @@ abstract class EventSource<T : Any> protected constructor(
                 state.eventInvokeHandle = eventInvokeHandle
                 state.installShutdownRegistration(
                     EventSourceShutdownRegistry.register {
-                        removeHandler(objectReference, state.token)
-                        state.close()
+                        try {
+                            removeHandler(objectReference, state.token)
+                        } finally {
+                            state.close()
+                        }
                     },
                 )
                 val stateReference = state.getWeakReferenceForCache()

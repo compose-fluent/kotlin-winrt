@@ -155,6 +155,43 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
+    fun event_source_shutdown_registry_closes_state_when_native_removal_fails() {
+        EventSourceCache.clearForTests()
+        EventSourceShutdownRegistry.clearForTests()
+
+        val owner = WinRtInspectableComObject.inspectableBox("owner", "test.Owner").createPrimaryReference()
+        var activeDelegate: WinRtDelegateReference? = null
+        val received = mutableListOf<Int>()
+        val source =
+            TestIntEventSource(
+                owner = owner,
+                addHandler = { _, handler ->
+                    activeDelegate?.close()
+                    activeDelegate = WinRtDelegateReference.fromAbi(handler.getRefPointer().asRawAddress(), testIntEventDescriptor)
+                    EventRegistrationToken(0x77889900_00000001)
+                },
+                removeHandler = { _, _ ->
+                    throw IllegalStateException("native event source is already shutting down")
+                },
+            )
+
+        try {
+            source.subscribe { _, value -> received += value }
+
+            EventSourceShutdownRegistry.closeAllForTests()
+
+            activeDelegate!!.invoke(listOf("sender", 17))
+            assertEquals(emptyList<Int>(), received)
+            assertNull(EventSourceCache.getState(owner, 41))
+        } finally {
+            activeDelegate?.close()
+            owner.close()
+            EventSourceCache.clearForTests()
+            EventSourceShutdownRegistry.clearForTests()
+        }
+    }
+
+    @Test
     fun windows_app_sdk_bootstrap_scope_close_removes_active_event_source_registration() {
         EventSourceCache.clearForTests()
         EventSourceShutdownRegistry.clearForTests()
