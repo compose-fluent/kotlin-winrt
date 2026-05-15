@@ -741,19 +741,6 @@ class KotlinProjectionSupportRenderer {
             .addFunctions(eventProjectionHelperFunctions())
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
             .addGeneratedProjectionSuppressions()
-        val plansByType = plans.associateBy { it.type.qualifiedName }
-        val typesByQualifiedName = model.namespaces.flatMap(WinRtNamespace::types).associateBy { it.qualifiedName }
-        eventSourceEntries
-            .filterNot(WinRtEventHelperSubclassDescriptor::usesSharedEventHandlerSource)
-            .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
-            .forEach { descriptor ->
-                val delegatePlan = plansByType[descriptor.projectedEventTypeName.substringBefore('<')] ?: return@forEach
-                val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
-                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
-                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
-                }
-            }
-        fileBuilder.addType(eventProjectionRegistryType(eventSourceEntries, plansByType, typesByQualifiedName))
         val fileSpec = fileBuilder
             .addType(objectBuilder.build())
             .build()
