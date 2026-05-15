@@ -20,6 +20,63 @@ import java.util.jar.JarFile
 
 class KotlinWinRtPluginTest {
     @Test
+    fun plugin_does_not_project_default_sdk_when_no_projection_inputs_are_declared() {
+        val projectDir = Files.createTempDirectory("kotlin-winrt-empty-input-test-")
+        writeGradleFile(
+            projectDir.resolve("settings.gradle.kts"),
+            """
+            pluginManagement {
+                repositories {
+                    gradlePluginPortal()
+                    mavenCentral()
+                }
+            }
+            dependencyResolutionManagement {
+                repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                repositories {
+                    mavenCentral()
+                }
+            }
+            rootProject.name = "kotlin-winrt-empty-input-test"
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("gradle.properties"),
+            """
+            org.gradle.jvmargs=-Xmx384m -XX:CICompilerCount=1 -XX:TieredStopAtLevel=1 -Dfile.encoding=UTF-8
+            org.gradle.daemon=false
+            org.gradle.workers.max=1
+            kotlin.compiler.execution.strategy=in-process
+            """.trimIndent(),
+        )
+        writeGradleFile(
+            projectDir.resolve("build.gradle.kts"),
+            """
+            plugins {
+                id("org.jetbrains.kotlin.jvm") version "2.3.20"
+                id("io.github.composefluent.winrt")
+            }
+            """.trimIndent(),
+        )
+
+        val result = GradleRunner.create()
+            .withProjectDir(projectDir.toFile())
+            .withPluginClasspath()
+            .withArguments("generateWinRtIdentity", "--stacktrace")
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtProjections")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateWinRtIdentity")?.outcome)
+        assertFalse(
+            Files.exists(projectDir.resolve("build/generated/kotlin-winrt/src/main/kotlin/windows")),
+        )
+        val identity = projectDir.resolve("build/generated/kotlin-winrt/identity/kotlin-winrt.json").toFile().readText()
+        assertTrue(identity.contains("\"includeTypes\": []"))
+        assertTrue(identity.contains("\"projectedTypes\": []"))
+    }
+
+    @Test
     fun plugin_wires_extension_inputs_to_generation_task() {
         val project = ProjectBuilder.builder().build()
 

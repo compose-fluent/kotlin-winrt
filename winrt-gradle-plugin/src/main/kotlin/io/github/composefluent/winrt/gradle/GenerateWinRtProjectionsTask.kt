@@ -240,10 +240,17 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
         val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
+        val hasProjectionFilter = includeNamespaces.get().isNotEmpty() || includeTypes.get().isNotEmpty()
         return if (applicationPackagingOnly) {
             sources
         } else {
-            sources.ifEmpty { listOf(WinRtMetadataSource.windowsSdk()) }
+            sources.ifEmpty {
+                if (hasProjectionFilter) {
+                    listOf(WinRtMetadataSource.windowsSdk())
+                } else {
+                    emptyList()
+                }
+            }
         }
     }
 
