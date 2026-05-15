@@ -5372,6 +5372,99 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_emits_protected_runtime_class_property_setters_for_protected_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IInputCursor",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "InputCursor",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IInputCursor",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.Foundation.IInputCursor",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IElement",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IElementProtected",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            isProjectionInternal = true,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    "ProtectedCursor",
+                                    "Sample.Foundation.InputCursor",
+                                    getterMethodName = "get_ProtectedCursor",
+                                    setterMethodName = "put_ProtectedCursor",
+                                    getterMethodRowId = 20,
+                                    setterMethodRowId = 21,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Element",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IElement",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.Foundation.IElement",
+                                    isDefault = true,
+                                ),
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.Foundation.IElementProtected",
+                                    isProtected = true,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    "ProtectedCursor",
+                                    "Sample.Foundation.InputCursor",
+                                    getterMethodName = "get_ProtectedCursor",
+                                    setterMethodName = "put_ProtectedCursor",
+                                    getterMethodRowId = 20,
+                                    setterMethodRowId = 21,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val generated = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val elementContents = generated.getValue("Element.kt").contents
+        val protectedInterfaceContents = generated.getValue("IElementProtected.kt").contents
+
+        assertTrue(protectedInterfaceContents.contains("internal interface IElementProtected"))
+        assertTrue(protectedInterfaceContents.contains("public var protectedCursor: InputCursor"))
+        assertTrue(elementContents.contains("protected var protectedCursor: InputCursor"))
+        assertTrue(elementContents.contains("get() = _iElementProtectedProjection.protectedCursor"))
+        assertTrue(elementContents.contains("_iElementProtectedProjection.protectedCursor = value"))
+        assertFalse(elementContents.contains("override var protectedCursor"))
+    }
+
+    @Test
     fun generator_leaves_winui_application_resource_initialization_to_xaml_pipeline() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
