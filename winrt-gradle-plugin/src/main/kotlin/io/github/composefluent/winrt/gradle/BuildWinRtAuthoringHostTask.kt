@@ -154,38 +154,20 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
                 .firstOrNull { it.endsWith(name, ignoreCase = true) }
                 ?.let(Path::of)
         }.getOrNull()
+            ?: standardWindowsToolchainCandidates(name).firstOrNull { it.isRegularFile() }
     }
 
-    private fun targetArchitecture(): String {
-        val rid = runtimeIdentifier.get().lowercase()
-        return when {
-            rid.endsWith("-arm64") -> "arm64"
-            rid.endsWith("-x86") -> "x86"
-            else -> "x64"
+    private fun standardWindowsToolchainCandidates(name: String): Sequence<Path> = sequence {
+        System.getenv("ProgramFiles")?.takeIf { it.isNotBlank() }?.let { programFiles ->
+            yield(Path.of(programFiles).resolve("LLVM").resolve("bin").resolve(name))
+        }
+        System.getenv("ProgramFiles(x86)")?.takeIf { it.isNotBlank() }?.let { programFilesX86 ->
+            yield(Path.of(programFilesX86).resolve("LLVM").resolve("bin").resolve(name))
         }
     }
 
-    private fun findWindowsSdk(): WindowsSdkLayout? {
-        val kitsRoot = Path.of("C:/Program Files (x86)/Windows Kits/10")
-        val includeRoot = kitsRoot.resolve("Include")
-        val libRoot = kitsRoot.resolve("Lib")
-        if (!Files.isDirectory(includeRoot) || !Files.isDirectory(libRoot)) {
-            return null
-        }
-        val version = Files.list(includeRoot).use { stream ->
-            stream
-                .filter { Files.isDirectory(it) }
-                .map { it.name }
-                .filter { Files.isDirectory(includeRoot.resolve(it).resolve("um")) }
-                .sorted(Comparator.reverseOrder())
-                .findFirst()
-                .orElse(null)
-        } ?: return null
-        return WindowsSdkLayout(
-            includeRoot = includeRoot.resolve(version),
-            libRoot = libRoot.resolve(version),
-        )
-    }
+    private fun targetArchitecture(): String =
+        windowsSdkArchitecture(runtimeIdentifier.get())
 
     private fun runProcess(
         arguments: List<String>,
@@ -204,11 +186,6 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
 
 private data class HostBuildManifest(
     val assemblyName: String,
-)
-
-private data class WindowsSdkLayout(
-    val includeRoot: Path,
-    val libRoot: Path,
 )
 
 private data class ProcessResult(

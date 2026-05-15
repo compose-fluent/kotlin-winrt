@@ -18,7 +18,6 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
-import java.util.zip.ZipFile
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -56,6 +55,18 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Input
     abstract val runtimeIdentifier: org.gradle.api.provider.Property<String>
 
+    @get:Input
+    abstract val generateProjectPri: Property<Boolean>
+
+    @get:Input
+    abstract val projectPriIndexName: Property<String>
+
+    @get:Input
+    abstract val makePriExecutable: Property<String>
+
+    @get:Input
+    abstract val windowsSdkVersion: Property<String>
+
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
@@ -79,6 +90,13 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredHostDllFiles: ConfigurableFileCollection
+
+    init {
+        generateProjectPri.convention(true)
+        projectPriIndexName.convention("Application")
+        makePriExecutable.convention("")
+        windowsSdkVersion.convention("")
+    }
 
     @TaskAction
     fun stage() {
@@ -147,8 +165,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 resolved.packageRoot.resolve("runtimes-framework").resolve(rid).resolve("native"),
                 outputRoot,
             )
-            stageWindowsAppRuntimeResourceIndex(resolved.identity, resolved.packageRoot, rid, outputRoot)
         }
+        generateProjectPri(outputRoot)
     }
 
     private fun resolveNuGetPackages(
@@ -240,34 +258,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
-    private fun stageWindowsAppRuntimeResourceIndex(
-        identity: WinRtNuGetPackageIdentity,
-        packageRoot: Path,
-        runtimeIdentifier: String,
-        outputRoot: Path,
-    ) {
-        if (!identity.normalizedPackageId.equals("Microsoft.WindowsAppSDK.Runtime", ignoreCase = true)) {
-            return
-        }
-        val msixRoot = packageRoot.resolve("tools").resolve("MSIX").resolve(runtimeIdentifier.toMsixPlatform())
-        if (!msixRoot.isDirectory()) {
-            return
-        }
-        Files.list(msixRoot).use { stream ->
-            stream.asSequence()
-                .filter {
-                    it.isRegularFile() &&
-                        it.name.startsWith("Microsoft.WindowsAppRuntime.", ignoreCase = true) &&
-                        it.name.endsWith(".msix", ignoreCase = true) &&
-                        ".DDLM." !in it.name &&
-                        ".Main." !in it.name &&
-                        ".Singleton." !in it.name
-                }
-                .sortedBy { it.name.lowercase() }
-                .firstOrNull()
-        }?.let { msix -> copyZipEntry(msix, "resources.pri", outputRoot.resolve("resources.pri")) }
-    }
-
     private fun stageLiftedRegistrations(
         identity: WinRtNuGetPackageIdentity,
         packageRoot: Path,
@@ -288,19 +278,116 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
     }
 
+    private fun generateProjectPri(outputRoot: Path) {
+        if (!generateProjectPri.get() || !isWindowsHost()) {
+            return
+        }
+        val inputPris = Files.walk(outputRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() && it.name.endsWith(".pri", ignoreCase = true) }
+                .filterNot { it.name.equals("resources.pri", ignoreCase = true) }
+                .filterNot { it.name.startsWith("resources.language-", ignoreCase = true) }
+                .sorted()
+                .toList()
+        }
+        if (inputPris.isEmpty()) {
+            return
+        }
+        val makePri = discoverMakePriExecutable() ?: run {
+            logger.warn("Skipping application PRI generation because makepri.exe was not found.")
+            return
+        }
+        val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
+        cleanDirectory(projectPriRoot)
+        Files.createDirectories(projectPriRoot)
+        inputPris.forEach { source ->
+            copyFile(source, projectPriRoot.resolve(source.relativeTo(outputRoot)))
+        }
+        val config = temporaryDir.toPath().resolve("project-pri-config").resolve("priconfig.xml")
+        Files.createDirectories(config.parent)
+        val output = projectPriRoot.resolve("resources.pri")
+        runMakePri(
+            makePri,
+            listOf(
+                "createconfig",
+                "/cf",
+                config.toString(),
+                "/dq",
+                "lang-en-US_scale-200_contrast-standard",
+                "/pv",
+                "10.0.0",
+                "/o",
+            ),
+            outputRoot,
+            "create application PRI config",
+        ) ?: return
+        runMakePri(
+            makePri,
+            listOf(
+                "new",
+                "/pr",
+                projectPriRoot.toString(),
+                "/cf",
+                config.toString(),
+                "/of",
+                output.toString(),
+                "/in",
+                projectPriIndexName.get(),
+                "/o",
+            ),
+            outputRoot,
+            "generate application PRI",
+        ) ?: return
+        Files.walk(projectPriRoot).use { stream ->
+            stream.asSequence()
+                .filter { it.isRegularFile() }
+                .filter {
+                    it.name.equals("resources.pri", ignoreCase = true) ||
+                        it.name.startsWith("resources.language-", ignoreCase = true)
+                }
+                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
+        }
+        Files.deleteIfExists(config)
+    }
+
+    private fun discoverMakePriExecutable(): Path? {
+        makePriExecutable.get().takeIf { it.isNotBlank() }?.let { configured ->
+            return Path.of(configured).takeIf { it.isRegularFile() }
+        }
+        val sdk = findWindowsSdk(windowsSdkVersion.get().takeIf { it.isNotBlank() }) ?: return null
+        return sdk.tool("makepri.exe", windowsSdkArchitecture(runtimeIdentifier.get()))
+    }
+
+    private fun runMakePri(
+        makePri: Path,
+        arguments: List<String>,
+        workingDirectory: Path,
+        description: String,
+    ): String? {
+        val process = ProcessBuilder(listOf(makePri.toString()) + arguments)
+            .directory(workingDirectory.toFile())
+            .redirectErrorStream(true)
+            .start()
+        val output = decodeProcessOutput(process.inputStream.readBytes())
+        val exitCode = process.waitFor()
+        return if (exitCode == 0) {
+            output
+        } else {
+            logger.warn("Skipping application PRI generation after makepri failed to $description with exit code $exitCode:\n$output")
+            null
+        }
+    }
+
+    private fun decodeProcessOutput(bytes: ByteArray): String {
+        if (bytes.size >= 4 && bytes[1] == 0.toByte() && bytes[3] == 0.toByte()) {
+            return bytes.toString(Charsets.UTF_16LE)
+        }
+        return bytes.toString(Charsets.UTF_8)
+    }
+
     private fun copyFile(source: Path, target: Path) {
         Files.createDirectories(target.parent)
         Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-    }
-
-    private fun copyZipEntry(zipPath: Path, entryName: String, target: Path) {
-        ZipFile(zipPath.toFile()).use { zip ->
-            val entry = zip.getEntry(entryName) ?: return
-            Files.createDirectories(target.parent)
-            zip.getInputStream(entry).use { input ->
-                Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-            }
-        }
     }
 
     private fun cleanDirectory(directory: Path) {
@@ -401,14 +488,8 @@ private data class AuthoringHostRuntimeConfig(
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkRootPackage(): Boolean =
     normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true)
 
-private fun String.toMsixPlatform(): String =
-    when (lowercase()) {
-        "win-x64", "win10-x64" -> "win10-x64"
-        "win-x86", "win10-x86" -> "win10-x86"
-        "win-arm64", "win10-arm64" -> "win10-arm64"
-        "win-arm64ec", "win10-arm64ec" -> "win10-arm64ec"
-        else -> this
-    }
+private fun isWindowsHost(): Boolean =
+    System.getProperty("os.name").contains("Windows", ignoreCase = true)
 
 internal fun currentWindowsRuntimeIdentifier(): String {
     val arch = System.getProperty("os.arch").lowercase()

@@ -258,6 +258,8 @@ private fun configureWinRtApplicationTasks(
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.projectPriIndexName.set(project.name)
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
             task.authoredMetadataFiles.from(
                 project.layout.buildDirectory.file(
@@ -312,6 +314,7 @@ private fun configureWinRtGeneration(
     extension: BaseWinRtExtension,
 ) {
     val generatedSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
+    val generatedAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
     val generateTask = project.tasks.register(
         "generateWinRtProjections",
@@ -320,6 +323,7 @@ private fun configureWinRtGeneration(
             task.group = "kotlin-winrt"
             task.description = "Generates Kotlin WinRT projections from Windows SDK and NuGet WinMD metadata."
             task.outputDirectory.set(generatedSources)
+            task.authoringTypeDetailsOutputDirectory.set(generatedSources)
             task.metadataInputs.set(extension.metadataInputs)
             task.metadataInputFiles.from(
                 project.provider {
@@ -402,7 +406,11 @@ private fun configureWinRtGeneration(
 
     project.plugins.withId("org.jetbrains.kotlin.multiplatform") {
         configureKotlinWinRtCompilerPluginClasspath(project)
+        generateTask.configure { task ->
+            task.authoringTypeDetailsOutputDirectory.set(generatedAuthoringSources)
+        }
         addGeneratedSourcesToKotlinMultiplatformCommonMain(project, generatedSources)
+        addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(project, generatedAuthoringSources, generateTask)
         configureKotlinWinRtCompilerPluginOptions(
             project = project,
             metadataIndex = generatedSources.map { directory ->
@@ -552,6 +560,29 @@ private fun addGeneratedSourcesToKotlinMultiplatformCommonMain(
     val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
     kotlinExtension.sourceSets.named("commonMain").configure { sourceSet ->
         sourceSet.kotlin.srcDir(generatedSources)
+    }
+}
+
+private fun addGeneratedAuthoringSourcesToKotlinMultiplatformSourceRoots(
+    project: Project,
+    generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
+    generateTask: org.gradle.api.tasks.TaskProvider<GenerateWinRtProjectionsTask>,
+) {
+    val kotlinExtension = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    project.gradle.projectsEvaluated {
+        val authoringRoots = generateTask.get().sourceRoots.files
+            .map { it.toPath().toAbsolutePath().normalize() }
+            .toSet()
+        if (authoringRoots.isEmpty()) {
+            return@projectsEvaluated
+        }
+        kotlinExtension.sourceSets.forEach { sourceSet ->
+            val sourceSetRoots = sourceSet.kotlin.srcDirs
+                .map { it.toPath().toAbsolutePath().normalize() }
+            if (sourceSetRoots.any { sourceRoot -> sourceRoot in authoringRoots }) {
+                sourceSet.kotlin.srcDir(generatedSources)
+            }
+        }
     }
 }
 
