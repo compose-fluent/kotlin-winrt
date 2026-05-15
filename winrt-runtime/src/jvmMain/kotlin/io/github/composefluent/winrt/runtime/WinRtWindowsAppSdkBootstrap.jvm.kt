@@ -16,6 +16,7 @@ object WinRtWindowsAppSdkBootstrap {
     private const val defaultMajorMinorVersion = 0x00010008
     private const val defaultMinVersion = 0x1F40032608CC0000L
     private const val bootstrapDllName = "Microsoft.WindowsAppRuntime.Bootstrap.dll"
+    private const val runtimeDllName = "Microsoft.WindowsAppRuntime.dll"
     private const val versionInfoHeaderRelativePath = "include/WindowsAppSDK-VersionInfo.h"
     private val releaseMajorMinorRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_MAJORMINOR\s+(0x[0-9A-Fa-f]+)""")
     private val releaseVersionTagRegex = Regex("""#define\s+WINDOWSAPPSDK_RELEASE_VERSION_TAG_W\s+L"([^"]*)"""")
@@ -26,11 +27,13 @@ object WinRtWindowsAppSdkBootstrap {
     class Scope internal constructor(
         val bootstrapDll: Path,
         private val activationContexts: List<WinRtWindowsActivationContext.Scope>,
-        private val lookup: SymbolLookup?,
+        private val bootstrapLookup: SymbolLookup?,
+        @Suppress("unused")
+        private val windowsAppRuntimeLookup: SymbolLookup?,
     ) : AutoCloseable {
         override fun close() {
             EventSourceShutdownRegistry.closeAllActiveRegistrations()
-            lookup?.let(::shutdown)
+            bootstrapLookup?.let(::shutdown)
             activationContexts.asReversed().forEach { context ->
                 context.close()
             }
@@ -54,10 +57,12 @@ object WinRtWindowsAppSdkBootstrap {
         val processCompatibilityContext = WinRtWindowsActivationContext.activateProcessCompatibility(root)
         val activationContext = WinRtWindowsActivationContext.activate(root)
         if (activationContext != null) {
+            val runtimeLookup = loadSelfContainedWindowsAppRuntime(root)
             return Scope(
                 bootstrapDll = bootstrapDll,
                 activationContexts = listOfNotNull(processCompatibilityContext, activationContext),
-                lookup = null,
+                bootstrapLookup = null,
+                windowsAppRuntimeLookup = runtimeLookup,
             )
         }
         val lookup = SymbolLookup.libraryLookup(bootstrapDll, arena)
@@ -94,7 +99,8 @@ object WinRtWindowsAppSdkBootstrap {
         return Scope(
             bootstrapDll = bootstrapDll,
             activationContexts = listOfNotNull(processCompatibilityContext),
-            lookup = lookup,
+            bootstrapLookup = lookup,
+            windowsAppRuntimeLookup = null,
         )
     }
 
@@ -112,11 +118,36 @@ object WinRtWindowsAppSdkBootstrap {
         }
     }
 
+    private fun loadSelfContainedWindowsAppRuntime(root: Path): SymbolLookup {
+        val runtimeDll = runtimeDllCandidates(root)
+            .firstOrNull { it.isRegularFile() }
+            ?: error("WindowsAppSDK self-contained activation found no $runtimeDllName under $root")
+        val lookup = SymbolLookup.libraryLookup(runtimeDll, arena)
+        val ensureIsLoaded = linker.downcallHandle(
+            lookup.find("WindowsAppRuntime_EnsureIsLoaded").orElseThrow(),
+            FunctionDescriptor.of(ValueLayout.JAVA_INT),
+        )
+        HResult(ensureIsLoaded.invokeWithArguments() as Int).requireSuccess("WindowsAppRuntime_EnsureIsLoaded")
+        return lookup
+    }
+
     private fun bootstrapDllCandidates(root: Path): List<Path> =
         if (root.isDirectory()) {
             Files.walk(root).use { stream ->
                 stream
                     .filter { it.isRegularFile() && it.name.equals(bootstrapDllName, ignoreCase = true) }
+                    .sorted()
+                    .toList()
+            }
+        } else {
+            emptyList()
+        }
+
+    private fun runtimeDllCandidates(root: Path): List<Path> =
+        if (root.isDirectory()) {
+            Files.walk(root).use { stream ->
+                stream
+                    .filter { it.isRegularFile() && it.name.equals(runtimeDllName, ignoreCase = true) }
                     .sorted()
                     .toList()
             }

@@ -61,7 +61,7 @@ internal object WinRtWindowsActivationContext {
             stream
                 .filter { it.isRegularFile() }
                 .map { root.relativize(it).toString().replace('/', '\\') }
-                .filter { it.endsWith(".dll", ignoreCase = true) || it.endsWith(".pri", ignoreCase = true) }
+                .filter { it.endsWith(".dll", ignoreCase = true) }
                 .distinct()
                 .sorted()
                 .toList()

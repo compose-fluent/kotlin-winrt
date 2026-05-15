@@ -17,8 +17,6 @@ import org.junit.Test
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.jar.JarFile
-import java.util.jar.JarOutputStream
-import java.util.zip.ZipEntry
 
 class KotlinWinRtPluginTest {
     @Test
@@ -1250,7 +1248,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun application_distribution_contains_windowsappsdk_runtime_resources() {
+    fun application_distribution_contains_windowsappsdk_framework_runtime_resources() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-app-dist-test-")
         val nugetRoot = projectDir.resolve("nuget")
         writeWindowsAppSdkPackage(
@@ -1278,7 +1276,6 @@ class KotlinWinRtPluginTest {
             nugetRoot = nugetRoot,
             packageId = "Microsoft.WindowsAppSDK.Runtime",
             version = "1.8.260416003",
-            includeRuntimeMsixResources = true,
         )
         writeWindowsAppSdkPackage(
             nugetRoot = nugetRoot,
@@ -1351,7 +1348,7 @@ class KotlinWinRtPluginTest {
         val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY")
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
-        assertEquals("merged", Files.readString(assetsRoot.resolve("resources.pri")))
+        assertFalse(Files.exists(assetsRoot.resolve("resources.pri")))
         assertTrue(
             Files.isRegularFile(
                 assetsRoot.resolve(
@@ -1382,7 +1379,6 @@ private fun writeWindowsAppSdkPackage(
     version: String,
     includeWinUiFrameworkAssets: Boolean = false,
     includeLiftedRegistrations: Boolean = false,
-    includeRuntimeMsixResources: Boolean = false,
     dependencies: List<Pair<String, String>> = emptyList(),
 ) {
     val packageRoot = nugetRoot.resolve(packageId.lowercase()).resolve(version)
@@ -1410,15 +1406,6 @@ private fun writeWindowsAppSdkPackage(
     if (includeLiftedRegistrations) {
         Files.createDirectories(packageRoot.resolve("build/native"))
         Files.writeString(packageRoot.resolve("build/native/LiftedWinRTClassRegistrations.xml"), "<Registrations />")
-    }
-    if (includeRuntimeMsixResources) {
-        val msix = packageRoot.resolve("tools/MSIX/win10-x64/Microsoft.WindowsAppRuntime.1.8.msix")
-        Files.createDirectories(msix.parent)
-        JarOutputStream(Files.newOutputStream(msix)).use { output ->
-            output.putNextEntry(ZipEntry("resources.pri"))
-            output.write("merged".toByteArray())
-            output.closeEntry()
-        }
     }
 }
 

@@ -25,7 +25,9 @@ internal object InteropRuntimeHooks {
         }
         return definition.copy(
             interfaceDefinitions = augmentedInterfaces,
-            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions + createReferenceTrackerTargetInterfaceDefinition(),
+            hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions +
+                createReferenceTrackerTargetInterfaceDefinition() +
+                createReferenceTrackerExtensionInterfaceDefinition(),
         )
     }
 
@@ -33,6 +35,7 @@ internal object InteropRuntimeHooks {
         IID.IStringable,
         IID.IWeakReferenceSource,
         IID.IReferenceTrackerTarget,
+        IID.IReferenceTrackerExtension,
         IID.IMarshal,
         IID.IAgileObject,
         IID.IInspectable,
@@ -52,6 +55,13 @@ internal object InteropRuntimeHooks {
             ),
         )
     }
+
+    private fun createReferenceTrackerExtensionInterfaceDefinition(): WinRtInspectableInterfaceDefinition =
+        WinRtInspectableInterfaceDefinition(
+            interfaceId = IID.IReferenceTrackerExtension,
+            baseKind = WinRtComInterfaceBaseKind.IUnknown,
+            methods = emptyList(),
+        )
 
     @OptIn(ExperimentalAtomicApi::class)
     private class ReferenceTrackerTargetState {

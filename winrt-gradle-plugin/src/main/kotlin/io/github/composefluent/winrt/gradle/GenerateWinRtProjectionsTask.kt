@@ -35,6 +35,9 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
+    @get:OutputDirectory
+    abstract val authoringTypeDetailsOutputDirectory: DirectoryProperty
+
     @get:Input
     abstract val metadataInputs: ListProperty<String>
 
@@ -181,7 +184,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
                 candidates = authoringCandidates,
                 metadataModel = model,
-                outputDirectory = outputDirectory.get().asFile.toPath(),
+                outputDirectory = authoringTypeDetailsOutputDirectory.get().asFile.toPath(),
             )
         }
     }

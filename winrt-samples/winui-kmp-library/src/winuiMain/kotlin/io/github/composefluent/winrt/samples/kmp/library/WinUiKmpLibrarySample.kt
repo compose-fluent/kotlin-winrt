@@ -7,92 +7,33 @@ import io.github.composefluent.winrt.runtime.WinRtUri
 import microsoft.ui.dispatching.DispatcherQueueHandler
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.FocusState
+import microsoft.ui.xaml.LaunchActivatedEventArgs
+import microsoft.ui.xaml.ResourceDictionary
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.automation.AutomationProperties
 import microsoft.ui.xaml.automation.peers.AccessibilityView
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
+import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
 import windows.system.Launcher
 
 object WinUiKmpLibrarySample {
-    private var activeWindow: Window? = null
-    private val activeEventTokens = mutableListOf<EventRegistrationToken>()
+    private var activeApplication: WinUiKmpLibraryApp? = null
 
     fun start() {
-        activeEventTokens.clear()
         WinRtWindowsAppSdkBootstrap.initialize().use { bootstrap ->
             println("winui-kmp-library: WindowsAppSDK bootstrap=${bootstrap?.bootstrapDll ?: "not-found"}")
             RuntimeScope.initializeSingleThreaded().use {
                 Application.start {
                     println("winui-kmp-library: application callback invoked")
-                    val app = Application()
+                    activeApplication = WinUiKmpLibraryApp()
                     println("winui-kmp-library: application created")
-                    loadAppXamlResources(app)
-                    val window = Window()
-                    println("winui-kmp-library: window created")
-                    val panel = Canvas()
-                    println("winui-kmp-library: canvas created")
-                    val button = Button()
-                    println("winui-kmp-library: button created")
-                    val textBox = TextBox()
-                    println("winui-kmp-library: textBox created")
-
-                    button.content = "KMP library WinUI"
-                    println("winui-kmp-library: button content set")
-                    check(button.content == "KMP library WinUI") {
-                        "Button.content did not round-trip assigned string: ${button.content}"
-                    }
-                    println("winui-kmp-library: button content round-trip")
-                    button.content = null
-                    check(button.content == null) {
-                        "Button.content did not round-trip cleared null content: ${button.content}"
-                    }
-                    println("winui-kmp-library: button null content round-trip")
-                    button.content = "KMP library WinUI"
-                    textBox.text = "initial"
-                    println("winui-kmp-library: textBox initial text set")
-                    panel.children.add(button)
-                    println("winui-kmp-library: button added")
-                    panel.children.add(textBox)
-                    println("winui-kmp-library: textBox added")
-                    check(panel.children[0] is Button) {
-                        "Canvas.children[0] did not recover the Button runtime-class wrapper: ${panel.children[0]::class.qualifiedName}"
-                    }
-                    println("winui-kmp-library: child runtime class recovered")
-                    Canvas.setLeft(button, 24.0)
-                    Canvas.setTop(button, 12.0)
-                    check(Canvas.getLeft(button) == 24.0 && Canvas.getTop(button) == 12.0) {
-                        "Canvas attached positioning did not round-trip"
-                    }
-                    println("winui-kmp-library: canvas attached positioning set")
-                    AutomationProperties.setAccessibilityView(button, AccessibilityView.Raw)
-                    println("winui-kmp-library: detached automation accessibility view set")
-                    button.clearValue(AutomationProperties.accessibilityViewProperty)
-                    println("winui-kmp-library: detached automation accessibility view cleared")
-                    window.content = panel
-                    println("winui-kmp-library: window content set")
-                    activeWindow = window
-                    registerCallbackSmoke(app, window, button, textBox)
-                    println("winui-kmp-library: callbacks registered")
-                    window.activate()
-                    println("winui-kmp-library: window activated native")
-                    println("winui-kmp-library: focusing textBox")
-                    textBox.focus(FocusState.Programmatic)
-                    println("winui-kmp-library: textBox focused")
-                    textBox.text = "changed"
-                    println("winui-kmp-library: textBox changed after focus")
-                    if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-                        window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
-                            println("winui-kmp-library: auto exit enqueued")
-                            app.exit()
-                        })
-                    }
                 }
             }
-            activeWindow = null
-            activeEventTokens.clear()
+            activeApplication?.close()
+            activeApplication = null
         }
     }
 
@@ -102,14 +43,105 @@ object WinUiKmpLibrarySample {
         DisplayRequest().requestActive()
         DisplayRequest().requestRelease()
     }
+}
 
-    private fun loadAppXamlResources(app: Application) {
-        Application.loadComponent(app, WinRtUri("ms-appx:///App.xaml"))
-        println("winui-kmp-library: app xaml loaded")
+class WinUiKmpLibraryApp : Application(), AutoCloseable {
+    private var activeWindow: Window? = null
+    private val activeEventTokens = mutableListOf<EventRegistrationToken>()
+
+    override fun onLaunched(args: LaunchActivatedEventArgs) {
+        launchWithResources()
+    }
+
+    override fun close() {
+        activeWindow = null
+        activeEventTokens.clear()
+    }
+
+    private fun launchWithResources() {
+        installXamlControlsResources()
+        launchCore()
+    }
+
+    private fun installXamlControlsResources() {
+        println("winui-kmp-library: install resources dictionary")
+        val resources = this.resources
+        println("winui-kmp-library: install resources merged dictionaries")
+        val mergedDictionaries = resources.mergedDictionaries
+        println("winui-kmp-library: install resources create controls resources")
+        val controlsResources = loadXamlControlsResources()
+        println("winui-kmp-library: install resources add")
+        mergedDictionaries.add(controlsResources)
+        println("winui-kmp-library: install resources done")
+    }
+
+    private fun loadXamlControlsResources(): ResourceDictionary {
+        return XamlControlsResources()
+    }
+
+    private fun launchCore() {
+        val window = Window()
+        println("winui-kmp-library: window created")
+        val panel = Canvas()
+        println("winui-kmp-library: canvas created")
+        val button = Button()
+        println("winui-kmp-library: button created")
+        val textBox = TextBox()
+        println("winui-kmp-library: textBox created")
+
+        button.content = "KMP library WinUI"
+        println("winui-kmp-library: button content set")
+        check(button.content == "KMP library WinUI") {
+            "Button.content did not round-trip assigned string: ${button.content}"
+        }
+        println("winui-kmp-library: button content round-trip")
+        button.content = null
+        check(button.content == null) {
+            "Button.content did not round-trip cleared null content: ${button.content}"
+        }
+        println("winui-kmp-library: button null content round-trip")
+        button.content = "KMP library WinUI"
+        textBox.text = "initial"
+        println("winui-kmp-library: textBox initial text set")
+        panel.children.add(button)
+        println("winui-kmp-library: button added")
+        panel.children.add(textBox)
+        println("winui-kmp-library: textBox added")
+        check(panel.children[0] is Button) {
+            "Canvas.children[0] did not recover the Button runtime-class wrapper: ${panel.children[0]::class.qualifiedName}"
+        }
+        println("winui-kmp-library: child runtime class recovered")
+        Canvas.setLeft(button, 24.0)
+        Canvas.setTop(button, 12.0)
+        check(Canvas.getLeft(button) == 24.0 && Canvas.getTop(button) == 12.0) {
+            "Canvas attached positioning did not round-trip"
+        }
+        println("winui-kmp-library: canvas attached positioning set")
+        AutomationProperties.setAccessibilityView(button, AccessibilityView.Raw)
+        println("winui-kmp-library: detached automation accessibility view set")
+        button.clearValue(AutomationProperties.accessibilityViewProperty)
+        println("winui-kmp-library: detached automation accessibility view cleared")
+        window.content = panel
+        println("winui-kmp-library: window content set")
+        activeWindow = window
+        registerCallbackSmoke(window, button, textBox)
+        println("winui-kmp-library: callbacks registered")
+        window.activate()
+        println("winui-kmp-library: window activated native")
+        println("winui-kmp-library: focusing textBox")
+        textBox.focus(FocusState.Programmatic)
+        println("winui-kmp-library: textBox focused")
+        textBox.text = "changed"
+        println("winui-kmp-library: textBox changed after focus")
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+            window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+                println("winui-kmp-library: auto exit enqueued")
+                exit()
+            })
+        }
     }
 
     private fun registerCallbackSmoke(
-        app: Application,
         window: Window,
         button: Button,
         textBox: TextBox,
@@ -165,7 +197,7 @@ object WinUiKmpLibrarySample {
             if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
                 window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
                     println("winui-kmp-library: unloaded auto exit enqueued")
-                    app.exit()
+                    exit()
                 })
             }
         }

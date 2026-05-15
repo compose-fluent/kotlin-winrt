@@ -7,6 +7,7 @@ object IID {
     val IWeakReferenceSource: Guid = guidOf("00000038-0000-0000-C000-000000000046")
     val IReferenceTracker: Guid = guidOf("11D3B13A-180E-4789-A8BE-7712882893E6")
     val IReferenceTrackerTarget: Guid = guidOf("64BD43F8-BFEE-4EC4-B7EB-2935158DAE21")
+    val IReferenceTrackerExtension: Guid = guidOf("4E897CAA-59D5-4613-8F8C-F7EBD1F399B0")
     val IActivationFactory: Guid = guidOf("00000035-0000-0000-C000-000000000046")
     val IAgileObject: Guid = guidOf("94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90")
     val IAgileReference: Guid = guidOf("C03F6A43-65A4-9818-987E-E0B810D2A6F2")

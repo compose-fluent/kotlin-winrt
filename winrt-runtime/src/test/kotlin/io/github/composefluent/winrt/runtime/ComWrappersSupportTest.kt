@@ -221,7 +221,7 @@ class ComWrappersSupportTest {
     }
 
     @Test
-    fun ccw_augmentation_preserves_existing_hidden_interfaces_and_appends_tracker_target() {
+    fun ccw_augmentation_preserves_existing_hidden_interfaces_and_appends_reference_tracker_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
         val publicInterfaceId = Guid("67676767-6767-6767-6767-676767676767")
         val hiddenInterfaceId = Guid("68686868-6868-6868-6868-686868686868")
@@ -250,6 +250,9 @@ class ComWrappersSupportTest {
             }
             ccw.queryInterface(IID.IReferenceTrackerTarget).getOrThrow().use { trackerTarget ->
                 assertTrue(trackerTarget.sameIdentity(ccw))
+            }
+            ccw.queryInterface(IID.IReferenceTrackerExtension).getOrThrow().use { trackerExtension ->
+                assertTrue(trackerExtension.sameIdentity(ccw))
             }
             val info = ComWrappersSupport.getInspectableInfo(ccw.pointer)
             assertEquals(

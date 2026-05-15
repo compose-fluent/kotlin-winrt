@@ -186,7 +186,8 @@ class EventRuntimeInfrastructureTest {
             WinRtWindowsAppSdkBootstrap.Scope(
                 bootstrapDll = bootstrapDll,
                 activationContexts = emptyList(),
-                lookup = null,
+                bootstrapLookup = null,
+                windowsAppRuntimeLookup = null,
             ).close()
 
             assertEquals(1, removals)
