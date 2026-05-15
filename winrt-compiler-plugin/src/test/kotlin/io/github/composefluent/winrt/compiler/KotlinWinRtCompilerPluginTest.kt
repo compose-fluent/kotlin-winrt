@@ -252,6 +252,7 @@ class KotlinWinRtCompilerPluginTest {
 
         val entries = readEventProjectionEntries(input)
         writeEventProjectionRegistryClass(entries, outputDirectory)
+        writeEventProjectionResource(entries, outputDirectory)
 
         URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
             val klass = Class.forName(
@@ -298,6 +299,9 @@ class KotlinWinRtCompilerPluginTest {
             0,
         )
         assertEquals(listOf(Opcodes.INVOKEVIRTUAL), eventSourceRuntimeCalls)
+        val resource = outputDirectory.resolve("kotlin-winrt/event-sources.tsv")
+        assertTrue(Files.isRegularFile(resource))
+        assertTrue(Files.readString(resource).contains("Windows.Foundation.EventHandler<Int>\tSample.Foundation.IWidget"))
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
@@ -126,16 +127,16 @@ private fun generatedEventInterface(eventType: String): Class<*> {
     return Class.forName(projectedJvmClassName(rawTypeName))
 }
 
-private fun projectedJvmClassName(typeName: String): String {
+internal fun projectedJvmClassName(typeName: String): String {
     val packageName = typeName.substringBeforeLast('.', missingDelimiterValue = "")
     val className = typeName.substringAfterLast('.')
     if (packageName.isBlank()) {
         return className
     }
-    return packageName.split('.').joinToString(".") { it.replaceFirstChar(Char::lowercase) } + ".$className"
+    return packageName.split('.').joinToString(".") { it.lowercase() } + ".$className"
 }
 
-private fun invokeHandler(
+internal fun invokeHandler(
     handler: Any,
     arguments: List<Any?>,
 ): Any? {
@@ -145,7 +146,12 @@ private fun invokeHandler(
         "Generated event handler '${handler.javaClass.name}' does not expose invoke/${arguments.size}.",
         KnownHResults.E_NOTIMPL,
     )
-    return method.invoke(handler, *arguments.toTypedArray())
+    return try {
+        method.isAccessible = true
+        method.invoke(handler, *arguments.toTypedArray())
+    } catch (exception: InvocationTargetException) {
+        throw exception.cause ?: exception
+    }
 }
 
 private fun defaultReturnValue(kind: WinRtDelegateValueKind): Any? =

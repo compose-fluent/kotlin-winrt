@@ -9,6 +9,9 @@ private const val WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS: String =
 private const val WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar"
 
+private const val WINRT_EVENT_PROJECTION_REGISTRY_CLASS: String =
+    "io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry"
+
 internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
     val classLoader = Thread.currentThread().contextClassLoader
         ?: WinRtTypeRegistry::class.java.classLoader
@@ -22,6 +25,21 @@ internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
         resource.openStream().bufferedReader().useLines { lines ->
             lines.filter(String::isNotBlank)
                 .forEach { line -> registerProjectionTypeIndexLine(classLoader, line) }
+        }
+    }
+}
+
+internal actual fun registerCompilerGeneratedEventSources() {
+    val classLoader = Thread.currentThread().contextClassLoader
+        ?: WinRtTypeRegistry::class.java.classLoader
+        ?: return
+    registerGeneratedProjectionRegistry(classLoader, WINRT_EVENT_PROJECTION_REGISTRY_CLASS)
+    val resources = classLoader.getResources(WINRT_EVENT_SOURCE_RESOURCE).toList()
+    resources.forEach { resource ->
+        resource.openStream().bufferedReader().useLines { lines ->
+            lines.filter(String::isNotBlank)
+                .filterNot { line -> line.startsWith("eventType\t") }
+                .forEach(::registerEventSourceLine)
         }
     }
 }
@@ -73,3 +91,32 @@ private fun registerProjectionTypeIndexLine(
         baseTypeName = baseTypeName,
     )
 }
+
+private fun registerEventSourceLine(line: String) {
+    val parts = line.split('\t', limit = 10)
+    val eventType = parts.getOrElse(0) { "" }
+    val ownerType = parts.getOrElse(1) { "" }
+    if (eventType.isBlank() || ownerType.isBlank()) {
+        return
+    }
+    val descriptor = WinRtEventSourceDescriptor(
+        eventType = eventType,
+        ownerType = ownerType,
+        sourceClass = parts.getOrElse(2) { "" },
+        abiEventType = parts.getOrElse(3) { "" },
+        genericArguments = parts.getOrElse(4) { "" }.splitListField(),
+        usesSharedEventHandlerSource = parts.getOrElse(5) { "" }.toBooleanStrictOrNull() ?: false,
+        interfaceId = parts.getOrElse(6) { "" }.takeIf(String::isNotBlank)?.let(::Guid),
+        parameterKinds = parts.getOrElse(7) { "" }.splitListField().mapNotNull(::delegateValueKindOrNull),
+        returnKind = delegateValueKindOrNull(parts.getOrElse(8) { "" }) ?: WinRtDelegateValueKind.UNIT,
+        parameterTypeNames = parts.getOrElse(9) { "" }.splitListField(),
+    )
+    val factory = WinRtGeneratedEventSourceRuntime.createEventSourceFactory(descriptor)
+    WinRtEventSourceRuntime.registerEventSource(descriptor.copy(eventSourceFactory = factory))
+}
+
+private fun String.splitListField(): List<String> =
+    split(',').filter(String::isNotBlank)
+
+private fun delegateValueKindOrNull(name: String): WinRtDelegateValueKind? =
+    runCatching { WinRtDelegateValueKind.valueOf(name) }.getOrNull()

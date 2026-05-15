@@ -46,10 +46,16 @@ object WinRtEventSourceRuntime {
         ownerType: String,
         objectReference: ComObjectReference,
         vtableIndexForAddHandler: Int,
-    ): EventSource<*>? =
-        descriptorFor(eventType, ownerType)
+    ): EventSource<*>? {
+        val descriptor = descriptorFor(eventType, ownerType)
+            ?: run {
+                registerCompilerGeneratedEventSources()
+                descriptorFor(eventType, ownerType)
+            }
+        return descriptor
             ?.eventSourceFactory
             ?.invoke(objectReference, vtableIndexForAddHandler)
+    }
 
     internal fun clearForTests() {
         descriptorsByKey.clear()

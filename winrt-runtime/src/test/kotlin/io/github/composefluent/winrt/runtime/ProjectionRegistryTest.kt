@@ -140,6 +140,45 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun compiler_generated_event_source_loader_keeps_resource_entries_after_fixed_registry() {
+        WinRtEventSourceRuntime.clearForTests()
+
+        registerCompilerGeneratedEventSources()
+
+        val descriptor = WinRtEventSourceRuntime.descriptorFor(
+            eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
+            ownerType = "Contoso.ResourceIndexedOwner",
+        )
+        assertEquals("Contoso.ResourceIndexedOwner", descriptor?.ownerType)
+        assertEquals(Guid("aaaaaaaa-bbbb-5ccc-8ddd-eeeeeeeeeeee"), descriptor?.interfaceId)
+        assertEquals(listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.IINSPECTABLE), descriptor?.parameterKinds)
+        assertEquals(WinRtDelegateValueKind.UNIT, descriptor?.returnKind)
+        assertTrue(descriptor?.eventSourceFactory != null)
+    }
+
+    @Test
+    fun generated_event_source_runtime_maps_acronym_namespaces_to_generated_packages() {
+        assertEquals(
+            "microsoft.ui.xaml.RoutedEventHandler",
+            projectedJvmClassName("Microsoft.UI.Xaml.RoutedEventHandler"),
+        )
+        assertEquals(
+            "windows.foundation.TypedEventHandler",
+            projectedJvmClassName("Windows.Foundation.TypedEventHandler"),
+        )
+    }
+
+    @Test
+    fun generated_event_source_runtime_invokes_kotlin_lambda_handlers_accessibly() {
+        val received = mutableListOf<String>()
+        val handler: (Any?, Any?) -> Unit = { _, args -> received += args?.javaClass?.simpleName ?: "null" }
+
+        invokeHandler(handler, listOf("sender", "args"))
+
+        assertEquals(listOf("String"), received)
+    }
+
+    @Test
     fun generated_interface_projection_wrap_retries_compiler_generated_registry_on_miss() {
         ComWrappersSupport.clearRegistriesForTests()
         clearGeneratedInterfaceProjectionFactoriesForTest()
