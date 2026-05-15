@@ -20,9 +20,14 @@ object WinRtEventSourceRuntime {
     private val descriptorsByKey = ConcurrentCacheMap<String, WinRtEventSourceDescriptor>()
 
     fun registerEventSource(descriptor: WinRtEventSourceDescriptor) {
-        descriptorsByKey[eventSourceKey(descriptor.eventType, descriptor.ownerType)] = descriptor.copy(
+        val key = eventSourceKey(descriptor.eventType, descriptor.ownerType)
+        val normalized = descriptor.copy(
             genericArguments = descriptor.genericArguments.distinct(),
         )
+        val existing = descriptorsByKey[key]
+        if (existing == null || normalized.completenessScore() >= existing.completenessScore()) {
+            descriptorsByKey[key] = normalized
+        }
     }
 
     fun descriptorFor(
@@ -47,11 +52,15 @@ object WinRtEventSourceRuntime {
         objectReference: ComObjectReference,
         vtableIndexForAddHandler: Int,
     ): EventSource<*>? {
-        val descriptor = descriptorFor(eventType, ownerType)
-            ?: run {
+        var descriptor = descriptorFor(eventType, ownerType)
+        if (descriptor?.eventSourceFactory == null) {
+            run {
                 registerCompilerGeneratedEventSources()
                 descriptorFor(eventType, ownerType)
             }
+                ?.takeIf { candidate -> candidate.eventSourceFactory != null || descriptor == null }
+                ?.let { candidate -> descriptor = candidate }
+        }
         return descriptor
             ?.eventSourceFactory
             ?.invoke(objectReference, vtableIndexForAddHandler)
@@ -65,4 +74,13 @@ object WinRtEventSourceRuntime {
         eventType: String,
         ownerType: String,
     ): String = "$eventType->$ownerType"
+
+    private fun WinRtEventSourceDescriptor.completenessScore(): Int =
+        listOfNotNull(
+            1,
+            interfaceId?.let { 1 },
+            parameterKinds.takeIf(List<*>::isNotEmpty)?.let { 1 },
+            parameterTypeNames.takeIf(List<*>::isNotEmpty)?.let { 1 },
+            eventSourceFactory?.let { 1 },
+        ).sum()
 }

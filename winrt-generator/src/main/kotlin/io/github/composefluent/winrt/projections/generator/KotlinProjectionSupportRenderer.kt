@@ -459,6 +459,7 @@ class KotlinProjectionSupportRenderer {
             prefix = "eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource\tinterfaceId\tparameterKinds\treturnKind\tparameterTypeNames\n",
         ) { entry ->
             val invokeShape = concreteEventInvokeShape(entry, typesByQualifiedName)
+            val invokeFields = eventSourceInvokeFields(entry, invokeShape, typesByQualifiedName)
             listOf(
                 entry.eventTypeName,
                 entry.ownerTypeName,
@@ -466,10 +467,10 @@ class KotlinProjectionSupportRenderer {
                 entry.abiEventTypeName,
                 entry.genericArgumentTypeNames.joinToString(","),
                 entry.usesSharedEventHandlerSource.toString(),
-                entry.interfaceId?.toString() ?: invokeShape?.interfaceId?.toString().orEmpty(),
-                invokeShape?.parameterBindings.orEmpty().joinToString(",") { binding -> eventSourceDelegateValueKindEnumName(binding.typeBinding) },
-                invokeShape?.returnBinding?.let(::eventSourceDelegateValueKindEnumName).orEmpty(),
-                invokeShape?.parameterBindings.orEmpty().joinToString(",") { binding -> binding.typeBinding.typeName },
+                entry.interfaceId?.toString() ?: invokeFields.interfaceId?.toString().orEmpty(),
+                invokeFields.parameterKinds.joinToString(","),
+                invokeFields.returnKind,
+                invokeFields.parameterTypeNames.joinToString(","),
             ).joinToString("\t")
         }
         return KotlinProjectionFile(
@@ -3237,6 +3238,61 @@ class KotlinProjectionSupportRenderer {
         return typeRenderer.outboundDelegateInvokeShape(typeBinding)
             ?.substituteDelegateTypeArguments(typeBinding.typeArguments)
     }
+
+    private fun eventSourceInvokeFields(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        invokeShape: KotlinProjectionDelegateInvokeShape?,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): EventSourceInvokeFields {
+        if (invokeShape != null) {
+            return EventSourceInvokeFields(
+                interfaceId = invokeShape.interfaceId,
+                parameterKinds = invokeShape.parameterBindings.map { binding ->
+                    eventSourceDelegateValueKindEnumName(binding.typeBinding)
+                },
+                returnKind = eventSourceDelegateValueKindEnumName(invokeShape.returnBinding),
+                parameterTypeNames = invokeShape.parameterBindings.map { binding -> binding.typeBinding.typeName },
+            )
+        }
+        val rawEventType = descriptor.eventTypeName.substringBefore('<')
+        val genericArgumentBindings = descriptor.genericArgumentTypeNames.map { argument ->
+            planner.classifyAbiTypeBinding(
+                typeName = argument,
+                currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+                typesByQualifiedName = typesByQualifiedName,
+            )
+        }
+        val parameterBindings = when (rawEventType) {
+            "System.EventHandler",
+            "Windows.Foundation.EventHandler",
+            -> listOf(
+                planner.classifyAbiTypeBinding(
+                    typeName = "System.Object",
+                    currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+                    typesByQualifiedName = typesByQualifiedName,
+                ),
+            ) + genericArgumentBindings.take(1)
+            "Windows.Foundation.TypedEventHandler" -> genericArgumentBindings.take(2)
+            else -> emptyList()
+        }
+        return EventSourceInvokeFields(
+            interfaceId = null,
+            parameterKinds = parameterBindings.map(::eventSourceDelegateValueKindEnumName),
+            returnKind = "UNIT",
+            parameterTypeNames = if (rawEventType == "Windows.Foundation.EventHandler" || rawEventType == "System.EventHandler") {
+                listOf("Any") + descriptor.genericArgumentTypeNames.take(1)
+            } else {
+                descriptor.genericArgumentTypeNames.take(parameterBindings.size)
+            },
+        )
+    }
+
+    private data class EventSourceInvokeFields(
+        val interfaceId: Guid?,
+        val parameterKinds: List<String>,
+        val returnKind: String,
+        val parameterTypeNames: List<String>,
+    )
 
     private fun KotlinProjectionDelegateInvokeShape.substituteDelegateTypeArguments(
         typeArguments: List<KotlinProjectionAbiTypeBinding>,

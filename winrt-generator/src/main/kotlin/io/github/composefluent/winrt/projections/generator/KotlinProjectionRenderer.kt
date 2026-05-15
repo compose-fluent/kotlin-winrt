@@ -2455,7 +2455,8 @@ class KotlinProjectionRenderer(
                         .addModifiers(KModifier.OPERATOR)
                         .addParameter("flag", resolveTypeName(plan.type.qualifiedName))
                         .returns(Boolean::class)
-                        .addCode("return (abiValue and flag.abiValue) == flag.abiValue\n")
+                        .addStatement("val masked = abiValue and flag.abiValue")
+                        .addStatement("return masked == flag.abiValue")
                         .build(),
                 )
                 addFunction(

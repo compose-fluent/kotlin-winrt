@@ -37,4 +37,36 @@ class WinRtEventSourceRuntimeTest {
         assertEquals(listOf(registered), WinRtEventSourceRuntime.descriptorsForEventType("Windows.Foundation.EventHandler<Int>"))
         assertEquals(listOf(registered), WinRtEventSourceRuntime.descriptorsForOwnerType("Sample.Foundation.IWidget"))
     }
+
+    @Test
+    fun runtime_keeps_more_complete_event_source_descriptor_for_duplicate_keys() {
+        val incomplete = WinRtEventSourceDescriptor(
+            eventType = "Windows.Foundation.EventHandler<System.Object>",
+            ownerType = "Sample.Foundation.IWidget",
+            sourceClass = "EventHandlerEventSource",
+            abiEventType = "Windows.Foundation.EventHandler<System.Object>",
+            genericArguments = listOf("System.Object"),
+            usesSharedEventHandlerSource = true,
+        )
+        val complete = incomplete.copy(
+            interfaceId = Guid("c50898f6-c536-5f47-8583-8b2c2438a13b"),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.OBJECT),
+            returnKind = WinRtDelegateValueKind.UNIT,
+            parameterTypeNames = listOf("Any", "System.Object"),
+            eventSourceFactory = { _, _ -> error("not invoked") },
+        )
+
+        WinRtEventSourceRuntime.registerEventSource(complete)
+        WinRtEventSourceRuntime.registerEventSource(incomplete)
+
+        val registered = assertNotNull(
+            WinRtEventSourceRuntime.descriptorFor(
+                eventType = "Windows.Foundation.EventHandler<System.Object>",
+                ownerType = "Sample.Foundation.IWidget",
+            ),
+        )
+        assertEquals(complete.interfaceId, registered.interfaceId)
+        assertEquals(complete.parameterKinds, registered.parameterKinds)
+        assertNotNull(registered.eventSourceFactory)
+    }
 }

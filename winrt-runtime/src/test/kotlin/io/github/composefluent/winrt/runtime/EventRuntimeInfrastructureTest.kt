@@ -340,6 +340,71 @@ class EventRuntimeInfrastructureTest {
     }
 
     @Test
+    fun generated_event_source_runtime_uses_shared_event_handler_source_for_event_handler_descriptors() {
+        EventSourceCache.clearForTests()
+
+        var activeDelegate: WinRtDelegateReference? = null
+        val token = EventRegistrationToken(0x22446688_00000005)
+        val ownerHost = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = testEventOwnerInterfaceId,
+                    methods = listOf(
+                        WinRtInspectableMethodDefinition(addEventHandlerTestDescriptor) { args ->
+                            activeDelegate?.close()
+                            WinRtPlatformApi.addRefRaw(args[0] as NativePointer)
+                            activeDelegate = WinRtDelegateReference.fromAbi(
+                                args[0] as NativePointer,
+                                eventHandlerObjectDescriptor,
+                            )
+                            EventRegistrationToken.copyTo(token, args[1] as NativePointer)
+                            KnownHResults.S_OK.value
+                        },
+                        WinRtInspectableMethodDefinition(removeEventHandlerTestDescriptor) { args ->
+                            assertEquals(token, EventRegistrationToken(args[0] as Long))
+                            activeDelegate?.close()
+                            activeDelegate = null
+                            KnownHResults.S_OK.value
+                        },
+                    ),
+                ),
+            ),
+            runtimeClassName = "test.Owner",
+        )
+        val owner = ownerHost.createPrimaryReference()
+        val source = WinRtGeneratedEventSourceRuntime.createEventSourceFactory(
+            WinRtEventSourceDescriptor(
+                eventType = "Windows.Foundation.EventHandler<System.Object>",
+                ownerType = "test.Owner",
+                sourceClass = "EventHandlerEventSource",
+                abiEventType = "Windows.Foundation.EventHandler<System.Object>",
+                genericArguments = listOf("System.Object"),
+                usesSharedEventHandlerSource = true,
+                interfaceId = eventHandlerObjectInterfaceId,
+                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.OBJECT),
+                returnKind = WinRtDelegateValueKind.UNIT,
+                parameterTypeNames = listOf("System.Object", "System.Object"),
+            ),
+        )!!(owner, IInspectableVftblSlots.FirstCustom) as EventSource<EventHandlerCallback<Any?>>
+        val received = mutableListOf<Pair<Any?, Any?>>()
+        val handler: EventHandlerCallback<Any?> = { sender, args -> received += sender to args }
+
+        try {
+            source.subscribe(handler)
+            activeDelegate!!.invoke(listOf("sender", "args"))
+
+            assertEquals(listOf("sender" to "args"), received)
+            source.unsubscribe(handler)
+            assertNull(activeDelegate)
+        } finally {
+            activeDelegate?.close()
+            owner.close()
+            ownerHost.close()
+            EventSourceCache.clearForTests()
+        }
+    }
+
+    @Test
     fun standard_delegates_round_trip_event_token_through_vtable_slots() {
         TestEventHost().use { host ->
             host.createReference().use { owner ->
@@ -478,6 +543,12 @@ class EventRuntimeInfrastructureTest {
             WinRtDelegateDescriptor(
                 interfaceId = generatedObjectEventInterfaceId,
                 parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+            )
+        private val eventHandlerObjectInterfaceId = Guid("C50898F6-C536-5F47-8583-8B2C2438A13B")
+        private val eventHandlerObjectDescriptor =
+            WinRtDelegateDescriptor(
+                interfaceId = eventHandlerObjectInterfaceId,
+                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.OBJECT),
             )
         private val addEventHandlerTestDescriptor = AbiFunctionDescriptor.of(
             NativeValueLayout.JAVA_INT,

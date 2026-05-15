@@ -7,6 +7,7 @@ import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRunti
 import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -153,6 +154,43 @@ class ProjectionRegistryTest {
         assertEquals(Guid("aaaaaaaa-bbbb-5ccc-8ddd-eeeeeeeeeeee"), descriptor?.interfaceId)
         assertEquals(listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.IINSPECTABLE), descriptor?.parameterKinds)
         assertEquals(WinRtDelegateValueKind.UNIT, descriptor?.returnKind)
+        assertTrue(descriptor?.eventSourceFactory != null)
+    }
+
+    @Test
+    fun compiler_generated_event_source_loader_upgrades_incomplete_duplicate_entries() {
+        WinRtEventSourceRuntime.clearForTests()
+        WinRtEventSourceRuntime.registerEventSource(
+            WinRtEventSourceDescriptor(
+                eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
+                ownerType = "Contoso.ResourceIndexedOwner",
+                sourceClass = "_EventSource_Windows_Foundation_TypedEventHandler_System_Object__Contoso_GeneratedEventArgs_",
+                abiEventType = "Windows.Foundation.TypedEventHandler`2",
+                genericArguments = listOf("System.Object", "Contoso.GeneratedEventArgs"),
+            ),
+        )
+
+        val ownerHost = WinRtInspectableComObject.inspectableBox("owner", "Contoso.ResourceIndexedOwner")
+        val owner = ownerHost.createPrimaryReference()
+        val source = try {
+            WinRtEventSourceRuntime.createEventSource(
+                eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
+                ownerType = "Contoso.ResourceIndexedOwner",
+                objectReference = owner,
+                vtableIndexForAddHandler = IInspectableVftblSlots.FirstCustom,
+            )
+        } finally {
+            owner.close()
+            ownerHost.close()
+        }
+        val descriptor = WinRtEventSourceRuntime.descriptorFor(
+            eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
+            ownerType = "Contoso.ResourceIndexedOwner",
+        )
+
+        assertNotNull(source)
+        assertEquals(Guid("aaaaaaaa-bbbb-5ccc-8ddd-eeeeeeeeeeee"), descriptor?.interfaceId)
+        assertEquals(listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.IINSPECTABLE), descriptor?.parameterKinds)
         assertTrue(descriptor?.eventSourceFactory != null)
     }
 

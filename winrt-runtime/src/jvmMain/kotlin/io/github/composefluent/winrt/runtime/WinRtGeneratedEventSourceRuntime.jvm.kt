@@ -10,6 +10,17 @@ object WinRtGeneratedEventSourceRuntime {
         if (descriptor.interfaceId == null || descriptor.parameterKinds.isEmpty()) {
             return null
         }
+        if (descriptor.usesSharedEventHandlerSource) {
+            val argsKind = descriptor.parameterKinds.getOrNull(1) ?: return null
+            return { objectReference, index ->
+                EventHandlerEventSource<Any?>(
+                    objectReference = objectReference,
+                    interfaceId = descriptor.interfaceId,
+                    argsKind = argsKind,
+                    vtableIndexForAddHandler = index,
+                )
+            }
+        }
         return { objectReference, index ->
             GeneratedEventSource(
                 descriptor = descriptor,
