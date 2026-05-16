@@ -430,6 +430,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
 
     private fun stageProjectPriResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
         val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
         var copied = false
         projectPriResourceFiles.files
             .asSequence()
@@ -450,7 +451,13 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                             }
                     }
                 } else if (source.isRegularFile()) {
-                    val target = projectPriRoot.resolve(initialPath).resolve(source.name)
+                    val normalizedSource = source.toAbsolutePath().normalize()
+                    val relativeTarget = if (root != null && normalizedSource.startsWith(root)) {
+                        normalizedSource.relativeTo(root)
+                    } else {
+                        source.name.let(Path::of)
+                    }
+                    val target = projectPriRoot.resolve(initialPath).resolve(relativeTarget)
                     if (copyProjectPriInput(source, target, copiedTargets)) {
                         copied = true
                     }
