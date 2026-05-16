@@ -965,6 +965,67 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_uses_manifest_identity_as_default_project_pri_index_name() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val manifest = project.layout.buildDirectory.file("PackageIdentity.appxmanifest").get().asFile.toPath()
+        Files.createDirectories(manifest.parent)
+        Files.writeString(
+            manifest,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.ManifestIdentity" Publisher="CN=Contoso" Version="1.0.0.0" />
+              <Resources>
+                <Resource Language="en-US" />
+              </Resources>
+            </Package>
+            """.trimIndent(),
+        )
+        val resource = project.projectDir.toPath().resolve("Strings/en-US/Resources.resw")
+        Files.createDirectories(resource.parent)
+        Files.writeString(resource, "resw")
+        val makePriLog = project.layout.buildDirectory.file("makepri-manifest-index.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-manifest-index.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageManifestIndexPriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-manifest-index-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("")
+            registeredTask.projectPriFallbackIndexName.set("GradleProjectName")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(true)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultProjectPriResourceFiles.from(
+                project.fileTree(project.projectDir) { spec -> spec.include("**/*.resw") },
+            )
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("/in Contoso.ManifestIdentity"))
+    }
+
+    @Test
     fun runtime_assets_task_deduplicates_application_pri_inputs_by_target_path() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

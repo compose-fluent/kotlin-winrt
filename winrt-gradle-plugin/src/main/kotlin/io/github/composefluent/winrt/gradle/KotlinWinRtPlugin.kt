@@ -273,9 +273,10 @@ private fun configureWinRtApplicationTasks(
             task.generateProjectPri.set(extension.application.generateProjectPri)
             task.projectPriIndexName.set(
                 project.provider {
-                    extension.application.projectPriIndexName.orNull?.takeIf(String::isNotBlank) ?: project.name
+                    extension.application.projectPriIndexName.orNull.orEmpty()
                 },
             )
+            task.projectPriFallbackIndexName.set(project.name)
             task.projectPriInitialPath.set(extension.application.projectPriInitialPath)
             task.projectPriDefaultLanguage.set(extension.application.projectPriDefaultLanguage)
             task.projectPriDefaultQualifiers.set(extension.application.projectPriDefaultQualifiers)

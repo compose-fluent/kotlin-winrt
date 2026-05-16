@@ -64,6 +64,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val projectPriIndexName: Property<String>
 
     @get:Input
+    abstract val projectPriFallbackIndexName: Property<String>
+
+    @get:Input
     abstract val projectPriInitialPath: Property<String>
 
     @get:Input
@@ -145,7 +148,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
 
     init {
         generateProjectPri.convention(true)
-        projectPriIndexName.convention("Application")
+        projectPriIndexName.convention("")
+        projectPriFallbackIndexName.convention("Application")
         projectPriInitialPath.convention("")
         projectPriDefaultLanguage.convention("")
         projectPriDefaultQualifiers.convention(listOf("scale-200", "contrast-standard"))
@@ -410,7 +414,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 "/of",
                 output.toString(),
                 "/in",
-                projectPriIndexName.get(),
+                projectPriIndexName(),
                 "/o",
             ),
             outputRoot,
@@ -713,6 +717,34 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .asSequence()
             .mapNotNull { index -> resources.item(index)?.attributes?.getNamedItem("Language")?.nodeValue?.trim() }
             .firstOrNull { it.isNotBlank() && !it.equals("x-generate", ignoreCase = true) }
+    }
+
+    private fun projectPriIndexName(): String =
+        projectPriIndexName.get().ifBlank {
+            appxManifestFiles.files
+                .asSequence()
+                .mapNotNull { file -> readManifestIdentityName(file.toPath()) }
+                .firstOrNull()
+                ?: projectPriFallbackIndexName.get().ifBlank { "Application" }
+        }
+
+    private fun readManifestIdentityName(manifest: Path): String? {
+        if (!manifest.isRegularFile()) {
+            return null
+        }
+        val document = runCatching {
+            DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = true
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
+                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+            }.newDocumentBuilder().parse(manifest.toFile())
+        }.getOrNull() ?: return null
+        val identities = document.getElementsByTagNameNS("*", "Identity")
+        return (0 until identities.length)
+            .asSequence()
+            .mapNotNull { index -> identities.item(index)?.attributes?.getNamedItem("Name")?.nodeValue?.trim() }
+            .firstOrNull { it.isNotBlank() }
     }
 
     private fun discoverMakePriExecutable(): Path? {
