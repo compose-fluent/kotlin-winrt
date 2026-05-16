@@ -388,7 +388,7 @@ class KotlinProjectionPlanner(
                 )?.let(::add)
             }
             type.properties.filterNot { it.isStatic }.forEach { property ->
-                val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName)
+                val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, typesByQualifiedName)
                 if (property.getterMethodName != null) {
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
@@ -553,7 +553,7 @@ class KotlinProjectionPlanner(
             staticInterfaces.flatMap { staticInterface ->
                 staticInterface.properties.map { property -> staticInterface to property.copy(isStatic = true) }
             }.forEach { (staticInterface, property) ->
-                val propertyTypeName = property.projectedPropertyTypeName(staticInterface.qualifiedName)
+                val propertyTypeName = property.projectedPropertyTypeName(staticInterface.qualifiedName, typesByQualifiedName)
                 if (property.getterMethodName != null) {
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,

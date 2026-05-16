@@ -132,6 +132,16 @@ object WinRtSystemProjectionMarshalers {
         interfaceId: Guid,
     ): ComObjectReference =
         ComWrappersSupport.createCCWForObject(value, interfaceId)
+
+    fun createObjectReferenceOrNull(
+        value: Any?,
+        interfaceId: Guid,
+    ): ComObjectReference =
+        if (value == null) {
+            ComObjectReference(PlatformAbi.nullComPtr, interfaceId, preventReleaseOnDispose = true)
+        } else {
+            createObjectReference(value, interfaceId)
+        }
 }
 
 @WinRtGuid("9E365E57-48B2-4160-956F-C7385120BBFC")

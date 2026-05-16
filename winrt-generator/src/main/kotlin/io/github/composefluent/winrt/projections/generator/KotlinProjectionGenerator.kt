@@ -153,7 +153,7 @@ class KotlinProjectionGenerator(
         if (emitSupportFiles) {
             supportFiles(normalizedModel, plans).forEach(::write)
         }
-        val deleted = deleteStaleKotlinFiles(outputRoot, expectedPaths)
+        val deleted = deleteStaleGeneratedFiles(outputRoot, expectedPaths)
         return KotlinProjectionWriteSummary(
             renderedFiles = rendered,
             writtenFiles = written,
@@ -212,14 +212,14 @@ class KotlinProjectionGenerator(
         }
     }
 
-    private fun deleteStaleKotlinFiles(outputRoot: Path, expectedPaths: Set<String>): Int {
+    private fun deleteStaleGeneratedFiles(outputRoot: Path, expectedPaths: Set<String>): Int {
         if (!Files.isDirectory(outputRoot)) {
             return 0
         }
         var deleted = 0
         Files.walk(outputRoot).use { stream ->
             stream
-                .filter { Files.isRegularFile(it) && it.extension == "kt" }
+                .filter { Files.isRegularFile(it) && it.isStaleGeneratedProjectionCandidate(outputRoot) }
                 .filter { it.toAbsolutePath().normalize().toString() !in expectedPaths }
                 .forEach { staleFile ->
                     Files.deleteIfExists(staleFile)
@@ -227,6 +227,15 @@ class KotlinProjectionGenerator(
                 }
         }
         return deleted
+    }
+
+    private fun Path.isStaleGeneratedProjectionCandidate(outputRoot: Path): Boolean {
+        if (extension == "kt") {
+            return true
+        }
+        val relativePath = outputRoot.relativize(this).toString().replace('\\', '/')
+        return relativePath.startsWith("kotlin-winrt-support/") ||
+            relativePath.startsWith("commonMain/kotlin/kotlin-winrt-support/")
     }
 }
 

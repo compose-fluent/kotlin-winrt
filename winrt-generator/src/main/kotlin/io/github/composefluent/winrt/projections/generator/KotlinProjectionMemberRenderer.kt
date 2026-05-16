@@ -280,10 +280,11 @@ internal fun KotlinProjectionRenderer.renderRuntimeMethod(
 internal fun KotlinProjectionRenderer.renderInterfaceProperty(
     ownerTypeName: String,
     property: WinRtPropertyDefinition,
+    typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
 ): PropertySpec =
     PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
-        resolveTypeName(property.projectedPropertyTypeName(ownerTypeName)),
+        resolveTypeName(property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)),
     )
         .mutable(!property.isReadOnly)
         .addModifiers(KModifier.ABSTRACT)
@@ -293,8 +294,9 @@ internal fun KotlinProjectionRenderer.renderStubProperty(
     ownerTypeName: String,
     property: WinRtPropertyDefinition,
     override: Boolean = false,
+    typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
 ): PropertySpec {
-    val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName)
+    val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(propertyTypeName),
@@ -501,7 +503,7 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     val getterBinding = plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
-    val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName)
+    val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(propertyTypeName),
@@ -1437,9 +1439,9 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
                 .forEach { property ->
                     val substitutedProperty = requiredInterface.substitute(property)
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
-                    val propertyTypeName = substitutedProperty.projectedPropertyTypeName(requiredInterface.interfaceName)
+                    val propertyTypeName = substitutedProperty.projectedPropertyTypeName(requiredInterface.interfaceName, plan.typesByQualifiedName)
                     propertyForwards[propertyName] = propertyForwards[propertyName]
-                        ?.merge(requiredInterface.interfaceName, interfaceType, substitutedProperty)
+                        ?.merge(requiredInterface.interfaceName, interfaceType, substitutedProperty, plan.typesByQualifiedName)
                         ?: RequiredForwardProperty(
                             propertyName = propertyName,
                             propertyTypeName = propertyTypeName,
@@ -1518,8 +1520,9 @@ private data class RequiredForwardProperty(
         ownerInterfaceName: String,
         slotInterfaceType: WinRtTypeDefinition,
         property: WinRtPropertyDefinition,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): RequiredForwardProperty {
-        val projectedTypeName = property.projectedPropertyTypeName(ownerInterfaceName)
+        val projectedTypeName = property.projectedPropertyTypeName(ownerInterfaceName, typesByQualifiedName)
         require(projectedTypeName == propertyTypeName) {
             "Cannot merge required interface property '$propertyName' with incompatible types: $propertyTypeName vs $projectedTypeName"
         }
@@ -1644,7 +1647,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         .orEmpty()
     builder.addProjectedAttributeAnnotations(projectedAttributes)
     property.getter?.let { getter ->
-        val getterTypeName = getter.property.projectedPropertyTypeName(getter.ownerInterfaceName)
+        val getterTypeName = getter.property.projectedPropertyTypeName(getter.ownerInterfaceName, plan.typesByQualifiedName)
         val callPlan = buildAbiCallPlan(
             returnBinding = renderAbiTypeBinding(getterTypeName),
             parameterBindings = emptyList(),
@@ -1658,7 +1661,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         builder.getter(FunSpec.getterBuilder().addCode("%L\n", invocation).build())
     }
     property.setter?.let { setter ->
-        val setterTypeName = setter.property.projectedPropertyTypeName(setter.ownerInterfaceName)
+        val setterTypeName = setter.property.projectedPropertyTypeName(setter.ownerInterfaceName, plan.typesByQualifiedName)
         val callPlan = buildAbiCallPlan(
             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
             parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setterTypeName))),

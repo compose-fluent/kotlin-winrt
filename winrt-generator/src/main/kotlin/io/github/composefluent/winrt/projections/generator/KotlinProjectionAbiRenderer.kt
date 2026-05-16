@@ -185,7 +185,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
                 CodeBlock.of(
                     "%T.%L(%L, %T(%S)).use { %L ->",
                     WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
-                    customAbi.createReferenceFunctionName,
+                    if (parameterBinding.typeBinding.isNullableAbiTypeName) "createObjectReferenceOrNull" else customAbi.createReferenceFunctionName,
                     parameterName,
                     GUID_CLASS_NAME,
                     customAbi.interfaceId.toString(),

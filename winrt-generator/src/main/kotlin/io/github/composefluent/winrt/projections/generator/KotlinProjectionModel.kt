@@ -156,6 +156,8 @@ internal val WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME = WinRtInspectabl
 internal val WINRT_INSPECTABLE_METHOD_DEFINITION_CLASS_NAME = WinRtInspectableMethodDefinition::class.asClassName()
 internal val WINRT_GENERIC_TYPE_INSTANTIATIONS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTGenericTypeInstantiations")
+internal val WINRT_GENERATED_INTERFACE_PROJECTION_RUNTIME_CLASS_NAME =
+    ClassName("io.github.composefluent.winrt.runtime", "WinRtGeneratedInterfaceProjectionRuntime")
 internal val JVM_INLINE_CLASS_NAME = JvmInline::class.asClassName()
 internal val HRESULT_CLASS_NAME = HResult::class.asClassName()
 internal val HSTRING_CLASS_NAME = HString::class.asClassName()

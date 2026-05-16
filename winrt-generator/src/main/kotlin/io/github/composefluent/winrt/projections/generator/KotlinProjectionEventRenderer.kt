@@ -309,7 +309,9 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
             val projectedStaticEvents = mergedStaticEvents(plan, staticEvents)
             appendMetadataCompanionMembers(this, plan)
             projectedStaticMethods.forEach { addFunction(renderBoundStaticMethod(plan, it) ?: renderStubMethod(it)) }
-            projectedStaticProperties.forEach { addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(plan.type.qualifiedName, it)) }
+            projectedStaticProperties.forEach {
+                addProperty(renderBoundStaticProperty(plan, it) ?: renderStubProperty(plan.type.qualifiedName, it, typesByQualifiedName = plan.typesByQualifiedName))
+            }
             projectedStaticEvents.forEach { event ->
                 val eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && it.isStatic }
                 val addBinding = plan.staticMemberBindings.firstOrNull {
@@ -675,7 +677,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     val getterBinding = plan.staticMemberBindings.firstOrNull {
         it.bindingName == "STATIC_${property.name.uppercase()}_GETTER_SLOT"
     } ?: return null
-    val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName)
+    val propertyTypeName = property.projectedPropertyTypeName(getterBinding.ownerInterfaceQualifiedName, plan.typesByQualifiedName)
     val builder = PropertySpec.builder(
         property.name.replaceFirstChar(Char::lowercase),
         resolveTypeName(propertyTypeName),
@@ -765,8 +767,10 @@ private fun KotlinProjectionRenderer.renderStaticIntrinsicGetter(
         KotlinProjectionAbiValueKind.UInt64 -> "getUInt64"
         KotlinProjectionAbiValueKind.Float -> "getFloat"
         KotlinProjectionAbiValueKind.Double -> "getDouble"
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> "getProjectedRuntimeClass"
-        KotlinProjectionAbiValueKind.ProjectedInterface -> "getProjectedInterface"
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+            if (binding.returnBinding.isNullableAbiReturn) "getNullableProjectedRuntimeClass" else "getProjectedRuntimeClass"
+        KotlinProjectionAbiValueKind.ProjectedInterface ->
+            if (binding.returnBinding.isNullableAbiReturn) "getNullableProjectedInterface" else "getProjectedInterface"
         else -> return null
     }
     val code = CodeBlock.builder()
@@ -779,7 +783,7 @@ private fun KotlinProjectionRenderer.renderStaticIntrinsicGetter(
             KotlinProjectionAbiValueKind.ProjectedInterface,
         )
     ) {
-        code.add(",\n%T.Metadata::wrap", resolveTypeName(binding.returnBinding.typeName))
+        code.add(",\n%T.Metadata::wrap", resolvedReturnClassName(binding.returnBinding) ?: return null)
     }
     code.add(",\n")
     code.unindent()
@@ -1431,7 +1435,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .initializer("%T(%S)", GUID_CLASS_NAME, iid.toString())
                 .build(),
         )
-        if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
+        if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceWrapper(plan)) {
             builder.addProperty(
                 PropertySpec.builder("TYPE_HANDLE", WINRT_TYPE_HANDLE_CLASS_NAME)
                     .initializer("%T(%S, IID)", WINRT_TYPE_HANDLE_CLASS_NAME, projectedClassName.canonicalName)
@@ -1540,7 +1544,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         )
         builder.addInitializerBlock(CodeBlock.of("register()\n"))
     }
-    if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceProxy(plan)) {
+    if (plan.declarationKind == KotlinProjectionDeclarationKind.Interface && canRenderInterfaceWrapper(plan)) {
         builder.addFunction(
             FunSpec.builder("wrap")
                 .apply {
@@ -1553,7 +1557,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .apply {
                     if (canRenderInterfaceNativeProjectionArtifact(plan)) {
                         addCode("return %T.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as %T\n", COM_WRAPPERS_SUPPORT_CLASS_NAME, plan.projectedSelfTypeName())
-                    } else {
+                    } else if (canRenderInterfaceProxy(plan)) {
                         addCode(
                             "return NativeProjection%L(instance)\n",
                             if (plan.type.genericParameterCount == 0) {
@@ -1561,6 +1565,13 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                             } else {
                                 "<${(0 until plan.type.genericParameterCount).joinToString(", ") { index -> "T$index" }}>"
                             },
+                        )
+                    } else {
+                        addCode(
+                            "return %T.create(%T::class.java, TYPE_HANDLE, instance, emptyList()) as %T\n",
+                            WINRT_GENERATED_INTERFACE_PROJECTION_RUNTIME_CLASS_NAME,
+                            ClassName(plan.packageName, plan.type.name),
+                            plan.projectedSelfTypeName(),
                         )
                     }
                 }
@@ -1673,6 +1684,19 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         )
     }
 }
+
+private fun KotlinProjectionRenderer.canRenderInterfaceWrapper(plan: KotlinTypeProjectionPlan): Boolean =
+    canRenderInterfaceProxy(plan) ||
+        canRenderInterfaceNativeProjectionArtifact(plan) ||
+        (
+            useInterfaceProjectionArtifacts &&
+                plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
+                plan.type.genericParameterCount == 0 &&
+                plan.interfaceIid != null &&
+                !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
+                mappedTypeByAbiName(plan.type.qualifiedName)?.abiValueKind != KotlinProjectionAbiValueKind.MappedKeyValuePair &&
+                !isMappedCollectionInterfaceName(plan.type.qualifiedName)
+            )
 
 internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
     builder: TypeSpec.Builder,

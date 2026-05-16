@@ -66,9 +66,13 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
 
     private fun installXamlControlsResources() {
         println("winui-kmp-library: install resources dictionary")
-        val resources = this.resources
+        val resources = checkNotNull(this.resources) {
+            "Application resources were not initialized."
+        }
         println("winui-kmp-library: install resources merged dictionaries")
-        val mergedDictionaries = resources.mergedDictionaries
+        val mergedDictionaries = checkNotNull(resources.mergedDictionaries) {
+            "Application resources did not expose merged dictionaries."
+        }
         println("winui-kmp-library: install resources create controls resources")
         val controlsResources = loadXamlControlsResources()
         println("winui-kmp-library: install resources add")
@@ -104,12 +108,15 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         button.content = "KMP library WinUI"
         textBox.text = "initial"
         println("winui-kmp-library: textBox initial text set")
-        panel.children.add(button)
+        val children = checkNotNull(panel.children) {
+            "Canvas children collection was not initialized."
+        }
+        children.add(button)
         println("winui-kmp-library: button added")
-        panel.children.add(textBox)
+        children.add(textBox)
         println("winui-kmp-library: textBox added")
-        check(panel.children[0] is Button) {
-            "Canvas.children[0] did not recover the Button runtime-class wrapper: ${panel.children[0]::class.qualifiedName}"
+        check(children[0] is Button) {
+            "Canvas.children[0] did not recover the Button runtime-class wrapper: ${children[0]::class.qualifiedName}"
         }
         println("winui-kmp-library: child runtime class recovered")
         Canvas.setLeft(button, 24.0)
@@ -120,7 +127,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: canvas attached positioning set")
         AutomationProperties.setAccessibilityView(button, AccessibilityView.Raw)
         println("winui-kmp-library: detached automation accessibility view set")
-        button.clearValue(AutomationProperties.accessibilityViewProperty)
+        button.clearValue(checkNotNull(AutomationProperties.accessibilityViewProperty) {
+            "AutomationProperties.accessibilityViewProperty was not available."
+        })
         println("winui-kmp-library: detached automation accessibility view cleared")
         window.content = panel
         println("winui-kmp-library: window content set")
@@ -189,7 +198,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         activeEventTokens += textBox.unloaded.add { _, _ ->
             println("winui-kmp-library: text unloaded callback")
             if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-                window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+                checkNotNull(window.dispatcherQueue) {
+                    "Window dispatcher queue was not available."
+                }.tryEnqueue(DispatcherQueueHandler {
                     println("winui-kmp-library: unloaded auto exit enqueued")
                     exit()
                 })
@@ -215,7 +226,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         textBox.text = "changed"
         println("winui-kmp-library: textBox changed after focus")
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-            window.dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+            checkNotNull(window.dispatcherQueue) {
+                "Window dispatcher queue was not available."
+            }.tryEnqueue(DispatcherQueueHandler {
                 println("winui-kmp-library: auto exit enqueued")
                 exit()
             })

@@ -7798,6 +7798,12 @@ class KotlinProjectionGeneratorTest {
                             name = "IWindow",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555582"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IWindow2",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
                             properties = listOf(systemBackdropProperty),
                         ),
                         WinRtTypeDefinition(
@@ -7807,6 +7813,7 @@ class KotlinProjectionGeneratorTest {
                             defaultInterfaceName = "Microsoft.UI.Xaml.IWindow",
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IWindow", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.IWindow2"),
                             ),
                             properties = listOf(systemBackdropProperty),
                         ),
@@ -7857,12 +7864,17 @@ class KotlinProjectionGeneratorTest {
         val plansByName = KotlinProjectionPlanner().plan(model).associateBy { it.type.qualifiedName }
         val renderer = KotlinProjectionRenderer()
         val windowPlan = plansByName.getValue("Microsoft.UI.Xaml.Window")
+        val window2Plan = plansByName.getValue("Microsoft.UI.Xaml.IWindow2")
         val uiElementPlan = plansByName.getValue("Microsoft.UI.Xaml.UIElement")
         val contentControlPlan = plansByName.getValue("Microsoft.UI.Xaml.Controls.ContentControl")
 
         assertEquals(
             "Microsoft.UI.Xaml.Media.SystemBackdrop?",
             windowPlan.instanceMemberBindings.first { it.bindingName == "SYSTEMBACKDROP_GETTER_SLOT" }.returnBinding.typeName,
+        )
+        assertEquals(
+            "Microsoft.UI.Xaml.Media.SystemBackdrop?",
+            window2Plan.instanceMemberBindings.first { it.bindingName == "SYSTEMBACKDROP_GETTER_SLOT" }.returnBinding.typeName,
         )
         assertEquals(
             "Microsoft.UI.Xaml.Media.RectangleGeometry?",

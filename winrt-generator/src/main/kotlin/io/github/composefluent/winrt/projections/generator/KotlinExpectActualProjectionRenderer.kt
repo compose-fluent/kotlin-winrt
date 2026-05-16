@@ -46,7 +46,7 @@ internal class KotlinExpectActualProjectionRenderer(
             return false
         }
         val interfaceProxyTypes = baseRenderer.collectInterfaceProxyTypes(plan)
-        return interfaceProxyMembersAreConflictFree(interfaceProxyTypes) &&
+        return interfaceProxyMembersAreConflictFree(interfaceProxyTypes, plan.typesByQualifiedName) &&
             interfaceProxyTypes.all { interfaceType ->
                 canRenderExpectActualInterfaceType(plan, interfaceType)
             }
@@ -83,7 +83,7 @@ internal class KotlinExpectActualProjectionRenderer(
         return interfaceProxyTypes.all { interfaceType ->
             canRenderExpectActualInterfaceType(plan, interfaceType)
         } &&
-            interfaceProxyMembersAreConflictFree(interfaceProxyTypes) &&
+            interfaceProxyMembersAreConflictFree(interfaceProxyTypes, plan.typesByQualifiedName) &&
             runtimeClassMembersAreCoveredByPublicInterface(plan, interfaceProxyTypes)
     }
 
@@ -112,7 +112,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
                 .all { property ->
-                    val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName)
+                    val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, plan.typesByQualifiedName)
                     canBuildJvmFfmCallPlan(
                         returnTypeName = propertyTypeName,
                         parameters = emptyList(),
@@ -209,7 +209,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filterNot(WinRtPropertyDefinition::isStatic)
                 .filter { it.getterMethodName != null }
                 .map { property ->
-                    property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(interfaceType.qualifiedName, property)
+                    property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(interfaceType.qualifiedName, property, plan.typesByQualifiedName)
                 }
         }.toMap()
         val interfaceEvents = interfaceTypes.flatMap { interfaceType ->
@@ -225,7 +225,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .filter { it.getterMethodName != null }
             .all { property ->
                 interfaceProperties[property.name.replaceFirstChar(Char::lowercase)] ==
-                    propertyCoverage(plan.type.qualifiedName, property)
+                    propertyCoverage(plan.type.qualifiedName, property, plan.typesByQualifiedName)
             }
         val classEventsCovered = plan.type.events
             .filterNot(WinRtEventDefinition::isStatic)
@@ -237,6 +237,7 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun interfaceProxyMembersAreConflictFree(
         interfaceTypes: List<io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
     ): Boolean {
         val methods = mutableMapOf<String, RuntimeClassMethodCoverage>()
         val properties = mutableMapOf<String, RuntimeClassPropertyCoverage>()
@@ -257,7 +258,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filter { it.getterMethodName != null }
                 .forEach { property ->
                     val key = property.name.replaceFirstChar(Char::lowercase)
-                    val coverage = propertyCoverage(interfaceType.qualifiedName, property)
+                    val coverage = propertyCoverage(interfaceType.qualifiedName, property, typesByQualifiedName)
                     val previous = properties.putIfAbsent(key, coverage)
                     if (previous != null && previous != coverage) {
                         return false
@@ -307,9 +308,10 @@ internal class KotlinExpectActualProjectionRenderer(
     private fun propertyCoverage(
         ownerTypeName: String,
         property: WinRtPropertyDefinition,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
     ): RuntimeClassPropertyCoverage =
         RuntimeClassPropertyCoverage(
-            typeName = property.projectedPropertyTypeName(ownerTypeName),
+            typeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName),
             isReadOnly = property.isReadOnly,
             getterMethodName = property.getterMethodName,
             setterMethodName = property.setterMethodName,
@@ -338,7 +340,7 @@ internal class KotlinExpectActualProjectionRenderer(
         plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
             .filter { it.getterMethodName != null }
-            .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(plan.type.qualifiedName, property)) }
+            .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(plan.type.qualifiedName, property, plan.typesByQualifiedName)) }
         plan.type.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
             builder.addProperty(baseRenderer.renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             baseRenderer.renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
@@ -501,7 +503,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 .forEach { property ->
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
                     if (emittedProperties.add(propertyName)) {
-                        builder.addProperty(renderJvmRuntimeClassForwardProperty(cacheName, interfaceType.qualifiedName, property))
+                        builder.addProperty(renderJvmRuntimeClassForwardProperty(cacheName, interfaceType.qualifiedName, property, plan.typesByQualifiedName))
                     }
                 }
             interfaceType.events
@@ -542,9 +544,10 @@ internal class KotlinExpectActualProjectionRenderer(
         cacheName: String,
         ownerTypeName: String,
         property: WinRtPropertyDefinition,
+        typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
     ): PropertySpec {
         val propertyName = property.name.replaceFirstChar(Char::lowercase)
-        val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName)
+        val propertyTypeName = property.projectedPropertyTypeName(ownerTypeName, typesByQualifiedName)
         val builder = PropertySpec.builder(propertyName, baseRenderer.resolveTypeName(propertyTypeName))
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
@@ -710,7 +713,7 @@ internal class KotlinExpectActualProjectionRenderer(
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): PropertySpec {
-        val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName)
+        val propertyTypeName = property.projectedPropertyTypeName(slotInterfaceType.qualifiedName, typesByQualifiedName)
         val builder = PropertySpec.builder(
             property.name.replaceFirstChar(Char::lowercase),
             baseRenderer.resolveTypeName(propertyTypeName),
