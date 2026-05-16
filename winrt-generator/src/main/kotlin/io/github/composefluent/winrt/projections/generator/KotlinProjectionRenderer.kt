@@ -3230,6 +3230,9 @@ private fun interfaceNativeProjectionValueKind(binding: KotlinProjectionAbiTypeB
         KotlinProjectionAbiValueKind.GuidValue -> "Guid"
         KotlinProjectionAbiValueKind.String -> "String"
         KotlinProjectionAbiValueKind.Object -> "Object"
+        KotlinProjectionAbiValueKind.ProjectedInterface,
+        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+        -> "Object"
         KotlinProjectionAbiValueKind.UnknownReference -> "UnknownReference"
         KotlinProjectionAbiValueKind.InspectableReference -> "InspectableReference"
         else -> "Unsupported"

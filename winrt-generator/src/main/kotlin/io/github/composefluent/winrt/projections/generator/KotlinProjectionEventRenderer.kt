@@ -1695,7 +1695,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
     }
 }
 
-private fun KotlinProjectionRenderer.canRenderInterfaceWrapper(plan: KotlinTypeProjectionPlan): Boolean =
+internal fun KotlinProjectionRenderer.canRenderInterfaceWrapper(plan: KotlinTypeProjectionPlan): Boolean =
     canRenderInterfaceProxy(plan) ||
         canRenderInterfaceNativeProjectionArtifact(plan) ||
         (

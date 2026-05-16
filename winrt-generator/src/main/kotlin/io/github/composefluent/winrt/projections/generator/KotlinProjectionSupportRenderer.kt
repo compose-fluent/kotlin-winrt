@@ -107,6 +107,10 @@ import kotlin.io.path.extension
 
 class KotlinProjectionSupportRenderer {
     private val typeRenderer = KotlinProjectionRenderer()
+    private val supportTypeRenderer = KotlinProjectionRenderer(
+        useInterfaceProjectionArtifacts = true,
+        useProjectionIntrinsics = true,
+    )
     private val planner = KotlinProjectionPlanner()
     private val AUTHORING_ABI_OPERATIONS = listOf(
         "GetAbi",
@@ -687,8 +691,8 @@ class KotlinProjectionSupportRenderer {
                 val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
                 val delegatePlan = plansByType[rawEventType] ?: return@forEach
                 val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
-                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
-                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
+                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping(plansByType)) {
+                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape, plansByType))
                 }
             }
         eventSourceEntries
@@ -696,7 +700,7 @@ class KotlinProjectionSupportRenderer {
             .toSortedMap()
             .values
             .forEach { ownerEntries ->
-                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName)?.let(fileBuilder::addType)
+                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType)?.let(fileBuilder::addType)
             }
         val fileSpec = fileBuilder
             .build()
@@ -2862,6 +2866,7 @@ class KotlinProjectionSupportRenderer {
         descriptor: WinRtEventHelperSubclassDescriptor,
         delegatePlan: KotlinTypeProjectionPlan,
         invokeShape: KotlinProjectionDelegateInvokeShape,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): TypeSpec {
         val delegateType = typeRenderer.resolveTypeName(descriptor.projectedEventTypeName)
         return TypeSpec.classBuilder(descriptor.sourceClassName)
@@ -2881,7 +2886,7 @@ class KotlinProjectionSupportRenderer {
                     .addModifiers(KModifier.OVERRIDE)
                     .addParameter("handler", delegateType)
                     .returns(ClassName("io.github.composefluent.winrt.runtime", "WinRtDelegateHandle"))
-                    .addCode(eventSourceCreateMarshalerCode(descriptor, invokeShape))
+                    .addCode(eventSourceCreateMarshalerCode(descriptor, invokeShape, plansByType))
                     .build(),
             )
             .addFunction(
@@ -2897,9 +2902,10 @@ class KotlinProjectionSupportRenderer {
     private fun eventSourceCreateMarshalerCode(
         descriptor: WinRtEventHelperSubclassDescriptor,
         invokeShape: KotlinProjectionDelegateInvokeShape,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): CodeBlock {
         val callbackArguments = invokeShape.parameterBindings.mapIndexed { index, binding ->
-            eventSourceCallbackArgumentCode(index, binding.typeBinding).toString()
+            eventSourceCallbackArgumentCode(index, binding.typeBinding, plansByType).toString()
         }
         val interfaceId = descriptor.interfaceId ?: invokeShape.interfaceId
         return CodeBlock.of(
@@ -2925,10 +2931,11 @@ class KotlinProjectionSupportRenderer {
     private fun eventSourceCallbackArgumentCode(
         index: Int,
         binding: KotlinProjectionAbiTypeBinding,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): CodeBlock =
         if (mappedTypeByAbiName(binding.typeName) != null) {
             CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
-        } else if (binding.typeArguments.isNotEmpty() && binding.kind in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass)) {
+        } else if (binding.supportsProjectedGenericMetadataWrap(plansByType)) {
             CodeBlock.of(
                 "%T.Metadata.wrap<%L>(__args[%L] as %T)",
                 typeRenderer.resolveTypeName(binding.resolvedTypeName),
@@ -3021,12 +3028,13 @@ class KotlinProjectionSupportRenderer {
     private fun eventSourceOwnerHelperType(
         ownerEntries: List<WinRtEventHelperSubclassDescriptor>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): TypeSpec? {
         val builder = TypeSpec.objectBuilder(eventSourceOwnerHelperName(ownerEntries.first().ownerTypeName))
             .addModifiers(KModifier.INTERNAL)
         var hasFunctions = false
         ownerEntries.sortedBy(WinRtEventHelperSubclassDescriptor::eventTypeName).forEach { descriptor ->
-            val createEventSource = directEventSourceCreateCode(descriptor, typesByQualifiedName) ?: return@forEach
+            val createEventSource = directEventSourceCreateCode(descriptor, typesByQualifiedName, plansByType) ?: return@forEach
             hasFunctions = true
             builder.addFunction(
                 FunSpec.builder(eventSourceCreateFunctionName(descriptor.eventTypeName, descriptor.ownerTypeName))
@@ -3043,12 +3051,13 @@ class KotlinProjectionSupportRenderer {
     private fun directEventSourceCreateCode(
         descriptor: WinRtEventHelperSubclassDescriptor,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): CodeBlock? {
         if (descriptor.usesSharedEventHandlerSource) {
             return directSharedEventHandlerSourceCreateCode(descriptor, typesByQualifiedName)
         }
         val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return null
-        if (!invokeShape.isSupportedProjectedDelegateShape() || !invokeShape.supportsEventSourceCallbackWrapping()) {
+        if (!invokeShape.isSupportedProjectedDelegateShape() || !invokeShape.supportsEventSourceCallbackWrapping(plansByType)) {
             return null
         }
         return CodeBlock.of("%L(objectReference, vtableIndexForAddHandler)", eventSourceConstructorCode(descriptor))
@@ -3150,25 +3159,45 @@ class KotlinProjectionSupportRenderer {
     private fun String.isEventSourceGenericTypeParameterName(): Boolean =
         (startsWith("T") || startsWith("M")) && drop(1).toIntOrNull() != null
 
-    private fun KotlinProjectionDelegateInvokeShape.supportsEventSourceCallbackWrapping(): Boolean =
-        parameterBindings.all { it.typeBinding.supportsEventSourceCallbackWrapping() }
+    private fun KotlinProjectionDelegateInvokeShape.supportsEventSourceCallbackWrapping(
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): Boolean =
+        parameterBindings.all { it.typeBinding.supportsEventSourceCallbackWrapping(plansByType) }
 
-    private fun KotlinProjectionAbiTypeBinding.supportsEventSourceCallbackWrapping(): Boolean {
-        if (typeArguments.any { !it.supportsEventSourceCallbackWrapping() }) {
+    private fun KotlinProjectionAbiTypeBinding.supportsEventSourceCallbackWrapping(
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): Boolean {
+        if (typeArguments.any { !it.supportsEventSourceCallbackWrapping(plansByType) }) {
             return false
         }
         return when {
             typeArguments.isEmpty() -> true
             kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass) -> true
-            resolvedTypeName in EVENT_SOURCE_GENERIC_METADATA_WRAP_TYPES -> true
-            else -> false
+            else -> supportsProjectedGenericMetadataWrap(plansByType)
         }
     }
 
-    private val EVENT_SOURCE_GENERIC_METADATA_WRAP_TYPES = setOf(
-        "Windows.Foundation.Collections.IObservableMap",
-        "Windows.Foundation.Collections.IObservableVector",
-    )
+    private fun KotlinProjectionAbiTypeBinding.supportsProjectedGenericMetadataWrap(
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): Boolean {
+        if (typeArguments.isEmpty() ||
+            kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass)
+        ) {
+            return false
+        }
+        val plan = plansByType[resolvedTypeName] ?: return false
+        if (plan.type.genericParameterCount != typeArguments.size) {
+            return false
+        }
+        return when (kind) {
+            KotlinProjectionAbiValueKind.ProjectedInterface -> supportTypeRenderer.canRenderInterfaceWrapper(plan)
+            KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
+                plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
+                    KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
+                    KotlinProjectionSpecializationKind.AttributeClass !in plan.specializationKinds
+            else -> false
+        }
+    }
 
     private fun abiEntriesBuildListCode(indices: IntRange): CodeBlock {
         val code = CodeBlock.builder()

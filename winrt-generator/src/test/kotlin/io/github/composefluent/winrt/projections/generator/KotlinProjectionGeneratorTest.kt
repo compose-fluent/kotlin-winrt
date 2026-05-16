@@ -3336,6 +3336,60 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_lowers_projected_object_interface_native_projection_members_as_object_abi() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "IElement",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "Element",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            iid = Guid("11111111-2222-3333-4444-555555555562"),
+                            defaultInterfaceName = "Sample.Xaml.IElement",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Xaml.IElement", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Xaml",
+                            name = "IPanel",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Content",
+                                    typeName = "Sample.Xaml.Element",
+                                    getterMethodName = "get_Content",
+                                    setterMethodName = "put_Content",
+                                    getterMethodRowId = 10,
+                                    setterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val compilerInput = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .single { it.relativePath.endsWith("interface-native-projections.tsv") }
+            .contents
+
+        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getContent|6|Object||false"))
+        assertTrue(compilerInput, compilerInput.contains("PropertySet|setContent|7|Unit|Object|false"))
+        assertFalse(compilerInput, compilerInput.contains("PropertySet|setContent|7|Unit|Unsupported|false"))
+    }
+
+    @Test
     fun generator_keeps_floating_point_interface_native_projection_on_ir_lowered_kotlin_fallback() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -10488,6 +10542,16 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555557"),
                             genericParameterCount = 2,
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "MapChanged",
+                                    delegateTypeName = "Windows.Foundation.Collections.MapChangedEventHandler<T0,T1>",
+                                    addMethodName = "add_MapChanged",
+                                    removeMethodName = "remove_MapChanged",
+                                    addMethodRowId = 10,
+                                    removeMethodRowId = 11,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
@@ -10518,6 +10582,33 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                 ),
                             ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.UI.Core",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Core",
+                            name = "ICoreDispatcher",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555560"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "AcceleratorKeyActivated",
+                                    delegateTypeName = "Windows.Foundation.TypedEventHandler<Windows.UI.Core.ICoreDispatcher,Windows.UI.Core.AcceleratorKeyEventArgs>",
+                                    addMethodName = "add_AcceleratorKeyActivated",
+                                    removeMethodName = "remove_AcceleratorKeyActivated",
+                                    addMethodRowId = 12,
+                                    removeMethodRowId = 13,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.UI.Core",
+                            name = "AcceleratorKeyEventArgs",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            iid = Guid("11111111-2222-3333-4444-555555555564"),
                         ),
                     ),
                 ),
@@ -10602,8 +10693,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("handler.invoke("))
         assertFalse(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" ->"))
         assertTrue(eventProjectionHelpers.contains("_EventSource_Sample_Foundation_WidgetHandler(objectReference, vtableIndexForAddHandler)"))
-        assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))
-        assertFalse(eventProjectionHelpers.contains("IMapChangedEventArgs.Metadata.wrap"))
+        assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))
+        assertTrue(eventProjectionHelpers.contains("internal object ${eventSourceOwnerHelperName("Windows.Foundation.Collections.IObservableMap")}"))
+        assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.Collections.MapChangedEventHandler<T0, T1>", "Windows.Foundation.Collections.IObservableMap")}"))
+        assertTrue(eventProjectionHelpers.contains("IMapChangedEventArgs.Metadata.wrap"))
+        assertTrue(eventProjectionHelpers.contains("internal object ${eventSourceOwnerHelperName("Windows.UI.Core.ICoreDispatcher")}"))
+        assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.TypedEventHandler<Windows.UI.Core.ICoreDispatcher, Windows.UI.Core.AcceleratorKeyEventArgs>", "Windows.UI.Core.ICoreDispatcher")}"))
         assertFalse(eventProjectionHelpers.contains("fun installEventSources()"))
         assertFalse(eventProjectionHelpers.contains("WinRTEventProjectionRegistry"))
         assertFalse(eventProjectionHelpers.contains("fun createEventSource("))

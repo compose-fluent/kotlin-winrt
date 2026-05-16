@@ -404,6 +404,68 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun generated_interface_projection_object_argument_accepts_projected_winrt_object() {
+        val targetInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee1")
+        val payloadInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee2")
+        val typeHandle = WinRtTypeHandle("Contoso.IGeneratedObjectArgument", targetInterfaceId)
+        var receivedPointer = PlatformAbi.nullPointer
+        val targetHost = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = targetInterfaceId,
+                    methods = listOf(
+                        WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
+                            receivedPointer = args[0] as RawAddress
+                            KnownHResults.S_OK.value
+                        },
+                    ),
+                ),
+            ),
+        )
+        val payloadHost = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = payloadInterfaceId,
+                    methods = emptyList(),
+                ),
+            ),
+        )
+        val targetReference = targetHost.createReference(targetInterfaceId)
+        val targetUnknown = IUnknownReference(targetReference.getRefPointer(), targetInterfaceId)
+        val payloadReference = payloadHost.createReference(payloadInterfaceId)
+        val payloadUnknown = IUnknownReference(payloadReference.getRefPointer(), payloadInterfaceId)
+        try {
+            val payload = SampleGeneratedInterfaceProjection(payloadUnknown)
+            val projected = WinRtGeneratedInterfaceProjectionRuntime.create(
+                interfaceClass = GeneratedObjectArgumentProjection::class.java,
+                typeHandle = typeHandle,
+                nativeObject = targetUnknown,
+                members = listOf(
+                    GeneratedInterfaceProjectionMemberDescriptor(
+                        kind = GeneratedInterfaceProjectionMemberKind.Method,
+                        jvmName = "setObjectValue",
+                        slot = IInspectableVftblSlots.FirstCustom,
+                        returnKind = GeneratedInterfaceProjectionValueKind.Unit,
+                        parameterKinds = listOf(GeneratedInterfaceProjectionValueKind.Object),
+                        suppressHResultCheck = false,
+                    ),
+                ),
+            ) as GeneratedObjectArgumentProjection
+
+            projected.setObjectValue(payload)
+
+            assertFalse(PlatformAbi.isNull(receivedPointer))
+        } finally {
+            payloadUnknown.close()
+            payloadReference.close()
+            targetUnknown.close()
+            targetReference.close()
+            payloadHost.close()
+            targetHost.close()
+        }
+    }
+
+    @Test
     fun type_name_support_uses_non_winrt_runtime_class_lookup_hooks() {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.registerTypeRuntimeClassNameLookup { type ->
@@ -586,6 +648,10 @@ class ProjectionRegistryTest {
 
     private interface GeneratedNoArgUnitProjection {
         fun invoke()
+    }
+
+    private interface GeneratedObjectArgumentProjection {
+        fun setObjectValue(value: Any?)
     }
 
     private class SampleRuntimeClass
