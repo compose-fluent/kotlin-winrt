@@ -922,6 +922,9 @@ class KotlinWinRtPluginTest {
         )
         val makePriLog = project.layout.buildDirectory.file("makepri.log").get().asFile.toPath()
         val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri.cmd").get().asFile.toPath(), makePriLog)
+        val projectResources = project.layout.buildDirectory.dir("project-resources").get().asFile.toPath()
+        Files.createDirectories(projectResources.resolve("Strings/en-US"))
+        Files.writeString(projectResources.resolve("Strings/en-US/Resources.resw"), "resw")
         val task = project.tasks.register(
             "stagePriAssets",
             StageWinRtRuntimeAssetsTask::class.java,
@@ -938,12 +941,14 @@ class KotlinWinRtPluginTest {
             registeredTask.runtimeIdentifier.set("win-x64")
             registeredTask.generateProjectPri.set(true)
             registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
             registeredTask.projectPriDefaultLanguage.set("")
             registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
             registeredTask.makePriExecutable.set(makePri.toString())
             registeredTask.windowsSdkVersion.set("")
             registeredTask.dependencyIdentityFiles.from(project.files())
             registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.projectPriResourceFiles.from(projectResources)
         }.get()
 
         task.stage()
@@ -951,6 +956,7 @@ class KotlinWinRtPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("Component/Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
+        assertTrue(Files.isRegularFile(task.temporaryDir.toPath().resolve("project-pri/Appx/Strings/en-US/Resources.resw")))
         val makePriCalls = Files.readString(makePriLog).replace("\\", "/")
         assertTrue(makePriCalls.contains("createconfig"))
         assertTrue(makePriCalls.contains("/dq lang-fr-FR_scale-100"))

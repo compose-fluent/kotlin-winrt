@@ -276,11 +276,13 @@ private fun configureWinRtApplicationTasks(
                     extension.application.projectPriIndexName.orNull?.takeIf(String::isNotBlank) ?: project.name
                 },
             )
+            task.projectPriInitialPath.set(extension.application.projectPriInitialPath)
             task.projectPriDefaultLanguage.set(extension.application.projectPriDefaultLanguage)
             task.projectPriDefaultQualifiers.set(extension.application.projectPriDefaultQualifiers)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
             task.appxManifestFiles.from(extension.application.appxManifestFiles)
+            task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.authoredMetadataFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",

@@ -150,13 +150,19 @@ abstract class WinRtApplicationOptions @Inject constructor(
 ) {
     val generateProjectPri: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val projectPriIndexName: Property<String> = objects.property(String::class.java).convention("")
+    val projectPriInitialPath: Property<String> = objects.property(String::class.java).convention("")
     val projectPriDefaultLanguage: Property<String> = objects.property(String::class.java).convention("")
     val projectPriDefaultQualifiers: ListProperty<String> =
         objects.listProperty(String::class.java).convention(listOf("scale-200", "contrast-standard"))
     val appxManifestFiles: ConfigurableFileCollection = objects.fileCollection()
+    val projectPriResourceFiles: ConfigurableFileCollection = objects.fileCollection()
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
+    }
+
+    fun projectPriResource(input: Any) {
+        projectPriResourceFiles.from(input)
     }
 
     fun projectPriDefaultQualifier(qualifier: String) {

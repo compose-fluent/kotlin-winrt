@@ -64,6 +64,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val projectPriIndexName: Property<String>
 
     @get:Input
+    abstract val projectPriInitialPath: Property<String>
+
+    @get:Input
     abstract val projectPriDefaultLanguage: Property<String>
 
     @get:Input
@@ -83,6 +86,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val appxManifestFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectPriResourceFiles: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
@@ -107,6 +115,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     init {
         generateProjectPri.convention(true)
         projectPriIndexName.convention("Application")
+        projectPriInitialPath.convention("")
         projectPriDefaultLanguage.convention("")
         projectPriDefaultQualifiers.convention(listOf("scale-200", "contrast-standard"))
         makePriExecutable.convention("")
@@ -305,9 +314,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 .sorted()
                 .toList()
         }
-        if (inputPris.isEmpty()) {
-            return
-        }
         val makePri = discoverMakePriExecutable() ?: run {
             logger.warn("Skipping application PRI generation because makepri.exe was not found.")
             return
@@ -315,8 +321,16 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
         cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
+        var hasProjectPriInputs = false
         inputPris.forEach { source ->
             copyFile(source, projectPriRoot.resolve(source.relativeTo(outputRoot)))
+            hasProjectPriInputs = true
+        }
+        stageProjectPriResources(projectPriRoot).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
+        if (!hasProjectPriInputs) {
+            return
         }
         val config = temporaryDir.toPath().resolve("project-pri-config").resolve("priconfig.xml")
         Files.createDirectories(config.parent)
@@ -363,6 +377,54 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
         }
         Files.deleteIfExists(config)
+    }
+
+    private fun stageProjectPriResources(projectPriRoot: Path): Boolean {
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        var copied = false
+        val copiedTargets = linkedSetOf<String>()
+        projectPriResourceFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { Files.exists(it) }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isDirectory()) {
+                    Files.walk(source).use { stream ->
+                        stream.asSequence()
+                            .filter { it.isRegularFile() }
+                            .sorted()
+                            .forEach { child ->
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source))
+                                val key = target.toAbsolutePath().normalize().toString().lowercase()
+                                if (copiedTargets.add(key)) {
+                                    copyFile(child, target)
+                                    copied = true
+                                }
+                            }
+                    }
+                } else if (source.isRegularFile()) {
+                    val target = projectPriRoot.resolve(initialPath).resolve(source.name)
+                    val key = target.toAbsolutePath().normalize().toString().lowercase()
+                    if (copiedTargets.add(key)) {
+                        copyFile(source, target)
+                        copied = true
+                    }
+                }
+            }
+        return copied
+    }
+
+    private fun String.toSafeRelativePath(): Path {
+        val normalized = replace('\\', '/').trim('/')
+        if (normalized.isBlank()) {
+            return Path.of("")
+        }
+        val path = Path.of(normalized).normalize()
+        require(!path.isAbsolute && !path.startsWith("..")) {
+            "AppxPriInitialPath must be a relative path inside the PRI input root: $this"
+        }
+        return path
     }
 
     private fun projectPriDefaultQualifier(): String {
