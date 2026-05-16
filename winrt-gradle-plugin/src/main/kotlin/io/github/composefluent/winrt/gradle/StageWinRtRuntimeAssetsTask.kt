@@ -322,11 +322,13 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
         var hasProjectPriInputs = false
+        val copiedProjectPriTargets = linkedSetOf<String>()
         inputPris.forEach { source ->
-            copyFile(source, projectPriRoot.resolve(source.relativeTo(outputRoot)))
-            hasProjectPriInputs = true
+            if (copyProjectPriInput(source, projectPriRoot.resolve(source.relativeTo(outputRoot)), copiedProjectPriTargets)) {
+                hasProjectPriInputs = true
+            }
         }
-        stageProjectPriResources(projectPriRoot).also { copied ->
+        stageProjectPriResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         if (!hasProjectPriInputs) {
@@ -379,10 +381,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.deleteIfExists(config)
     }
 
-    private fun stageProjectPriResources(projectPriRoot: Path): Boolean {
+    private fun stageProjectPriResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
         val initialPath = projectPriInitialPath.get().toSafeRelativePath()
         var copied = false
-        val copiedTargets = linkedSetOf<String>()
         projectPriResourceFiles.files
             .asSequence()
             .map { it.toPath() }
@@ -396,23 +397,28 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                             .sorted()
                             .forEach { child ->
                                 val target = projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source))
-                                val key = target.toAbsolutePath().normalize().toString().lowercase()
-                                if (copiedTargets.add(key)) {
-                                    copyFile(child, target)
+                                if (copyProjectPriInput(child, target, copiedTargets)) {
                                     copied = true
                                 }
                             }
                     }
                 } else if (source.isRegularFile()) {
                     val target = projectPriRoot.resolve(initialPath).resolve(source.name)
-                    val key = target.toAbsolutePath().normalize().toString().lowercase()
-                    if (copiedTargets.add(key)) {
-                        copyFile(source, target)
+                    if (copyProjectPriInput(source, target, copiedTargets)) {
                         copied = true
                     }
                 }
             }
         return copied
+    }
+
+    private fun copyProjectPriInput(source: Path, target: Path, copiedTargets: MutableSet<String>): Boolean {
+        val key = target.toAbsolutePath().normalize().toString().lowercase()
+        if (!copiedTargets.add(key)) {
+            return false
+        }
+        copyFile(source, target)
+        return true
     }
 
     private fun String.toSafeRelativePath(): Path {

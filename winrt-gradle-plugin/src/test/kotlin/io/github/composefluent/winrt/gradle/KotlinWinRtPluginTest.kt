@@ -965,6 +965,66 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_deduplicates_application_pri_inputs_by_target_path() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.resources").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.Resources.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Resources</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.createDirectories(packageRoot.resolve("runtimes-framework/win-x64/native/Component"))
+        Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Component/Controls.pri"), "component-pri")
+        val makePriLog = project.layout.buildDirectory.file("makepri-dedupe.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-dedupe.cmd").get().asFile.toPath(), makePriLog)
+        val projectResources = project.layout.buildDirectory.dir("project-resources-dedupe").get().asFile.toPath()
+        Files.createDirectories(projectResources.resolve("Component"))
+        Files.writeString(projectResources.resolve("Component/Controls.pri"), "project-pri")
+        val task = project.tasks.register(
+            "stagePriDedupeAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-dedupe-assets"))
+            registeredTask.nugetPackages.set(listOf("Sample.Resources@1.0.0"))
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(projectResources)
+        }.get()
+
+        task.stage()
+
+        val projectPriInput = task.temporaryDir.toPath().resolve("project-pri/Component/Controls.pri")
+        assertEquals("component-pri", Files.readString(projectPriInput))
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun plugin_generates_sources_into_real_gradle_library_artifact() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-plugin-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
