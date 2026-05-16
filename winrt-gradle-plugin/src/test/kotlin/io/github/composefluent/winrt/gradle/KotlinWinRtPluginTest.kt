@@ -269,6 +269,95 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun merge_compiler_support_task_combines_local_and_dependency_support_tables() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-compiler-support-merge-test-")
+        val localRoot = root.resolve("local")
+        val dependencyRoot = root.resolve("dependency")
+        val outputRoot = root.resolve("merged")
+        Files.createDirectories(localRoot)
+        Files.createDirectories(dependencyRoot)
+        Files.writeString(
+            localRoot.resolve("compiler-support.tsv"),
+            """
+            kind	className	sourceFile	entries
+            interface-native-projection	io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry	interface-native-projections.tsv	1
+            event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry	event-sources.tsv	1
+            event-source-mapping	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	EventSourceMappings.kt	1
+            """.trimIndent(),
+        )
+        Files.writeString(
+            localRoot.resolve("interface-native-projections.tsv"),
+            """
+            interfaceName	factoryClassName
+            Windows.Foundation.IStringable	windows.foundation.IStringableNativeProjection${'$'}Factory
+            """.trimIndent(),
+        )
+        Files.writeString(
+            localRoot.resolve("event-sources.tsv"),
+            """
+            owner	member
+            Microsoft.UI.Xaml.Controls.Button	Click
+            """.trimIndent(),
+        )
+        Files.writeString(localRoot.resolve("EventSourceMappings.kt"), "object EventSourceMappings")
+        Files.writeString(
+            dependencyRoot.resolve("compiler-support.tsv"),
+            """
+            kind	className	sourceFile	entries
+            interface-native-projection	io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry	interface-native-projections.tsv	1
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry	generic-instantiations.tsv	1
+            """.trimIndent(),
+        )
+        Files.writeString(
+            dependencyRoot.resolve("interface-native-projections.tsv"),
+            """
+            interfaceName	factoryClassName
+            Windows.System.Display.IDisplayRequest	windows.system.display.IDisplayRequestNativeProjection${'$'}Factory
+            """.trimIndent(),
+        )
+        Files.writeString(
+            dependencyRoot.resolve("generic-instantiations.tsv"),
+            """
+            typeName	typeSignature
+            Windows.Foundation.IReference`1<String>	pinterface({61c17706-2d65-11e0-9ae8-d48564015472};string)
+            """.trimIndent(),
+        )
+        val dependencyIdentity = root.resolve("dependency-identity.json")
+        Files.writeString(
+            dependencyIdentity,
+            """
+            {
+              "compilerSupportManifests": [${dependencyRoot.resolve("compiler-support.tsv").toString().toJsonString()}]
+            }
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "mergeWinRtCompilerSupportUnderTest",
+            MergeWinRtCompilerSupportTask::class.java,
+        ) { registeredTask ->
+            registeredTask.localCompilerSupportManifest.set(localRoot.resolve("compiler-support.tsv").toFile())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.outputDirectory.set(outputRoot.toFile())
+        }.get()
+
+        task.merge()
+
+        val manifest = Files.readString(outputRoot.resolve("compiler-support.tsv"))
+        val interfaceSupport = Files.readString(outputRoot.resolve("interface-native-projections.tsv"))
+        val eventSupport = Files.readString(outputRoot.resolve("event-sources.tsv"))
+        val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
+        assertTrue(manifest.contains("interface-native-projection"))
+        assertTrue(manifest.contains("event-source"))
+        assertTrue(manifest.contains("generic-type-instantiation"))
+        assertFalse(manifest.contains("event-source-mapping"))
+        assertTrue(interfaceSupport.contains("Windows.Foundation.IStringable"))
+        assertTrue(interfaceSupport.contains("Windows.System.Display.IDisplayRequest"))
+        assertTrue(eventSupport.contains("Microsoft.UI.Xaml.Controls.Button"))
+        assertTrue(genericSupport.contains("Windows.Foundation.IReference`1<String>"))
+    }
+
+    @Test
     fun dependency_identity_projection_surface_suppresses_downstream_projection_types() {
         val project = ProjectBuilder.builder().build()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile

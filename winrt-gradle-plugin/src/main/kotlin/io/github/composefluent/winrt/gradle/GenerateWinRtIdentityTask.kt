@@ -70,6 +70,11 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val authoredTargetArtifactFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compilerSupportManifestFiles: ConfigurableFileCollection
+
     @TaskAction
     fun generate() {
         val target = outputFile.get().asFile.toPath()
@@ -95,7 +100,8 @@ abstract class GenerateWinRtIdentityTask : DefaultTask() {
                 appendLine("  \"runtimeAssets\": ${runtimeAssets.get().toJsonArray()},")
                 appendLine("  \"authoredMetadata\": ${authoredMetadataFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
                 appendLine("  \"authoredHostManifests\": ${authoredHostManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
-                appendLine("  \"authoredTargetArtifacts\": ${authoredTargetArtifactFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
+                appendLine("  \"authoredTargetArtifacts\": ${authoredTargetArtifactFiles.files.map { it.absolutePath }.sorted().toJsonArray()},")
+                appendLine("  \"compilerSupportManifests\": ${compilerSupportManifestFiles.files.map { it.absolutePath }.sorted().toJsonArray()}")
                 appendLine("}")
             },
         )
@@ -110,6 +116,19 @@ internal fun readProjectedTypeNames(projectionRegistrarFiles: Iterable<File>): L
         .mapNotNull { line -> line.split('\t').getOrNull(1)?.takeIf(String::isNotBlank) }
         .distinct()
         .sorted()
+
+internal fun readCompilerSupportManifests(identityFile: File): List<String> {
+    val content = identityFile.takeIf { it.isFile }?.readText().orEmpty()
+    val match = Regex(""""compilerSupportManifests"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content) ?: return emptyList()
+    return Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(match.groupValues[1])
+        .map { it.groupValues[1].decodeIdentityJsonString() }
+        .toList()
+}
+
+private fun String.decodeIdentityJsonString(): String =
+    replace("\\\"", "\"").replace("\\\\", "\\")
 
 internal fun List<String>.toJsonArray(): String =
     joinToString(prefix = "[", postfix = "]") { it.toJsonString() }

@@ -81,7 +81,13 @@ private fun configureWinRtLibraryModel(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
                 ),
             )
+            task.compilerSupportManifestFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/compiler-support/merged/compiler-support.tsv",
+                ),
+            )
             task.dependsOn("generateWinRtProjections")
+            task.dependsOn("mergeWinRtCompilerSupport")
         },
     )
 
@@ -114,6 +120,9 @@ private fun configureWinRtLibraryModel(
     )
     configureWinRtIdentityProjectDependencies(project, dependencyIdentities)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(dependencyIdentities)
+    }
+    project.tasks.named("mergeWinRtCompilerSupport", MergeWinRtCompilerSupportTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(dependencyIdentities)
     }
     project.extensions.extraProperties["kotlinWinRtIdentityElements"] = identityElements.name
@@ -179,6 +188,9 @@ private fun configureWinRtApplicationTasks(
     )
     configureWinRtIdentityProjectDependencies(project, identityDependencies)
     project.tasks.named("generateWinRtProjections", GenerateWinRtProjectionsTask::class.java).configure { task ->
+        task.dependencyIdentityFiles.from(identityDependencies)
+    }
+    project.tasks.named("mergeWinRtCompilerSupport", MergeWinRtCompilerSupportTask::class.java).configure { task ->
         task.dependencyIdentityFiles.from(identityDependencies)
     }
     val applicationIdentityTask = project.tasks.register(
@@ -386,6 +398,21 @@ private fun configureWinRtGeneration(
             )
         },
     )
+    val mergeCompilerSupportTask = project.tasks.register(
+        "mergeWinRtCompilerSupport",
+        MergeWinRtCompilerSupportTask::class.java,
+        Action<MergeWinRtCompilerSupportTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Merges Kotlin WinRT compiler support tables from this project and WinRT dependencies."
+            task.localCompilerSupportManifest.set(
+                generatedSources.map { directory ->
+                    directory.file("kotlin-winrt-support/compiler-support.tsv")
+                },
+            )
+            task.outputDirectory.set(project.layout.buildDirectory.dir("generated/kotlin-winrt/compiler-support/merged"))
+            task.dependsOn(generateTask)
+        },
+    )
 
     project.plugins.withId("org.jetbrains.kotlin.jvm") {
         configureKotlinWinRtCompilerPluginClasspath(project)
@@ -395,12 +422,11 @@ private fun configureWinRtGeneration(
             metadataIndex = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
             },
-            compilerSupportManifest = generatedSources.map { directory ->
-                directory.file("kotlin-winrt-support/compiler-support.tsv")
-            },
+            compilerSupportManifest = mergeCompilerSupportTask.flatMap { it.outputDirectory.file("compiler-support.tsv") },
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
+            task.dependsOn(mergeCompilerSupportTask)
         })
     }
 
@@ -416,12 +442,11 @@ private fun configureWinRtGeneration(
             metadataIndex = generatedSources.map { directory ->
                 directory.file("kotlin-winrt-authoring/metadata-index.tsv")
             },
-            compilerSupportManifest = generatedSources.map { directory ->
-                directory.file("kotlin-winrt-support/compiler-support.tsv")
-            },
+            compilerSupportManifest = mergeCompilerSupportTask.flatMap { it.outputDirectory.file("compiler-support.tsv") },
         )
         project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
             task.dependsOn(generateTask)
+            task.dependsOn(mergeCompilerSupportTask)
         })
     }
 
