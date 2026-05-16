@@ -3,7 +3,6 @@ package io.github.composefluent.winrt.runtime
 import kotlin.reflect.KClass
 
 internal const val WINRT_PROJECTION_TYPE_INDEX_RESOURCE: String = "kotlin-winrt/type-index.tsv"
-internal const val WINRT_EVENT_SOURCE_RESOURCE: String = "kotlin-winrt/event-sources.tsv"
 
 internal expect fun registerCompilerGeneratedProjectionTypeIndexes()
 internal expect fun registerCompilerGeneratedEventSources()

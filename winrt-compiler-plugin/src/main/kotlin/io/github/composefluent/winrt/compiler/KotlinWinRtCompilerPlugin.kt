@@ -2754,10 +2754,6 @@ class KotlinWinRtIrGenerationExtension(
             entries = eventProjectionEntries,
             outputDirectory = outputDirectory,
         )
-        writeEventProjectionResource(
-            entries = eventProjectionEntries,
-            outputDirectory = outputDirectory,
-        )
         writeGenericTypeInstantiationRegistryClass(
             entries = readGenericTypeInstantiationEntries(entries),
             outputDirectory = outputDirectory,
@@ -3517,35 +3513,6 @@ fun writeEventProjectionRegistryClass(
     val target = outputDirectory.resolve("$EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME.class")
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
-}
-
-fun writeEventProjectionResource(
-    entries: List<KotlinWinRtEventProjectionEntry>,
-    outputDirectory: Path,
-) {
-    if (entries.isEmpty()) {
-        return
-    }
-    val target = outputDirectory.resolve("kotlin-winrt/event-sources.tsv")
-    Files.createDirectories(target.parent)
-    Files.writeString(
-        target,
-        buildString {
-            appendLine("eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource\tinterfaceId\tparameterKinds\treturnKind\tparameterTypeNames")
-            entries.forEach { entry ->
-                append(entry.eventType).append('\t')
-                append(entry.ownerType).append('\t')
-                append(entry.sourceClass).append('\t')
-                append(entry.abiEventType).append('\t')
-                append(entry.genericArguments.joinToString(",")).append('\t')
-                append(entry.usesSharedEventHandlerSource).append('\t')
-                append(entry.interfaceId).append('\t')
-                append(entry.parameterKinds.joinToString(",")).append('\t')
-                append(entry.returnKind).append('\t')
-                append(entry.parameterTypeNames.joinToString(",")).append('\n')
-            }
-        },
-    )
 }
 
 private fun eventProjectionRegistryChunkName(index: Int): String =
