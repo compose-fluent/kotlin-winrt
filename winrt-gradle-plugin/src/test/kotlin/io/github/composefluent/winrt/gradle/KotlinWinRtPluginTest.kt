@@ -1076,6 +1076,174 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_stages_default_project_xaml_layout_resources() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val appXaml = project.projectDir.toPath().resolve("App.xaml")
+        val pageXaml = project.projectDir.toPath().resolve("Views/MainPage.xaml")
+        Files.createDirectories(pageXaml.parent)
+        Files.writeString(appXaml, "<Application />")
+        Files.writeString(pageXaml, "<Page />")
+        val makePriLog = project.layout.buildDirectory.file("makepri-default-xaml.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-default-xaml.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageDefaultXamlPriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-default-xaml-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(true)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultProjectPriLayoutFiles.from(
+                project.fileTree(project.projectDir) { spec -> spec.include("**/*.xaml") },
+            )
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/App.xaml"),
+            ),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Views/MainPage.xaml"),
+            ),
+        )
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
+    fun runtime_assets_task_prefers_xbf_over_matching_xaml_layout_resources() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val pageXaml = project.projectDir.toPath().resolve("Views/CompiledPage.xaml")
+        val pageXbf = project.projectDir.toPath().resolve("Views/CompiledPage.xbf")
+        Files.createDirectories(pageXaml.parent)
+        Files.writeString(pageXaml, "<Page />")
+        Files.write(pageXbf, byteArrayOf(0x58, 0x42, 0x46))
+        val makePriLog = project.layout.buildDirectory.file("makepri-layout-xbf.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-layout-xbf.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageXbfPriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-layout-xbf-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(true)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultProjectPriLayoutFiles.from(
+                project.fileTree(project.projectDir) { spec ->
+                    spec.include("**/*.xaml")
+                    spec.include("**/*.xbf")
+                },
+            )
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        assertFalse(
+            Files.exists(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Views/CompiledPage.xaml"),
+            ),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Views/CompiledPage.xbf"),
+            ),
+        )
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
+    fun runtime_assets_task_stages_explicit_project_xaml_layout_resources_relative_to_project_root() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val pageXaml = project.projectDir.toPath().resolve("Views/DetailsPage.xaml")
+        Files.createDirectories(pageXaml.parent)
+        Files.writeString(pageXaml, "<Page />")
+        val makePriLog = project.layout.buildDirectory.file("makepri-explicit-xaml.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-explicit-xaml.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageExplicitXamlPriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-explicit-xaml-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriLayoutFiles.from(pageXaml)
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Views/DetailsPage.xaml"),
+            ),
+        )
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun plugin_generates_sources_into_real_gradle_library_artifact() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-plugin-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")

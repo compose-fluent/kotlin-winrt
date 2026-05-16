@@ -98,7 +98,17 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectPriLayoutFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val defaultProjectPriResourceFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val defaultProjectPriLayoutFiles: ConfigurableFileCollection
 
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
@@ -343,7 +353,13 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         stageProjectPriResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
+        stageProjectPriLayoutResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
         stageDefaultProjectPriResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
+        stageDefaultProjectPriLayoutResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         if (!hasProjectPriInputs) {
@@ -427,6 +443,42 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         return copied
     }
 
+    private fun stageProjectPriLayoutResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        val inputs = projectPriLayoutFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { Files.exists(it) }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .flatMap { source ->
+                if (source.isDirectory()) {
+                    Files.walk(source).use { stream ->
+                        stream.asSequence()
+                            .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
+                            .sorted()
+                            .map { child ->
+                                ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source)))
+                            }
+                            .toList()
+                            .asSequence()
+                    }
+                } else if (source.isRegularFile() && source.isProjectPriLayoutFile()) {
+                    val normalizedSource = source.toAbsolutePath().normalize()
+                    val relativeTarget = if (root != null && normalizedSource.startsWith(root)) {
+                        normalizedSource.relativeTo(root)
+                    } else {
+                        source.name.let(Path::of)
+                    }
+                    sequenceOf(ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(relativeTarget)))
+                } else {
+                    emptySequence()
+                }
+            }
+            .toList()
+        return stageFilteredProjectPriLayoutInputs(inputs, copiedTargets)
+    }
+
     private fun stageDefaultProjectPriResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
         if (!enableDefaultProjectPriResources.get()) {
             return false
@@ -451,8 +503,52 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         return copied
     }
 
+    private fun stageDefaultProjectPriLayoutResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
+        if (!enableDefaultProjectPriResources.get()) {
+            return false
+        }
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        val inputs = defaultProjectPriLayoutFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .mapNotNull { source ->
+                val normalizedSource = source.toAbsolutePath().normalize()
+                if (normalizedSource.startsWith(root)) {
+                    ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)))
+                } else {
+                    null
+                }
+            }
+            .toList()
+        return stageFilteredProjectPriLayoutInputs(inputs, copiedTargets)
+    }
+
+    private fun stageFilteredProjectPriLayoutInputs(
+        inputs: List<ProjectPriLayoutInput>,
+        copiedTargets: MutableSet<String>,
+    ): Boolean {
+        val xbfTargets = inputs
+            .asSequence()
+            .filter { it.source.name.endsWith(".xbf", ignoreCase = true) }
+            .map { it.target.toNormalizedPathKey() }
+            .toSet()
+        var copied = false
+        inputs.forEach { input ->
+            if (input.source.name.endsWith(".xaml", ignoreCase = true) && input.target.toXbfTargetKey() in xbfTargets) {
+                return@forEach
+            }
+            if (copyProjectPriInput(input.source, input.target, copiedTargets)) {
+                copied = true
+            }
+        }
+        return copied
+    }
+
     private fun copyProjectPriInput(source: Path, target: Path, copiedTargets: MutableSet<String>): Boolean {
-        val key = target.toAbsolutePath().normalize().toString().lowercase()
+        val key = target.toNormalizedPathKey()
         if (!copiedTargets.add(key)) {
             return false
         }
@@ -471,6 +567,22 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
         return path
     }
+
+    private fun Path.isProjectPriLayoutFile(): Boolean =
+        name.endsWith(".xaml", ignoreCase = true) || name.endsWith(".xbf", ignoreCase = true)
+
+    private fun Path.toNormalizedPathKey(): String =
+        toAbsolutePath().normalize().toString().lowercase()
+
+    private fun Path.toXbfTargetKey(): String {
+        val xbfFileName = fileName.toString().replaceAfterLast('.', "xbf")
+        return parent.resolve(xbfFileName).toNormalizedPathKey()
+    }
+
+    private data class ProjectPriLayoutInput(
+        val source: Path,
+        val target: Path,
+    )
 
     private fun projectPriDefaultQualifier(): String {
         val language = projectPriDefaultLanguage.get().ifBlank {

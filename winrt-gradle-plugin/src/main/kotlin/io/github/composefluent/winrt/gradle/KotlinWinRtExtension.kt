@@ -157,6 +157,7 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val enableDefaultProjectPriResources: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val appxManifestFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriResourceFiles: ConfigurableFileCollection = objects.fileCollection()
+    val projectPriLayoutFiles: ConfigurableFileCollection = objects.fileCollection()
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
@@ -164,6 +165,14 @@ abstract class WinRtApplicationOptions @Inject constructor(
 
     fun projectPriResource(input: Any) {
         projectPriResourceFiles.from(input)
+    }
+
+    fun projectPriPage(input: Any) {
+        projectPriLayoutFiles.from(input)
+    }
+
+    fun projectPriApplicationDefinition(input: Any) {
+        projectPriLayoutFiles.from(input)
     }
 
     fun projectPriDefaultQualifier(qualifier: String) {
