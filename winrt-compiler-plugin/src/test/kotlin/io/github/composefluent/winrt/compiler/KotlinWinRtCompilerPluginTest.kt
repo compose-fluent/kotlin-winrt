@@ -12,6 +12,7 @@ import org.jetbrains.org.objectweb.asm.Opcodes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -412,8 +413,17 @@ class KotlinWinRtCompilerPluginTest {
             )
             assertEquals("register", registryClass.getDeclaredMethod("register").name)
             val registryIndex = classLoader.getResource("kotlin-winrt/interface-native-projection-registries.txt")
-            assertNotNull(registryIndex)
-            val uniqueRegistryClassName = registryIndex!!.readText().trim()
+            assertNull(registryIndex)
+            val uniqueRegistryClassName = Files.walk(outputDirectory).use { paths ->
+                paths
+                    .filter { path -> path.fileName.toString().startsWith("WinRTInterfaceProjectionRegistry_") }
+                    .map { path -> outputDirectory.relativize(path).toString() }
+                    .findFirst()
+                    .orElseThrow()
+            }
+                .removeSuffix(".class")
+                .replace('\\', '.')
+                .replace('/', '.')
             assertTrue(uniqueRegistryClassName.startsWith("io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry_"))
             val uniqueRegistryClass = Class.forName(uniqueRegistryClassName, false, classLoader)
             assertEquals("register", uniqueRegistryClass.getDeclaredMethod("register").name)

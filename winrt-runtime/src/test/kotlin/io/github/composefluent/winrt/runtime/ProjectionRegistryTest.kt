@@ -242,6 +242,7 @@ class ProjectionRegistryTest {
         val projected = ComWrappersSupport.wrapGeneratedInterfaceProjection(
             GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE,
             nativeReference,
+            "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry",
         ) as GeneratedRegistrarInterfaceProjection
 
         assertSame(nativeReference, projected.nativeObject)

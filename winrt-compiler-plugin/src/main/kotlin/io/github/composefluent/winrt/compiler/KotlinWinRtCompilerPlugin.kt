@@ -158,7 +158,14 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
+        val interfaceNativeProjectionRegistryClassName =
+            compilerGeneratedInterfaceNativeProjectionRegistryClassName(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries)
+        lowerGeneratedInterfaceProjectionRegistryCalls(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            registryClassName = interfaceNativeProjectionRegistryClassName,
+        )
         lowerProjectionIntrinsics(moduleFragment, pluginContext)
         if (metadataIndexPath.isNullOrBlank()) {
             return
@@ -185,6 +192,77 @@ class KotlinWinRtIrGenerationExtension(
                 messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
             }
         }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun compilerGeneratedInterfaceNativeProjectionRegistryClassName(
+        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
+    ): String? {
+        val entries = readInterfaceNativeProjectionEntries(manifestEntries)
+        if (entries.isEmpty()) {
+            return null
+        }
+        return interfaceNativeProjectionUniqueRegistryInternalName(entries).replace('/', '.')
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerGeneratedInterfaceProjectionRegistryCalls(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        registryClassName: String?,
+    ) {
+        if (registryClassName.isNullOrBlank()) {
+            return
+        }
+        val comWrappersSupportClassId = ClassId.topLevel(
+            FqName("io.github.composefluent.winrt.runtime.ComWrappersSupport"),
+        )
+        val wrapWithRegistry = pluginContext.referenceFunctions(
+            CallableId(
+                comWrappersSupportClassId,
+                Name.identifier("wrapGeneratedInterfaceProjection"),
+            ),
+        )
+            .map { symbol -> symbol.owner }
+            .singleOrNull { function ->
+                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 3
+            }
+            ?.symbol
+            ?: return
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    if (!call.isGeneratedInterfaceProjectionWrapCall()) {
+                        return call
+                    }
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
+                    return builder.irCall(wrapWithRegistry).apply {
+                        arguments[0] = call.arguments[0]
+                        arguments[1] = call.arguments[1]
+                        arguments[2] = call.arguments[2]
+                        arguments[3] = builder.irString(registryClassName)
+                    }
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrCall.isGeneratedInterfaceProjectionWrapCall(): Boolean {
+        val function = symbol.owner
+        if (function.name.asString() != "wrapGeneratedInterfaceProjection") {
+            return false
+        }
+        val ownerClass = function.parent as? IrClass ?: return false
+        if (ownerClass.fqNameWhenAvailable?.asString() != "io.github.composefluent.winrt.runtime.ComWrappersSupport") {
+            return false
+        }
+        val regularParameters = function.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
+        return regularParameters.size == 2 &&
+            regularParameters[0].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.WinRtTypeHandle" &&
+            regularParameters[1].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.IUnknownReference"
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -3250,9 +3328,6 @@ private const val GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME: String =
 private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry"
 
-private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_INDEX_RESOURCE: String =
-    "kotlin-winrt/interface-native-projection-registries.txt"
-
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
 private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
@@ -4090,9 +4165,6 @@ fun writeInterfaceNativeProjectionRegistryClass(
         outputDirectory = outputDirectory,
         registryInternalName = uniqueRegistryInternalName,
     )
-    val registryIndex = outputDirectory.resolve(INTERFACE_NATIVE_PROJECTION_REGISTRY_INDEX_RESOURCE)
-    Files.createDirectories(registryIndex.parent)
-    Files.writeString(registryIndex, "${uniqueRegistryInternalName.replace('/', '.')}\n")
 }
 
 private fun writeInterfaceNativeProjectionRegistryClass(
@@ -4136,7 +4208,7 @@ private fun writeInterfaceNativeProjectionRegistryClass(
     Files.write(target, classWriter.toByteArray())
 }
 
-private fun interfaceNativeProjectionUniqueRegistryInternalName(entries: List<KotlinWinRtInterfaceNativeProjectionEntry>): String {
+internal fun interfaceNativeProjectionUniqueRegistryInternalName(entries: List<KotlinWinRtInterfaceNativeProjectionEntry>): String {
     val digest = MessageDigest.getInstance("SHA-256")
         .digest(
             entries.joinToString("\n") { entry ->
