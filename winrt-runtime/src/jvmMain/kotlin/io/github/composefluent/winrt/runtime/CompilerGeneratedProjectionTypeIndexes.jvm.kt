@@ -16,9 +16,48 @@ private const val WINRT_EVENT_PROJECTION_REGISTRY_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry"
 
 internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
-    val classLoader = Thread.currentThread().contextClassLoader
-        ?: WinRtTypeRegistry::class.java.classLoader
-        ?: return
+    val classLoaders = compilerGeneratedRegistryClassLoaders()
+    classLoaders.forEach { classLoader ->
+        registerGeneratedProjectionRegistriesFromIndex(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_INDEX_RESOURCE)
+    }
+    classLoaders.forEach { classLoader ->
+        registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
+        registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)
+        registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
+    }
+    // A fixed registrar class can only represent one classpath entry; resources preserve dependency indexes.
+    classLoaders.forEach { classLoader ->
+        val resources = classLoader.getResources(WINRT_PROJECTION_TYPE_INDEX_RESOURCE).toList()
+        resources.forEach { resource ->
+            resource.openStream().bufferedReader().useLines { lines ->
+                lines.filter(String::isNotBlank)
+                    .forEach { line -> registerProjectionTypeIndexLine(classLoader, line) }
+            }
+        }
+    }
+}
+
+private fun compilerGeneratedRegistryClassLoaders(): List<ClassLoader> {
+    val classLoaders = linkedSetOf<ClassLoader>()
+    Thread.currentThread().contextClassLoader?.let(classLoaders::add)
+    stackClassLoaders().forEach(classLoaders::add)
+    WinRtTypeRegistry::class.java.classLoader?.let(classLoaders::add)
+    return classLoaders.toList()
+}
+
+private fun stackClassLoaders(): List<ClassLoader> =
+    runCatching {
+        StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+            .walk { frames ->
+                frames
+                    .map { frame -> frame.declaringClass.classLoader }
+                    .filter { classLoader -> classLoader != null }
+                    .distinct()
+                    .toList()
+            }
+    }.getOrDefault(emptyList())
+
+internal fun registerCompilerGeneratedProjectionTypeIndexesForClassLoader(classLoader: ClassLoader) {
     registerGeneratedProjectionRegistriesFromIndex(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_INDEX_RESOURCE)
     registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
     registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)

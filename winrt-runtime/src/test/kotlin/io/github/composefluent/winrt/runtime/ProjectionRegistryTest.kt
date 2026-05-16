@@ -248,6 +248,31 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun generated_interface_projection_retry_uses_call_stack_classloader_when_context_loader_misses_registry() {
+        ComWrappersSupport.clearRegistriesForTests()
+        clearGeneratedInterfaceProjectionFactoriesForTest()
+        val originalClassLoader = Thread.currentThread().contextClassLoader
+        val nativeReference = IUnknownReference(
+            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
+            GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE.interfaceId,
+            preventReleaseOnDispose = true,
+        )
+
+        try {
+            Thread.currentThread().contextClassLoader = ComWrappersSupport::class.java.classLoader
+
+            val projected = ComWrappersSupport.wrapGeneratedInterfaceProjection(
+                GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE,
+                nativeReference,
+            ) as GeneratedRegistrarInterfaceProjection
+
+            assertSame(nativeReference, projected.nativeObject)
+        } finally {
+            Thread.currentThread().contextClassLoader = originalClassLoader
+        }
+    }
+
+    @Test
     fun generated_interface_projection_registry_wraps_by_type_handle_and_type_name() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle(
