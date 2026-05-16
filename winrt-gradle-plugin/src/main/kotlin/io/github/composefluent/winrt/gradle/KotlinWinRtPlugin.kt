@@ -279,6 +279,21 @@ private fun configureWinRtApplicationTasks(
             task.projectPriInitialPath.set(extension.application.projectPriInitialPath)
             task.projectPriDefaultLanguage.set(extension.application.projectPriDefaultLanguage)
             task.projectPriDefaultQualifiers.set(extension.application.projectPriDefaultQualifiers)
+            task.enableDefaultProjectPriResources.set(extension.application.enableDefaultProjectPriResources)
+            task.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            task.defaultProjectPriResourceFiles.from(
+                project.provider {
+                    if (extension.application.enableDefaultProjectPriResources.get()) {
+                        project.fileTree(project.projectDir) { spec ->
+                            spec.include("**/*.resw")
+                            spec.exclude(".gradle/**")
+                            spec.exclude("build/**")
+                        }
+                    } else {
+                        project.files()
+                    }
+                },
+            )
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
             task.appxManifestFiles.from(extension.application.appxManifestFiles)

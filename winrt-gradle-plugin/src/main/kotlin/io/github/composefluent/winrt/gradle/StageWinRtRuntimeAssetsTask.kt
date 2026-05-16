@@ -73,6 +73,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val projectPriDefaultQualifiers: ListProperty<String>
 
     @get:Input
+    abstract val enableDefaultProjectPriResources: Property<Boolean>
+
+    @get:Input
     abstract val makePriExecutable: Property<String>
 
     @get:Input
@@ -91,6 +94,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectPriResourceFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val defaultProjectPriResourceFiles: ConfigurableFileCollection
+
+    @get:Internal
+    abstract val defaultProjectPriResourceRoot: DirectoryProperty
 
     @get:InputFiles
     @get:Optional
@@ -118,6 +129,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         projectPriInitialPath.convention("")
         projectPriDefaultLanguage.convention("")
         projectPriDefaultQualifiers.convention(listOf("scale-200", "contrast-standard"))
+        enableDefaultProjectPriResources.convention(true)
         makePriExecutable.convention("")
         windowsSdkVersion.convention("")
     }
@@ -331,6 +343,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         stageProjectPriResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
+        stageDefaultProjectPriResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
         if (!hasProjectPriInputs) {
             return
         }
@@ -404,6 +419,30 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     }
                 } else if (source.isRegularFile()) {
                     val target = projectPriRoot.resolve(initialPath).resolve(source.name)
+                    if (copyProjectPriInput(source, target, copiedTargets)) {
+                        copied = true
+                    }
+                }
+            }
+        return copied
+    }
+
+    private fun stageDefaultProjectPriResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
+        if (!enableDefaultProjectPriResources.get()) {
+            return false
+        }
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        var copied = false
+        defaultProjectPriResourceFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { it.isRegularFile() && it.name.endsWith(".resw", ignoreCase = true) }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                val normalizedSource = source.toAbsolutePath().normalize()
+                if (normalizedSource.startsWith(root)) {
+                    val target = projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root))
                     if (copyProjectPriInput(source, target, copiedTargets)) {
                         copied = true
                     }
