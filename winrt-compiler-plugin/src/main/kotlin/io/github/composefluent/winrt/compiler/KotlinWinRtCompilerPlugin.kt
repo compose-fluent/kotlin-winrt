@@ -65,8 +65,10 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.org.objectweb.asm.ClassWriter
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 
 @OptIn(ExperimentalCompilerApi::class)
 class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
@@ -3248,6 +3250,9 @@ private const val GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME: String =
 private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry"
 
+private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_INDEX_RESOURCE: String =
+    "kotlin-winrt/interface-native-projection-registries.txt"
+
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
 private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
@@ -4074,11 +4079,32 @@ fun writeInterfaceNativeProjectionRegistryClass(
         writeInterfaceNativeProjectionFactoryClass(entry, outputDirectory)
     }
 
+    val uniqueRegistryInternalName = interfaceNativeProjectionUniqueRegistryInternalName(entries)
+    writeInterfaceNativeProjectionRegistryClass(
+        entries = entries,
+        outputDirectory = outputDirectory,
+        registryInternalName = INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME,
+    )
+    writeInterfaceNativeProjectionRegistryClass(
+        entries = entries,
+        outputDirectory = outputDirectory,
+        registryInternalName = uniqueRegistryInternalName,
+    )
+    val registryIndex = outputDirectory.resolve(INTERFACE_NATIVE_PROJECTION_REGISTRY_INDEX_RESOURCE)
+    Files.createDirectories(registryIndex.parent)
+    Files.writeString(registryIndex, "${uniqueRegistryInternalName.replace('/', '.')}\n")
+}
+
+private fun writeInterfaceNativeProjectionRegistryClass(
+    entries: List<KotlinWinRtInterfaceNativeProjectionEntry>,
+    outputDirectory: Path,
+    registryInternalName: String,
+) {
     val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
     classWriter.visit(
         Opcodes.V17,
         Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME,
+        registryInternalName,
         null,
         "java/lang/Object",
         null,
@@ -4091,7 +4117,7 @@ fun writeInterfaceNativeProjectionRegistryClass(
     chunks.indices.forEach { index ->
         register.visitMethodInsn(
             Opcodes.INVOKESTATIC,
-            INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME,
+            registryInternalName,
             interfaceNativeProjectionRegistryChunkName(index),
             "()V",
             false,
@@ -4105,9 +4131,37 @@ fun writeInterfaceNativeProjectionRegistryClass(
     }
     classWriter.visitEnd()
 
-    val target = outputDirectory.resolve("$INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME.class")
+    val target = outputDirectory.resolve("$registryInternalName.class")
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
+}
+
+private fun interfaceNativeProjectionUniqueRegistryInternalName(entries: List<KotlinWinRtInterfaceNativeProjectionEntry>): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest(
+            entries.joinToString("\n") { entry ->
+                listOf(
+                    entry.projectedTypeName,
+                    entry.kotlinInterfaceClassName,
+                    entry.implementationClassName,
+                    entry.interfaceId,
+                    entry.members.joinToString(";") { member ->
+                        listOf(
+                            member.kind,
+                            member.jvmName,
+                            member.slot.toString(),
+                            member.returnKind,
+                            member.parameterKinds.joinToString(","),
+                            member.suppressHResultCheck.toString(),
+                            member.eventTypeName,
+                            member.ownerTypeName,
+                        ).joinToString("|")
+                    },
+                ).joinToString("\t")
+            }.toByteArray(StandardCharsets.UTF_8),
+        )
+    val suffix = digest.take(8).joinToString("") { byte -> "%02x".format(byte) }
+    return "io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry_$suffix"
 }
 
 private fun interfaceNativeProjectionRegistryChunkName(index: Int): String =

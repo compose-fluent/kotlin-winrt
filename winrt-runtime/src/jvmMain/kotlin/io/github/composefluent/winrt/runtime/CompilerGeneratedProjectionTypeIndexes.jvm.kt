@@ -6,6 +6,9 @@ private const val WINRT_PROJECTION_REGISTRAR_CLASS: String =
 private const val WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry"
 
+private const val WINRT_INTERFACE_PROJECTION_REGISTRY_INDEX_RESOURCE: String =
+    "kotlin-winrt/interface-native-projection-registries.txt"
+
 private const val WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar"
 
@@ -16,6 +19,7 @@ internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
     val classLoader = Thread.currentThread().contextClassLoader
         ?: WinRtTypeRegistry::class.java.classLoader
         ?: return
+    registerGeneratedProjectionRegistriesFromIndex(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_INDEX_RESOURCE)
     registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
     registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)
     registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
@@ -25,6 +29,20 @@ internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
         resource.openStream().bufferedReader().useLines { lines ->
             lines.filter(String::isNotBlank)
                 .forEach { line -> registerProjectionTypeIndexLine(classLoader, line) }
+        }
+    }
+}
+
+private fun registerGeneratedProjectionRegistriesFromIndex(
+    classLoader: ClassLoader,
+    resourceName: String,
+) {
+    val resources = classLoader.getResources(resourceName).toList()
+    resources.forEach { resource ->
+        resource.openStream().bufferedReader().useLines { lines ->
+            lines.map(String::trim)
+                .filter(String::isNotBlank)
+                .forEach { className -> registerGeneratedProjectionRegistry(classLoader, className) }
         }
     }
 }
