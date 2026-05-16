@@ -274,7 +274,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains("internal const val CHANGED_ADD_SLOT: Int = 6"))
         assertTrue(common, common.contains("internal const val CHANGED_REMOVE_SLOT: Int = 7"))
         assertTrue(jvm, jvm.contains("override val changed: WinRtEvent<WidgetChangedHandler> by lazy"))
-        assertTrue(jvm, jvm.contains("WinRTEventProjectionHelpers.createEventSource("))
+        assertTrue(jvm, jvm.contains("WinRTEventProjectionHelper_"))
+        assertTrue(jvm, jvm.contains(".createEventSource_"))
         assertTrue(jvm, jvm.contains("IWidget.Metadata.CHANGED_ADD_SLOT"))
         assertTrue(jvm, jvm.contains("override fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
         assertTrue(jvm, jvm.contains("changed.add(handler)"))
@@ -3908,9 +3909,8 @@ class KotlinProjectionGeneratorTest {
         val contents = KotlinProjectionGenerator().generate(model).single { it.relativePath.endsWith("ICalculator.kt") }.contents
 
         assertTrue(contents.contains("private class NativeProjection("))
-        assertTrue(contents.contains("WinRTEventProjectionHelpers.createEventSource("))
-        assertTrue(contents.contains("\"Windows.Foundation.EventHandler<Int>\""))
-        assertTrue(contents.contains("\"Sample.Foundation.ICalculator\""))
+        assertTrue(contents.contains("WinRTEventProjectionHelper_"))
+        assertTrue(contents.contains(".createEventSource_"))
         assertTrue(contents.contains("ICalculator.Metadata.CHANGED_ADD_SLOT"))
         assertTrue(contents.contains(".add(handler)"))
         assertTrue(contents.contains(".remove(token)"))
@@ -4109,9 +4109,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("DependencyProperty.Metadata.wrap"))
         assertTrue(widgetContents.contains("val changed: WinRtEvent<EventHandlerCallback<Int>> by"))
         assertTrue(widgetContents.contains("lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(widgetContents.contains("WinRTEventProjectionHelpers.createEventSource("))
-        assertTrue(widgetContents.contains("\"Windows.Foundation.EventHandler<Int>\""))
-        assertTrue(widgetContents.contains("\"Sample.Foundation.IWidgetStatics\""))
+        assertTrue(widgetContents.contains("WinRTEventProjectionHelper_"))
+        assertTrue(widgetContents.contains(".createEventSource_"))
         assertTrue(widgetContents.contains("StaticInterfaces.iWidgetStatics()"))
         assertTrue(widgetContents.contains("STATIC_CHANGED_ADD_SLOT"))
     }
@@ -10534,7 +10533,7 @@ class KotlinProjectionGeneratorTest {
         val compilerSupportManifest = filesByName.getValue("compiler-support.tsv").contents
         assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries"))
         assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv"))
-        assertTrue(compilerSupportManifest.contains("event-source\tio.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers\tevent-sources.tsv"))
+        assertFalse(compilerSupportManifest.contains("event-source\t"))
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
         assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact\tgeneric-abi-registry.tsv"))
 
@@ -10581,33 +10580,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
         assertTrue(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
-        val eventSources = filesByName.getValue("event-sources.tsv").contents
-        val eventHandlerIntIid = ParameterizedInterfaceId.createFromParameterizedInterface(
-            Guid("11111111-2222-3333-4444-555555555551"),
-            WinRtTypeSignature.int32(),
-        )
-        val typedEventHandlerIid = ParameterizedInterfaceId.createFromParameterizedInterface(
-            Guid("11111111-2222-3333-4444-555555555556"),
-            WinRtTypeSignature.runtimeClass(
-                "Sample.Foundation.Widget",
-                WinRtTypeSignature.guid("11111111-2222-3333-4444-555555555553"),
-            ),
-            WinRtTypeSignature.int32(),
-        )
-        assertTrue(eventSources.contains("eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource\tinterfaceId\tparameterKinds\treturnKind\tparameterTypeNames"))
-        assertTrue(eventSources.contains("Windows.Foundation.EventHandler<Int>\tSample.Foundation.IWidget\tEventHandlerEventSource"))
-        assertTrue(eventSources.contains("Windows.Foundation.EventHandler<Int>\tSample.Foundation.IWidget\tEventHandlerEventSource\tWindows.Foundation.EventHandler<Int>\tInt\ttrue\t$eventHandlerIntIid\tOBJECT,INT32"))
-        assertTrue(
-            eventSources.contains("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget,Int>\tSample.Foundation.IWidget\t") ||
-                eventSources.contains("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget, Int>\tSample.Foundation.IWidget\t"),
-        )
-        assertTrue(
-            eventSources.contains("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget,Int>\tSample.Foundation.Widget,Int\tfalse\t$typedEventHandlerIid\tIINSPECTABLE,INT32") ||
-                eventSources.contains("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget, Int>\tSample.Foundation.Widget,Int\tfalse\t$typedEventHandlerIid\tIINSPECTABLE,INT32"),
-        )
-        assertTrue(eventSources.contains("Sample.Foundation.WidgetHandler\tSample.Foundation.IWidget\t_EventSource_Sample_Foundation_WidgetHandler"))
-        assertTrue(eventSources.contains("\tOBJECT,INT32\tUNIT\tAny,Int"))
-        assertTrue(eventSources.contains("\tINT32\tUNIT\tInt"))
+        assertFalse(filesByName.containsKey("event-sources.tsv"))
         assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_IS_CHECK\""))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_CAST\""))
@@ -10618,23 +10591,25 @@ class KotlinProjectionGeneratorTest {
         assertFalse(eventProjectionHelpers.contains("eventSourceFactoryFor"))
         assertFalse(eventProjectionHelpers.contains("eventHandlerEventSourceFactoryFor"))
         assertFalse(eventProjectionHelpers.contains("WinRtEventSourceFactory?"))
-        assertFalse(eventProjectionHelpers.contains("EventHandlerEventSource<"))
-        assertFalse(eventProjectionHelpers.contains("argsKind = "))
+        assertTrue(eventProjectionHelpers.contains("EventHandlerEventSource<"))
+        assertTrue(eventProjectionHelpers.contains("argsKind = "))
         assertFalse(eventProjectionHelpers.contains("\"_EventSource_Windows_Foundation_TypedEventHandler"))
-        assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_TypedEventHandler"))
-        assertFalse(eventProjectionHelpers.contains("EventSource<TypedEventHandler<Widget, Int>>"))
+        assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_TypedEventHandler"))
+        assertTrue(eventProjectionHelpers.contains("EventSource<TypedEventHandler<Widget, Int>>"))
         assertFalse(eventProjectionHelpers.contains("usesSharedEventHandlerSource = true,\n    genericArgumentTypeNames = listOf(\"Sample.Foundation.Widget\", \"Int\")"))
-        assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
-        assertFalse(eventProjectionHelpers.contains("EventSource<WidgetHandler>"))
-        assertFalse(eventProjectionHelpers.contains("handler.invoke("))
+        assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Sample_Foundation_WidgetHandler"))
+        assertTrue(eventProjectionHelpers.contains("EventSource<WidgetHandler>"))
+        assertTrue(eventProjectionHelpers.contains("handler.invoke("))
         assertFalse(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" ->"))
-        assertFalse(eventProjectionHelpers.contains("_EventSource_Sample_Foundation_WidgetHandler(obj, index)"))
+        assertTrue(eventProjectionHelpers.contains("_EventSource_Sample_Foundation_WidgetHandler(objectReference, vtableIndexForAddHandler)"))
         assertFalse(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))
         assertFalse(eventProjectionHelpers.contains("IMapChangedEventArgs.Metadata.wrap"))
-        assertTrue(eventProjectionHelpers.contains("fun installEventSources()"))
-        assertTrue(eventProjectionHelpers.contains("WinRTEventProjectionRegistry"))
-        assertTrue(eventProjectionHelpers.contains("fun createEventSource("))
-        assertTrue(eventProjectionHelpers.contains("WinRtEventSourceRuntime.createEventSource("))
+        assertFalse(eventProjectionHelpers.contains("fun installEventSources()"))
+        assertFalse(eventProjectionHelpers.contains("WinRTEventProjectionRegistry"))
+        assertFalse(eventProjectionHelpers.contains("fun createEventSource("))
+        assertFalse(eventProjectionHelpers.contains("WinRtEventSourceRuntime.createEventSource("))
+        assertTrue(eventProjectionHelpers.contains("internal object WinRTEventProjectionHelper_"))
+        assertTrue(eventProjectionHelpers.contains("fun createEventSource_"))
         assertFalse(eventProjectionHelpers.contains("No WinRT event source registered"))
         assertFalse(eventProjectionHelpers.contains("ownerType = \"Sample.Foundation.IWidget\""))
         assertFalse(eventProjectionHelpers.contains("install: Function1"))

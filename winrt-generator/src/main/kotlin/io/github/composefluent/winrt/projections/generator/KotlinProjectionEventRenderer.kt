@@ -96,8 +96,10 @@ import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
 import com.squareup.kotlinpoet.UNIT
 import com.squareup.kotlinpoet.asClassName
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.time.Duration
 import java.time.OffsetDateTime
 import kotlin.collections.AbstractList
@@ -218,10 +220,12 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
                     .add("lazy(%T.PUBLICATION) {\n", LAZY_THREAD_SAFETY_MODE_CLASS_NAME)
                     .indent()
                     .addStatement(
-                        "val __eventSource = %T.createEventSource(%S, %S, %L, %L) as? %T",
-                        WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME,
-                        eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName,
-                        eventSourceOwnerTypeName,
+                        "val __eventSource = %T.%L(%L, %L) as? %T",
+                        ClassName(WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName, eventSourceOwnerHelperName(eventSourceOwnerTypeName)),
+                        eventSourceCreateFunctionName(
+                            eventType = eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName,
+                            ownerType = eventSourceOwnerTypeName,
+                        ),
                         eventSourceObjectReference,
                         eventSourceAddSlot,
                         WINRT_EVENT_SOURCE_CLASS_NAME.parameterizedBy(typeName),
@@ -1859,4 +1863,16 @@ internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
         builder.addStringListProperty("DEFERRED_AUTHORING_FACTORY_MEMBERS", module.factoryMemberNames)
         builder.addStringListProperty("DEFERRED_MODULE_ACTIVATION_FACTORY_ENTRIES", module.moduleActivationFactoryEntries)
     }
+}
+
+internal fun eventSourceCreateFunctionName(eventType: String, ownerType: String): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest("$eventType\t$ownerType".toByteArray(StandardCharsets.UTF_8))
+    return "createEventSource_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
+}
+
+internal fun eventSourceOwnerHelperName(ownerType: String): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest(ownerType.toByteArray(StandardCharsets.UTF_8))
+    return "WinRTEventProjectionHelper_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
 }

@@ -146,8 +146,7 @@ class KotlinProjectionSupportRenderer {
             renderGenericAbiRegistry(inventory.genericAbiInventory),
             renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
             renderGenericTypeInstantiations(genericInstantiationWriters),
-            renderEventProjectionCompilerInput(model, inventory),
-            renderEventProjectionHelpers(model, plans, inventory),
+            renderEventProjectionHelpers(model, plans),
             renderInterfaceNativeProjectionCompilerInput(plans),
             renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
             renderAuthoringMetadataTypeMappingHelper(inventory),
@@ -318,11 +317,6 @@ class KotlinProjectionSupportRenderer {
         } else {
             0
         }
-        val eventSourceEntries = model.namespaces
-            .flatMap(WinRtNamespace::types)
-            .flatMap(model.semanticHelpers()::eventHelperSubclassDescriptors)
-            .distinctBy { it.eventTypeName to it.ownerTypeName }
-            .count()
         val genericInstantiationEntries = genericInstantiationWriters.size
         val interfaceNativeProjectionEntries = interfaceNativeProjectionPlans(plans).size
         val genericAbiRegistryEntries = inventory.genericAbiInventory.genericAbiDelegates.size +
@@ -333,18 +327,6 @@ class KotlinProjectionSupportRenderer {
                 className = "$SUPPORT_PACKAGE.WinRTProjectionRegistrar",
                 sourceFile = "projection-registrar.tsv",
                 entries = registrarEntries,
-            ),
-            compilerSupportManifestRow(
-                kind = "event-source",
-                className = "$SUPPORT_PACKAGE.WinRTEventProjectionHelpers",
-                sourceFile = "event-sources.tsv",
-                entries = eventSourceEntries,
-            ),
-            compilerSupportManifestRow(
-                kind = "event-source-mapping",
-                className = "$SUPPORT_PACKAGE.WinRTEventProjectionHelpers",
-                sourceFile = "io/github/composefluent/winrt/projections/support/WinRTEventProjectionHelpers.kt",
-                entries = inventory.eventSourceMappings.size,
             ),
             compilerSupportManifestRow(
                 kind = "generic-type-instantiation",
@@ -436,49 +418,6 @@ class KotlinProjectionSupportRenderer {
 
     private fun interfaceNativeProjectionImplementationClassName(plan: KotlinTypeProjectionPlan): String =
         ClassName(plan.packageName, "${plan.type.name}NativeProjection").canonicalName
-
-    private fun renderEventProjectionCompilerInput(
-        model: WinRtMetadataModel,
-        inventory: WinRtMetadataProjectionInventory,
-    ): KotlinProjectionFile? {
-        val helpers = model.semanticHelpers()
-        val typesByQualifiedName = model.namespaces
-            .flatMap(WinRtNamespace::types)
-            .associateBy { it.qualifiedName }
-        val eventSourceEntries = model.namespaces
-            .flatMap(WinRtNamespace::types)
-            .flatMap(helpers::eventHelperSubclassDescriptors)
-            .distinctBy { it.eventTypeName to it.ownerTypeName }
-            .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
-        if (inventory.eventSourceMappings.isEmpty() && eventSourceEntries.isEmpty()) {
-            return null
-        }
-        val rows = eventSourceEntries.joinToString(
-            separator = "\n",
-            postfix = "\n",
-            prefix = "eventType\townerType\tsourceClass\tabiEventType\tgenericArguments\tusesSharedEventHandlerSource\tinterfaceId\tparameterKinds\treturnKind\tparameterTypeNames\n",
-        ) { entry ->
-            val invokeShape = concreteEventInvokeShape(entry, typesByQualifiedName)
-            val invokeFields = eventSourceInvokeFields(entry, invokeShape, typesByQualifiedName)
-            listOf(
-                entry.eventTypeName,
-                entry.ownerTypeName,
-                entry.sourceClassName,
-                entry.abiEventTypeName,
-                entry.genericArgumentTypeNames.joinToString(","),
-                entry.usesSharedEventHandlerSource.toString(),
-                entry.interfaceId?.toString() ?: invokeFields.interfaceId?.toString().orEmpty(),
-                invokeFields.parameterKinds.joinToString(","),
-                invokeFields.returnKind,
-                invokeFields.parameterTypeNames.joinToString(","),
-            ).joinToString("\t")
-        }
-        return KotlinProjectionFile(
-            relativePath = "kotlin-winrt-support/event-sources.tsv",
-            packageName = "",
-            contents = rows,
-        )
-    }
 
     private fun renderGenericTypeInstantiationCompilerInput(
         descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
@@ -725,7 +664,6 @@ class KotlinProjectionSupportRenderer {
     private fun renderEventProjectionHelpers(
         model: WinRtMetadataModel,
         plans: List<KotlinTypeProjectionPlan>,
-        inventory: WinRtMetadataProjectionInventory,
     ): KotlinProjectionFile? {
         val helpers = model.semanticHelpers()
         val eventSourceEntries = model.namespaces
@@ -733,17 +671,34 @@ class KotlinProjectionSupportRenderer {
             .flatMap(helpers::eventHelperSubclassDescriptors)
             .distinctBy { it.eventTypeName to it.ownerTypeName }
             .sortedWith(compareBy({ it.eventTypeName }, { it.ownerTypeName }))
-        if (inventory.eventSourceMappings.isEmpty() && eventSourceEntries.isEmpty()) {
+        if (eventSourceEntries.isEmpty()) {
             return null
         }
-        val objectBuilder = TypeSpec.objectBuilder("WinRTEventProjectionHelpers")
-            .addModifiers(KModifier.INTERNAL)
-            .addProperty(stringListProperty("EVENT_SOURCE_MAPPING_KEYS", inventory.eventSourceMappings.map { "${it.eventTypeName}->${it.sourceClassName}" }))
-            .addFunctions(eventProjectionHelperFunctions())
+        val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
+        val typesByQualifiedName = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .associateBy(WinRtTypeDefinition::qualifiedName)
         val fileBuilder = supportFileSpec("WinRTEventProjectionHelpers")
             .addGeneratedProjectionSuppressions()
+        eventSourceEntries
+            .filterNot { it.usesSharedEventHandlerSource }
+            .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
+            .forEach { descriptor ->
+                val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
+                val delegatePlan = plansByType[rawEventType] ?: return@forEach
+                val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
+                if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
+                    fileBuilder.addType(eventSourceSubclassType(descriptor, delegatePlan, invokeShape))
+                }
+            }
+        eventSourceEntries
+            .groupBy(WinRtEventHelperSubclassDescriptor::ownerTypeName)
+            .toSortedMap()
+            .values
+            .forEach { ownerEntries ->
+                eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName)?.let(fileBuilder::addType)
+            }
         val fileSpec = fileBuilder
-            .addType(objectBuilder.build())
             .build()
         return supportFile("WinRTEventProjectionHelpers.kt", fileSpec)
     }
@@ -2903,93 +2858,6 @@ class KotlinProjectionSupportRenderer {
                 .build(),
         )
 
-    private fun eventProjectionRegistryType(
-        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
-        plansByType: Map<String, KotlinTypeProjectionPlan>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): TypeSpec {
-        val descriptorClass = ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceDescriptor")
-        val factoryClass = ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceFactory")
-        return TypeSpec.objectBuilder("WinRTEventProjectionRegistry")
-            .addModifiers(KModifier.INTERNAL)
-            .addProperty(
-                PropertySpec.builder("registered", Boolean::class)
-                    .addModifiers(KModifier.PRIVATE)
-                    .mutable()
-                    .initializer("false")
-                    .build(),
-            )
-            .addProperty(
-                PropertySpec.builder("ENTRIES", List::class.asClassName().parameterizedBy(descriptorClass))
-                    .addModifiers(KModifier.PRIVATE)
-                    .initializer("%L", eventSourceDescriptorListCode(subclassDescriptors, typesByQualifiedName))
-                    .build(),
-            )
-            .addFunction(
-                FunSpec.builder("register")
-                    .addAnnotation(JvmStatic::class)
-                    .addAnnotation(Synchronized::class)
-                    .addCode(
-                        """
-                        if (registered) return
-                        ENTRIES.forEach { entry ->
-                            val factory = eventSourceFactoryFor(entry) ?: return@forEach
-                            io.github.composefluent.winrt.runtime.WinRtEventSourceRuntime.registerEventSource(entry.copy(eventSourceFactory = factory))
-                        }
-                        registered = true
-                        """.trimIndent() + "\n",
-                    )
-                    .build(),
-            )
-            .addFunction(
-                FunSpec.builder("eventSourceFactoryFor")
-                    .addModifiers(KModifier.PRIVATE)
-                    .addParameter("entry", descriptorClass)
-                    .returns(factoryClass.copy(nullable = true))
-                    .addCode("%L", eventSourceFactoryForCode(subclassDescriptors, plansByType, typesByQualifiedName))
-                    .build(),
-            )
-            .addFunction(
-                FunSpec.builder("eventHandlerEventSourceFactoryFor")
-                    .addModifiers(KModifier.PRIVATE)
-                    .addParameter("entry", descriptorClass)
-                    .returns(factoryClass.copy(nullable = true))
-                    .addCode("%L", eventHandlerEventSourceFactoryForCode(subclassDescriptors, typesByQualifiedName))
-                    .build(),
-            )
-            .build()
-    }
-
-    private fun eventSourceDescriptorListCode(
-        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): CodeBlock {
-        val descriptorClass = ClassName("io.github.composefluent.winrt.runtime", "WinRtEventSourceDescriptor")
-        val code = CodeBlock.builder()
-        code.add("listOf(\n")
-        code.indent()
-        subclassDescriptors.forEach { descriptor ->
-            val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName)
-            code.add(
-                "%T(eventType = %S, ownerType = %S, sourceClass = %S, abiEventType = %S, genericArguments = %L, usesSharedEventHandlerSource = %L, interfaceId = %L, parameterKinds = %L, returnKind = %L, parameterTypeNames = %L),\n",
-                descriptorClass,
-                descriptor.eventTypeName,
-                descriptor.ownerTypeName,
-                descriptor.sourceClassName,
-                descriptor.abiEventTypeName,
-                stringListCode(descriptor.genericArgumentTypeNames),
-                descriptor.usesSharedEventHandlerSource,
-                descriptor.interfaceId?.let { CodeBlock.of("%T(%S)", GUID_CLASS_NAME, it.toString()) } ?: CodeBlock.of("null"),
-                invokeShape?.parameterBindings?.map { it.typeBinding }?.let(::eventSourceDelegateValueKindList)?.let(CodeBlock::of) ?: CodeBlock.of("emptyList()"),
-                invokeShape?.returnBinding?.let(::delegateValueKindName)?.let(CodeBlock::of) ?: CodeBlock.of("%T.UNIT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME),
-                stringListCode(invokeShape?.parameterBindings?.map { it.typeBinding.typeName }.orEmpty()),
-            )
-        }
-        code.unindent()
-        code.add(")")
-        return code.build()
-    }
-
     private fun eventSourceSubclassType(
         descriptor: WinRtEventHelperSubclassDescriptor,
         delegatePlan: KotlinTypeProjectionPlan,
@@ -3097,9 +2965,6 @@ class KotlinProjectionSupportRenderer {
             else -> delegateValueKindName(binding)
         }
 
-    private fun eventSourceDelegateValueKindEnumName(binding: KotlinProjectionAbiTypeBinding): String =
-        eventSourceDelegateValueKindName(binding).substringAfterLast('.')
-
     private fun eventSourceTypeVariables(descriptor: WinRtEventHelperSubclassDescriptor): List<TypeVariableName> =
         descriptor.genericArgumentTypeNames
             .filter { it.isEventSourceGenericTypeParameterName() }
@@ -3153,64 +3018,63 @@ class KotlinProjectionSupportRenderer {
             )
         }
 
-    private fun eventProjectionHelperFunctions(): List<FunSpec> =
-        listOf(
-            FunSpec.builder("installEventSources")
-                .addCode(
-                    """
-                    val registryClass = runCatching {
-                        Class.forName("io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry")
-                    }.getOrNull() ?: return
-                    val register = registryClass.getDeclaredMethod("register")
-                    register.invoke(null)
-                    """.trimIndent() + "\n",
-                )
-                .build(),
-            FunSpec.builder("createEventSource")
-                .addParameter("eventType", String::class)
-                .addParameter("ownerType", String::class)
-                .addParameter("objectReference", ClassName("io.github.composefluent.winrt.runtime", "ComObjectReference"))
-                .addParameter("vtableIndexForAddHandler", Int::class)
-                .returns(ClassName("io.github.composefluent.winrt.runtime", "EventSource").parameterizedBy(STAR).copy(nullable = true))
-                .addCode(
-                    """
-                    installEventSources()
-                    return io.github.composefluent.winrt.runtime.WinRtEventSourceRuntime.createEventSource(
-                        eventType = eventType,
-                        ownerType = ownerType,
-                        objectReference = objectReference,
-                        vtableIndexForAddHandler = vtableIndexForAddHandler,
-                    )
-                    """.trimIndent() + "\n",
-                )
-                .build(),
-        )
-
-    private fun eventSourceFactoryForCode(
-        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
-        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    private fun eventSourceOwnerHelperType(
+        ownerEntries: List<WinRtEventHelperSubclassDescriptor>,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): CodeBlock {
-        val code = CodeBlock.builder()
-        code.add("return when (entry.sourceClass) {\n")
-        code.indent()
-        if (subclassDescriptors.any { it.usesSharedEventHandlerSource }) {
-            code.add("%S -> eventHandlerEventSourceFactoryFor(entry)\n", "EventHandlerEventSource")
+    ): TypeSpec? {
+        val builder = TypeSpec.objectBuilder(eventSourceOwnerHelperName(ownerEntries.first().ownerTypeName))
+            .addModifiers(KModifier.INTERNAL)
+        var hasFunctions = false
+        ownerEntries.sortedBy(WinRtEventHelperSubclassDescriptor::eventTypeName).forEach { descriptor ->
+            val createEventSource = directEventSourceCreateCode(descriptor, typesByQualifiedName) ?: return@forEach
+            hasFunctions = true
+            builder.addFunction(
+                FunSpec.builder(eventSourceCreateFunctionName(descriptor.eventTypeName, descriptor.ownerTypeName))
+                    .addParameter("objectReference", ClassName("io.github.composefluent.winrt.runtime", "ComObjectReference"))
+                    .addParameter("vtableIndexForAddHandler", Int::class)
+                    .returns(ClassName("io.github.composefluent.winrt.runtime", "EventSource").parameterizedBy(STAR).copy(nullable = true))
+                    .addCode("return %L\n", createEventSource)
+                    .build(),
+            )
         }
-        subclassDescriptors.filterNot { it.usesSharedEventHandlerSource }
-            .distinctBy(WinRtEventHelperSubclassDescriptor::sourceClassName)
-            .forEach { descriptor ->
-            val rawEventType = descriptor.projectedEventTypeName.substringBefore('<')
-            val delegatePlan = plansByType[rawEventType] ?: return@forEach
-            val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return@forEach
-            if (invokeShape.isSupportedProjectedDelegateShape() && invokeShape.supportsEventSourceCallbackWrapping()) {
-                code.add("%S -> { obj, index -> %L(obj, index) }\n", descriptor.sourceClassName, eventSourceConstructorCode(descriptor))
-            }
+        return builder.build().takeIf { hasFunctions }
+    }
+
+    private fun directEventSourceCreateCode(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        if (descriptor.usesSharedEventHandlerSource) {
+            return directSharedEventHandlerSourceCreateCode(descriptor, typesByQualifiedName)
         }
-        code.add("else -> null\n")
-        code.unindent()
-        code.add("}\n")
-        return code.build()
+        val invokeShape = concreteEventInvokeShape(descriptor, typesByQualifiedName) ?: return null
+        if (!invokeShape.isSupportedProjectedDelegateShape() || !invokeShape.supportsEventSourceCallbackWrapping()) {
+            return null
+        }
+        return CodeBlock.of("%L(objectReference, vtableIndexForAddHandler)", eventSourceConstructorCode(descriptor))
+    }
+
+    private fun directSharedEventHandlerSourceCreateCode(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val typeBinding = planner.classifyAbiTypeBinding(
+            typeName = descriptor.eventTypeName,
+            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
+            typesByQualifiedName = typesByQualifiedName,
+        )
+        val invokeShape = typeBinding.delegateInvokeShape ?: return null
+        val argumentBinding = typeBinding.typeArguments.singleOrNull() ?: return null
+        val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return null
+        val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
+        val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
+        return CodeBlock.of(
+            "%T<%T>(objectReference = objectReference, interfaceId = %L, argsKind = %L, vtableIndexForAddHandler = vtableIndexForAddHandler)",
+            ClassName("io.github.composefluent.winrt.runtime", "EventHandlerEventSource"),
+            argumentType,
+            interfaceId,
+            argumentKind,
+        )
     }
 
     private fun eventSourceConstructorCode(descriptor: WinRtEventHelperSubclassDescriptor): CodeBlock {
@@ -3238,61 +3102,6 @@ class KotlinProjectionSupportRenderer {
         return typeRenderer.outboundDelegateInvokeShape(typeBinding)
             ?.substituteDelegateTypeArguments(typeBinding.typeArguments)
     }
-
-    private fun eventSourceInvokeFields(
-        descriptor: WinRtEventHelperSubclassDescriptor,
-        invokeShape: KotlinProjectionDelegateInvokeShape?,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): EventSourceInvokeFields {
-        if (invokeShape != null) {
-            return EventSourceInvokeFields(
-                interfaceId = invokeShape.interfaceId,
-                parameterKinds = invokeShape.parameterBindings.map { binding ->
-                    eventSourceDelegateValueKindEnumName(binding.typeBinding)
-                },
-                returnKind = eventSourceDelegateValueKindEnumName(invokeShape.returnBinding),
-                parameterTypeNames = invokeShape.parameterBindings.map { binding -> binding.typeBinding.typeName },
-            )
-        }
-        val rawEventType = descriptor.eventTypeName.substringBefore('<')
-        val genericArgumentBindings = descriptor.genericArgumentTypeNames.map { argument ->
-            planner.classifyAbiTypeBinding(
-                typeName = argument,
-                currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
-                typesByQualifiedName = typesByQualifiedName,
-            )
-        }
-        val parameterBindings = when (rawEventType) {
-            "System.EventHandler",
-            "Windows.Foundation.EventHandler",
-            -> listOf(
-                planner.classifyAbiTypeBinding(
-                    typeName = "System.Object",
-                    currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
-                    typesByQualifiedName = typesByQualifiedName,
-                ),
-            ) + genericArgumentBindings.take(1)
-            "Windows.Foundation.TypedEventHandler" -> genericArgumentBindings.take(2)
-            else -> emptyList()
-        }
-        return EventSourceInvokeFields(
-            interfaceId = null,
-            parameterKinds = parameterBindings.map(::eventSourceDelegateValueKindEnumName),
-            returnKind = "UNIT",
-            parameterTypeNames = if (rawEventType == "Windows.Foundation.EventHandler" || rawEventType == "System.EventHandler") {
-                listOf("Any") + descriptor.genericArgumentTypeNames.take(1)
-            } else {
-                descriptor.genericArgumentTypeNames.take(parameterBindings.size)
-            },
-        )
-    }
-
-    private data class EventSourceInvokeFields(
-        val interfaceId: Guid?,
-        val parameterKinds: List<String>,
-        val returnKind: String,
-        val parameterTypeNames: List<String>,
-    )
 
     private fun KotlinProjectionDelegateInvokeShape.substituteDelegateTypeArguments(
         typeArguments: List<KotlinProjectionAbiTypeBinding>,
@@ -3360,56 +3169,6 @@ class KotlinProjectionSupportRenderer {
         "Windows.Foundation.Collections.IObservableMap",
         "Windows.Foundation.Collections.IObservableVector",
     )
-
-    private fun eventHandlerEventSourceFactoryForCode(
-        subclassDescriptors: List<WinRtEventHelperSubclassDescriptor>,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): CodeBlock {
-        val code = CodeBlock.builder()
-        code.add("return when (entry.eventType) {\n")
-        code.indent()
-        subclassDescriptors.filter { it.usesSharedEventHandlerSource }
-            .distinctBy(WinRtEventHelperSubclassDescriptor::eventTypeName)
-            .forEach { descriptor ->
-            code.add(sharedEventHandlerFactoryCode(descriptor, typesByQualifiedName))
-        }
-        code.add("else -> null\n")
-        code.unindent()
-        code.add("}\n")
-        return code.build()
-    }
-
-    private fun sharedEventHandlerFactoryCode(
-        descriptor: WinRtEventHelperSubclassDescriptor,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-    ): CodeBlock {
-        val typeBinding = planner.classifyAbiTypeBinding(
-            typeName = descriptor.eventTypeName,
-            currentNamespace = descriptor.ownerTypeName.substringBeforeLast('.', missingDelimiterValue = ""),
-            typesByQualifiedName = typesByQualifiedName,
-        )
-        val invokeShape = typeBinding.delegateInvokeShape ?: return CodeBlock.of("")
-        val argumentBinding = typeBinding.typeArguments.singleOrNull() ?: return CodeBlock.of("")
-        val interfaceId = typeRenderer.delegateInterfaceIdCode(typeBinding, invokeShape) ?: return CodeBlock.of("")
-        val argumentKind = typeRenderer.delegateInvokeValueKindCode(argumentBinding)
-        val argumentType = typeRenderer.resolveTypeName(argumentBinding.typeName)
-        return CodeBlock.of(
-            """
-            %S -> { obj, index ->
-                io.github.composefluent.winrt.runtime.EventHandlerEventSource<%T>(
-                    objectReference = obj,
-                    interfaceId = %L,
-                    argsKind = %L,
-                    vtableIndexForAddHandler = index,
-                )
-            }
-            """.trimIndent() + "\n",
-            descriptor.eventTypeName,
-            argumentType,
-            interfaceId,
-            argumentKind,
-        )
-    }
 
     private fun abiEntriesBuildListCode(indices: IntRange): CodeBlock {
         val code = CodeBlock.builder()

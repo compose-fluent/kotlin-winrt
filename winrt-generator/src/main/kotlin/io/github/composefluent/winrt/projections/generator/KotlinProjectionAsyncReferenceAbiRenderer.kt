@@ -776,7 +776,7 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
                 get() = __collectionRef
 
             override val vectorChanged: %T by lazy(%T.PUBLICATION) {
-                val __eventSource = %T.createEventSource(%S, %S, __collectionRef, %T.Metadata.VECTORCHANGED_ADD_SLOT) as? %T
+                val __eventSource = %T.%L(__collectionRef, %T.Metadata.VECTORCHANGED_ADD_SLOT) as? %T
                 __eventSource?.let { %T(it) } ?: error(%S)
             }
 
@@ -798,9 +798,11 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
         COM_OBJECT_REFERENCE_CLASS_NAME,
         vectorChangedEventType,
         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-        WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME,
-        "Windows.Foundation.Collections.VectorChangedEventHandler<${elementBinding.resolvedTypeName}>",
-        "Windows.Foundation.Collections.IObservableVector",
+        ClassName(WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName, eventSourceOwnerHelperName("Windows.Foundation.Collections.IObservableVector")),
+        eventSourceCreateFunctionName(
+            eventType = "Windows.Foundation.Collections.VectorChangedEventHandler<${elementBinding.resolvedTypeName}>",
+            ownerType = "Windows.Foundation.Collections.IObservableVector",
+        ),
         projectionClassName("Windows.Foundation.Collections.IObservableVector"),
         eventSourceType,
         WINRT_EVENT_CLASS_NAME,
