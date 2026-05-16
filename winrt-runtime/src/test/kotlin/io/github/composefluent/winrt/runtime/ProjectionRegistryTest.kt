@@ -1,8 +1,6 @@
 package io.github.composefluent.winrt.runtime
 
 import io.github.composefluent.winrt.projections.support.FallbackIndexedRuntimeClass
-import io.github.composefluent.winrt.projections.support.GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE
-import io.github.composefluent.winrt.projections.support.GeneratedRegistrarInterfaceProjection
 import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRuntimeClass
 import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
@@ -11,6 +9,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import kotlin.reflect.KClass
 import kotlin.time.Duration
@@ -230,46 +229,50 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun generated_interface_projection_wrap_retries_compiler_generated_registry_on_miss() {
-        ComWrappersSupport.clearRegistriesForTests()
-        clearGeneratedInterfaceProjectionFactoriesForTest()
+    fun generated_interface_projection_runtime_creates_proxy_from_compiler_plugin_plan() {
         val nativeReference = IUnknownReference(
             Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
-            GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE.interfaceId,
+            Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
             preventReleaseOnDispose = true,
         )
+        val typeHandle = WinRtTypeHandle(
+            projectedTypeName = "Contoso.IGeneratedRegistrarInterface",
+            interfaceId = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        )
 
-        val projected = ComWrappersSupport.wrapGeneratedInterfaceProjection(
-            GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE,
+        val projected = WinRtGeneratedInterfaceProjectionRuntime.createFromCompilerPlugin(
+            SampleGeneratedInterface::class,
+            typeHandle,
             nativeReference,
-            "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry",
-        ) as GeneratedRegistrarInterfaceProjection
+            "",
+        ) as IWinRTObject
 
         assertSame(nativeReference, projected.nativeObject)
+        assertEquals(typeHandle, projected.primaryTypeHandle)
     }
 
     @Test
-    fun generated_interface_projection_retry_uses_call_stack_classloader_when_context_loader_misses_registry() {
-        ComWrappersSupport.clearRegistriesForTests()
-        clearGeneratedInterfaceProjectionFactoriesForTest()
-        val originalClassLoader = Thread.currentThread().contextClassLoader
+    fun generated_interface_projection_marker_fails_when_compiler_plugin_does_not_lower() {
         val nativeReference = IUnknownReference(
             Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
-            GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE.interfaceId,
+            Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
             preventReleaseOnDispose = true,
+        )
+        val typeHandle = WinRtTypeHandle(
+            projectedTypeName = "Contoso.IGeneratedRegistrarInterface",
+            interfaceId = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
         )
 
         try {
-            Thread.currentThread().contextClassLoader = ComWrappersSupport::class.java.classLoader
-
-            val projected = ComWrappersSupport.wrapGeneratedInterfaceProjection(
-                GENERATED_REGISTRAR_INTERFACE_TYPE_HANDLE,
+            ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(
+                typeHandle,
                 nativeReference,
-            ) as GeneratedRegistrarInterfaceProjection
-
-            assertSame(nativeReference, projected.nativeObject)
-        } finally {
-            Thread.currentThread().contextClassLoader = originalClassLoader
+                typeHandle.projectedTypeName,
+                SampleGeneratedInterface::class,
+            )
+            fail("Expected WinRtUnsupportedOperationException")
+        } catch (error: WinRtUnsupportedOperationException) {
+            assertEquals(KnownHResults.E_NOTIMPL, error.hResult)
         }
     }
 

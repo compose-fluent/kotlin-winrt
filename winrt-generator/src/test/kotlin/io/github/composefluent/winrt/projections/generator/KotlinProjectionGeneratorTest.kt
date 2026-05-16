@@ -3267,7 +3267,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(
             interfaceContents,
-            interfaceContents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidgetFactory"),
+            interfaceContents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IWidgetFactory\", IWidgetFactory::class) as IWidgetFactory"),
         )
         assertTrue(
             compilerInput,
@@ -3278,7 +3278,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             manifest,
             manifest.contains(
-                "interface-native-projection\tio.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry\tinterface-native-projections.tsv\t1",
+                "interface-native-projection\tio.github.composefluent.winrt.runtime.WinRtGeneratedInterfaceProjectionRuntime\tinterface-native-projections.tsv\t1",
             ),
         )
     }
@@ -12233,7 +12233,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(contents, contents.contains("private class NativeProjection("))
         assertTrue(
             contents,
-            contents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IOutputStream"),
+            contents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IOutputStream\", IOutputStream::class) as IOutputStream"),
         )
         assertTrue(
             compilerInput,

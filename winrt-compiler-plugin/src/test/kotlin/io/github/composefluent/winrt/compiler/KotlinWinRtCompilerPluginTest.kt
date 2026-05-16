@@ -385,86 +385,32 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
-    fun interface_native_projection_input_writes_registry_and_implementation_artifacts() {
+    fun interface_native_projection_input_is_compiler_plugin_lowering_plan() {
         val input = Files.createTempFile("kotlin-winrt-interface-native-projections-", ".tsv")
         Files.writeString(
             input,
             listOf(
-                listOf("projectedTypeName", "kotlinInterfaceClassName", "implementationClassName", "interfaceId", "memberCount"),
+                listOf("projectedTypeName", "kotlinInterfaceClassName", "implementationClassName", "interfaceId", "memberCount", "members"),
                 listOf(
                     "Sample.Foundation.IWidget",
                     "io.github.composefluent.winrt.compiler.CompilerGeneratedSampleInterface",
                     "io.github.composefluent.winrt.compiler.CompilerGeneratedSampleInterfaceNativeProjection",
                     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                    "0",
+                    "1",
+                    "Method|Ping|6|Unit||false",
                 ),
             ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
         )
-        val outputDirectory = Files.createTempDirectory("kotlin-winrt-interface-registry-class-")
 
         val entries = readInterfaceNativeProjectionEntries(input)
-        writeInterfaceNativeProjectionRegistryClass(entries, outputDirectory)
 
-        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
-            val registryClass = Class.forName(
-                "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry",
-                false,
-                classLoader,
-            )
-            assertEquals("register", registryClass.getDeclaredMethod("register").name)
-            val registryIndex = classLoader.getResource("kotlin-winrt/interface-native-projection-registries.txt")
-            assertNull(registryIndex)
-            val uniqueRegistryClassName = Files.walk(outputDirectory).use { paths ->
-                paths
-                    .filter { path -> path.fileName.toString().startsWith("WinRTInterfaceProjectionRegistry_") }
-                    .map { path -> outputDirectory.relativize(path).toString() }
-                    .findFirst()
-                    .orElseThrow()
-            }
-                .removeSuffix(".class")
-                .replace('\\', '.')
-                .replace('/', '.')
-            assertTrue(uniqueRegistryClassName.startsWith("io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry_"))
-            val uniqueRegistryClass = Class.forName(uniqueRegistryClassName, false, classLoader)
-            assertEquals("register", uniqueRegistryClass.getDeclaredMethod("register").name)
-        }
-        val implementationClass = ClassReader(
-            Files.readAllBytes(
-                outputDirectory.resolve(
-                    "io/github/composefluent/winrt/compiler/CompilerGeneratedSampleInterfaceNativeProjection.class",
-                ),
-            ),
-        )
-        val interfaces = mutableListOf<String>()
-        implementationClass.accept(
-            object : ClassVisitor(Opcodes.ASM9) {
-                override fun visit(
-                    version: Int,
-                    access: Int,
-                    name: String?,
-                    signature: String?,
-                    superName: String?,
-                    visitedInterfaces: Array<out String>?,
-                ) {
-                    visitedInterfaces?.let(interfaces::addAll)
-                }
-            },
-            0,
-        )
-        assertEquals("io/github/composefluent/winrt/compiler/CompilerGeneratedSampleInterfaceNativeProjection", implementationClass.className)
-        assertTrue(
-            interfaces.contains(
-                "io/github/composefluent/winrt/compiler/CompilerGeneratedSampleInterface",
-            ),
-        )
-        assertTrue(interfaces.contains("io/github/composefluent/winrt/runtime/IWinRTObject"))
-        assertTrue(
-            Files.isRegularFile(
-                outputDirectory.resolve(
-                    "io/github/composefluent/winrt/compiler/CompilerGeneratedSampleInterfaceNativeProjection\$Factory.class",
-                ),
-            ),
-        )
+        assertEquals(1, entries.size)
+        val entry = entries.single()
+        assertEquals("Sample.Foundation.IWidget", entry.projectedTypeName)
+        assertEquals("io.github.composefluent.winrt.compiler.CompilerGeneratedSampleInterface", entry.kotlinInterfaceClassName)
+        assertEquals("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", entry.interfaceId)
+        assertEquals(1, entry.members.size)
+        assertEquals("Ping", entry.members.single().jvmName)
     }
 }
 

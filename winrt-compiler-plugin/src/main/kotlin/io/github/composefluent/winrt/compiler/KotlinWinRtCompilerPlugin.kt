@@ -68,7 +68,6 @@ import org.jetbrains.org.objectweb.asm.Type
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 @OptIn(ExperimentalCompilerApi::class)
 class KotlinWinRtCommandLineProcessor : CommandLineProcessor {
@@ -158,13 +157,12 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
-        val interfaceNativeProjectionRegistryClassName =
-            compilerGeneratedInterfaceNativeProjectionRegistryClassName(compilerSupportEntries)
+        val interfaceNativeProjectionEntries = readInterfaceNativeProjectionEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries)
-        lowerGeneratedInterfaceProjectionRegistryCalls(
+        lowerGeneratedInterfaceProjectionCompilerPluginCalls(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
-            registryClassName = interfaceNativeProjectionRegistryClassName,
+            entries = interfaceNativeProjectionEntries,
         )
         lowerProjectionIntrinsics(moduleFragment, pluginContext)
         if (metadataIndexPath.isNullOrBlank()) {
@@ -195,37 +193,31 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun compilerGeneratedInterfaceNativeProjectionRegistryClassName(
-        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
-    ): String? {
-        val entries = readInterfaceNativeProjectionEntries(manifestEntries)
-        if (entries.isEmpty()) {
-            return null
-        }
-        return interfaceNativeProjectionUniqueRegistryInternalName(entries).replace('/', '.')
-    }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun lowerGeneratedInterfaceProjectionRegistryCalls(
+    private fun lowerGeneratedInterfaceProjectionCompilerPluginCalls(
         moduleFragment: IrModuleFragment,
         pluginContext: IrPluginContext,
-        registryClassName: String?,
+        entries: List<KotlinWinRtInterfaceNativeProjectionEntry>,
     ) {
-        if (registryClassName.isNullOrBlank()) {
+        if (entries.isEmpty()) {
             return
         }
+        val entriesByProjectedTypeName = entries.associateBy { entry -> entry.projectedTypeName }
         val comWrappersSupportClassId = ClassId.topLevel(
             FqName("io.github.composefluent.winrt.runtime.ComWrappersSupport"),
         )
-        val wrapWithRegistry = pluginContext.referenceFunctions(
+        val runtimeClassId = ClassId.topLevel(
+            FqName("io.github.composefluent.winrt.runtime.WinRtGeneratedInterfaceProjectionRuntime"),
+        )
+        val runtimeObject = pluginContext.referenceClass(runtimeClassId) ?: return
+        val createFromCompilerPlugin = pluginContext.referenceFunctions(
             CallableId(
-                comWrappersSupportClassId,
-                Name.identifier("wrapGeneratedInterfaceProjection"),
+                runtimeClassId,
+                Name.identifier("createFromCompilerPlugin"),
             ),
         )
             .map { symbol -> symbol.owner }
             .singleOrNull { function ->
-                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 3
+                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 4
             }
             ?.symbol
             ?: return
@@ -238,12 +230,15 @@ class KotlinWinRtIrGenerationExtension(
                     }
                     val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
-                    return builder.irCall(wrapWithRegistry).apply {
-                        arguments[0] = call.arguments[0]
-                        arguments[1] = call.arguments[1]
-                        arguments[2] = call.arguments[2]
-                        arguments[3] = builder.irString(registryClassName)
-                    }
+                    val projectedTypeName = (call.arguments[3] as? IrConst)?.value as? String ?: return call
+                    val entry = entriesByProjectedTypeName[projectedTypeName] ?: return call
+                    return builder.irAs(builder.irCall(createFromCompilerPlugin).apply {
+                        arguments[0] = builder.irGetObject(runtimeObject)
+                        arguments[1] = call.arguments[4]
+                        arguments[2] = call.arguments[1]
+                        arguments[3] = call.arguments[2]
+                        arguments[4] = builder.irString(entry.members.encodeInterfaceNativeProjectionMembers())
+                    }, call.type)
                 }
             },
         )
@@ -252,7 +247,7 @@ class KotlinWinRtIrGenerationExtension(
     @OptIn(UnsafeDuringIrConstructionAPI::class)
     private fun IrCall.isGeneratedInterfaceProjectionWrapCall(): Boolean {
         val function = symbol.owner
-        if (function.name.asString() != "wrapGeneratedInterfaceProjection") {
+        if (function.name.asString() != "wrapGeneratedInterfaceProjectionFromCompilerPlugin") {
             return false
         }
         val ownerClass = function.parent as? IrClass ?: return false
@@ -260,7 +255,7 @@ class KotlinWinRtIrGenerationExtension(
             return false
         }
         val regularParameters = function.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
-        return regularParameters.size == 2 &&
+        return regularParameters.size == 4 &&
             regularParameters[0].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.WinRtTypeHandle" &&
             regularParameters[1].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.IUnknownReference"
     }
@@ -2842,10 +2837,6 @@ class KotlinWinRtIrGenerationExtension(
             entries = readGenericAbiRegistryEntries(entries),
             outputDirectory = outputDirectory,
         )
-        writeInterfaceNativeProjectionRegistryClass(
-            entries = readInterfaceNativeProjectionEntries(entries),
-            outputDirectory = outputDirectory,
-        )
     }
 
     private fun readProjectionRegistrarEntries(
@@ -3325,16 +3316,11 @@ private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME: Strin
 private const val GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact"
 
-private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
-    "io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry"
-
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
 private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
 
 private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CHUNK_SIZE: Int = 96
-
-private const val INTERFACE_NATIVE_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
 
 private const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR: String = "\u001F"
 
@@ -4095,6 +4081,22 @@ data class KotlinWinRtInterfaceNativeProjectionMemberEntry(
     val ownerTypeName: String = "",
 )
 
+private const val INTERFACE_NATIVE_PROJECTION_MEMBER_FIELD_SEPARATOR: Char = '\u001F'
+
+private fun List<KotlinWinRtInterfaceNativeProjectionMemberEntry>.encodeInterfaceNativeProjectionMembers(): String =
+    joinToString("\n") { member ->
+        listOf(
+            member.kind,
+            member.jvmName,
+            member.slot.toString(),
+            member.returnKind,
+            member.parameterKinds.joinToString(","),
+            member.suppressHResultCheck.toString(),
+            member.eventTypeName,
+            member.ownerTypeName,
+        ).joinToString(INTERFACE_NATIVE_PROJECTION_MEMBER_FIELD_SEPARATOR.toString())
+    }
+
 fun readInterfaceNativeProjectionEntries(path: Path): List<KotlinWinRtInterfaceNativeProjectionEntry> =
     Files.readAllLines(path)
         .asSequence()
@@ -4137,395 +4139,6 @@ private fun parseInterfaceNativeProjectionMember(value: String): KotlinWinRtInte
         suppressHResultCheck = parts[5].toBooleanStrictOrNull() ?: false,
         eventTypeName = parts.getOrElse(6) { "" },
         ownerTypeName = parts.getOrElse(7) { "" },
-    )
-}
-
-fun writeInterfaceNativeProjectionRegistryClass(
-    entries: List<KotlinWinRtInterfaceNativeProjectionEntry>,
-    outputDirectory: Path,
-) {
-    if (entries.isEmpty()) {
-        return
-    }
-    entries.forEach { entry ->
-        if (entry.memberCount == 0) {
-            writeInterfaceNativeProjectionImplementationClass(entry, outputDirectory)
-        }
-        writeInterfaceNativeProjectionFactoryClass(entry, outputDirectory)
-    }
-
-    val uniqueRegistryInternalName = interfaceNativeProjectionUniqueRegistryInternalName(entries)
-    writeInterfaceNativeProjectionRegistryClass(
-        entries = entries,
-        outputDirectory = outputDirectory,
-        registryInternalName = INTERFACE_NATIVE_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME,
-    )
-    writeInterfaceNativeProjectionRegistryClass(
-        entries = entries,
-        outputDirectory = outputDirectory,
-        registryInternalName = uniqueRegistryInternalName,
-    )
-}
-
-private fun writeInterfaceNativeProjectionRegistryClass(
-    entries: List<KotlinWinRtInterfaceNativeProjectionEntry>,
-    outputDirectory: Path,
-    registryInternalName: String,
-) {
-    val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
-    classWriter.visit(
-        Opcodes.V17,
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        registryInternalName,
-        null,
-        "java/lang/Object",
-        null,
-    )
-    classWriter.visitSource("interface-native-projections.tsv", null)
-    classWriter.addDefaultConstructor()
-    val chunks = entries.chunked(INTERFACE_NATIVE_PROJECTION_REGISTRY_CHUNK_SIZE)
-    val register = classWriter.visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, "register", "()V", null, null)
-    register.visitCode()
-    chunks.indices.forEach { index ->
-        register.visitMethodInsn(
-            Opcodes.INVOKESTATIC,
-            registryInternalName,
-            interfaceNativeProjectionRegistryChunkName(index),
-            "()V",
-            false,
-        )
-    }
-    register.visitInsn(Opcodes.RETURN)
-    register.visitMaxs(0, 0)
-    register.visitEnd()
-    chunks.forEachIndexed { index, chunk ->
-        classWriter.addInterfaceNativeProjectionRegistryChunk(interfaceNativeProjectionRegistryChunkName(index), chunk)
-    }
-    classWriter.visitEnd()
-
-    val target = outputDirectory.resolve("$registryInternalName.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
-}
-
-internal fun interfaceNativeProjectionUniqueRegistryInternalName(entries: List<KotlinWinRtInterfaceNativeProjectionEntry>): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-        .digest(
-            entries.joinToString("\n") { entry ->
-                listOf(
-                    entry.projectedTypeName,
-                    entry.kotlinInterfaceClassName,
-                    entry.implementationClassName,
-                    entry.interfaceId,
-                    entry.members.joinToString(";") { member ->
-                        listOf(
-                            member.kind,
-                            member.jvmName,
-                            member.slot.toString(),
-                            member.returnKind,
-                            member.parameterKinds.joinToString(","),
-                            member.suppressHResultCheck.toString(),
-                            member.eventTypeName,
-                            member.ownerTypeName,
-                        ).joinToString("|")
-                    },
-                ).joinToString("\t")
-            }.toByteArray(StandardCharsets.UTF_8),
-        )
-    val suffix = digest.take(8).joinToString("") { byte -> "%02x".format(byte) }
-    return "io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry_$suffix"
-}
-
-private fun interfaceNativeProjectionRegistryChunkName(index: Int): String =
-    "registerChunk${index.toString().padStart(3, '0')}"
-
-private fun ClassWriter.addInterfaceNativeProjectionRegistryChunk(
-    name: String,
-    entries: List<KotlinWinRtInterfaceNativeProjectionEntry>,
-) {
-    val method = visitMethod(Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC, name, "()V", null, null)
-    method.visitCode()
-    entries.forEach { entry ->
-        method.visitFieldInsn(
-            Opcodes.GETSTATIC,
-            "io/github/composefluent/winrt/runtime/ComWrappersSupport",
-            "INSTANCE",
-            "Lio/github/composefluent/winrt/runtime/ComWrappersSupport;",
-        )
-        method.addWinRtTypeHandle(entry.projectedTypeName, entry.interfaceId)
-        val factoryInternalName = interfaceNativeProjectionFactoryInternalName(entry)
-        method.visitTypeInsn(Opcodes.NEW, factoryInternalName)
-        method.visitInsn(Opcodes.DUP)
-        method.visitMethodInsn(Opcodes.INVOKESPECIAL, factoryInternalName, "<init>", "()V", false)
-        method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
-            "io/github/composefluent/winrt/runtime/ComWrappersSupport",
-            "registerInterfaceProjectionFactory",
-            "(Lio/github/composefluent/winrt/runtime/WinRtTypeHandle;Lkotlin/jvm/functions/Function1;)Z",
-            false,
-        )
-        method.visitInsn(Opcodes.POP)
-    }
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun writeInterfaceNativeProjectionImplementationClass(
-    entry: KotlinWinRtInterfaceNativeProjectionEntry,
-    outputDirectory: Path,
-) {
-    val implementationInternalName = entry.implementationClassName.toInternalName()
-    val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
-    classWriter.visit(
-        Opcodes.V17,
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        implementationInternalName,
-        null,
-        "java/lang/Object",
-        arrayOf(entry.kotlinInterfaceClassName.toInternalName(), "io/github/composefluent/winrt/runtime/IWinRTObject"),
-    )
-    classWriter.visitSource("interface-native-projections.tsv", null)
-    classWriter.visitField(
-        Opcodes.ACC_PRIVATE or Opcodes.ACC_FINAL,
-        "nativeObject",
-        "Lio/github/composefluent/winrt/runtime/ComObjectReference;",
-        null,
-        null,
-    ).visitEnd()
-    classWriter.addInterfaceNativeProjectionConstructor(implementationInternalName)
-    classWriter.addInterfaceNativeProjectionNativeObjectGetter(implementationInternalName)
-    classWriter.addInterfaceNativeProjectionPrimaryTypeHandleGetter(entry)
-    classWriter.visitEnd()
-
-    val target = outputDirectory.resolve("$implementationInternalName.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
-}
-
-private fun ClassWriter.addInterfaceNativeProjectionConstructor(ownerInternalName: String) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC,
-        "<init>",
-        "(Lio/github/composefluent/winrt/runtime/IUnknownReference;)V",
-        null,
-        null,
-    )
-    method.visitCode()
-    method.visitVarInsn(Opcodes.ALOAD, 0)
-    method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
-    method.visitVarInsn(Opcodes.ALOAD, 0)
-    method.visitVarInsn(Opcodes.ALOAD, 1)
-    method.visitFieldInsn(
-        Opcodes.PUTFIELD,
-        ownerInternalName,
-        "nativeObject",
-        "Lio/github/composefluent/winrt/runtime/ComObjectReference;",
-    )
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addInterfaceNativeProjectionNativeObjectGetter(ownerInternalName: String) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC,
-        "getNativeObject",
-        "()Lio/github/composefluent/winrt/runtime/ComObjectReference;",
-        null,
-        null,
-    )
-    method.visitCode()
-    method.visitVarInsn(Opcodes.ALOAD, 0)
-    method.visitFieldInsn(
-        Opcodes.GETFIELD,
-        ownerInternalName,
-        "nativeObject",
-        "Lio/github/composefluent/winrt/runtime/ComObjectReference;",
-    )
-    method.visitInsn(Opcodes.ARETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addInterfaceNativeProjectionPrimaryTypeHandleGetter(entry: KotlinWinRtInterfaceNativeProjectionEntry) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC,
-        "getPrimaryTypeHandle",
-        "()Lio/github/composefluent/winrt/runtime/WinRtTypeHandle;",
-        null,
-        null,
-    )
-    method.visitCode()
-    method.addWinRtTypeHandle(entry.projectedTypeName, entry.interfaceId)
-    method.visitInsn(Opcodes.ARETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun writeInterfaceNativeProjectionFactoryClass(
-    entry: KotlinWinRtInterfaceNativeProjectionEntry,
-    outputDirectory: Path,
-) {
-    val factoryInternalName = interfaceNativeProjectionFactoryInternalName(entry)
-    val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
-    classWriter.visit(
-        Opcodes.V17,
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        factoryInternalName,
-        null,
-        "java/lang/Object",
-        arrayOf("kotlin/jvm/functions/Function1"),
-    )
-    classWriter.visitSource("interface-native-projections.tsv", null)
-    classWriter.addPublicDefaultConstructor()
-    classWriter.addInterfaceNativeProjectionFactoryInvoke(factoryInternalName, entry)
-    classWriter.visitEnd()
-
-    val target = outputDirectory.resolve("$factoryInternalName.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
-}
-
-private fun ClassWriter.addPublicDefaultConstructor() {
-    val method = visitMethod(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null)
-    method.visitCode()
-    method.visitVarInsn(Opcodes.ALOAD, 0)
-    method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addInterfaceNativeProjectionFactoryInvoke(
-    ownerInternalName: String,
-    entry: KotlinWinRtInterfaceNativeProjectionEntry,
-) {
-    val implementationInternalName = entry.implementationClassName.toInternalName()
-    val typedInvoke = visitMethod(
-        Opcodes.ACC_PUBLIC,
-        "invoke",
-        "(Lio/github/composefluent/winrt/runtime/IUnknownReference;)Ljava/lang/Object;",
-        null,
-        null,
-    )
-    typedInvoke.visitCode()
-    typedInvoke.visitLdcInsn(Type.getObjectType(entry.kotlinInterfaceClassName.toInternalName()))
-    typedInvoke.addWinRtTypeHandle(entry.projectedTypeName, entry.interfaceId)
-    typedInvoke.visitVarInsn(Opcodes.ALOAD, 1)
-    typedInvoke.addInterfaceNativeProjectionMemberList(entry.members)
-    typedInvoke.visitMethodInsn(
-        Opcodes.INVOKESTATIC,
-        "io/github/composefluent/winrt/runtime/WinRtGeneratedInterfaceProjectionRuntime",
-        "create",
-        "(Ljava/lang/Class;Lio/github/composefluent/winrt/runtime/WinRtTypeHandle;Lio/github/composefluent/winrt/runtime/IUnknownReference;Ljava/util/List;)Ljava/lang/Object;",
-        false,
-    )
-    typedInvoke.visitInsn(Opcodes.ARETURN)
-    typedInvoke.visitMaxs(0, 0)
-    typedInvoke.visitEnd()
-
-    val bridge = visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_BRIDGE or Opcodes.ACC_SYNTHETIC,
-        "invoke",
-        "(Ljava/lang/Object;)Ljava/lang/Object;",
-        null,
-        null,
-    )
-    bridge.visitCode()
-    bridge.visitVarInsn(Opcodes.ALOAD, 0)
-    bridge.visitVarInsn(Opcodes.ALOAD, 1)
-    bridge.visitTypeInsn(Opcodes.CHECKCAST, "io/github/composefluent/winrt/runtime/IUnknownReference")
-    bridge.visitMethodInsn(
-        Opcodes.INVOKEVIRTUAL,
-        ownerInternalName,
-        "invoke",
-        "(Lio/github/composefluent/winrt/runtime/IUnknownReference;)Ljava/lang/Object;",
-        false,
-    )
-    bridge.visitInsn(Opcodes.ARETURN)
-    bridge.visitMaxs(0, 0)
-    bridge.visitEnd()
-}
-
-private fun interfaceNativeProjectionFactoryInternalName(entry: KotlinWinRtInterfaceNativeProjectionEntry): String =
-    "${entry.implementationClassName}\$Factory".toInternalName()
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addInterfaceNativeProjectionMemberList(
-    members: List<KotlinWinRtInterfaceNativeProjectionMemberEntry>,
-) {
-    pushInt(members.size)
-    visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object")
-    members.forEachIndexed { index, member ->
-        visitInsn(Opcodes.DUP)
-        pushInt(index)
-        addInterfaceNativeProjectionMember(member)
-        visitInsn(Opcodes.AASTORE)
-    }
-    visitMethodInsn(
-        Opcodes.INVOKESTATIC,
-        "kotlin/collections/CollectionsKt",
-        "listOf",
-        "([Ljava/lang/Object;)Ljava/util/List;",
-        false,
-    )
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addInterfaceNativeProjectionMember(
-    member: KotlinWinRtInterfaceNativeProjectionMemberEntry,
-) {
-    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionMemberDescriptor")
-    visitInsn(Opcodes.DUP)
-    addEnumValue(
-        "io/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionMemberKind",
-        member.kind,
-    )
-    visitLdcInsn(member.jvmName)
-    pushInt(member.slot)
-    addEnumValue(
-        "io/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionValueKind",
-        member.returnKind,
-    )
-    addValueKindList(member.parameterKinds)
-    visitInsn(if (member.suppressHResultCheck) Opcodes.ICONST_1 else Opcodes.ICONST_0)
-    visitLdcInsn(member.eventTypeName)
-    visitLdcInsn(member.ownerTypeName)
-    visitMethodInsn(
-        Opcodes.INVOKESPECIAL,
-        "io/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionMemberDescriptor",
-        "<init>",
-        "(Lio/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionMemberKind;Ljava/lang/String;ILio/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionValueKind;Ljava/util/List;ZLjava/lang/String;Ljava/lang/String;)V",
-        false,
-    )
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addValueKindList(values: List<String>) {
-    pushInt(values.size)
-    visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object")
-    values.forEachIndexed { index, value ->
-        visitInsn(Opcodes.DUP)
-        pushInt(index)
-        addEnumValue("io/github/composefluent/winrt/runtime/GeneratedInterfaceProjectionValueKind", value)
-        visitInsn(Opcodes.AASTORE)
-    }
-    visitMethodInsn(
-        Opcodes.INVOKESTATIC,
-        "kotlin/collections/CollectionsKt",
-        "listOf",
-        "([Ljava/lang/Object;)Ljava/util/List;",
-        false,
-    )
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addEnumValue(
-    enumInternalName: String,
-    constantName: String,
-) {
-    visitFieldInsn(
-        Opcodes.GETSTATIC,
-        enumInternalName,
-        constantName,
-        "L$enumInternalName;",
     )
 }
 

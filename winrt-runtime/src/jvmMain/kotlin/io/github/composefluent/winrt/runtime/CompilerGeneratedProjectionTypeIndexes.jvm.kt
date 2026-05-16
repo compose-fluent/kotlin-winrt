@@ -3,9 +3,6 @@ package io.github.composefluent.winrt.runtime
 private const val WINRT_PROJECTION_REGISTRAR_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar"
 
-private const val WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS: String =
-    "io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry"
-
 private const val WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS: String =
     "io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar"
 
@@ -15,7 +12,6 @@ private const val WINRT_EVENT_PROJECTION_REGISTRY_CLASS: String =
 internal actual fun registerCompilerGeneratedProjectionTypeIndexes() {
     val classLoaders = compilerGeneratedRegistryClassLoaders()
     classLoaders.forEach { classLoader ->
-        registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
         registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)
         registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
     }
@@ -52,7 +48,6 @@ private fun stackClassLoaders(): List<ClassLoader> =
     }.getOrDefault(emptyList())
 
 internal fun registerCompilerGeneratedProjectionTypeIndexesForClassLoader(classLoader: ClassLoader) {
-    registerGeneratedProjectionRegistry(classLoader, WINRT_INTERFACE_PROJECTION_REGISTRY_CLASS)
     registerGeneratedProjectionRegistry(classLoader, WINRT_AUTHORING_TYPE_DETAILS_REGISTRAR_CLASS)
     registerGeneratedProjectionRegistry(classLoader, WINRT_PROJECTION_REGISTRAR_CLASS)
     // A fixed registrar class can only represent one classpath entry; resources preserve dependency indexes.

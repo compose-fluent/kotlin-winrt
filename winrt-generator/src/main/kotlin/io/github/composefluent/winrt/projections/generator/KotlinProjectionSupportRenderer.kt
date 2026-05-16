@@ -342,7 +342,7 @@ class KotlinProjectionSupportRenderer {
             ),
             compilerSupportManifestRow(
                 kind = "interface-native-projection",
-                className = "$SUPPORT_PACKAGE.WinRTInterfaceProjectionRegistry",
+                className = "io.github.composefluent.winrt.runtime.WinRtGeneratedInterfaceProjectionRuntime",
                 sourceFile = "interface-native-projections.tsv",
                 entries = interfaceNativeProjectionEntries,
             ),

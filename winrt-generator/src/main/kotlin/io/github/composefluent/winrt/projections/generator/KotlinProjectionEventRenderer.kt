@@ -1560,7 +1560,13 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .returns(plan.projectedSelfTypeName())
                 .apply {
                     if (canRenderInterfaceNativeProjectionArtifact(plan)) {
-                        addCode("return %T.wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as %T\n", COM_WRAPPERS_SUPPORT_CLASS_NAME, plan.projectedSelfTypeName())
+                        addCode(
+                            "return %T.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, %S, %T::class) as %T\n",
+                            COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                            plan.type.qualifiedName,
+                            plan.projectedSelfTypeName(),
+                            plan.projectedSelfTypeName(),
+                        )
                     } else if (canRenderInterfaceProxy(plan)) {
                         addCode(
                             "return NativeProjection%L(instance)\n",

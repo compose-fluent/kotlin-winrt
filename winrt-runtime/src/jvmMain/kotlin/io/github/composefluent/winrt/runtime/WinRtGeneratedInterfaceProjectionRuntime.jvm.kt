@@ -3,6 +3,7 @@ package io.github.composefluent.winrt.runtime
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import kotlin.reflect.KClass
 
 enum class GeneratedInterfaceProjectionMemberKind {
     Method,
@@ -47,6 +48,8 @@ data class GeneratedInterfaceProjectionMemberDescriptor(
 )
 
 object WinRtGeneratedInterfaceProjectionRuntime {
+    private const val ENCODED_MEMBER_FIELD_SEPARATOR: Char = '\u001F'
+
     @JvmStatic
     fun create(
         interfaceClass: Class<*>,
@@ -61,6 +64,43 @@ object WinRtGeneratedInterfaceProjectionRuntime {
             handler,
         )
     }
+
+    @JvmStatic
+    fun createFromCompilerPlugin(
+        interfaceClass: KClass<*>,
+        typeHandle: WinRtTypeHandle,
+        nativeObject: IUnknownReference,
+        encodedMembers: String,
+    ): Any =
+        create(
+            interfaceClass = interfaceClass.java,
+            typeHandle = typeHandle,
+            nativeObject = nativeObject,
+            members = decodeMembers(encodedMembers),
+        )
+
+    private fun decodeMembers(encodedMembers: String): List<GeneratedInterfaceProjectionMemberDescriptor> =
+        encodedMembers
+            .lineSequence()
+            .filter(String::isNotBlank)
+            .map { row ->
+                val columns = row.split(ENCODED_MEMBER_FIELD_SEPARATOR)
+                GeneratedInterfaceProjectionMemberDescriptor(
+                    kind = GeneratedInterfaceProjectionMemberKind.valueOf(columns.getOrElse(0) { "" }),
+                    jvmName = columns.getOrElse(1) { "" },
+                    slot = columns.getOrElse(2) { "" }.toInt(),
+                    returnKind = GeneratedInterfaceProjectionValueKind.valueOf(columns.getOrElse(3) { "" }),
+                    parameterKinds = columns.getOrElse(4) { "" }
+                        .takeIf(String::isNotBlank)
+                        ?.split(',')
+                        ?.map(GeneratedInterfaceProjectionValueKind::valueOf)
+                        .orEmpty(),
+                    suppressHResultCheck = columns.getOrElse(5) { "false" }.toBooleanStrict(),
+                    eventTypeName = columns.getOrElse(6) { "" },
+                    ownerTypeName = columns.getOrElse(7) { "" },
+                )
+            }
+            .toList()
 }
 
 private class GeneratedInterfaceProjectionInvocationHandler(
