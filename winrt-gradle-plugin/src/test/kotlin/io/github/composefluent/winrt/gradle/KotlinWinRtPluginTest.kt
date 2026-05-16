@@ -887,6 +887,78 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_uses_application_pri_manifest_language_and_index_name() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.resources").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.Resources.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Resources</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.createDirectories(packageRoot.resolve("runtimes-framework/win-x64/native/Component"))
+        Files.writeString(packageRoot.resolve("runtimes-framework/win-x64/native/Component/Controls.pri"), "pri")
+        val manifest = project.layout.buildDirectory.file("Package.appxmanifest").get().asFile.toPath()
+        Files.createDirectories(manifest.parent)
+        Files.writeString(
+            manifest,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Resources>
+                <Resource Language="fr-FR" />
+              </Resources>
+            </Package>
+            """.trimIndent(),
+        )
+        val makePriLog = project.layout.buildDirectory.file("makepri.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stagePriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-assets"))
+            registeredTask.nugetPackages.set(listOf("Sample.Resources@1.0.0"))
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(listOf(globalPackagesRoot.toString()))
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriDefaultLanguage.set("")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.appxManifestFiles.from(manifest)
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Component/Controls.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
+        val makePriCalls = Files.readString(makePriLog).replace("\\", "/")
+        assertTrue(makePriCalls.contains("createconfig"))
+        assertTrue(makePriCalls.contains("/dq lang-fr-FR_scale-100"))
+        assertTrue(makePriCalls.contains("new"))
+        assertTrue(makePriCalls.contains("/in Contoso.App"))
+    }
+
+    @Test
     fun plugin_generates_sources_into_real_gradle_library_artifact() {
         val projectDir = Files.createTempDirectory("kotlin-winrt-plugin-test-")
         val runtimeJar = Path.of("../winrt-runtime/build/libs/winrt-runtime-jvm.jar")
@@ -1518,6 +1590,32 @@ private fun commandExists(name: String): Boolean =
             .start()
             .waitFor() == 0
     }.getOrDefault(false)
+
+private fun writeFakeMakePri(path: Path, log: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        echo %*>>"${log.toString()}"
+        set output=
+        :next
+        if "%~1"=="" goto done
+        if /I "%~1"=="/of" (
+          set output=%~2
+          shift
+        )
+        shift
+        goto next
+        :done
+        if not "%output%"=="" (
+          echo fake-pri>"%output%"
+        )
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
 
 private fun writeWindowsAppSdkPackage(
     nugetRoot: Path,

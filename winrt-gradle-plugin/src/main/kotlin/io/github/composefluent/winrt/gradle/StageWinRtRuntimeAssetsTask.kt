@@ -18,6 +18,8 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -62,6 +64,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     abstract val projectPriIndexName: Property<String>
 
     @get:Input
+    abstract val projectPriDefaultLanguage: Property<String>
+
+    @get:Input
+    abstract val projectPriDefaultQualifiers: ListProperty<String>
+
+    @get:Input
     abstract val makePriExecutable: Property<String>
 
     @get:Input
@@ -70,6 +78,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val appxManifestFiles: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
@@ -94,6 +107,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     init {
         generateProjectPri.convention(true)
         projectPriIndexName.convention("Application")
+        projectPriDefaultLanguage.convention("")
+        projectPriDefaultQualifiers.convention(listOf("scale-200", "contrast-standard"))
         makePriExecutable.convention("")
         windowsSdkVersion.convention("")
     }
@@ -313,7 +328,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 "/cf",
                 config.toString(),
                 "/dq",
-                "lang-en-US_scale-200_contrast-standard",
+                projectPriDefaultQualifier(),
                 "/pv",
                 "10.0.0",
                 "/o",
@@ -348,6 +363,37 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                 .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
         }
         Files.deleteIfExists(config)
+    }
+
+    private fun projectPriDefaultQualifier(): String {
+        val language = projectPriDefaultLanguage.get().ifBlank {
+            appxManifestFiles.files
+                .asSequence()
+                .mapNotNull { file -> readManifestDefaultLanguage(file.toPath()) }
+                .firstOrNull()
+                ?: "en-US"
+        }
+        return (listOf("lang-$language") + projectPriDefaultQualifiers.get().filter(String::isNotBlank))
+            .joinToString("_")
+    }
+
+    private fun readManifestDefaultLanguage(manifest: Path): String? {
+        if (!manifest.isRegularFile()) {
+            return null
+        }
+        val document = runCatching {
+            DocumentBuilderFactory.newInstance().apply {
+                isNamespaceAware = true
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
+                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+            }.newDocumentBuilder().parse(manifest.toFile())
+        }.getOrNull() ?: return null
+        val resources = document.getElementsByTagNameNS("*", "Resource")
+        return (0 until resources.length)
+            .asSequence()
+            .mapNotNull { index -> resources.item(index)?.attributes?.getNamedItem("Language")?.nodeValue?.trim() }
+            .firstOrNull { it.isNotBlank() && !it.equals("x-generate", ignoreCase = true) }
     }
 
     private fun discoverMakePriExecutable(): Path? {

@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.Action
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.model.ObjectFactory
@@ -144,7 +145,24 @@ abstract class WinRtExtension @Inject constructor(
     }
 }
 
-abstract class WinRtApplicationOptions @Inject constructor()
+abstract class WinRtApplicationOptions @Inject constructor(
+    objects: ObjectFactory,
+) {
+    val generateProjectPri: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+    val projectPriIndexName: Property<String> = objects.property(String::class.java).convention("")
+    val projectPriDefaultLanguage: Property<String> = objects.property(String::class.java).convention("")
+    val projectPriDefaultQualifiers: ListProperty<String> =
+        objects.listProperty(String::class.java).convention(listOf("scale-200", "contrast-standard"))
+    val appxManifestFiles: ConfigurableFileCollection = objects.fileCollection()
+
+    fun appxManifest(input: Any) {
+        appxManifestFiles.from(input)
+    }
+
+    fun projectPriDefaultQualifier(qualifier: String) {
+        projectPriDefaultQualifiers.add(qualifier)
+    }
+}
 
 abstract class KotlinWinRtNuGetPackage @Inject constructor(
     val packageId: String,
