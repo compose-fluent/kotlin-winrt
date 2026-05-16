@@ -308,11 +308,31 @@ private fun configureWinRtApplicationTasks(
                     }
                 },
             )
+            task.defaultProjectPriContentFiles.from(
+                project.provider {
+                    if (extension.application.enableDefaultProjectPriResources.get()) {
+                        project.fileTree(project.projectDir) { spec ->
+                            spec.include("**/*.png")
+                            spec.include("**/*.bmp")
+                            spec.include("**/*.jpg")
+                            spec.include("**/*.dds")
+                            spec.include("**/*.tif")
+                            spec.include("**/*.tga")
+                            spec.include("**/*.gif")
+                            spec.exclude(".gradle/**")
+                            spec.exclude("build/**")
+                        }
+                    } else {
+                        project.files()
+                    }
+                },
+            )
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
             task.appxManifestFiles.from(extension.application.appxManifestFiles)
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
+            task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
             task.authoredMetadataFiles.from(
                 project.layout.buildDirectory.file(
                     "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",

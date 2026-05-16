@@ -103,12 +103,22 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectPriContentFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val defaultProjectPriResourceFiles: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val defaultProjectPriLayoutFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val defaultProjectPriContentFiles: ConfigurableFileCollection
 
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
@@ -356,10 +366,16 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         stageProjectPriLayoutResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
+        stageProjectPriContentResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
         stageDefaultProjectPriResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         stageDefaultProjectPriLayoutResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
+        stageDefaultProjectPriContentResources(projectPriRoot, copiedProjectPriTargets).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         if (!hasProjectPriInputs) {
@@ -503,6 +519,44 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         return copied
     }
 
+    private fun stageProjectPriContentResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        var copied = false
+        projectPriContentFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { Files.exists(it) }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isDirectory()) {
+                    Files.walk(source).use { stream ->
+                        stream.asSequence()
+                            .filter { it.isRegularFile() }
+                            .sorted()
+                            .forEach { child ->
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source))
+                                if (copyProjectPriInput(child, target, copiedTargets)) {
+                                    copied = true
+                                }
+                            }
+                    }
+                } else if (source.isRegularFile()) {
+                    val normalizedSource = source.toAbsolutePath().normalize()
+                    val relativeTarget = if (root != null && normalizedSource.startsWith(root)) {
+                        normalizedSource.relativeTo(root)
+                    } else {
+                        source.name.let(Path::of)
+                    }
+                    val target = projectPriRoot.resolve(initialPath).resolve(relativeTarget)
+                    if (copyProjectPriInput(source, target, copiedTargets)) {
+                        copied = true
+                    }
+                }
+            }
+        return copied
+    }
+
     private fun stageDefaultProjectPriLayoutResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
         if (!enableDefaultProjectPriResources.get()) {
             return false
@@ -524,6 +578,30 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             }
             .toList()
         return stageFilteredProjectPriLayoutInputs(inputs, copiedTargets)
+    }
+
+    private fun stageDefaultProjectPriContentResources(projectPriRoot: Path, copiedTargets: MutableSet<String>): Boolean {
+        if (!enableDefaultProjectPriResources.get()) {
+            return false
+        }
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        var copied = false
+        defaultProjectPriContentFiles.files
+            .asSequence()
+            .map { it.toPath() }
+            .filter { it.isRegularFile() && it.isProjectPriContentFile() }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                val normalizedSource = source.toAbsolutePath().normalize()
+                if (normalizedSource.startsWith(root)) {
+                    val target = projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root))
+                    if (copyProjectPriInput(source, target, copiedTargets)) {
+                        copied = true
+                    }
+                }
+            }
+        return copied
     }
 
     private fun stageFilteredProjectPriLayoutInputs(
@@ -570,6 +648,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
 
     private fun Path.isProjectPriLayoutFile(): Boolean =
         name.endsWith(".xaml", ignoreCase = true) || name.endsWith(".xbf", ignoreCase = true)
+
+    private fun Path.isProjectPriContentFile(): Boolean {
+        val fileName = name
+        return listOf(".png", ".bmp", ".jpg", ".dds", ".tif", ".tga", ".gif")
+            .any { extension -> fileName.endsWith(extension, ignoreCase = true) }
+    }
 
     private fun Path.toNormalizedPathKey(): String =
         toAbsolutePath().normalize().toString().lowercase()

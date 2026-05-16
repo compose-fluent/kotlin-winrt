@@ -1076,6 +1076,106 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_stages_default_project_image_content_resources() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val image = project.projectDir.toPath().resolve("Assets/Logo.png")
+        Files.createDirectories(image.parent)
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        val makePriLog = project.layout.buildDirectory.file("makepri-default-content.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-default-content.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageDefaultContentPriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-default-content-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(true)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultProjectPriContentFiles.from(
+                project.fileTree(project.projectDir) { spec -> spec.include("**/*.png") },
+            )
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Assets/Logo.png"),
+            ),
+        )
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
+    fun runtime_assets_task_stages_explicit_project_content_resources_relative_to_project_root() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val image = project.projectDir.toPath().resolve("Assets/Splash.jpg")
+        Files.createDirectories(image.parent)
+        Files.write(image, byteArrayOf(0x4a, 0x50, 0x47))
+        val makePriLog = project.layout.buildDirectory.file("makepri-explicit-content.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-explicit-content.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageExplicitContentPriAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("pri-explicit-content-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriContentFiles.from(image)
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.dependencyIdentityFiles.from(project.files())
+        }.get()
+
+        task.stage()
+
+        assertTrue(
+            Files.isRegularFile(
+                task.temporaryDir.toPath().resolve("project-pri/Appx/Assets/Splash.jpg"),
+            ),
+        )
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_xaml_layout_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

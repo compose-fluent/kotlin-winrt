@@ -158,6 +158,7 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val appxManifestFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriResourceFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriLayoutFiles: ConfigurableFileCollection = objects.fileCollection()
+    val projectPriContentFiles: ConfigurableFileCollection = objects.fileCollection()
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
@@ -173,6 +174,14 @@ abstract class WinRtApplicationOptions @Inject constructor(
 
     fun projectPriApplicationDefinition(input: Any) {
         projectPriLayoutFiles.from(input)
+    }
+
+    fun projectPriContent(input: Any) {
+        projectPriContentFiles.from(input)
+    }
+
+    fun projectPriImage(input: Any) {
+        projectPriContentFiles.from(input)
     }
 
     fun projectPriDefaultQualifier(qualifier: String) {
