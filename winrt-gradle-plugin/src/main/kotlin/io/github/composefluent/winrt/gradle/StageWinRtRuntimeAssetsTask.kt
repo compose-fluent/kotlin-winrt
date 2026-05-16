@@ -444,7 +444,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                             .filter { it.isRegularFile() }
                             .sorted()
                             .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source))
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
                                 if (copyProjectPriInput(child, target, copiedTargets)) {
                                     copied = true
                                 }
@@ -481,7 +481,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                             .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
                             .sorted()
                             .map { child ->
-                                ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source)))
+                                ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source)))
                             }
                             .toList()
                             .asSequence()
@@ -542,7 +542,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                             .filter { it.isRegularFile() }
                             .sorted()
                             .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.relativeTo(source))
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
                                 if (copyProjectPriInput(child, target, copiedTargets)) {
                                     copied = true
                                 }
@@ -668,6 +668,15 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     private fun Path.toXbfTargetKey(): String {
         val xbfFileName = fileName.toString().replaceAfterLast('.', "xbf")
         return parent.resolve(xbfFileName).toNormalizedPathKey()
+    }
+
+    private fun Path.toProjectPriRelativePath(projectRoot: Path?, fallbackRoot: Path): Path {
+        val normalizedSource = toAbsolutePath().normalize()
+        return if (projectRoot != null && normalizedSource.startsWith(projectRoot)) {
+            normalizedSource.relativeTo(projectRoot)
+        } else {
+            relativeTo(fallbackRoot)
+        }
     }
 
     private data class ProjectPriLayoutInput(
