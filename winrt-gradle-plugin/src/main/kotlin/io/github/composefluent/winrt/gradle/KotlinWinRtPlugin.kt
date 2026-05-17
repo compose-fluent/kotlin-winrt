@@ -270,12 +270,42 @@ private fun configureWinRtApplicationTasks(
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
-            task.generateProjectPri.set(extension.application.generateProjectPri)
-            task.projectPriIndexName.set(
-                project.provider {
-                    extension.application.projectPriIndexName.orNull.orEmpty()
+            task.generateProjectPri.set(false)
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.dependencyIdentityFiles.from(identityDependencies)
+            task.authoredMetadataFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
+                ),
+            )
+            task.authoredHostManifestFiles.from(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
+                ),
+            )
+            task.authoredTargetArtifactFiles.from(
+                identityDependencies.elements.map { elements ->
+                    elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
                 },
             )
+            task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
+                spec.include("*.dll")
+            })
+            task.dependsOn("generateWinRtProjections")
+            task.dependsOn(buildAuthoringHostTask)
+        },
+    )
+    val stageApplicationPackageTask = project.tasks.register(
+        "stageWinRtApplicationPackage",
+        StageWinRtApplicationPackageTask::class.java,
+        Action<StageWinRtApplicationPackageTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Stages WinRT application package resources and generates the application PRI."
+            task.onlyIf { extension.applicationEnabled.get() }
+            task.runtimeAssetsDirectory.set(stageRuntimeAssetsTask.flatMap { it.outputDirectory })
+            task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-package"))
+            task.generateProjectPri.set(extension.application.generateProjectPri)
+            task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })
             task.projectPriFallbackIndexName.set(project.name)
             task.projectPriInitialPath.set(extension.application.projectPriInitialPath)
             task.projectPriDefaultLanguage.set(extension.application.projectPriDefaultLanguage)
@@ -328,39 +358,21 @@ private fun configureWinRtApplicationTasks(
                     }
                 },
             )
-            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
-            task.dependencyIdentityFiles.from(identityDependencies)
             task.appxManifestFiles.from(extension.application.appxManifestFiles)
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
-            task.authoredMetadataFiles.from(
-                project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.winmd",
-                ),
-            )
-            task.authoredHostManifestFiles.from(
-                project.layout.buildDirectory.file(
-                    "generated/kotlin-winrt/src/main/kotlin/kotlin-winrt-authoring/${project.name}.host.json",
-                ),
-            )
-            task.authoredTargetArtifactFiles.from(
-                identityDependencies.elements.map { elements ->
-                    elements.map { it.asFile }.flatMap(::readAuthoredTargetArtifacts)
-                },
-            )
-            task.authoredHostDllFiles.from(project.fileTree(buildAuthoringHostTask.flatMap { it.outputDirectory }) { spec ->
-                spec.include("*.dll")
-            })
-            task.dependsOn("generateWinRtProjections")
-            task.dependsOn(buildAuthoringHostTask)
+            task.makePriExecutable.set("")
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.dependsOn(stageRuntimeAssetsTask)
         },
     )
     project.plugins.withId("java") {
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
-            task.dependsOn(stageRuntimeAssetsTask)
+            task.dependsOn(stageApplicationPackageTask)
             if (task is Copy) {
-                task.from(stageRuntimeAssetsTask.flatMap { it.outputDirectory }, Action<CopySpec> { spec ->
+                task.from(stageApplicationPackageTask.flatMap { it.outputDirectory }, Action<CopySpec> { spec ->
                     spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
                 })
             }
@@ -371,7 +383,7 @@ private fun configureWinRtApplicationTasks(
             distributions.named("main").configure { distribution ->
                 distribution.contents(Action<CopySpec> { contents ->
                     contents.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY, Action<CopySpec> { spec ->
-                        spec.from(stageRuntimeAssetsTask.flatMap { it.outputDirectory })
+                        spec.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
                     })
                 })
             }
@@ -380,6 +392,7 @@ private fun configureWinRtApplicationTasks(
     project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
     project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
     project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
+    project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
 }
 
 private fun configureWinRtGeneration(

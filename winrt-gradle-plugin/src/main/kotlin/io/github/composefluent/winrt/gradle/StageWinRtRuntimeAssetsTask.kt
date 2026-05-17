@@ -885,7 +885,7 @@ private data class AuthoringHostRuntimeConfig(
 private fun WinRtNuGetPackageIdentity.isWindowsAppSdkRootPackage(): Boolean =
     normalizedPackageId.equals("Microsoft.WindowsAppSDK", ignoreCase = true)
 
-private fun isWindowsHost(): Boolean =
+internal fun isWindowsHost(): Boolean =
     System.getProperty("os.name").contains("Windows", ignoreCase = true)
 
 internal fun currentWindowsRuntimeIdentifier(): String {

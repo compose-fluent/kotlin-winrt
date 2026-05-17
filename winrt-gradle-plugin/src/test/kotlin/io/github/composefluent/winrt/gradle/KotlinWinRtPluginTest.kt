@@ -180,6 +180,10 @@ class KotlinWinRtPluginTest {
             "stageWinRtRuntimeAssets",
             applicationProject.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"],
         )
+        assertEquals(
+            "stageWinRtApplicationPackage",
+            applicationProject.extensions.extraProperties["kotlinWinRtApplicationPackageTask"],
+        )
     }
 
     @Test
@@ -594,7 +598,7 @@ class KotlinWinRtPluginTest {
 
         val processResources = project.tasks.named("processResources").get()
         val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
-        assertTrue("stageWinRtRuntimeAssets" in dependencies)
+        assertTrue("stageWinRtApplicationPackage" in dependencies)
     }
 
     @Test
@@ -606,6 +610,7 @@ class KotlinWinRtPluginTest {
         project.pluginManager.apply("application")
 
         project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+        project.tasks.named("stageWinRtApplicationPackage", StageWinRtApplicationPackageTask::class.java).get()
         project.extensions.getByType(org.gradle.api.distribution.DistributionContainer::class.java).getByName("main")
     }
 
@@ -2113,6 +2118,7 @@ class KotlinWinRtPluginTest {
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtRuntimeAssets")?.outcome)
+        assertEquals(TaskOutcome.SUCCESS, result.task(":stageWinRtApplicationPackage")?.outcome)
         assertEquals(TaskOutcome.SUCCESS, result.task(":installDist")?.outcome)
         val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY")
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
