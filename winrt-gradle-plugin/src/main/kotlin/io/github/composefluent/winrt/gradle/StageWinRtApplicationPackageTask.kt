@@ -412,7 +412,10 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .toSet()
         var copied = false
         inputs.forEach { input ->
-            if (input.source.name.endsWith(".xaml", ignoreCase = true) && input.target.toXbfTargetKey() in xbfTargets) return@forEach
+            if (input.source.name.endsWith(".xaml", ignoreCase = true) && input.target.toXbfTargetKey() in xbfTargets) {
+                recordProjectPriInput(ApplicationPackageItemKind.ExcludedLayout, input.source, input.target, copiedItems)
+                return@forEach
+            }
             if (copyProjectPriInput(ApplicationPackageItemKind.Layout, input.source, input.target, copiedItems)) copied = true
         }
         return copied
@@ -440,6 +443,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             configRoot.resolve("layout.resfiles"),
             projectPriRoot,
             copiedItems.filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content },
+        )
+        writeResfiles(
+            configRoot.resolve("excluded-layout.resfiles"),
+            projectPriRoot,
+            copiedItems.filter { it.kind == ApplicationPackageItemKind.ExcludedLayout },
         )
         writeResfiles(
             configRoot.resolve("resources.resfiles"),
@@ -473,16 +481,27 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         target: Path,
         copiedItems: MutableSet<ApplicationPackageItem>,
     ): Boolean {
-        val item = ApplicationPackageItem(
+        val item = applicationPackageItem(kind, source, target)
+        if (!copiedItems.add(item)) return false
+        copyFile(source, target)
+        return true
+    }
+
+    private fun recordProjectPriInput(
+        kind: ApplicationPackageItemKind,
+        source: Path,
+        target: Path,
+        copiedItems: MutableSet<ApplicationPackageItem>,
+    ): Boolean =
+        copiedItems.add(applicationPackageItem(kind, source, target))
+
+    private fun applicationPackageItem(kind: ApplicationPackageItemKind, source: Path, target: Path): ApplicationPackageItem =
+        ApplicationPackageItem(
             kind = kind,
             source = source.toAbsolutePath().normalize(),
             target = target.toAbsolutePath().normalize(),
             targetKey = target.toNormalizedPathKey(),
         )
-        if (!copiedItems.add(item)) return false
-        copyFile(source, target)
-        return true
-    }
 
     private fun String.toSafeRelativePath(): Path {
         val normalized = replace('\\', '/').trim('/')
@@ -547,6 +566,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         ComponentPri,
         PriResource,
         Layout,
+        ExcludedLayout,
         Content,
         Embed,
         ;

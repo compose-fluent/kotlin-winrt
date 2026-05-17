@@ -1536,11 +1536,15 @@ class KotlinWinRtPluginTest {
         Files.writeString(runtimeAssets.resolve("Component/Controls.pri"), "component-pri")
         val resource = project.projectDir.toPath().resolve("Strings/en-US/Resources.resw")
         val page = project.projectDir.toPath().resolve("Views/MainPage.xaml")
+        val compiledXaml = project.projectDir.toPath().resolve("Views/CompiledPage.xaml")
+        val compiledXbf = project.projectDir.toPath().resolve("Views/CompiledPage.xbf")
         val image = project.projectDir.toPath().resolve("Assets/Logo.png")
         val embed = project.projectDir.toPath().resolve("Embedded/Payload.bin")
-        listOf(resource, page, image, embed).forEach { Files.createDirectories(it.parent) }
+        listOf(resource, page, compiledXaml, compiledXbf, image, embed).forEach { Files.createDirectories(it.parent) }
         Files.writeString(resource, "resw")
         Files.writeString(page, "<Page />")
+        Files.writeString(compiledXaml, "<Page />")
+        Files.write(compiledXbf, byteArrayOf(0x58, 0x42, 0x46))
         Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
         Files.write(embed, byteArrayOf(1, 2, 3))
         val makePriLog = project.layout.buildDirectory.file("makepri-config-inputs.log").get().asFile.toPath()
@@ -1563,7 +1567,7 @@ class KotlinWinRtPluginTest {
             registeredTask.enableDefaultProjectPriResources.set(false)
             registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
             registeredTask.projectPriResourceFiles.from(resource)
-            registeredTask.projectPriLayoutFiles.from(page)
+            registeredTask.projectPriLayoutFiles.from(page, compiledXaml, compiledXbf)
             registeredTask.projectPriContentFiles.from(image)
             registeredTask.projectPriEmbedFiles.from(embed)
             registeredTask.makePriExecutable.set(makePri.toString())
@@ -1575,9 +1579,10 @@ class KotlinWinRtPluginTest {
 
         val configRoot = task.temporaryDir.toPath().resolve("project-pri-config")
         assertEquals(
-            listOf("Appx/Assets/Logo.png", "Appx/Views/MainPage.xaml"),
+            listOf("Appx/Assets/Logo.png", "Appx/Views/CompiledPage.xbf", "Appx/Views/MainPage.xaml"),
             Files.readAllLines(configRoot.resolve("layout.resfiles")),
         )
+        assertEquals(listOf("Appx/Views/CompiledPage.xaml"), Files.readAllLines(configRoot.resolve("excluded-layout.resfiles")))
         assertEquals(listOf("Appx/Strings/en-US/Resources.resw"), Files.readAllLines(configRoot.resolve("resources.resfiles")))
         assertEquals(listOf("Component/Controls.pri"), Files.readAllLines(configRoot.resolve("pri.resfiles")))
         assertEquals(listOf("Appx/Embedded/Payload.bin"), Files.readAllLines(configRoot.resolve("embed.resfiles")))
