@@ -18,8 +18,6 @@ import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -689,63 +687,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     )
 
     private fun projectPriDefaultQualifier(): String {
-        val language = projectPriDefaultLanguage.get().ifBlank {
-            appxManifestFiles.files
-                .asSequence()
-                .mapNotNull { file -> readManifestDefaultLanguage(file.toPath()) }
-                .firstOrNull()
-                ?: "en-US"
-        }
-        return (listOf("lang-$language") + projectPriDefaultQualifiers.get().filter(String::isNotBlank))
-            .joinToString("_")
-    }
-
-    private fun readManifestDefaultLanguage(manifest: Path): String? {
-        if (!manifest.isRegularFile()) {
-            return null
-        }
-        val document = runCatching {
-            DocumentBuilderFactory.newInstance().apply {
-                isNamespaceAware = true
-                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
-            }.newDocumentBuilder().parse(manifest.toFile())
-        }.getOrNull() ?: return null
-        val resources = document.getElementsByTagNameNS("*", "Resource")
-        return (0 until resources.length)
-            .asSequence()
-            .mapNotNull { index -> resources.item(index)?.attributes?.getNamedItem("Language")?.nodeValue?.trim() }
-            .firstOrNull { it.isNotBlank() && !it.equals("x-generate", ignoreCase = true) }
+        val language = ProjectPriManifestSupport.defaultLanguage(projectPriDefaultLanguage.get(), appxManifestFiles.files)
+        return ProjectPriManifestSupport.makePriDefaultQualifier(language, projectPriDefaultQualifiers.get())
     }
 
     private fun projectPriIndexName(): String =
-        projectPriIndexName.get().ifBlank {
-            appxManifestFiles.files
-                .asSequence()
-                .mapNotNull { file -> readManifestIdentityName(file.toPath()) }
-                .firstOrNull()
-                ?: projectPriFallbackIndexName.get().ifBlank { "Application" }
-        }
-
-    private fun readManifestIdentityName(manifest: Path): String? {
-        if (!manifest.isRegularFile()) {
-            return null
-        }
-        val document = runCatching {
-            DocumentBuilderFactory.newInstance().apply {
-                isNamespaceAware = true
-                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-                runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
-            }.newDocumentBuilder().parse(manifest.toFile())
-        }.getOrNull() ?: return null
-        val identities = document.getElementsByTagNameNS("*", "Identity")
-        return (0 until identities.length)
-            .asSequence()
-            .mapNotNull { index -> identities.item(index)?.attributes?.getNamedItem("Name")?.nodeValue?.trim() }
-            .firstOrNull { it.isNotBlank() }
-    }
+        ProjectPriManifestSupport.indexName(projectPriIndexName.get(), projectPriFallbackIndexName.get(), appxManifestFiles.files)
 
     private fun discoverMakePriExecutable(): Path? {
         makePriExecutable.get().takeIf { it.isNotBlank() }?.let { configured ->
