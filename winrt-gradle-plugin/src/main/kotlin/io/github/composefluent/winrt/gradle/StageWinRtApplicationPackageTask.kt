@@ -156,10 +156,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                 .sorted()
                 .toList()
         }
-        val makePri = discoverMakePriExecutable() ?: run {
-            logger.warn("Skipping application PRI generation because makepri.exe was not found.")
-            return
-        }
         val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
         cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
@@ -192,6 +188,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         if (!hasProjectPriInputs) {
+            return
+        }
+        copyApplicationPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
+        val makePri = discoverMakePriExecutable() ?: run {
+            logger.warn("Skipping application PRI generation because makepri.exe was not found.")
             return
         }
         val config = temporaryDir.toPath().resolve("project-pri-config").resolve("priconfig.xml")
@@ -410,6 +411,19 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return copied
     }
 
+    private fun copyApplicationPackagePayloads(
+        projectPriRoot: Path,
+        outputRoot: Path,
+        copiedItems: Set<ApplicationPackageItem>,
+    ) {
+        copiedItems.asSequence()
+            .filter { it.kind.isPackagePayload }
+            .sortedBy { it.targetKey }
+            .forEach { item ->
+                copyFile(item.target, outputRoot.resolve(item.target.relativeTo(projectPriRoot)))
+            }
+    }
+
     private fun copyProjectPriInput(
         kind: ApplicationPackageItemKind,
         source: Path,
@@ -488,6 +502,10 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         Layout,
         Content,
         Embed,
+        ;
+
+        val isPackagePayload: Boolean
+            get() = this == Layout || this == Content || this == Embed
     }
 
     private fun projectPriDefaultQualifier(): String {

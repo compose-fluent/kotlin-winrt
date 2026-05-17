@@ -1296,6 +1296,10 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(projectPriRoot.resolve("Strings/en-US/Resources.resw")))
         assertTrue(Files.isRegularFile(projectPriRoot.resolve("Xaml/MainPage.xaml")))
         assertTrue(Files.isRegularFile(projectPriRoot.resolve("Assets/Logo.png")))
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Strings/en-US/Resources.resw")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Xaml/MainPage.xaml")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Assets/Logo.png")))
         val makePriCalls = Files.readString(makePriLog)
         assertTrue(makePriCalls.contains("new"))
     }
@@ -1354,6 +1358,9 @@ class KotlinWinRtPluginTest {
         assertFalse(Files.exists(projectPriRoot.resolve("Strings/en-US/Excluded.resw")))
         assertFalse(Files.exists(projectPriRoot.resolve("Views/ExcludedPage.xaml")))
         assertFalse(Files.exists(projectPriRoot.resolve("Assets/ExcludedLogo.png")))
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Views/ExcludedPage.xaml")))
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Assets/ExcludedLogo.png")))
         val makePriCalls = Files.readString(makePriLog)
         assertTrue(makePriCalls.contains("new"))
     }
@@ -1403,6 +1410,9 @@ class KotlinWinRtPluginTest {
         val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
         assertTrue(Files.isRegularFile(projectPriRoot.resolve("Embedded/Payload.bin")))
         assertFalse(Files.exists(projectPriRoot.resolve("Generated/ExcludedPayload.bin")))
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Embedded/Payload.bin")))
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Generated/ExcludedPayload.bin")))
         val makePriCalls = Files.readString(makePriLog)
         assertTrue(makePriCalls.contains("new"))
     }
