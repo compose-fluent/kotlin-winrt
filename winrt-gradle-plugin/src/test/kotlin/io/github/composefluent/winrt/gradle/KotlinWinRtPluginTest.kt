@@ -1597,6 +1597,20 @@ class KotlinWinRtPluginTest {
             listOf("Appx/Embedded/Payload.bin", "Appx/Views/CompiledPage.xbf"),
             Files.readAllLines(configRoot.resolve("embed/embed.resfiles")),
         )
+        val priConfig = Files.readString(configRoot.resolve("priconfig.xml"))
+        assertTrue(priConfig.contains("startIndexAt=\"") && priConfig.contains("filtered.layout.resfiles"))
+        assertTrue(priConfig.contains("resources.resfiles"))
+        assertTrue(priConfig.contains("pri.resfiles"))
+        assertTrue(priConfig.contains("embed.resfiles"))
+        assertTrue(priConfig.contains("type=\"RESFILES\""))
+        assertTrue(priConfig.contains("type=\"RESW\""))
+        assertTrue(priConfig.contains("type=\"PRI\""))
+        assertTrue(priConfig.contains("type=\"EMBEDFILES\""))
+        assertTrue(priConfig.contains("name=\"Language\"") && priConfig.contains("value=\"en-US\""))
+        assertTrue(priConfig.contains("name=\"Scale\"") && priConfig.contains("value=\"100\""))
+        val makePriCalls = Files.readString(makePriLog)
+        assertFalse(makePriCalls.contains("createconfig"))
+        assertTrue(makePriCalls.contains("new"))
     }
 
     @Test
