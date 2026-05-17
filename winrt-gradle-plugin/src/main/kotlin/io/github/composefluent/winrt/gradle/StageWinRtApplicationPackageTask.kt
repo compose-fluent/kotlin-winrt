@@ -157,35 +157,25 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
         cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
-        var hasProjectPriInputs = false
-        val copiedProjectPriItems = linkedSetOf<ApplicationPackageItem>()
-        inputPris.forEach { source ->
-            if (copyProjectPriInput(ApplicationPackageItemKind.ComponentPri, source, projectPriRoot.resolve(source.relativeTo(outputRoot)), copiedProjectPriItems)) {
-                hasProjectPriInputs = true
-            }
-        }
-        stageProjectPriResources(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        stageProjectPriLayoutResources(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        stageProjectPriContentResources(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        stageProjectPriEmbedFiles(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        stageDefaultProjectPriResources(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        stageDefaultProjectPriLayoutResources(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        stageDefaultProjectPriContentResources(projectPriRoot, copiedProjectPriItems).also { copied ->
-            hasProjectPriInputs = hasProjectPriInputs || copied
-        }
-        if (!hasProjectPriInputs) {
+        val copiedProjectPriItems = ProjectPriInputStager(
+            projectPriRoot = projectPriRoot,
+            projectPriInitialPath = projectPriInitialPath.get(),
+            defaultProjectResourceRoot = defaultProjectPriResourceRoot.orNull?.asFile?.toPath(),
+            targetPaths = projectPriTargetPaths.get(),
+            excludedFromBuildPaths = projectPriExcludedFromBuildPaths.get(),
+        ).stage(
+            componentPriFiles = inputPris,
+            componentPriBaseRoot = outputRoot,
+            explicitResourceFiles = projectPriResourceFiles.files.map { it.toPath() },
+            explicitLayoutFiles = projectPriLayoutFiles.files.map { it.toPath() },
+            explicitContentFiles = projectPriContentFiles.files.map { it.toPath() },
+            explicitEmbedFiles = projectPriEmbedFiles.files.map { it.toPath() },
+            defaultResourceFiles = defaultProjectPriResourceFiles.files.map { it.toPath() },
+            defaultLayoutFiles = defaultProjectPriLayoutFiles.files.map { it.toPath() },
+            defaultContentFiles = defaultProjectPriContentFiles.files.map { it.toPath() },
+            includeDefaultProjectResources = enableDefaultProjectPriResources.get(),
+        )
+        if (copiedProjectPriItems.isEmpty()) {
             return
         }
         ApplicationPackagePayloadWriter.copyPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
@@ -205,269 +195,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             logger,
         )
     }
-
-    private fun stageProjectPriResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
-        var copied = false
-        projectPriResourceFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { Files.exists(it) }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
-                    val explicitRootTarget = source.explicitProjectPriTargetPath()
-                    Files.walk(source).use { stream ->
-                        stream.asSequence()
-                            .filter { it.isRegularFile() }
-                            .filterNot { it.isProjectPriExcludedFromBuild() }
-                            .sorted()
-                            .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
-                                if (copyProjectPriInput(ApplicationPackageItemKind.PriResource, child, target, copiedItems)) copied = true
-                            }
-                    }
-                } else if (source.isRegularFile() && !source.isProjectPriExcludedFromBuild()) {
-                    val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = source.explicitProjectPriTargetPath()
-                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
-                    if (copyProjectPriInput(ApplicationPackageItemKind.PriResource, source, projectPriRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
-                }
-            }
-        return copied
-    }
-
-    private fun stageProjectPriLayoutResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
-        val inputs = projectPriLayoutFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { Files.exists(it) }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .flatMap { source ->
-                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
-                    val explicitRootTarget = source.explicitProjectPriTargetPath()
-                    Files.walk(source).use { stream ->
-                        stream.asSequence()
-                            .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
-                            .filterNot { it.isProjectPriExcludedFromBuild() }
-                            .sorted()
-                            .map { child -> ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))) }
-                            .toList()
-                            .asSequence()
-                    }
-                } else if (source.isRegularFile() && source.isProjectPriLayoutFile() && !source.isProjectPriExcludedFromBuild()) {
-                    val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = source.explicitProjectPriTargetPath()
-                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
-                    sequenceOf(ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(relativeTarget)))
-                } else {
-                    emptySequence()
-                }
-            }
-            .toList()
-        return stageFilteredProjectPriLayoutInputs(projectPriRoot, inputs, copiedItems)
-    }
-
-    private fun stageDefaultProjectPriResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        if (!enableDefaultProjectPriResources.get()) return false
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        var copied = false
-        defaultProjectPriResourceFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { it.isRegularFile() && it.name.endsWith(".resw", ignoreCase = true) }
-            .filterNot { it.isProjectPriExcludedFromBuild() }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                val normalizedSource = source.toAbsolutePath().normalize()
-                if (normalizedSource.startsWith(root) && copyProjectPriInput(ApplicationPackageItemKind.PriResource, source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)), copiedItems)) {
-                    copied = true
-                }
-            }
-        return copied
-    }
-
-    private fun stageProjectPriContentResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
-        var copied = false
-        projectPriContentFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { Files.exists(it) }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
-                    val explicitRootTarget = source.explicitProjectPriTargetPath()
-                    Files.walk(source).use { stream ->
-                        stream.asSequence()
-                            .filter { it.isRegularFile() }
-                            .filterNot { it.isProjectPriExcludedFromBuild() }
-                            .sorted()
-                            .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
-                                if (copyProjectPriInput(ApplicationPackageItemKind.Content, child, target, copiedItems)) copied = true
-                            }
-                    }
-                } else if (source.isRegularFile() && !source.isProjectPriExcludedFromBuild()) {
-                    val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = source.explicitProjectPriTargetPath()
-                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
-                    if (copyProjectPriInput(ApplicationPackageItemKind.Content, source, projectPriRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
-                }
-            }
-        return copied
-    }
-
-    private fun stageProjectPriEmbedFiles(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        val embedRoot = projectPriRoot.resolve("embed")
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
-        var copied = false
-        projectPriEmbedFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { Files.exists(it) }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
-                    val explicitRootTarget = source.explicitProjectPriTargetPath()
-                    Files.walk(source).use { stream ->
-                        stream.asSequence()
-                            .filter { it.isRegularFile() }
-                            .filterNot { it.isProjectPriExcludedFromBuild() }
-                            .sorted()
-                            .forEach { child ->
-                                val target = embedRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
-                                if (copyProjectPriInput(ApplicationPackageItemKind.Embed, child, target, copiedItems)) copied = true
-                            }
-                    }
-                } else if (source.isRegularFile() && !source.isProjectPriExcludedFromBuild()) {
-                    val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = source.explicitProjectPriTargetPath()
-                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
-                    if (copyProjectPriInput(ApplicationPackageItemKind.Embed, source, embedRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
-                }
-            }
-        return copied
-    }
-
-    private fun stageDefaultProjectPriLayoutResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        if (!enableDefaultProjectPriResources.get()) return false
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        val inputs = defaultProjectPriLayoutFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
-            .filterNot { it.isProjectPriExcludedFromBuild() }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .mapNotNull { source ->
-                val normalizedSource = source.toAbsolutePath().normalize()
-                if (normalizedSource.startsWith(root)) ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root))) else null
-            }
-            .toList()
-        return stageFilteredProjectPriLayoutInputs(projectPriRoot, inputs, copiedItems)
-    }
-
-    private fun stageDefaultProjectPriContentResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        if (!enableDefaultProjectPriResources.get()) return false
-        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
-        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
-        var copied = false
-        defaultProjectPriContentFiles.files.asSequence()
-            .map { it.toPath() }
-            .filter { it.isRegularFile() && it.isProjectPriContentFile() }
-            .filterNot { it.isProjectPriExcludedFromBuild() }
-            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                val normalizedSource = source.toAbsolutePath().normalize()
-                if (normalizedSource.startsWith(root) && copyProjectPriInput(ApplicationPackageItemKind.Content, source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root)), copiedItems)) {
-                    copied = true
-                }
-            }
-        return copied
-    }
-
-    private fun stageFilteredProjectPriLayoutInputs(projectPriRoot: Path, inputs: List<ProjectPriLayoutInput>, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
-        val xbfTargets = inputs.asSequence()
-            .filter { it.source.name.endsWith(".xbf", ignoreCase = true) }
-            .map { it.target.toNormalizedPackagePathKey() }
-            .toSet()
-        val embedRoot = projectPriRoot.resolve("embed")
-        var copied = false
-        inputs.forEach { input ->
-            if (input.source.name.endsWith(".xaml", ignoreCase = true) && input.target.toXbfTargetKey() in xbfTargets) {
-                recordProjectPriInput(ApplicationPackageItemKind.ExcludedLayout, input.source, input.target, copiedItems)
-                return@forEach
-            }
-            if (input.source.name.endsWith(".xbf", ignoreCase = true)) {
-                val embedTarget = embedRoot.resolve(input.target.relativeTo(embedRoot.parent))
-                if (copyProjectPriInput(ApplicationPackageItemKind.Embed, input.source, embedTarget, copiedItems)) copied = true
-                return@forEach
-            }
-            if (copyProjectPriInput(ApplicationPackageItemKind.Layout, input.source, input.target, copiedItems)) copied = true
-        }
-        return copied
-    }
-
-    private fun copyProjectPriInput(
-        kind: ApplicationPackageItemKind,
-        source: Path,
-        target: Path,
-        copiedItems: MutableSet<ApplicationPackageItem>,
-    ): Boolean {
-        val item = applicationPackageItem(kind, source, target)
-        if (!copiedItems.add(item)) return false
-        copyFile(source, target)
-        return true
-    }
-
-    private fun recordProjectPriInput(
-        kind: ApplicationPackageItemKind,
-        source: Path,
-        target: Path,
-        copiedItems: MutableSet<ApplicationPackageItem>,
-    ): Boolean =
-        copiedItems.add(applicationPackageItem(kind, source, target))
-
-    private fun String.toSafeRelativePath(): Path {
-        val normalized = replace('\\', '/').trim('/')
-        if (normalized.isBlank()) return Path.of("")
-        val path = Path.of(normalized).normalize()
-        require(!path.isAbsolute && !path.startsWith("..")) {
-            "AppxPriInitialPath must be a relative path inside the PRI input root: $this"
-        }
-        return path
-    }
-
-    private fun Path.explicitProjectPriTargetPath(): Path? {
-        val configured = projectPriTargetPaths.get()[toAbsolutePath().normalize().toString()] ?: return null
-        return configured.toSafeRelativePath()
-    }
-
-    private fun Path.isProjectPriExcludedFromBuild(): Boolean =
-        toAbsolutePath().normalize().toString() in projectPriExcludedFromBuildPaths.get()
-
-    private fun Path.isProjectPriLayoutFile(): Boolean =
-        name.endsWith(".xaml", ignoreCase = true) || name.endsWith(".xbf", ignoreCase = true)
-
-    private fun Path.isProjectPriContentFile(): Boolean {
-        val fileName = name
-        return listOf(".png", ".bmp", ".jpg", ".dds", ".tif", ".tga", ".gif")
-            .any { extension -> fileName.endsWith(extension, ignoreCase = true) }
-    }
-
-    private fun Path.toXbfTargetKey(): String {
-        val xbfFileName = fileName.toString().replaceAfterLast('.', "xbf")
-        return parent.resolve(xbfFileName).toNormalizedPackagePathKey()
-    }
-
-    private fun Path.toProjectPriRelativePath(projectRoot: Path?, fallbackRoot: Path, explicitRootTarget: Path? = null): Path {
-        val normalizedSource = toAbsolutePath().normalize()
-        if (explicitRootTarget != null) return explicitRootTarget.resolve(relativeTo(fallbackRoot))
-        return if (projectRoot != null && normalizedSource.startsWith(projectRoot)) normalizedSource.relativeTo(projectRoot) else relativeTo(fallbackRoot)
-    }
-
-    private data class ProjectPriLayoutInput(val source: Path, val target: Path)
 
     private fun projectPriDefaultQualifier(): String {
         val language = projectPriDefaultLanguageValue()
