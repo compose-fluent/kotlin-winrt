@@ -401,7 +401,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     private fun stageFilteredProjectPriLayoutInputs(projectPriRoot: Path, inputs: List<ProjectPriLayoutInput>, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
         val xbfTargets = inputs.asSequence()
             .filter { it.source.name.endsWith(".xbf", ignoreCase = true) }
-            .map { it.target.toNormalizedPathKey() }
+            .map { it.target.toNormalizedPackagePathKey() }
             .toSet()
         val embedRoot = projectPriRoot.resolve("embed")
         var copied = false
@@ -438,30 +438,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         projectPriRoot: Path,
         copiedItems: Set<ApplicationPackageItem>,
     ) {
-        ProjectPriConfigurationInputs(
-            unfilteredLayout = copiedItems
-                .filter {
-                    it.kind == ApplicationPackageItemKind.Layout ||
-                        it.kind == ApplicationPackageItemKind.ExcludedLayout ||
-                        it.kind == ApplicationPackageItemKind.Content
-                }
-                .map { it.target },
-            filteredLayout = copiedItems
-                .filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content }
-                .map { it.target },
-            excludedLayout = copiedItems
-                .filter { it.kind == ApplicationPackageItemKind.ExcludedLayout }
-                .map { it.target },
-            resources = copiedItems
-                .filter { it.kind == ApplicationPackageItemKind.PriResource }
-                .map { it.target },
-            pri = copiedItems
-                .filter { it.kind == ApplicationPackageItemKind.ComponentPri }
-                .map { it.target },
-            embed = copiedItems
-                .filter { it.kind == ApplicationPackageItemKind.Embed }
-                .map { it.target },
-        ).write(configRoot, projectPriRoot)
+        ProjectPriConfigurationInputs.fromApplicationPackageItems(copiedItems).write(configRoot, projectPriRoot)
     }
 
     private fun copyProjectPriInput(
@@ -483,14 +460,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         copiedItems: MutableSet<ApplicationPackageItem>,
     ): Boolean =
         copiedItems.add(applicationPackageItem(kind, source, target))
-
-    private fun applicationPackageItem(kind: ApplicationPackageItemKind, source: Path, target: Path): ApplicationPackageItem =
-        ApplicationPackageItem(
-            kind = kind,
-            source = source.toAbsolutePath().normalize(),
-            target = target.toAbsolutePath().normalize(),
-            targetKey = target.toNormalizedPathKey(),
-        )
 
     private fun String.toSafeRelativePath(): Path {
         val normalized = replace('\\', '/').trim('/')
@@ -519,12 +488,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .any { extension -> fileName.endsWith(extension, ignoreCase = true) }
     }
 
-    private fun Path.toNormalizedPathKey(): String =
-        toAbsolutePath().normalize().toString().lowercase()
-
     private fun Path.toXbfTargetKey(): String {
         val xbfFileName = fileName.toString().replaceAfterLast('.', "xbf")
-        return parent.resolve(xbfFileName).toNormalizedPathKey()
+        return parent.resolve(xbfFileName).toNormalizedPackagePathKey()
     }
 
     private fun Path.toProjectPriRelativePath(projectRoot: Path?, fallbackRoot: Path, explicitRootTarget: Path? = null): Path {
@@ -534,32 +500,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     }
 
     private data class ProjectPriLayoutInput(val source: Path, val target: Path)
-
-    private data class ApplicationPackageItem(
-        val kind: ApplicationPackageItemKind,
-        val source: Path,
-        val target: Path,
-        val targetKey: String,
-    ) {
-        override fun equals(other: Any?): Boolean =
-            other is ApplicationPackageItem && targetKey == other.targetKey
-
-        override fun hashCode(): Int =
-            targetKey.hashCode()
-    }
-
-    private enum class ApplicationPackageItemKind {
-        ComponentPri,
-        PriResource,
-        Layout,
-        ExcludedLayout,
-        Content,
-        Embed,
-        ;
-
-        val isPackagePayload: Boolean
-            get() = this == Layout || this == Content
-    }
 
     private fun projectPriDefaultQualifier(): String {
         val language = projectPriDefaultLanguageValue()

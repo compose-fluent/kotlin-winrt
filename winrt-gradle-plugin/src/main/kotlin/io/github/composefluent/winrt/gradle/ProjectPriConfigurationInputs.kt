@@ -32,4 +32,32 @@ internal data class ProjectPriConfigurationInputs(
 
     private fun Path.toPortablePath(): String =
         joinToString("/") { it.toString() }
+
+    companion object {
+        fun fromApplicationPackageItems(items: Set<ApplicationPackageItem>): ProjectPriConfigurationInputs =
+            ProjectPriConfigurationInputs(
+                unfilteredLayout = items
+                    .filter {
+                        it.kind == ApplicationPackageItemKind.Layout ||
+                            it.kind == ApplicationPackageItemKind.ExcludedLayout ||
+                            it.kind == ApplicationPackageItemKind.Content
+                    }
+                    .map { it.target },
+                filteredLayout = items
+                    .filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content }
+                    .map { it.target },
+                excludedLayout = items
+                    .filter { it.kind == ApplicationPackageItemKind.ExcludedLayout }
+                    .map { it.target },
+                resources = items
+                    .filter { it.kind == ApplicationPackageItemKind.PriResource }
+                    .map { it.target },
+                pri = items
+                    .filter { it.kind == ApplicationPackageItemKind.ComponentPri }
+                    .map { it.target },
+                embed = items
+                    .filter { it.kind == ApplicationPackageItemKind.Embed }
+                    .map { it.target },
+            )
+    }
 }
