@@ -17,7 +17,6 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Comparator
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -159,14 +158,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @TaskAction
     fun stage() {
         val outputRoot = outputDirectory.get().asFile.toPath()
-        cleanDirectory(outputRoot)
+        GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
         (runtimeAssets.get() + dependencyIdentityFiles.files.flatMap(::readRuntimeAssets))
             .map(Path::of)
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isRegularFile()) {
-                    copyFile(source, outputRoot.resolve(source.name))
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
                 }
             }
         (authoredMetadataFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata))
@@ -174,7 +173,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isRegularFile()) {
-                    copyFile(source, outputRoot.resolve(source.name))
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
                 }
             }
         (authoredHostManifestFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests))
@@ -182,7 +181,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isRegularFile()) {
-                    copyFile(source, outputRoot.resolve(source.name))
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
                 }
             }
         stageAuthoringHostRuntimeConfigs(
@@ -194,7 +193,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isRegularFile()) {
-                    copyFile(source, outputRoot.resolve(source.name))
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
                 }
             }
         authoredHostDllFiles.files
@@ -202,7 +201,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .map { it.toPath() }
             .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
+            .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
@@ -283,7 +282,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.list(packageRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
         }
     }
 
@@ -294,7 +293,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.walk(nativeRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.endsWith(".dll", ignoreCase = true) }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
         }
     }
 
@@ -305,14 +304,14 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         Files.walk(nativeRoot).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(nativeRoot))) }
         }
     }
 
     private fun stageWindowsAppSdkVersionInfo(packageRoot: Path, outputRoot: Path) {
         val versionInfo = packageRoot.resolve("include").resolve("WindowsAppSDK-VersionInfo.h")
         if (versionInfo.isRegularFile()) {
-            copyFile(versionInfo, outputRoot.resolve("include").resolve(versionInfo.name))
+            GradleFileOperations.copyFile(versionInfo, outputRoot.resolve("include").resolve(versionInfo.name))
         }
     }
 
@@ -325,7 +324,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             stream.asSequence()
                 .filter { it.isRegularFile() && it.name.equals("LiftedWinRTClassRegistrations.xml", ignoreCase = true) }
                 .forEach { source ->
-                    copyFile(
+                    GradleFileOperations.copyFile(
                         source,
                         outputRoot
                             .resolve("registrations")
@@ -353,7 +352,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             return
         }
         val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
-        cleanDirectory(projectPriRoot)
+        GradleFileOperations.cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
         var hasProjectPriInputs = false
         val copiedProjectPriTargets = linkedSetOf<String>()
@@ -425,7 +424,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     it.name.equals("resources.pri", ignoreCase = true) ||
                         it.name.startsWith("resources.language-", ignoreCase = true)
                 }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
         }
         Files.deleteIfExists(config)
     }
@@ -639,7 +638,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         if (!copiedTargets.add(key)) {
             return false
         }
-        copyFile(source, target)
+        GradleFileOperations.copyFile(source, target)
         return true
     }
 
@@ -723,23 +722,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             return bytes.toString(Charsets.UTF_16LE)
         }
         return bytes.toString(Charsets.UTF_8)
-    }
-
-    private fun copyFile(source: Path, target: Path) {
-        Files.createDirectories(target.parent)
-        Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-    }
-
-    private fun cleanDirectory(directory: Path) {
-        if (!directory.isDirectory()) {
-            return
-        }
-        Files.walk(directory).use { stream ->
-            stream
-                .sorted(Comparator.reverseOrder())
-                .filter { it != directory }
-                .forEach(Files::deleteIfExists)
-        }
     }
 
     private fun stageAuthoringHostRuntimeConfigs(
