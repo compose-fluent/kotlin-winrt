@@ -215,6 +215,7 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
     override: Boolean = false,
     modifiers: List<KModifier> = if (override) listOf(KModifier.OVERRIDE) else emptyList(),
     eventSourceOwnerTypeName: String? = null,
+    eventSourceEventTypeName: String? = null,
     eventSourceObjectReference: CodeBlock? = null,
     eventSourceAddSlot: CodeBlock? = null,
     fallbackToAddRemove: Boolean = true,
@@ -238,7 +239,7 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
                         "val __eventSource = %T.%L(%L, %L) as? %T",
                         ClassName(WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName, eventSourceOwnerHelperName(eventSourceOwnerTypeName)),
                         eventSourceCreateFunctionName(
-                            eventType = eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName,
+                            eventType = eventSourceEventTypeName ?: eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName,
                             ownerType = eventSourceOwnerTypeName,
                         ),
                         eventSourceObjectReference,

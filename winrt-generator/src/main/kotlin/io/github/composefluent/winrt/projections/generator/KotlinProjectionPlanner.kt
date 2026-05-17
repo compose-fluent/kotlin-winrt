@@ -31,6 +31,7 @@ import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMappedTypeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
@@ -1083,20 +1084,31 @@ class KotlinProjectionPlanner(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         includeDelegateInvokeShape: Boolean = true,
     ): KotlinProjectionAbiTypeBinding {
-        val trimmedTypeName = typeName.trim()
-        val rawTypeName = trimmedTypeName.substringBefore('<').removeSuffix("?")
-        val typeArguments = if ('<' in trimmedTypeName && trimmedTypeName.endsWith('>')) {
-            splitGenericArguments(trimmedTypeName.substringAfter('<').substringBeforeLast('>'))
-                .map { argument ->
+        val normalizedType = WinRtTypeRef.fromDisplayName(typeName).normalized()
+        val trimmedTypeName = normalizedType.typeName
+        val rawTypeName = when (normalizedType.kind) {
+            WinRtTypeRefKind.Named -> normalizedType.qualifiedName ?: trimmedTypeName.substringBefore('<').removeSuffix("?")
+            WinRtTypeRefKind.Array -> "Array"
+            else -> trimmedTypeName
+        }
+        val typeArguments = when (normalizedType.kind) {
+            WinRtTypeRefKind.Named -> normalizedType.typeArguments.map { argument ->
                     classifyAbiTypeBinding(
-                        typeName = argument,
+                        typeName = argument.typeName,
                         currentNamespace = currentNamespace,
                         typesByQualifiedName = typesByQualifiedName,
                         includeDelegateInvokeShape = false,
                     )
                 }
-        } else {
-            emptyList()
+            WinRtTypeRefKind.Array -> listOf(
+                classifyAbiTypeBinding(
+                    typeName = (normalizedType.elementType ?: WinRtTypeRef.unknown()).typeName,
+                    currentNamespace = currentNamespace,
+                    typesByQualifiedName = typesByQualifiedName,
+                    includeDelegateInvokeShape = false,
+                ),
+            )
+            else -> emptyList()
         }
         val resolvedTypeName = qualifyTypeName(rawTypeName, currentNamespace, typesByQualifiedName) ?: rawTypeName
         val resolvedType = typesByQualifiedName[resolvedTypeName]
@@ -1133,8 +1145,9 @@ class KotlinProjectionPlanner(
             "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
             else -> when {
-                rawTypeName.isGenericTypeParameterName() -> KotlinProjectionAbiValueKind.GenericParameter
-                rawTypeName == "Array" -> KotlinProjectionAbiValueKind.Array
+                normalizedType.kind == WinRtTypeRefKind.GenericTypeParameter ||
+                    normalizedType.kind == WinRtTypeRefKind.MethodTypeParameter -> KotlinProjectionAbiValueKind.GenericParameter
+                normalizedType.kind == WinRtTypeRefKind.Array -> KotlinProjectionAbiValueKind.Array
                 rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
                 isProjectedKeyValuePair -> KotlinProjectionAbiValueKind.MappedKeyValuePair
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
@@ -1190,10 +1203,11 @@ class KotlinProjectionPlanner(
                 ?.iid
             else -> resolvedType?.iid
         } ?: mappedReferenceGenericInterfaceId(kind)
+        val isNullableDisplayName = typeName.trim().endsWith("?")
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
-            typeName = trimmedTypeName,
-            resolvedTypeName = resolvedTypeName,
+            typeName = if (isNullableDisplayName) trimmedTypeName.withNullableSuffix() else trimmedTypeName,
+            resolvedTypeName = if (isNullableDisplayName) resolvedTypeName.withNullableSuffix() else resolvedTypeName,
             sourceTypeKind = resolvedType?.kind,
             interfaceId = interfaceId,
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
@@ -1202,8 +1216,8 @@ class KotlinProjectionPlanner(
         )
     }
 
-    private fun String.isGenericTypeParameterName(): Boolean =
-        (startsWith("T") || startsWith("M")) && drop(1).toIntOrNull() != null
+    private fun String.withNullableSuffix(): String =
+        if (trim().endsWith("?")) this else "$this?"
 
     private fun KotlinProjectionAbiTypeBinding.withDelegateGenericArgumentProjection(
         genericArguments: List<KotlinProjectionAbiTypeBinding>,

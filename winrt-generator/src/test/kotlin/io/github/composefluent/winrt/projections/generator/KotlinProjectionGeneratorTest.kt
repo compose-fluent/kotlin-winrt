@@ -10543,10 +10543,51 @@ class KotlinProjectionGeneratorTest {
                     types = listOf(
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
+                            name = "IKeyValuePair",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555550"),
+                            genericParameterCount = 2,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555554f"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555554e"),
+                            genericParameterCount = 2,
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IIterable<Windows.Foundation.Collections.IKeyValuePair<T0, T1>>",
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition("Lookup", "T1", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("HasKey", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Insert", "Boolean", parameters = listOf(WinRtParameterDefinition("key", "T0"), WinRtParameterDefinition("value", "T1"))),
+                                WinRtMethodDefinition("Remove", "Unit", parameters = listOf(WinRtParameterDefinition("key", "T0"))),
+                                WinRtMethodDefinition("Clear", "Unit"),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition("Size", "UInt", getterMethodName = "get_Size"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
                             name = "IObservableMap",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555557"),
                             genericParameterCount = 2,
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IMap<T0, T1>",
+                                ),
+                            ),
                             events = listOf(
                                 WinRtEventDefinition(
                                     name = "MapChanged",
@@ -10560,10 +10601,37 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
+                            name = "IPropertySet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555555a"),
+                            implementedInterfaces = listOf(
+                                io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IObservableMap<String, System.Object>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
                             name = "IMapChangedEventArgs",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555558"),
                             genericParameterCount = 1,
+                            properties = listOf(
+                                WinRtPropertyDefinition("CollectionChange", "Windows.Foundation.Collections.CollectionChange", getterMethodName = "get_CollectionChange"),
+                                WinRtPropertyDefinition("Key", "T0", getterMethodName = "get_Key"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "CollectionChange",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.Int32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Reset", 0u),
+                                WinRtEnumMemberDefinition("ItemInserted", 1u),
+                                WinRtEnumMemberDefinition("ItemRemoved", 2u),
+                                WinRtEnumMemberDefinition("ItemChanged", 3u),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Windows.Foundation.Collections",
@@ -10701,6 +10769,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))
         assertTrue(eventProjectionHelpers.contains("internal object ${eventSourceOwnerHelperName("Windows.Foundation.Collections.IObservableMap")}"))
         assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.Collections.MapChangedEventHandler<T0, T1>", "Windows.Foundation.Collections.IObservableMap")}"))
+        assertFalse(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.Collections.MapChangedEventHandler<String, System.Object>", "Windows.Foundation.Collections.IObservableMap")}"))
+        assertTrue(eventProjectionHelpers.contains("IObservableMap.Metadata.wrap"))
         assertTrue(eventProjectionHelpers.contains("IMapChangedEventArgs.Metadata.wrap"))
         assertTrue(eventProjectionHelpers.contains("internal object ${eventSourceOwnerHelperName("Windows.UI.Core.ICoreDispatcher")}"))
         assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.TypedEventHandler<Windows.UI.Core.ICoreDispatcher, Windows.UI.Core.AcceleratorKeyEventArgs>", "Windows.UI.Core.ICoreDispatcher")}"))

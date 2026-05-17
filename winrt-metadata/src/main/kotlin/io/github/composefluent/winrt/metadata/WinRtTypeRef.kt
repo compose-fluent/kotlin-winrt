@@ -233,7 +233,10 @@ data class WinRtTypeRef(
             )
 
         fun fromDisplayName(typeName: String?): WinRtTypeRef {
-            val trimmed = typeName?.trim().takeUnless(String?::isNullOrEmpty) ?: return unknown()
+            val trimmed = typeName?.trim()
+                ?.removeSuffix("?")
+                ?.trim()
+                .takeUnless(String?::isNullOrEmpty) ?: return unknown()
             val genericParameterIndex = trimmed.removePrefix("T").toIntOrNull()
             if (trimmed.startsWith("T") && genericParameterIndex != null) {
                 return genericTypeParameter(genericParameterIndex)

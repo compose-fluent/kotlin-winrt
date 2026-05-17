@@ -657,6 +657,10 @@ internal class KotlinExpectActualProjectionRenderer(
                             abstract = false,
                             override = true,
                             eventSourceOwnerTypeName = interfaceType.qualifiedName,
+                            eventSourceEventTypeName = plan.typesByQualifiedName[interfaceType.qualifiedName]
+                                ?.events
+                                ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
+                                ?.delegateTypeName,
                             eventSourceObjectReference = CodeBlock.of("nativeObject"),
                             eventSourceAddSlot = baseRenderer.metadataSlotExpression(interfaceType, "${event.name.uppercase()}_ADD_SLOT"),
                             fallbackToAddRemove = false,

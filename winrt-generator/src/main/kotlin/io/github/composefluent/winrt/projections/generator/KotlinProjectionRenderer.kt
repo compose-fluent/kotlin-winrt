@@ -31,6 +31,7 @@ import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
@@ -228,6 +229,10 @@ class KotlinProjectionRenderer(
                         abstract = false,
                         override = true,
                         eventSourceOwnerTypeName = interfaceType.qualifiedName,
+                        eventSourceEventTypeName = plan.typesByQualifiedName[interfaceType.qualifiedName]
+                            ?.events
+                            ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
+                            ?.delegateTypeName,
                         eventSourceObjectReference = CodeBlock.of("nativeObject"),
                         eventSourceAddSlot = metadataSlotExpression(interfaceType, "${event.name.uppercase()}_ADD_SLOT"),
                         fallbackToAddRemove = false,
@@ -455,8 +460,9 @@ class KotlinProjectionRenderer(
             property = property,
             returnBinding = getterReturnBinding,
         )
+        val getterSlotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_GETTER_SLOT")
         val noArgIntrinsicInvocation = interfaceProxyNoArgIntrinsicInvocation(
-            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+            slotExpression = getterSlotExpression,
             returnBinding = getterReturnBinding,
             parameterBindings = emptyList(),
             suppressHResultCheck = property.isNoException,
@@ -466,25 +472,25 @@ class KotlinProjectionRenderer(
                 .addCode(
                     "%L\n",
                     projectedObjectGetterInvocation ?: scalarGetterInvocation ?: noArgIntrinsicInvocation ?: interfaceProxyStructResultIntrinsicInvocation(
-                        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                        slotExpression = getterSlotExpression,
                         returnBinding = getterReturnBinding,
                         parameterBindings = emptyList(),
                         suppressHResultCheck = property.isNoException,
                     ) ?: renderInstanceArrayResultIntrinsicInvocation(
                         referenceExpression = "nativeObject",
-                        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                        slotExpression = getterSlotExpression,
                         returnBinding = getterReturnBinding,
                         parameterBindings = emptyList(),
                         suppressHResultCheck = property.isNoException,
                     ) ?: renderInstanceEnumResultIntrinsicInvocation(
                         referenceExpression = "nativeObject",
-                        slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                        slotExpression = getterSlotExpression,
                         returnBinding = getterReturnBinding,
                         parameterBindings = emptyList(),
                         suppressHResultCheck = property.isNoException,
                     ) ?: renderInlineAbiInvocation(
                             invokeTargetExpression = "nativeObject",
-                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+                            slotExpression = getterSlotExpression,
                             callPlan = getterCallPlan,
                         ) ?: error("Generator interface proxy parity failed to emit getter ${property.name}"),
                 )
@@ -497,33 +503,34 @@ class KotlinProjectionRenderer(
                 parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
                 suppressHResultCheck = property.isNoException,
             )
+            val setterSlotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_SETTER_SLOT")
             builder.setter(
                 FunSpec.setterBuilder()
                     .addParameter("value", resolveTypeName(propertyTypeName))
                     .addCode(
                         "%L\n",
                         interfaceProxyOneArgUnitIntrinsicInvocation(
-                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
+                            slotExpression = setterSlotExpression,
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                             parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
                             suppressHResultCheck = property.isNoException,
                         ) ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
                             referenceExpression = "nativeObject",
-                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
+                            slotExpression = setterSlotExpression,
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                             parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
                             suppressHResultCheck = property.isNoException,
                             argumentExpression = "value",
                         ) ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                             referenceExpression = "nativeObject",
-                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
+                            slotExpression = setterSlotExpression,
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
                             parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
                             suppressHResultCheck = property.isNoException,
                             argumentExpression = "value",
                         ) ?: renderInlineAbiInvocation(
                             invokeTargetExpression = "nativeObject",
-                            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_SETTER_SLOT"),
+                            slotExpression = setterSlotExpression,
                             callPlan = setterCallPlan,
                         ) ?: error("Generator interface proxy parity failed to emit setter ${property.name}"),
                     )
@@ -664,7 +671,7 @@ class KotlinProjectionRenderer(
         }
         return renderInstanceProjectedObjectGetterInvocation(
             referenceExpression = "nativeObject",
-            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+            slotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_GETTER_SLOT"),
             returnBinding = returnBinding,
         )
     }
@@ -689,7 +696,7 @@ class KotlinProjectionRenderer(
         }
         return renderInstanceScalarGetterInvocation(
             referenceExpression = "nativeObject",
-            slotExpression = CodeBlock.of("%T.Metadata.%L", resolveTypeName(slotInterfaceType.qualifiedName), "${property.name.uppercase()}_GETTER_SLOT"),
+            slotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_GETTER_SLOT"),
             helperFunction = helperFunction,
             intrinsic = useProjectionIntrinsics,
         )
@@ -1043,13 +1050,34 @@ class KotlinProjectionRenderer(
         typeName: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
     ): KotlinProjectionAbiTypeBinding {
-        val trimmed = typeName.trim()
-        val rawTypeName = trimmed.substringBefore('<').removeSuffix("?")
-        val typeArguments = if ('<' in trimmed && trimmed.endsWith('>')) {
-            splitGenericArguments(trimmed.substringAfter('<').substringBeforeLast('>'))
-                .map { renderAbiTypeBinding(it, typesByQualifiedName) }
-        } else {
-            emptyList()
+        val binding = renderAbiTypeBinding(WinRtTypeRef.fromDisplayName(typeName).normalized(), typesByQualifiedName)
+        if (!typeName.trim().endsWith("?")) {
+            return binding
+        }
+        return binding.copy(
+            typeName = binding.typeName.withNullableSuffix(),
+            resolvedTypeName = binding.resolvedTypeName.withNullableSuffix(),
+        )
+    }
+
+    private fun String.withNullableSuffix(): String =
+        if (trim().endsWith("?")) this else "$this?"
+
+    private fun renderAbiTypeBinding(
+        typeRef: WinRtTypeRef,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): KotlinProjectionAbiTypeBinding {
+        val normalizedType = typeRef.normalized()
+        val trimmed = normalizedType.typeName
+        val rawTypeName = when (normalizedType.kind) {
+            WinRtTypeRefKind.Named -> normalizedType.qualifiedName ?: trimmed.substringBefore('<').removeSuffix("?")
+            WinRtTypeRefKind.Array -> "Array"
+            else -> trimmed
+        }
+        val typeArguments = when (normalizedType.kind) {
+            WinRtTypeRefKind.Named -> normalizedType.typeArguments.map { renderAbiTypeBinding(it, typesByQualifiedName) }
+            WinRtTypeRefKind.Array -> listOf(renderAbiTypeBinding(normalizedType.elementType ?: WinRtTypeRef.unknown(), typesByQualifiedName))
+            else -> emptyList()
         }
         val mappedType = mappedTypeByAbiName(rawTypeName)
         val resolvedType = typesByQualifiedName[rawTypeName]
@@ -1082,7 +1110,9 @@ class KotlinProjectionRenderer(
             "Any",
             "System.Object" -> KotlinProjectionAbiValueKind.Object
             else -> when {
-                rawTypeName.isMethodGenericParameterName() -> KotlinProjectionAbiValueKind.GenericParameter
+                normalizedType.kind == WinRtTypeRefKind.GenericTypeParameter ||
+                    normalizedType.kind == WinRtTypeRefKind.MethodTypeParameter -> KotlinProjectionAbiValueKind.GenericParameter
+                normalizedType.kind == WinRtTypeRefKind.Array -> KotlinProjectionAbiValueKind.Array
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
                 else -> when (resolvedType?.kind) {
                     WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
@@ -1114,9 +1144,6 @@ class KotlinProjectionRenderer(
             typeArguments = typeArguments,
         )
     }
-
-    private fun String.isMethodGenericParameterName(): Boolean =
-        startsWith("M") && drop(1).toIntOrNull() != null
 
     private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
         when (kind) {
@@ -1417,7 +1444,7 @@ class KotlinProjectionRenderer(
                     abstract = false,
                     override = true,
                     modifiers = eventModifiers,
-                    eventSourceOwnerTypeName = addBinding?.ownerInterfaceQualifiedName,
+                    eventSourceOwnerTypeName = addBinding?.slotInterfaceQualifiedName,
                     eventSourceObjectReference = addBinding?.let { CodeBlock.of(it.ownerCachePropertyName) },
                     eventSourceAddSlot = addBinding?.let {
                         CodeBlock.of("%T.Metadata.%L", resolveTypeName(it.slotInterfaceQualifiedName), it.slotConstantName)

@@ -31,6 +31,7 @@ import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
@@ -2936,9 +2937,11 @@ class KotlinProjectionSupportRenderer {
         if (mappedTypeByAbiName(binding.typeName) != null) {
             CodeBlock.of("__args[%L] as %T", index, typeRenderer.resolveTypeName(binding.typeName))
         } else if (binding.supportsProjectedGenericMetadataWrap(plansByType)) {
+            val wrapPlan = binding.projectedGenericMetadataWrapPlan(plansByType)
+                ?: error("Projected generic metadata wrap support requires a matching projection plan for ${binding.describeAbiKind()}")
             CodeBlock.of(
                 "%T.Metadata.wrap<%L>(__args[%L] as %T)",
-                typeRenderer.resolveTypeName(binding.resolvedTypeName),
+                typeRenderer.resolveTypeName(wrapPlan.type.qualifiedName),
                 eventSourceTypeArgumentCode(binding.typeArguments),
                 index,
                 when (binding.kind) {
@@ -3130,7 +3133,7 @@ class KotlinProjectionSupportRenderer {
         typeArguments: List<KotlinProjectionAbiTypeBinding>,
     ): KotlinProjectionAbiTypeBinding {
         if (kind == KotlinProjectionAbiValueKind.GenericParameter && typeName.isEventSourceGenericTypeParameterName()) {
-            val index = typeName.drop(1).toIntOrNull()
+            val index = WinRtTypeRef.fromDisplayName(typeName).normalized().genericParameterIndex
             if (index != null && index in typeArguments.indices) {
                 return typeArguments[index]
             }
@@ -3157,7 +3160,10 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun String.isEventSourceGenericTypeParameterName(): Boolean =
-        (startsWith("T") || startsWith("M")) && drop(1).toIntOrNull() != null
+        WinRtTypeRef.fromDisplayName(this).normalized().kind in setOf(
+            WinRtTypeRefKind.GenericTypeParameter,
+            WinRtTypeRefKind.MethodTypeParameter,
+        )
 
     private fun KotlinProjectionDelegateInvokeShape.supportsEventSourceCallbackWrapping(
         plansByType: Map<String, KotlinTypeProjectionPlan>,
@@ -3179,18 +3185,35 @@ class KotlinProjectionSupportRenderer {
 
     private fun KotlinProjectionAbiTypeBinding.supportsProjectedGenericMetadataWrap(
         plansByType: Map<String, KotlinTypeProjectionPlan>,
-    ): Boolean {
+    ): Boolean = projectedGenericMetadataWrapPlan(plansByType) != null
+
+    private fun KotlinProjectionAbiTypeBinding.projectedGenericMetadataWrapPlan(
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): KotlinTypeProjectionPlan? {
         if (typeArguments.isEmpty() ||
             kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.ProjectedRuntimeClass)
         ) {
-            return false
+            return null
         }
-        val plan = plansByType[resolvedTypeName] ?: return false
+        val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        val rawResolvedTypeName = resolvedTypeName.substringBefore('<').removeSuffix("?")
+        return listOf(rawResolvedTypeName, rawTypeName)
+            .distinct()
+            .mapNotNull(plansByType::get)
+            .firstOrNull { plan -> planSupportsProjectedGenericMetadataWrap(plan) }
+    }
+
+    private fun KotlinProjectionAbiTypeBinding.planSupportsProjectedGenericMetadataWrap(
+        plan: KotlinTypeProjectionPlan,
+    ): Boolean {
         if (plan.type.genericParameterCount != typeArguments.size) {
             return false
         }
         return when (kind) {
-            KotlinProjectionAbiValueKind.ProjectedInterface -> supportTypeRenderer.canRenderInterfaceWrapper(plan)
+            KotlinProjectionAbiValueKind.ProjectedInterface ->
+                supportTypeRenderer.canRenderInterfaceWrapper(plan) ||
+                    plan.readOnlyCollectionBindings.isNotEmpty() ||
+                    plan.mutableCollectionBindings.isNotEmpty()
             KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
                 plan.declarationKind == KotlinProjectionDeclarationKind.Class &&
                     KotlinProjectionSpecializationKind.StaticClass !in plan.specializationKinds &&
