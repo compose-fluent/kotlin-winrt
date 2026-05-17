@@ -20,7 +20,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 class KotlinWinRtPlugin : Plugin<Project> {
     override fun apply(project: Project) {
-        val extension = project.extensions.create("winRt", WinRtExtension::class.java)
+        val extension = project.extensions.create("winRt", WinRtExtension::class.java, project)
         configureWinRtGeneration(project, extension)
         configureWinRtLibraryModel(project, extension)
         configureWinRtApplicationModel(project, extension)
@@ -362,6 +362,7 @@ private fun configureWinRtApplicationTasks(
             task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
+            task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.makePriExecutable.set("")
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })

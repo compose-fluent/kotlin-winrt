@@ -1247,6 +1247,60 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_applies_explicit_project_pri_target_paths() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val resource = project.projectDir.toPath().resolve("Resources/AppResources.resw")
+        val page = project.projectDir.toPath().resolve("Views/AppPage.xaml")
+        val image = project.projectDir.toPath().resolve("Images/AppLogo.png")
+        Files.createDirectories(resource.parent)
+        Files.createDirectories(page.parent)
+        Files.createDirectories(image.parent)
+        Files.writeString(resource, "resw")
+        Files.writeString(page, "<Page />")
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        val makePriLog = project.layout.buildDirectory.file("makepri-target-path.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri-target-path.cmd").get().asFile.toPath(), makePriLog)
+        val task = project.tasks.register(
+            "stageTargetPathApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-target-path"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriResourceFiles.from(resource)
+            registeredTask.projectPriLayoutFiles.from(page)
+            registeredTask.projectPriContentFiles.from(image)
+            registeredTask.projectPriTargetPaths.put(resource.toAbsolutePath().normalize().toString(), "Strings/en-US/Resources.resw")
+            registeredTask.projectPriTargetPaths.put(page.toAbsolutePath().normalize().toString(), "Xaml/MainPage.xaml")
+            registeredTask.projectPriTargetPaths.put(image.toAbsolutePath().normalize().toString(), "Assets/Logo.png")
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Strings/en-US/Resources.resw")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Xaml/MainPage.xaml")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Assets/Logo.png")))
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_image_content_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

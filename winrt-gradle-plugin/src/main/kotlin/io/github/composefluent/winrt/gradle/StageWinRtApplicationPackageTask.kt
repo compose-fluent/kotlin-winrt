@@ -4,6 +4,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
@@ -63,6 +64,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     @get:Input
     abstract val runtimeIdentifier: Property<String>
 
+    @get:Input
+    abstract val projectPriTargetPaths: MapProperty<String, String>
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -111,6 +115,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         enableDefaultProjectPriResources.convention(true)
         makePriExecutable.convention("")
         windowsSdkVersion.convention("")
+        projectPriTargetPaths.convention(emptyMap())
     }
 
     @TaskAction
@@ -224,7 +229,8 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     }
                 } else if (source.isRegularFile()) {
                     val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
+                    val relativeTarget = source.explicitProjectPriTargetPath()
+                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
                     if (copyProjectPriInput(ApplicationPackageItemKind.PriResource, source, projectPriRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
                 }
             }
@@ -250,7 +256,8 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     }
                 } else if (source.isRegularFile() && source.isProjectPriLayoutFile()) {
                     val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
+                    val relativeTarget = source.explicitProjectPriTargetPath()
+                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
                     sequenceOf(ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(relativeTarget)))
                 } else {
                     emptySequence()
@@ -299,7 +306,8 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     }
                 } else if (source.isRegularFile()) {
                     val normalizedSource = source.toAbsolutePath().normalize()
-                    val relativeTarget = if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
+                    val relativeTarget = source.explicitProjectPriTargetPath()
+                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
                     if (copyProjectPriInput(ApplicationPackageItemKind.Content, source, projectPriRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
                 }
             }
@@ -378,6 +386,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             "AppxPriInitialPath must be a relative path inside the PRI input root: $this"
         }
         return path
+    }
+
+    private fun Path.explicitProjectPriTargetPath(): Path? {
+        val configured = projectPriTargetPaths.get()[toAbsolutePath().normalize().toString()] ?: return null
+        return configured.toSafeRelativePath()
     }
 
     private fun Path.isProjectPriLayoutFile(): Boolean =

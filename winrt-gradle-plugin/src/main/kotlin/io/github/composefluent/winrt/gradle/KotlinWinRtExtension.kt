@@ -1,11 +1,13 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.Action
+import org.gradle.api.Project
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Nested
 import javax.inject.Inject
@@ -122,12 +124,13 @@ abstract class BaseWinRtExtensionSupport @Inject constructor(
 
 abstract class WinRtExtension @Inject constructor(
     objects: ObjectFactory,
+    project: Project,
 ) : BaseWinRtExtensionSupport(objects) {
     val applicationEnabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     private val applicationConfiguredActions = mutableListOf<() -> Unit>()
 
     @get:Nested
-    val application: WinRtApplicationOptions = objects.newInstance(WinRtApplicationOptions::class.java)
+    val application: WinRtApplicationOptions = objects.newInstance(WinRtApplicationOptions::class.java, project)
 
     fun application(action: Action<in WinRtApplicationOptions>) {
         applicationEnabled.set(true)
@@ -147,6 +150,7 @@ abstract class WinRtExtension @Inject constructor(
 
 abstract class WinRtApplicationOptions @Inject constructor(
     objects: ObjectFactory,
+    private val project: Project,
 ) {
     val generateProjectPri: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val projectPriIndexName: Property<String> = objects.property(String::class.java).convention("")
@@ -159,6 +163,8 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val projectPriResourceFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriLayoutFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriContentFiles: ConfigurableFileCollection = objects.fileCollection()
+    val projectPriTargetPaths: MapProperty<String, String> =
+        objects.mapProperty(String::class.java, String::class.java).convention(emptyMap())
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
@@ -168,20 +174,45 @@ abstract class WinRtApplicationOptions @Inject constructor(
         projectPriResourceFiles.from(input)
     }
 
+    fun projectPriResource(input: Any, targetPath: String) {
+        projectPriResource(input)
+        projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
+    }
+
     fun projectPriPage(input: Any) {
         projectPriLayoutFiles.from(input)
+    }
+
+    fun projectPriPage(input: Any, targetPath: String) {
+        projectPriPage(input)
+        projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
     }
 
     fun projectPriApplicationDefinition(input: Any) {
         projectPriLayoutFiles.from(input)
     }
 
+    fun projectPriApplicationDefinition(input: Any, targetPath: String) {
+        projectPriApplicationDefinition(input)
+        projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
+    }
+
     fun projectPriContent(input: Any) {
         projectPriContentFiles.from(input)
     }
 
+    fun projectPriContent(input: Any, targetPath: String) {
+        projectPriContent(input)
+        projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
+    }
+
     fun projectPriImage(input: Any) {
         projectPriContentFiles.from(input)
+    }
+
+    fun projectPriImage(input: Any, targetPath: String) {
+        projectPriImage(input)
+        projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
     }
 
     fun projectPriDefaultQualifier(qualifier: String) {
