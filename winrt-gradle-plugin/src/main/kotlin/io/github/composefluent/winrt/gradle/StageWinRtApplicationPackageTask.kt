@@ -195,8 +195,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             logger.warn("Skipping application PRI generation because makepri.exe was not found.")
             return
         }
-        val config = temporaryDir.toPath().resolve("project-pri-config").resolve("priconfig.xml")
-        Files.createDirectories(config.parent)
+        val configRoot = temporaryDir.toPath().resolve("project-pri-config")
+        cleanDirectory(configRoot)
+        Files.createDirectories(configRoot)
+        writeProjectPriConfigurationInputs(configRoot, projectPriRoot, copiedProjectPriItems)
+        val config = configRoot.resolve("priconfig.xml")
         val output = projectPriRoot.resolve("resources.pri")
         runMakePri(
             makePri,
@@ -428,6 +431,42 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             }
     }
 
+    private fun writeProjectPriConfigurationInputs(
+        configRoot: Path,
+        projectPriRoot: Path,
+        copiedItems: Set<ApplicationPackageItem>,
+    ) {
+        writeResfiles(
+            configRoot.resolve("layout.resfiles"),
+            projectPriRoot,
+            copiedItems.filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content },
+        )
+        writeResfiles(
+            configRoot.resolve("resources.resfiles"),
+            projectPriRoot,
+            copiedItems.filter { it.kind == ApplicationPackageItemKind.PriResource },
+        )
+        writeResfiles(
+            configRoot.resolve("pri.resfiles"),
+            projectPriRoot,
+            copiedItems.filter { it.kind == ApplicationPackageItemKind.ComponentPri },
+        )
+        writeResfiles(
+            configRoot.resolve("embed.resfiles"),
+            projectPriRoot,
+            copiedItems.filter { it.kind == ApplicationPackageItemKind.Embed },
+        )
+    }
+
+    private fun writeResfiles(path: Path, projectPriRoot: Path, items: List<ApplicationPackageItem>) {
+        Files.createDirectories(path.parent)
+        val lines = items.asSequence()
+            .map { it.target.relativeTo(projectPriRoot).toPortablePath() }
+            .sorted()
+            .toList()
+        Files.write(path, lines)
+    }
+
     private fun copyProjectPriInput(
         kind: ApplicationPackageItemKind,
         source: Path,
@@ -485,6 +524,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         if (explicitRootTarget != null) return explicitRootTarget.resolve(relativeTo(fallbackRoot))
         return if (projectRoot != null && normalizedSource.startsWith(projectRoot)) normalizedSource.relativeTo(projectRoot) else relativeTo(fallbackRoot)
     }
+
+    private fun Path.toPortablePath(): String =
+        joinToString("/") { it.toString() }
 
     private data class ProjectPriLayoutInput(val source: Path, val target: Path)
 

@@ -1526,6 +1526,64 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_writes_project_pri_configuration_input_resfiles() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets.resolve("Component"))
+        Files.writeString(runtimeAssets.resolve("Component/Controls.pri"), "component-pri")
+        val resource = project.projectDir.toPath().resolve("Strings/en-US/Resources.resw")
+        val page = project.projectDir.toPath().resolve("Views/MainPage.xaml")
+        val image = project.projectDir.toPath().resolve("Assets/Logo.png")
+        val embed = project.projectDir.toPath().resolve("Embedded/Payload.bin")
+        listOf(resource, page, image, embed).forEach { Files.createDirectories(it.parent) }
+        Files.writeString(resource, "resw")
+        Files.writeString(page, "<Page />")
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        Files.write(embed, byteArrayOf(1, 2, 3))
+        val makePriLog = project.layout.buildDirectory.file("makepri-config-inputs.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri-config-inputs.cmd").get().asFile.toPath(),
+            makePriLog,
+        )
+        val task = project.tasks.register(
+            "stageConfigurationInputApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-config-inputs"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriResourceFiles.from(resource)
+            registeredTask.projectPriLayoutFiles.from(page)
+            registeredTask.projectPriContentFiles.from(image)
+            registeredTask.projectPriEmbedFiles.from(embed)
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val configRoot = task.temporaryDir.toPath().resolve("project-pri-config")
+        assertEquals(
+            listOf("Appx/Assets/Logo.png", "Appx/Views/MainPage.xaml"),
+            Files.readAllLines(configRoot.resolve("layout.resfiles")),
+        )
+        assertEquals(listOf("Appx/Strings/en-US/Resources.resw"), Files.readAllLines(configRoot.resolve("resources.resfiles")))
+        assertEquals(listOf("Component/Controls.pri"), Files.readAllLines(configRoot.resolve("pri.resfiles")))
+        assertEquals(listOf("Appx/Embedded/Payload.bin"), Files.readAllLines(configRoot.resolve("embed.resfiles")))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_image_content_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
