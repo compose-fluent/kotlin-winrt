@@ -10685,6 +10685,34 @@ class KotlinProjectionGeneratorTest {
                         ),
                     ),
                 ),
+                WinRtNamespace(
+                    name = "Microsoft.UI.Dispatching",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Dispatching",
+                            name = "IDispatcherQueueTimer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555565"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Tick",
+                                    delegateTypeName = "Windows.Foundation.TypedEventHandler<Microsoft.UI.Dispatching.DispatcherQueueTimer,System.Object>",
+                                    addMethodName = "add_Tick",
+                                    removeMethodName = "remove_Tick",
+                                    addMethodRowId = 14,
+                                    removeMethodRowId = 15,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Dispatching",
+                            name = "DispatcherQueueTimer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            iid = Guid("11111111-2222-3333-4444-555555555566"),
+                            defaultInterfaceName = "Microsoft.UI.Dispatching.IDispatcherQueueTimer",
+                        ),
+                    ),
+                ),
             ),
         )
 
@@ -10745,6 +10773,9 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         assertFalse(filesByName.containsKey("event-sources.tsv"))
+        val interfaceNativeProjections = filesByName.getValue("interface-native-projections.tsv").contents
+        assertFalse(interfaceNativeProjections.contains("Microsoft.UI.Dispatching.IDispatcherQueueTimer"))
+        assertTrue(interfaceNativeProjections.contains("Windows.UI.Core.ICoreDispatcher"))
         assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_IS_CHECK\""))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_CAST\""))

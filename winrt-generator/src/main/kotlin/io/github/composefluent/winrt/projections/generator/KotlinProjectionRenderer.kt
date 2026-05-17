@@ -774,7 +774,15 @@ class KotlinProjectionRenderer(
             collectInterfaceProxyTypes(plan).all { interfaceType ->
                 interfaceType.genericParameterCount == 0 && '<' !in interfaceType.qualifiedName
             } &&
+            !plan.isRuntimeClassDefaultInterfaceWithEvents() &&
             interfaceNativeProjectionMemberDescriptors(plan) != null
+
+    private fun KotlinTypeProjectionPlan.isRuntimeClassDefaultInterfaceWithEvents(): Boolean =
+        type.events.any { event -> !event.isStatic } &&
+            typesByQualifiedName.values.any { candidate ->
+                candidate.kind == WinRtTypeKind.RuntimeClass &&
+                    candidate.defaultInterfaceName?.substringBefore('<') == type.qualifiedName
+            }
 
     internal fun interfaceNativeProjectionMemberDescriptors(
         plan: KotlinTypeProjectionPlan,
