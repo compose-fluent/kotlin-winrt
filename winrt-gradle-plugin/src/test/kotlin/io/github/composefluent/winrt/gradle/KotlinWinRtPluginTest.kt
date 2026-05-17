@@ -1614,6 +1614,59 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun project_pri_full_index_config_is_accepted_by_real_makepri() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val makePri = findWindowsSdk()?.tool("makepri.exe", "x64") ?: return
+        val root = Files.createTempDirectory("kotlin-winrt-full-index-pri-")
+        val projectPriRoot = root.resolve("project-pri")
+        val configRoot = root.resolve("project-pri-config")
+        Files.createDirectories(projectPriRoot.resolve("Appx/Assets"))
+        Files.createDirectories(projectPriRoot.resolve("Appx/Strings/en-US"))
+        Files.createDirectories(projectPriRoot.resolve("embed/Appx/Views"))
+        Files.createDirectories(configRoot.resolve("embed"))
+        Files.write(projectPriRoot.resolve("Appx/Assets/Logo.png"), byteArrayOf(0x50, 0x4e, 0x47))
+        Files.writeString(
+            projectPriRoot.resolve("Appx/Strings/en-US/Resources.resw"),
+            """<root><data name="Hello"><value>World</value></data></root>""",
+        )
+        Files.write(projectPriRoot.resolve("embed/Appx/Views/CompiledPage.xbf"), byteArrayOf(0x58, 0x42, 0x46))
+        Files.write(configRoot.resolve("filtered.layout.resfiles"), listOf("Appx/Assets/Logo.png"))
+        Files.write(configRoot.resolve("resources.resfiles"), listOf("Appx/Strings/en-US/Resources.resw"))
+        Files.write(configRoot.resolve("pri.resfiles"), emptyList<String>())
+        Files.write(configRoot.resolve("embed/embed.resfiles"), listOf("Appx/Views/CompiledPage.xbf"))
+        val config = configRoot.resolve("priconfig.xml")
+        ProjectPriConfigXmlWriter.write(
+            config = config,
+            configRoot = configRoot,
+            projectPriRoot = projectPriRoot,
+            defaultQualifiers = ProjectPriManifestSupport.fullIndexDefaultQualifiers("en-US", listOf("scale-100")),
+        )
+
+        val process = ProcessBuilder(
+            makePri.toString(),
+            "new",
+            "/pr",
+            projectPriRoot.toString(),
+            "/cf",
+            config.toString(),
+            "/of",
+            projectPriRoot.resolve("resources.pri").toString(),
+            "/in",
+            "Contoso.App",
+            "/o",
+        )
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        assertEquals("makepri output:\n$output", 0, exitCode)
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("resources.pri")))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_image_content_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
