@@ -695,11 +695,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         ProjectPriManifestSupport.indexName(projectPriIndexName.get(), projectPriFallbackIndexName.get(), appxManifestFiles.files)
 
     private fun discoverMakePriExecutable(): Path? {
-        makePriExecutable.get().takeIf { it.isNotBlank() }?.let { configured ->
-            return Path.of(configured).takeIf { it.isRegularFile() }
-        }
-        val sdk = findWindowsSdk(windowsSdkVersion.get().takeIf { it.isNotBlank() }) ?: return null
-        return sdk.tool("makepri.exe", windowsSdkArchitecture(runtimeIdentifier.get()))
+        return ProjectPriToolResolver.makePriExecutable(makePriExecutable.get(), windowsSdkVersion.get(), runtimeIdentifier.get())
     }
 
     private fun runMakePri(
