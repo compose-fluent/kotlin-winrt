@@ -94,6 +94,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectPriEmbedFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val defaultProjectPriResourceFiles: ConfigurableFileCollection
 
     @get:InputFiles
@@ -172,6 +177,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         stageProjectPriContentResources(projectPriRoot, copiedProjectPriItems).also { copied ->
+            hasProjectPriInputs = hasProjectPriInputs || copied
+        }
+        stageProjectPriEmbedFiles(projectPriRoot, copiedProjectPriItems).also { copied ->
             hasProjectPriInputs = hasProjectPriInputs || copied
         }
         stageDefaultProjectPriResources(projectPriRoot, copiedProjectPriItems).also { copied ->
@@ -323,6 +331,36 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return copied
     }
 
+    private fun stageProjectPriEmbedFiles(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
+        val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        var copied = false
+        projectPriEmbedFiles.files.asSequence()
+            .map { it.toPath() }
+            .filter { Files.exists(it) }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
+                    Files.walk(source).use { stream ->
+                        stream.asSequence()
+                            .filter { it.isRegularFile() }
+                            .filterNot { it.isProjectPriExcludedFromBuild() }
+                            .sorted()
+                            .forEach { child ->
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
+                                if (copyProjectPriInput(ApplicationPackageItemKind.Embed, child, target, copiedItems)) copied = true
+                            }
+                    }
+                } else if (source.isRegularFile() && !source.isProjectPriExcludedFromBuild()) {
+                    val normalizedSource = source.toAbsolutePath().normalize()
+                    val relativeTarget = source.explicitProjectPriTargetPath()
+                        ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
+                    if (copyProjectPriInput(ApplicationPackageItemKind.Embed, source, projectPriRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
+                }
+            }
+        return copied
+    }
+
     private fun stageDefaultProjectPriLayoutResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
         if (!enableDefaultProjectPriResources.get()) return false
         val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize() ?: return false
@@ -449,6 +487,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         PriResource,
         Layout,
         Content,
+        Embed,
     }
 
     private fun projectPriDefaultQualifier(): String {

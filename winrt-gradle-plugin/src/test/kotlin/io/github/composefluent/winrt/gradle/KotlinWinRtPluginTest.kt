@@ -1359,6 +1359,55 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_stages_project_pri_embed_files() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val embed = project.projectDir.toPath().resolve("Generated/EmbeddedPayload.bin")
+        val excludedEmbed = project.projectDir.toPath().resolve("Generated/ExcludedPayload.bin")
+        Files.createDirectories(embed.parent)
+        Files.write(embed, byteArrayOf(1, 2, 3))
+        Files.write(excludedEmbed, byteArrayOf(4, 5, 6))
+        val makePriLog = project.layout.buildDirectory.file("makepri-embed-files.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri-embed-files.cmd").get().asFile.toPath(),
+            makePriLog,
+        )
+        val task = project.tasks.register(
+            "stageEmbedFileApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-embed-files"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriEmbedFiles.from(embed, excludedEmbed)
+            registeredTask.projectPriTargetPaths.put(embed.toAbsolutePath().normalize().toString(), "Embedded/Payload.bin")
+            registeredTask.projectPriExcludedFromBuildPaths.add(excludedEmbed.toAbsolutePath().normalize().toString())
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Embedded/Payload.bin")))
+        assertFalse(Files.exists(projectPriRoot.resolve("Generated/ExcludedPayload.bin")))
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_image_content_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
