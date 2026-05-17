@@ -438,49 +438,30 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         projectPriRoot: Path,
         copiedItems: Set<ApplicationPackageItem>,
     ) {
-        writeResfiles(
-            configRoot.resolve("unfiltered.layout.resfiles"),
-            projectPriRoot,
-            copiedItems.filter {
-                it.kind == ApplicationPackageItemKind.Layout ||
-                    it.kind == ApplicationPackageItemKind.ExcludedLayout ||
-                    it.kind == ApplicationPackageItemKind.Content
-            },
-        )
-        writeResfiles(
-            configRoot.resolve("filtered.layout.resfiles"),
-            projectPriRoot,
-            copiedItems.filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content },
-        )
-        writeResfiles(
-            configRoot.resolve("excluded.layout.resfiles"),
-            projectPriRoot,
-            copiedItems.filter { it.kind == ApplicationPackageItemKind.ExcludedLayout },
-        )
-        writeResfiles(
-            configRoot.resolve("resources.resfiles"),
-            projectPriRoot,
-            copiedItems.filter { it.kind == ApplicationPackageItemKind.PriResource },
-        )
-        writeResfiles(
-            configRoot.resolve("pri.resfiles"),
-            projectPriRoot,
-            copiedItems.filter { it.kind == ApplicationPackageItemKind.ComponentPri },
-        )
-        writeResfiles(
-            configRoot.resolve("embed/embed.resfiles"),
-            projectPriRoot.resolve("embed"),
-            copiedItems.filter { it.kind == ApplicationPackageItemKind.Embed },
-        )
-    }
-
-    private fun writeResfiles(path: Path, projectPriRoot: Path, items: List<ApplicationPackageItem>) {
-        Files.createDirectories(path.parent)
-        val lines = items.asSequence()
-            .map { it.target.relativeTo(projectPriRoot).toPortablePath() }
-            .sorted()
-            .toList()
-        Files.write(path, lines)
+        ProjectPriConfigurationInputs(
+            unfilteredLayout = copiedItems
+                .filter {
+                    it.kind == ApplicationPackageItemKind.Layout ||
+                        it.kind == ApplicationPackageItemKind.ExcludedLayout ||
+                        it.kind == ApplicationPackageItemKind.Content
+                }
+                .map { it.target },
+            filteredLayout = copiedItems
+                .filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content }
+                .map { it.target },
+            excludedLayout = copiedItems
+                .filter { it.kind == ApplicationPackageItemKind.ExcludedLayout }
+                .map { it.target },
+            resources = copiedItems
+                .filter { it.kind == ApplicationPackageItemKind.PriResource }
+                .map { it.target },
+            pri = copiedItems
+                .filter { it.kind == ApplicationPackageItemKind.ComponentPri }
+                .map { it.target },
+            embed = copiedItems
+                .filter { it.kind == ApplicationPackageItemKind.Embed }
+                .map { it.target },
+        ).write(configRoot, projectPriRoot)
     }
 
     private fun copyProjectPriInput(
@@ -551,9 +532,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         if (explicitRootTarget != null) return explicitRootTarget.resolve(relativeTo(fallbackRoot))
         return if (projectRoot != null && normalizedSource.startsWith(projectRoot)) normalizedSource.relativeTo(projectRoot) else relativeTo(fallbackRoot)
     }
-
-    private fun Path.toPortablePath(): String =
-        joinToString("/") { it.toString() }
 
     private data class ProjectPriLayoutInput(val source: Path, val target: Path)
 
