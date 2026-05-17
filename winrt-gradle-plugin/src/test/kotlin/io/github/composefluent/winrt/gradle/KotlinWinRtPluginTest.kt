@@ -1483,6 +1483,49 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_copies_payload_items_when_makepri_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val page = project.projectDir.toPath().resolve("Views/MainPage.xaml")
+        val image = project.projectDir.toPath().resolve("Assets/Logo.png")
+        Files.createDirectories(page.parent)
+        Files.createDirectories(image.parent)
+        Files.writeString(page, "<Page />")
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        val task = project.tasks.register(
+            "stagePayloadWithoutMakePriApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-payload-no-makepri"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriLayoutFiles.from(page)
+            registeredTask.projectPriContentFiles.from(image)
+            registeredTask.makePriExecutable.set(project.projectDir.toPath().resolve("missing-makepri.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Views/MainPage.xaml")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Assets/Logo.png")))
+        assertFalse(Files.exists(outputRoot.resolve("resources.pri")))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_image_content_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
