@@ -285,7 +285,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                 }
             }
             .toList()
-        return stageFilteredProjectPriLayoutInputs(inputs, copiedItems)
+        return stageFilteredProjectPriLayoutInputs(projectPriRoot, inputs, copiedItems)
     }
 
     private fun stageDefaultProjectPriResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
@@ -340,6 +340,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
 
     private fun stageProjectPriEmbedFiles(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
         val initialPath = projectPriInitialPath.get().toSafeRelativePath()
+        val embedRoot = projectPriRoot.resolve("embed")
         val root = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
         var copied = false
         projectPriEmbedFiles.files.asSequence()
@@ -355,7 +356,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                             .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
+                                val target = embedRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
                                 if (copyProjectPriInput(ApplicationPackageItemKind.Embed, child, target, copiedItems)) copied = true
                             }
                     }
@@ -363,7 +364,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     val normalizedSource = source.toAbsolutePath().normalize()
                     val relativeTarget = source.explicitProjectPriTargetPath()
                         ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
-                    if (copyProjectPriInput(ApplicationPackageItemKind.Embed, source, projectPriRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
+                    if (copyProjectPriInput(ApplicationPackageItemKind.Embed, source, embedRoot.resolve(initialPath).resolve(relativeTarget), copiedItems)) copied = true
                 }
             }
         return copied
@@ -383,7 +384,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                 if (normalizedSource.startsWith(root)) ProjectPriLayoutInput(source, projectPriRoot.resolve(initialPath).resolve(normalizedSource.relativeTo(root))) else null
             }
             .toList()
-        return stageFilteredProjectPriLayoutInputs(inputs, copiedItems)
+        return stageFilteredProjectPriLayoutInputs(projectPriRoot, inputs, copiedItems)
     }
 
     private fun stageDefaultProjectPriContentResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
@@ -405,15 +406,21 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return copied
     }
 
-    private fun stageFilteredProjectPriLayoutInputs(inputs: List<ProjectPriLayoutInput>, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
+    private fun stageFilteredProjectPriLayoutInputs(projectPriRoot: Path, inputs: List<ProjectPriLayoutInput>, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
         val xbfTargets = inputs.asSequence()
             .filter { it.source.name.endsWith(".xbf", ignoreCase = true) }
             .map { it.target.toNormalizedPathKey() }
             .toSet()
+        val embedRoot = projectPriRoot.resolve("embed")
         var copied = false
         inputs.forEach { input ->
             if (input.source.name.endsWith(".xaml", ignoreCase = true) && input.target.toXbfTargetKey() in xbfTargets) {
                 recordProjectPriInput(ApplicationPackageItemKind.ExcludedLayout, input.source, input.target, copiedItems)
+                return@forEach
+            }
+            if (input.source.name.endsWith(".xbf", ignoreCase = true)) {
+                val embedTarget = embedRoot.resolve(input.target.relativeTo(embedRoot.parent))
+                if (copyProjectPriInput(ApplicationPackageItemKind.Embed, input.source, embedTarget, copiedItems)) copied = true
                 return@forEach
             }
             if (copyProjectPriInput(ApplicationPackageItemKind.Layout, input.source, input.target, copiedItems)) copied = true
@@ -469,8 +476,8 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             copiedItems.filter { it.kind == ApplicationPackageItemKind.ComponentPri },
         )
         writeResfiles(
-            configRoot.resolve("embed.resfiles"),
-            projectPriRoot,
+            configRoot.resolve("embed/embed.resfiles"),
+            projectPriRoot.resolve("embed"),
             copiedItems.filter { it.kind == ApplicationPackageItemKind.Embed },
         )
     }
@@ -581,7 +588,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         ;
 
         val isPackagePayload: Boolean
-            get() = this == Layout || this == Content || this == Embed
+            get() = this == Layout || this == Content
     }
 
     private fun projectPriDefaultQualifier(): String {

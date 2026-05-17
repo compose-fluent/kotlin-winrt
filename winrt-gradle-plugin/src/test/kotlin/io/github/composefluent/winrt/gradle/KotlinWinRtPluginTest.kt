@@ -1355,16 +1355,16 @@ class KotlinWinRtPluginTest {
 
         task.stage()
 
-        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
-        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Strings/en-US/AppResources.resw")))
-        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Xaml/MainPage.xaml")))
-        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Assets/Logo.png")))
-        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Embedded/Payload.bin")))
+        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri")
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Appx/Strings/en-US/AppResources.resw")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Appx/Xaml/MainPage.xaml")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Appx/Assets/Logo.png")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("embed/Appx/Embedded/Payload.bin")))
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertFalse(Files.exists(outputRoot.resolve("Appx/Strings/en-US/AppResources.resw")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Xaml/MainPage.xaml")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Assets/Logo.png")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Embedded/Payload.bin")))
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Embedded/Payload.bin")))
         val makePriCalls = Files.readString(makePriLog)
         assertTrue(makePriCalls.contains("new"))
     }
@@ -1472,11 +1472,11 @@ class KotlinWinRtPluginTest {
 
         task.stage()
 
-        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
+        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/embed/Appx")
         assertTrue(Files.isRegularFile(projectPriRoot.resolve("Embedded/Payload.bin")))
         assertFalse(Files.exists(projectPriRoot.resolve("Generated/ExcludedPayload.bin")))
         val outputRoot = task.outputDirectory.get().asFile.toPath()
-        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Embedded/Payload.bin")))
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Embedded/Payload.bin")))
         assertFalse(Files.exists(outputRoot.resolve("Appx/Generated/ExcludedPayload.bin")))
         val makePriCalls = Files.readString(makePriLog)
         assertTrue(makePriCalls.contains("new"))
@@ -1582,19 +1582,21 @@ class KotlinWinRtPluginTest {
             listOf(
                 "Appx/Assets/Logo.png",
                 "Appx/Views/CompiledPage.xaml",
-                "Appx/Views/CompiledPage.xbf",
                 "Appx/Views/MainPage.xaml",
             ),
             Files.readAllLines(configRoot.resolve("unfiltered.layout.resfiles")),
         )
         assertEquals(
-            listOf("Appx/Assets/Logo.png", "Appx/Views/CompiledPage.xbf", "Appx/Views/MainPage.xaml"),
+            listOf("Appx/Assets/Logo.png", "Appx/Views/MainPage.xaml"),
             Files.readAllLines(configRoot.resolve("filtered.layout.resfiles")),
         )
         assertEquals(listOf("Appx/Views/CompiledPage.xaml"), Files.readAllLines(configRoot.resolve("excluded.layout.resfiles")))
         assertEquals(listOf("Appx/Strings/en-US/Resources.resw"), Files.readAllLines(configRoot.resolve("resources.resfiles")))
         assertEquals(listOf("Component/Controls.pri"), Files.readAllLines(configRoot.resolve("pri.resfiles")))
-        assertEquals(listOf("Appx/Embedded/Payload.bin"), Files.readAllLines(configRoot.resolve("embed.resfiles")))
+        assertEquals(
+            listOf("Appx/Embedded/Payload.bin", "Appx/Views/CompiledPage.xbf"),
+            Files.readAllLines(configRoot.resolve("embed/embed.resfiles")),
+        )
     }
 
     @Test
