@@ -232,13 +232,14 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
+                    val explicitRootTarget = source.explicitProjectPriTargetPath()
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() }
                             .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
                                 if (copyProjectPriInput(ApplicationPackageItemKind.PriResource, child, target, copiedItems)) copied = true
                             }
                     }
@@ -261,12 +262,13 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .flatMap { source ->
                 if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
+                    val explicitRootTarget = source.explicitProjectPriTargetPath()
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
                             .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
-                            .map { child -> ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))) }
+                            .map { child -> ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))) }
                             .toList()
                             .asSequence()
                     }
@@ -312,13 +314,14 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
+                    val explicitRootTarget = source.explicitProjectPriTargetPath()
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() }
                             .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
                                 if (copyProjectPriInput(ApplicationPackageItemKind.Content, child, target, copiedItems)) copied = true
                             }
                     }
@@ -342,13 +345,14 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
+                    val explicitRootTarget = source.explicitProjectPriTargetPath()
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() }
                             .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .forEach { child ->
-                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
+                                val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source, explicitRootTarget))
                                 if (copyProjectPriInput(ApplicationPackageItemKind.Embed, child, target, copiedItems)) copied = true
                             }
                     }
@@ -476,8 +480,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return parent.resolve(xbfFileName).toNormalizedPathKey()
     }
 
-    private fun Path.toProjectPriRelativePath(projectRoot: Path?, fallbackRoot: Path): Path {
+    private fun Path.toProjectPriRelativePath(projectRoot: Path?, fallbackRoot: Path, explicitRootTarget: Path? = null): Path {
         val normalizedSource = toAbsolutePath().normalize()
+        if (explicitRootTarget != null) return explicitRootTarget.resolve(relativeTo(fallbackRoot))
         return if (projectRoot != null && normalizedSource.startsWith(projectRoot)) normalizedSource.relativeTo(projectRoot) else relativeTo(fallbackRoot)
     }
 

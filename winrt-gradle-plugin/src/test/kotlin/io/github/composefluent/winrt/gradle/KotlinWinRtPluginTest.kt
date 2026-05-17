@@ -1305,6 +1305,71 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_applies_explicit_directory_project_pri_target_paths() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val resource = project.projectDir.toPath().resolve("InputResources/en-US/AppResources.resw")
+        val page = project.projectDir.toPath().resolve("InputViews/MainPage.xaml")
+        val image = project.projectDir.toPath().resolve("InputAssets/Logo.png")
+        val embed = project.projectDir.toPath().resolve("InputEmbed/Payload.bin")
+        listOf(resource, page, image, embed).forEach { Files.createDirectories(it.parent) }
+        Files.writeString(resource, "resw")
+        Files.writeString(page, "<Page />")
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        Files.write(embed, byteArrayOf(1, 2, 3))
+        val makePriLog = project.layout.buildDirectory.file("makepri-directory-target-path.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri-directory-target-path.cmd").get().asFile.toPath(),
+            makePriLog,
+        )
+        val task = project.tasks.register(
+            "stageDirectoryTargetPathApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-directory-target-path"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriResourceFiles.from(resource.parent.parent)
+            registeredTask.projectPriLayoutFiles.from(page.parent)
+            registeredTask.projectPriContentFiles.from(image.parent)
+            registeredTask.projectPriEmbedFiles.from(embed.parent)
+            registeredTask.projectPriTargetPaths.put(resource.parent.parent.toAbsolutePath().normalize().toString(), "Strings")
+            registeredTask.projectPriTargetPaths.put(page.parent.toAbsolutePath().normalize().toString(), "Xaml")
+            registeredTask.projectPriTargetPaths.put(image.parent.toAbsolutePath().normalize().toString(), "Assets")
+            registeredTask.projectPriTargetPaths.put(embed.parent.toAbsolutePath().normalize().toString(), "Embedded")
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Strings/en-US/AppResources.resw")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Xaml/MainPage.xaml")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Assets/Logo.png")))
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Embedded/Payload.bin")))
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertFalse(Files.exists(outputRoot.resolve("Appx/Strings/en-US/AppResources.resw")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Xaml/MainPage.xaml")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Assets/Logo.png")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Embedded/Payload.bin")))
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun application_package_task_honors_project_pri_excluded_from_build() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
