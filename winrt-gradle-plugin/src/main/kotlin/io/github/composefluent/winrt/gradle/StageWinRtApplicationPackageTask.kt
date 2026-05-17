@@ -6,6 +6,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
@@ -67,6 +68,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     @get:Input
     abstract val projectPriTargetPaths: MapProperty<String, String>
 
+    @get:Input
+    abstract val projectPriExcludedFromBuildPaths: SetProperty<String>
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -116,6 +120,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         makePriExecutable.convention("")
         windowsSdkVersion.convention("")
         projectPriTargetPaths.convention(emptyMap())
+        projectPriExcludedFromBuildPaths.convention(emptySet())
     }
 
     @TaskAction
@@ -217,17 +222,18 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .filter { Files.exists(it) }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
-                if (source.isDirectory()) {
+                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() }
+                            .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .forEach { child ->
                                 val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
                                 if (copyProjectPriInput(ApplicationPackageItemKind.PriResource, child, target, copiedItems)) copied = true
                             }
                     }
-                } else if (source.isRegularFile()) {
+                } else if (source.isRegularFile() && !source.isProjectPriExcludedFromBuild()) {
                     val normalizedSource = source.toAbsolutePath().normalize()
                     val relativeTarget = source.explicitProjectPriTargetPath()
                         ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
@@ -245,16 +251,17 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .filter { Files.exists(it) }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .flatMap { source ->
-                if (source.isDirectory()) {
+                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
+                            .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .map { child -> ProjectPriLayoutInput(child, projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))) }
                             .toList()
                             .asSequence()
                     }
-                } else if (source.isRegularFile() && source.isProjectPriLayoutFile()) {
+                } else if (source.isRegularFile() && source.isProjectPriLayoutFile() && !source.isProjectPriExcludedFromBuild()) {
                     val normalizedSource = source.toAbsolutePath().normalize()
                     val relativeTarget = source.explicitProjectPriTargetPath()
                         ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
@@ -275,6 +282,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         defaultProjectPriResourceFiles.files.asSequence()
             .map { it.toPath() }
             .filter { it.isRegularFile() && it.name.endsWith(".resw", ignoreCase = true) }
+            .filterNot { it.isProjectPriExcludedFromBuild() }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 val normalizedSource = source.toAbsolutePath().normalize()
@@ -294,17 +302,18 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .filter { Files.exists(it) }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
-                if (source.isDirectory()) {
+                if (source.isDirectory() && !source.isProjectPriExcludedFromBuild()) {
                     Files.walk(source).use { stream ->
                         stream.asSequence()
                             .filter { it.isRegularFile() }
+                            .filterNot { it.isProjectPriExcludedFromBuild() }
                             .sorted()
                             .forEach { child ->
                                 val target = projectPriRoot.resolve(initialPath).resolve(child.toProjectPriRelativePath(root, source))
                                 if (copyProjectPriInput(ApplicationPackageItemKind.Content, child, target, copiedItems)) copied = true
                             }
                     }
-                } else if (source.isRegularFile()) {
+                } else if (source.isRegularFile() && !source.isProjectPriExcludedFromBuild()) {
                     val normalizedSource = source.toAbsolutePath().normalize()
                     val relativeTarget = source.explicitProjectPriTargetPath()
                         ?: if (root != null && normalizedSource.startsWith(root)) normalizedSource.relativeTo(root) else Path.of(source.name)
@@ -321,6 +330,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         val inputs = defaultProjectPriLayoutFiles.files.asSequence()
             .map { it.toPath() }
             .filter { it.isRegularFile() && it.isProjectPriLayoutFile() }
+            .filterNot { it.isProjectPriExcludedFromBuild() }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .mapNotNull { source ->
                 val normalizedSource = source.toAbsolutePath().normalize()
@@ -338,6 +348,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         defaultProjectPriContentFiles.files.asSequence()
             .map { it.toPath() }
             .filter { it.isRegularFile() && it.isProjectPriContentFile() }
+            .filterNot { it.isProjectPriExcludedFromBuild() }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 val normalizedSource = source.toAbsolutePath().normalize()
@@ -392,6 +403,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         val configured = projectPriTargetPaths.get()[toAbsolutePath().normalize().toString()] ?: return null
         return configured.toSafeRelativePath()
     }
+
+    private fun Path.isProjectPriExcludedFromBuild(): Boolean =
+        toAbsolutePath().normalize().toString() in projectPriExcludedFromBuildPaths.get()
 
     private fun Path.isProjectPriLayoutFile(): Boolean =
         name.endsWith(".xaml", ignoreCase = true) || name.endsWith(".xbf", ignoreCase = true)

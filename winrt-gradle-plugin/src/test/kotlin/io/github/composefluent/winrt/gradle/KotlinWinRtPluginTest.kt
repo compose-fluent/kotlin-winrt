@@ -1301,6 +1301,64 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_honors_project_pri_excluded_from_build() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val includedResource = project.projectDir.toPath().resolve("Strings/en-US/Included.resw")
+        val excludedResource = project.projectDir.toPath().resolve("Strings/en-US/Excluded.resw")
+        val excludedPage = project.projectDir.toPath().resolve("Views/ExcludedPage.xaml")
+        val excludedImage = project.projectDir.toPath().resolve("Assets/ExcludedLogo.png")
+        listOf(includedResource, excludedResource, excludedPage, excludedImage).forEach { Files.createDirectories(it.parent) }
+        Files.writeString(includedResource, "included")
+        Files.writeString(excludedResource, "excluded")
+        Files.writeString(excludedPage, "<Page />")
+        Files.write(excludedImage, byteArrayOf(0x50, 0x4e, 0x47))
+        val makePriLog = project.layout.buildDirectory.file("makepri-excluded-from-build.log").get().asFile.toPath()
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri-excluded-from-build.cmd").get().asFile.toPath(),
+            makePriLog,
+        )
+        val task = project.tasks.register(
+            "stageExcludedFromBuildApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-excluded-from-build"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(true)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.defaultProjectPriResourceFiles.from(includedResource, excludedResource)
+            registeredTask.projectPriLayoutFiles.from(excludedPage)
+            registeredTask.projectPriContentFiles.from(excludedImage)
+            registeredTask.projectPriExcludedFromBuildPaths.add(excludedResource.toAbsolutePath().normalize().toString())
+            registeredTask.projectPriExcludedFromBuildPaths.add(excludedPage.toAbsolutePath().normalize().toString())
+            registeredTask.projectPriExcludedFromBuildPaths.add(excludedImage.toAbsolutePath().normalize().toString())
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val projectPriRoot = task.temporaryDir.toPath().resolve("project-pri/Appx")
+        assertTrue(Files.isRegularFile(projectPriRoot.resolve("Strings/en-US/Included.resw")))
+        assertFalse(Files.exists(projectPriRoot.resolve("Strings/en-US/Excluded.resw")))
+        assertFalse(Files.exists(projectPriRoot.resolve("Views/ExcludedPage.xaml")))
+        assertFalse(Files.exists(projectPriRoot.resolve("Assets/ExcludedLogo.png")))
+        val makePriCalls = Files.readString(makePriLog)
+        assertTrue(makePriCalls.contains("new"))
+    }
+
+    @Test
     fun runtime_assets_task_stages_default_project_image_content_resources() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

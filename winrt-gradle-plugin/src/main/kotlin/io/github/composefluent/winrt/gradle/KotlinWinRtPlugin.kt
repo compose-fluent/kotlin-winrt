@@ -363,6 +363,7 @@ private fun configureWinRtApplicationTasks(
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
+            task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.makePriExecutable.set("")
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })

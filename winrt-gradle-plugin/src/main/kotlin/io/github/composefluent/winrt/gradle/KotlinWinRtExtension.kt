@@ -9,6 +9,7 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Nested
 import javax.inject.Inject
 
@@ -165,6 +166,8 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val projectPriContentFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriTargetPaths: MapProperty<String, String> =
         objects.mapProperty(String::class.java, String::class.java).convention(emptyMap())
+    val projectPriExcludedFromBuildPaths: SetProperty<String> =
+        objects.setProperty(String::class.java).convention(emptySet())
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
@@ -213,6 +216,10 @@ abstract class WinRtApplicationOptions @Inject constructor(
     fun projectPriImage(input: Any, targetPath: String) {
         projectPriImage(input)
         projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
+    }
+
+    fun projectPriExcludedFromBuild(input: Any) {
+        projectPriExcludedFromBuildPaths.add(project.file(input).toPath().toAbsolutePath().normalize().toString())
     }
 
     fun projectPriDefaultQualifier(qualifier: String) {
