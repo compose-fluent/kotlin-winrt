@@ -188,7 +188,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         if (!hasProjectPriInputs) {
             return
         }
-        copyApplicationPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
+        ApplicationPackagePayloadWriter.copyPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
         val makePri = discoverMakePriExecutable() ?: run {
             logger.warn("Skipping application PRI generation because makepri.exe was not found.")
             return
@@ -418,19 +418,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             if (copyProjectPriInput(ApplicationPackageItemKind.Layout, input.source, input.target, copiedItems)) copied = true
         }
         return copied
-    }
-
-    private fun copyApplicationPackagePayloads(
-        projectPriRoot: Path,
-        outputRoot: Path,
-        copiedItems: Set<ApplicationPackageItem>,
-    ) {
-        copiedItems.asSequence()
-            .filter { it.kind.isPackagePayload }
-            .sortedBy { it.targetKey }
-            .forEach { item ->
-                copyFile(item.target, outputRoot.resolve(item.target.relativeTo(projectPriRoot)))
-            }
     }
 
     private fun writeProjectPriConfigurationInputs(
