@@ -1579,6 +1579,15 @@ class KotlinWinRtPluginTest {
 
         val configRoot = task.temporaryDir.toPath().resolve("project-pri-config")
         assertEquals(
+            listOf(
+                "Appx/Assets/Logo.png",
+                "Appx/Views/CompiledPage.xaml",
+                "Appx/Views/CompiledPage.xbf",
+                "Appx/Views/MainPage.xaml",
+            ),
+            Files.readAllLines(configRoot.resolve("unfiltered-layout.resfiles")),
+        )
+        assertEquals(
             listOf("Appx/Assets/Logo.png", "Appx/Views/CompiledPage.xbf", "Appx/Views/MainPage.xaml"),
             Files.readAllLines(configRoot.resolve("layout.resfiles")),
         )

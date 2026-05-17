@@ -440,6 +440,15 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         copiedItems: Set<ApplicationPackageItem>,
     ) {
         writeResfiles(
+            configRoot.resolve("unfiltered-layout.resfiles"),
+            projectPriRoot,
+            copiedItems.filter {
+                it.kind == ApplicationPackageItemKind.Layout ||
+                    it.kind == ApplicationPackageItemKind.ExcludedLayout ||
+                    it.kind == ApplicationPackageItemKind.Content
+            },
+        )
+        writeResfiles(
             configRoot.resolve("layout.resfiles"),
             projectPriRoot,
             copiedItems.filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content },
