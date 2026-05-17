@@ -1585,13 +1585,13 @@ class KotlinWinRtPluginTest {
                 "Appx/Views/CompiledPage.xbf",
                 "Appx/Views/MainPage.xaml",
             ),
-            Files.readAllLines(configRoot.resolve("unfiltered-layout.resfiles")),
+            Files.readAllLines(configRoot.resolve("unfiltered.layout.resfiles")),
         )
         assertEquals(
             listOf("Appx/Assets/Logo.png", "Appx/Views/CompiledPage.xbf", "Appx/Views/MainPage.xaml"),
-            Files.readAllLines(configRoot.resolve("layout.resfiles")),
+            Files.readAllLines(configRoot.resolve("filtered.layout.resfiles")),
         )
-        assertEquals(listOf("Appx/Views/CompiledPage.xaml"), Files.readAllLines(configRoot.resolve("excluded-layout.resfiles")))
+        assertEquals(listOf("Appx/Views/CompiledPage.xaml"), Files.readAllLines(configRoot.resolve("excluded.layout.resfiles")))
         assertEquals(listOf("Appx/Strings/en-US/Resources.resw"), Files.readAllLines(configRoot.resolve("resources.resfiles")))
         assertEquals(listOf("Component/Controls.pri"), Files.readAllLines(configRoot.resolve("pri.resfiles")))
         assertEquals(listOf("Appx/Embedded/Payload.bin"), Files.readAllLines(configRoot.resolve("embed.resfiles")))

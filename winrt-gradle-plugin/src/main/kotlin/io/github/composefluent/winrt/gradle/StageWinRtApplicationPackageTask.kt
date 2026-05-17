@@ -440,7 +440,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         copiedItems: Set<ApplicationPackageItem>,
     ) {
         writeResfiles(
-            configRoot.resolve("unfiltered-layout.resfiles"),
+            configRoot.resolve("unfiltered.layout.resfiles"),
             projectPriRoot,
             copiedItems.filter {
                 it.kind == ApplicationPackageItemKind.Layout ||
@@ -449,12 +449,12 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             },
         )
         writeResfiles(
-            configRoot.resolve("layout.resfiles"),
+            configRoot.resolve("filtered.layout.resfiles"),
             projectPriRoot,
             copiedItems.filter { it.kind == ApplicationPackageItemKind.Layout || it.kind == ApplicationPackageItemKind.Content },
         )
         writeResfiles(
-            configRoot.resolve("excluded-layout.resfiles"),
+            configRoot.resolve("excluded.layout.resfiles"),
             projectPriRoot,
             copiedItems.filter { it.kind == ApplicationPackageItemKind.ExcludedLayout },
         )
