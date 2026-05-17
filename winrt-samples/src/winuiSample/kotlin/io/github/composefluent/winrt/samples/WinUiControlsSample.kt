@@ -84,6 +84,8 @@ class WinUiControlsApp : Application(), AutoCloseable {
         window.title = "Kotlin WinRT WinUI Controls"
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipMica")) {
             window.systemBackdrop = MicaBackdrop()
+            window.systemBackdrop = null
+            window.systemBackdrop = MicaBackdrop()
         }
         println("winui-controls: creating controls surface")
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.noWinUiContent")) {
