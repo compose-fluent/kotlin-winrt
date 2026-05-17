@@ -194,27 +194,16 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             return
         }
         val configRoot = temporaryDir.toPath().resolve("project-pri-config")
-        cleanDirectory(configRoot)
-        Files.createDirectories(configRoot)
-        writeProjectPriConfigurationInputs(configRoot, projectPriRoot, copiedProjectPriItems)
-        val config = configRoot.resolve("priconfig.xml")
-        val output = projectPriRoot.resolve("resources.pri")
-        ProjectPriConfigXmlWriter.write(config, configRoot, projectPriRoot, projectPriDefaultQualifierPairs())
-        runMakePri(
+        ProjectPriGenerator.generateApplicationPri(
             makePri,
-            listOf("new", "/pr", projectPriRoot.toString(), "/cf", config.toString(), "/of", output.toString(), "/in", projectPriIndexName(), "/o"),
             outputRoot,
-            "generate application PRI",
-        ) ?: return
-        Files.walk(projectPriRoot).use { stream ->
-            stream.asSequence()
-                .filter { it.isRegularFile() }
-                .filter {
-                    it.name.equals("resources.pri", ignoreCase = true) ||
-                        it.name.startsWith("resources.language-", ignoreCase = true)
-                }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
-        }
+            projectPriRoot,
+            configRoot,
+            projectPriIndexName(),
+            projectPriDefaultQualifierPairs(),
+            copiedProjectPriItems,
+            logger,
+        )
     }
 
     private fun stageProjectPriResources(projectPriRoot: Path, copiedItems: MutableSet<ApplicationPackageItem>): Boolean {
@@ -420,14 +409,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return copied
     }
 
-    private fun writeProjectPriConfigurationInputs(
-        configRoot: Path,
-        projectPriRoot: Path,
-        copiedItems: Set<ApplicationPackageItem>,
-    ) {
-        ProjectPriConfigurationInputs.fromApplicationPackageItems(copiedItems).write(configRoot, projectPriRoot)
-    }
-
     private fun copyProjectPriInput(
         kind: ApplicationPackageItemKind,
         source: Path,
@@ -508,28 +489,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         }
         val sdk = findWindowsSdk(windowsSdkVersion.get().takeIf { it.isNotBlank() }) ?: return null
         return sdk.tool("makepri.exe", windowsSdkArchitecture(runtimeIdentifier.get()))
-    }
-
-    private fun runMakePri(makePri: Path, arguments: List<String>, workingDirectory: Path, description: String): String? {
-        val process = ProcessBuilder(listOf(makePri.toString()) + arguments)
-            .directory(workingDirectory.toFile())
-            .redirectErrorStream(true)
-            .start()
-        val output = decodeProcessOutput(process.inputStream.readBytes())
-        val exitCode = process.waitFor()
-        return if (exitCode == 0) {
-            output
-        } else {
-            logger.warn("Skipping application PRI generation after makepri failed to $description with exit code $exitCode:\n$output")
-            null
-        }
-    }
-
-    private fun decodeProcessOutput(bytes: ByteArray): String {
-        if (bytes.size >= 4 && bytes[1] == 0.toByte() && bytes[3] == 0.toByte()) {
-            return bytes.toString(Charsets.UTF_16LE)
-        }
-        return bytes.toString(Charsets.UTF_8)
     }
 
     private fun copyFile(source: Path, target: Path) {
