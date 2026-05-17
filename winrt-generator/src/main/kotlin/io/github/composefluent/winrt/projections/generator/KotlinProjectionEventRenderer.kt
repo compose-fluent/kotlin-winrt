@@ -115,14 +115,12 @@ internal fun KotlinProjectionRenderer.renderBoundEventFunctions(
     val addBinding = plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${event.name.uppercase()}_ADD_SLOT"
     } ?: return null
-    val removeBinding = plan.instanceMemberBindings.firstOrNull {
+    plan.instanceMemberBindings.firstOrNull {
         it.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
     } ?: return null
-    return buildBoundEventFunctions(
+    return renderEventSourceBackedFunctions(
         event = event,
         eventInvokeDescriptor = plan.eventInvokeDescriptors.firstOrNull { it.eventName == event.name && !it.isStatic },
-        addInvocation = renderBoundInvocation(addBinding),
-        removeInvocation = renderBoundInvocation(removeBinding),
         modifiers = if (override) runtimeClassMemberModifiers(plan, addBinding) else emptyList(),
         projectedAttributes = addBinding.projectedAttributes,
     )
@@ -152,15 +150,32 @@ internal fun KotlinProjectionRenderer.renderStaticEventSourceFunctions(
     event: WinRtEventDefinition,
     eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
 ): List<FunSpec> {
+    return renderEventSourceBackedFunctions(
+        event = event,
+        eventInvokeDescriptor = eventInvokeDescriptor,
+        modifiers = emptyList(),
+    )
+}
+
+private fun KotlinProjectionRenderer.renderEventSourceBackedFunctions(
+    event: WinRtEventDefinition,
+    eventInvokeDescriptor: WinRtEventInvokeDescriptor?,
+    modifiers: List<KModifier>,
+    projectedAttributes: List<WinRtProjectedAttributeDescriptor> = emptyList(),
+): List<FunSpec> {
     val typeName = resolveTypeName(eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName)
     val propertyName = event.name.replaceFirstChar(Char::lowercase)
     return listOf(
         FunSpec.builder("add${event.name}")
+            .addProjectedAttributeAnnotations(projectedAttributes)
+            .addModifiers(modifiers)
             .addParameter("handler", typeName)
             .returns(EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("return %L.add(handler)\n", propertyName)
             .build(),
         FunSpec.builder("remove${event.name}")
+            .addProjectedAttributeAnnotations(projectedAttributes)
+            .addModifiers(modifiers)
             .addParameter("token", EVENT_REGISTRATION_TOKEN_CLASS_NAME)
             .addCode("%L.remove(token)\n", propertyName)
             .build(),

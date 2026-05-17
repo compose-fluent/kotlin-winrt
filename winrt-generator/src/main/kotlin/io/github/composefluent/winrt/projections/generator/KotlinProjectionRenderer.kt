@@ -1422,6 +1422,7 @@ class KotlinProjectionRenderer(
                     eventSourceAddSlot = addBinding?.let {
                         CodeBlock.of("%T.Metadata.%L", resolveTypeName(it.slotInterfaceQualifiedName), it.slotConstantName)
                     },
+                    fallbackToAddRemove = addBinding == null,
                 ),
             )
             (renderBoundEventFunctions(plan, event, override = true) ?: renderEventFunctions(event, abstract = false, override = true))
