@@ -21,10 +21,6 @@ import java.nio.file.Path
 import java.util.Comparator
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
-import javax.xml.transform.OutputKeys
-import javax.xml.transform.TransformerFactory
-import javax.xml.transform.dom.DOMSource
-import javax.xml.transform.stream.StreamResult
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -205,7 +201,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         writeProjectPriConfigurationInputs(configRoot, projectPriRoot, copiedProjectPriItems)
         val config = configRoot.resolve("priconfig.xml")
         val output = projectPriRoot.resolve("resources.pri")
-        writeProjectPriConfigXml(config, configRoot, projectPriRoot)
+        ProjectPriConfigXmlWriter.write(config, configRoot, projectPriRoot, projectPriDefaultQualifierPairs())
         runMakePri(
             makePri,
             listOf("new", "/pr", projectPriRoot.toString(), "/cf", config.toString(), "/of", output.toString(), "/in", projectPriIndexName(), "/o"),
@@ -487,84 +483,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .sorted()
             .toList()
         Files.write(path, lines)
-    }
-
-    private fun writeProjectPriConfigXml(config: Path, configRoot: Path, projectPriRoot: Path) {
-        Files.createDirectories(config.parent)
-        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
-        val resources = document.createElement("resources")
-        resources.setAttribute("targetOsVersion", "10.0.0")
-        resources.setAttribute("majorVersion", "1")
-        document.appendChild(resources)
-        addPriConfigIndex(
-            document = document,
-            resources = resources,
-            root = "\\",
-            startIndexAt = configRoot.resolve("filtered.layout.resfiles").toString(),
-            indexers = listOf("RESFILES" to mapOf("qualifierDelimiter" to ".")),
-        )
-        addPriConfigIndex(
-            document = document,
-            resources = resources,
-            root = "\\",
-            startIndexAt = configRoot.resolve("resources.resfiles").toString(),
-            indexers = listOf(
-                "RESW" to mapOf("convertDotsToSlashes" to "true"),
-                "RESJSON" to emptyMap(),
-                "RESFILES" to mapOf("qualifierDelimiter" to "."),
-            ),
-        )
-        addPriConfigIndex(
-            document = document,
-            resources = resources,
-            root = "\\",
-            startIndexAt = configRoot.resolve("pri.resfiles").toString(),
-            indexers = listOf(
-                "PRI" to emptyMap(),
-                "RESFILES" to mapOf("qualifierDelimiter" to "."),
-            ),
-        )
-        addPriConfigIndex(
-            document = document,
-            resources = resources,
-            root = projectPriRoot.resolve("embed").toString(),
-            startIndexAt = configRoot.resolve("embed/embed.resfiles").toString(),
-            indexers = listOf(
-                "RESFILES" to mapOf("qualifierDelimiter" to "."),
-                "EMBEDFILES" to emptyMap(),
-            ),
-        )
-        val transformer = TransformerFactory.newInstance().newTransformer()
-        transformer.setOutputProperty(OutputKeys.ENCODING, "utf-8")
-        transformer.setOutputProperty(OutputKeys.INDENT, "yes")
-        transformer.transform(DOMSource(document), StreamResult(config.toFile()))
-    }
-
-    private fun addPriConfigIndex(
-        document: org.w3c.dom.Document,
-        resources: org.w3c.dom.Element,
-        root: String,
-        startIndexAt: String,
-        indexers: List<Pair<String, Map<String, String>>>,
-    ) {
-        val index = document.createElement("index")
-        index.setAttribute("root", root)
-        index.setAttribute("startIndexAt", startIndexAt)
-        resources.appendChild(index)
-        val defaults = document.createElement("default")
-        index.appendChild(defaults)
-        projectPriDefaultQualifierPairs().forEach { (name, value) ->
-            val qualifier = document.createElement("qualifier")
-            qualifier.setAttribute("name", name)
-            qualifier.setAttribute("value", value)
-            defaults.appendChild(qualifier)
-        }
-        indexers.forEach { (type, attributes) ->
-            val indexer = document.createElement("indexer-config")
-            indexer.setAttribute("type", type)
-            attributes.forEach { (name, value) -> indexer.setAttribute(name, value) }
-            index.appendChild(indexer)
-        }
     }
 
     private fun copyProjectPriInput(
