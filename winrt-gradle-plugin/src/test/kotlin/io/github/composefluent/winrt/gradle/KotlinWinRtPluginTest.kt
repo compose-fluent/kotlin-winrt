@@ -962,9 +962,13 @@ class KotlinWinRtPluginTest {
         assertTrue(Files.isRegularFile(outputRoot.resolve("Component/Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
         assertTrue(Files.isRegularFile(task.temporaryDir.toPath().resolve("project-pri/Appx/Strings/en-US/Resources.resw")))
+        val priConfig = Files.readString(task.temporaryDir.toPath().resolve("project-pri-config/priconfig.xml"))
+        assertTrue(priConfig.contains("Language"))
+        assertTrue(priConfig.contains("fr-FR"))
+        assertTrue(priConfig.contains("Scale"))
+        assertTrue(priConfig.contains("100"))
         val makePriCalls = Files.readString(makePriLog).replace("\\", "/")
-        assertTrue(makePriCalls.contains("createconfig"))
-        assertTrue(makePriCalls.contains("/dq lang-fr-FR_scale-100"))
+        assertFalse(makePriCalls.contains("createconfig"))
         assertTrue(makePriCalls.contains("new"))
         assertTrue(makePriCalls.contains("/in Contoso.App"))
     }
@@ -1878,8 +1882,12 @@ class KotlinWinRtPluginTest {
         )
         assertTrue(
             Files.isRegularFile(
-                task.temporaryDir.toPath().resolve("project-pri/Appx/Views/CompiledPage.xbf"),
+                task.temporaryDir.toPath().resolve("project-pri/embed/Appx/Views/CompiledPage.xbf"),
             ),
+        )
+        assertTrue(
+            Files.readString(task.temporaryDir.toPath().resolve("project-pri-config/embed/embed.resfiles"))
+                .contains("Appx/Views/CompiledPage.xbf"),
         )
         val makePriCalls = Files.readString(makePriLog)
         assertTrue(makePriCalls.contains("new"))
