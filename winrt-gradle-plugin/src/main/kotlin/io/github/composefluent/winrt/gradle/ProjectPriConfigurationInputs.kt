@@ -52,9 +52,7 @@ internal data class ProjectPriConfigurationInputs(
                 resources = items
                     .filter { it.kind == ApplicationPackageItemKind.PriResource }
                     .map { it.target },
-                pri = items
-                    .filter { it.kind == ApplicationPackageItemKind.ComponentPri }
-                    .map { it.target },
+                pri = emptyList(),
                 embed = items
                     .filter { it.kind == ApplicationPackageItemKind.Embed }
                     .map { it.target },

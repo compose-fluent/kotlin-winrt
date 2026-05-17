@@ -270,7 +270,67 @@ private fun configureWinRtApplicationTasks(
             )
             task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
-            task.generateProjectPri.set(false)
+            task.generateProjectPri.set(extension.application.generateProjectPri)
+            task.projectPriIndexName.set(project.provider { extension.application.projectPriIndexName.orNull.orEmpty() })
+            task.projectPriFallbackIndexName.set(project.name)
+            task.projectPriInitialPath.set(extension.application.projectPriInitialPath)
+            task.projectPriDefaultLanguage.set(extension.application.projectPriDefaultLanguage)
+            task.projectPriDefaultQualifiers.set(extension.application.projectPriDefaultQualifiers)
+            task.enableDefaultProjectPriResources.set(extension.application.enableDefaultProjectPriResources)
+            task.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            task.defaultProjectPriResourceFiles.from(
+                project.provider {
+                    if (extension.application.enableDefaultProjectPriResources.get()) {
+                        project.fileTree(project.projectDir) { spec ->
+                            spec.include("**/*.resw")
+                            spec.exclude(".gradle/**")
+                            spec.exclude("build/**")
+                        }
+                    } else {
+                        project.files()
+                    }
+                },
+            )
+            task.defaultProjectPriLayoutFiles.from(
+                project.provider {
+                    if (extension.application.enableDefaultProjectPriResources.get()) {
+                        project.fileTree(project.projectDir) { spec ->
+                            spec.include("**/*.xaml")
+                            spec.include("**/*.xbf")
+                            spec.exclude(".gradle/**")
+                            spec.exclude("build/**")
+                        }
+                    } else {
+                        project.files()
+                    }
+                },
+            )
+            task.defaultProjectPriContentFiles.from(
+                project.provider {
+                    if (extension.application.enableDefaultProjectPriResources.get()) {
+                        project.fileTree(project.projectDir) { spec ->
+                            spec.include("**/*.png")
+                            spec.include("**/*.bmp")
+                            spec.include("**/*.jpg")
+                            spec.include("**/*.dds")
+                            spec.include("**/*.tif")
+                            spec.include("**/*.tga")
+                            spec.include("**/*.gif")
+                            spec.exclude(".gradle/**")
+                            spec.exclude("build/**")
+                        }
+                    } else {
+                        project.files()
+                    }
+                },
+            )
+            task.appxManifestFiles.from(extension.application.appxManifestFiles)
+            task.projectPriResourceFiles.from(extension.application.projectPriResourceFiles)
+            task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
+            task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
+            task.projectPriEmbedFiles.from(extension.application.projectPriEmbedFiles)
+            task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
+            task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.dependencyIdentityFiles.from(identityDependencies)
             task.authoredMetadataFiles.from(

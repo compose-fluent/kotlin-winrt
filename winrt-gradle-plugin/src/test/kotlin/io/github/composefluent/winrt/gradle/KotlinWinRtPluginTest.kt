@@ -1596,7 +1596,7 @@ class KotlinWinRtPluginTest {
         )
         assertEquals(listOf("Appx/Views/CompiledPage.xaml"), Files.readAllLines(configRoot.resolve("excluded.layout.resfiles")))
         assertEquals(listOf("Appx/Strings/en-US/Resources.resw"), Files.readAllLines(configRoot.resolve("resources.resfiles")))
-        assertEquals(listOf("Component/Controls.pri"), Files.readAllLines(configRoot.resolve("pri.resfiles")))
+        assertTrue(Files.readAllLines(configRoot.resolve("pri.resfiles")).isEmpty())
         assertEquals(
             listOf("Appx/Embedded/Payload.bin", "Appx/Views/CompiledPage.xbf"),
             Files.readAllLines(configRoot.resolve("embed/embed.resfiles")),
@@ -2551,7 +2551,7 @@ class KotlinWinRtPluginTest {
         val assetsRoot = projectDir.resolve("build/install/kotlin-winrt-application-test/$KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY")
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml.Controls.pri")))
         assertTrue(Files.isRegularFile(assetsRoot.resolve("Microsoft.UI.Xaml/Controls.pri")))
-        assertFalse(Files.exists(assetsRoot.resolve("resources.pri")))
+        assertTrue(Files.isRegularFile(assetsRoot.resolve("resources.pri")))
         assertTrue(
             Files.isRegularFile(
                 assetsRoot.resolve(

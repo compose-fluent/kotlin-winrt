@@ -6,7 +6,9 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.SetProperty
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -81,6 +83,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Input
     abstract val windowsSdkVersion: Property<String>
 
+    @get:Input
+    abstract val projectPriTargetPaths: MapProperty<String, String>
+
+    @get:Input
+    abstract val projectPriExcludedFromBuildPaths: SetProperty<String>
+
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyIdentityFiles: ConfigurableFileCollection
@@ -104,6 +112,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val projectPriContentFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val projectPriEmbedFiles: ConfigurableFileCollection
 
     @get:InputFiles
     @get:Optional
@@ -153,6 +166,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         enableDefaultProjectPriResources.convention(true)
         makePriExecutable.convention("")
         windowsSdkVersion.convention("")
+        projectPriTargetPaths.convention(emptyMap())
+        projectPriExcludedFromBuildPaths.convention(emptySet())
     }
 
     @TaskAction
@@ -358,15 +373,15 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             projectPriRoot = projectPriRoot,
             projectPriInitialPath = projectPriInitialPath.get(),
             defaultProjectResourceRoot = defaultProjectPriResourceRoot.orNull?.asFile?.toPath(),
-            targetPaths = emptyMap(),
-            excludedFromBuildPaths = emptySet(),
+            targetPaths = projectPriTargetPaths.get(),
+            excludedFromBuildPaths = projectPriExcludedFromBuildPaths.get(),
         ).stage(
             componentPriFiles = inputPris,
             componentPriBaseRoot = outputRoot,
             explicitResourceFiles = projectPriResourceFiles.files.map { it.toPath() },
             explicitLayoutFiles = projectPriLayoutFiles.files.map { it.toPath() },
             explicitContentFiles = projectPriContentFiles.files.map { it.toPath() },
-            explicitEmbedFiles = emptyList(),
+            explicitEmbedFiles = projectPriEmbedFiles.files.map { it.toPath() },
             defaultResourceFiles = defaultProjectPriResourceFiles.files.map { it.toPath() },
             defaultLayoutFiles = defaultProjectPriLayoutFiles.files.map { it.toPath() },
             defaultContentFiles = defaultProjectPriContentFiles.files.map { it.toPath() },
