@@ -18,7 +18,6 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Comparator
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -130,13 +129,13 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     fun stage() {
         val runtimeAssetsRoot = runtimeAssetsDirectory.get().asFile.toPath()
         val outputRoot = outputDirectory.get().asFile.toPath()
-        cleanDirectory(outputRoot)
+        GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
         if (runtimeAssetsRoot.isDirectory()) {
             Files.walk(runtimeAssetsRoot).use { stream ->
                 stream.asSequence()
                     .filter { it.isRegularFile() }
-                    .forEach { source -> copyFile(source, outputRoot.resolve(source.relativeTo(runtimeAssetsRoot))) }
+                    .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeAssetsRoot))) }
             }
         }
         generateProjectPri(outputRoot)
@@ -155,7 +154,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                 .toList()
         }
         val projectPriRoot = temporaryDir.toPath().resolve("project-pri")
-        cleanDirectory(projectPriRoot)
+        GradleFileOperations.cleanDirectory(projectPriRoot)
         Files.createDirectories(projectPriRoot)
         val copiedProjectPriItems = ProjectPriInputStager(
             projectPriRoot = projectPriRoot,
@@ -196,11 +195,6 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         )
     }
 
-    private fun projectPriDefaultQualifier(): String {
-        val language = projectPriDefaultLanguageValue()
-        return ProjectPriManifestSupport.makePriDefaultQualifier(language, projectPriDefaultQualifiers.get())
-    }
-
     private fun projectPriDefaultLanguageValue(): String =
         ProjectPriManifestSupport.defaultLanguage(projectPriDefaultLanguage.get(), appxManifestFiles.files)
 
@@ -218,17 +212,4 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return sdk.tool("makepri.exe", windowsSdkArchitecture(runtimeIdentifier.get()))
     }
 
-    private fun copyFile(source: Path, target: Path) {
-        Files.createDirectories(target.parent)
-        Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-    }
-
-    private fun cleanDirectory(directory: Path) {
-        if (!directory.isDirectory()) return
-        Files.walk(directory).use { stream ->
-            stream.sorted(Comparator.reverseOrder())
-                .filter { it != directory }
-                .forEach(Files::deleteIfExists)
-        }
-    }
 }

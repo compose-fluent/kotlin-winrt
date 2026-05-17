@@ -3,9 +3,6 @@ package io.github.composefluent.winrt.gradle
 import org.gradle.api.logging.Logger
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.util.Comparator
-import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.streams.asSequence
@@ -21,7 +18,7 @@ internal object ProjectPriGenerator {
         items: Set<ApplicationPackageItem>,
         logger: Logger,
     ): Boolean {
-        cleanDirectory(configRoot)
+        GradleFileOperations.cleanDirectory(configRoot)
         Files.createDirectories(configRoot)
         ProjectPriConfigurationInputs.fromApplicationPackageItems(items).write(configRoot, projectPriRoot)
         val config = configRoot.resolve("priconfig.xml")
@@ -46,7 +43,7 @@ internal object ProjectPriGenerator {
                     it.name.equals("resources.pri", ignoreCase = true) ||
                         it.name.startsWith("resources.language-", ignoreCase = true)
                 }
-                .forEach { source -> copyFile(source, outputRoot.resolve(source.name)) }
+                .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.name)) }
         }
     }
 
@@ -78,17 +75,4 @@ internal object ProjectPriGenerator {
         return bytes.toString(Charsets.UTF_8)
     }
 
-    private fun copyFile(source: Path, target: Path) {
-        Files.createDirectories(target.parent)
-        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
-    }
-
-    private fun cleanDirectory(directory: Path) {
-        if (!directory.isDirectory()) return
-        Files.walk(directory).use { stream ->
-            stream.sorted(Comparator.reverseOrder())
-                .filter { it != directory }
-                .forEach(Files::deleteIfExists)
-        }
-    }
 }

@@ -2,7 +2,6 @@ package io.github.composefluent.winrt.gradle
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -179,7 +178,7 @@ internal class ProjectPriInputStager(
     private fun copyInput(kind: ApplicationPackageItemKind, source: Path, target: Path, items: MutableSet<ApplicationPackageItem>): Boolean {
         val item = applicationPackageItem(kind, source, target)
         if (!items.add(item)) return false
-        copyFile(source, target)
+        GradleFileOperations.copyFile(source, target)
         return true
     }
 
@@ -213,11 +212,6 @@ internal class ProjectPriInputStager(
     private fun Path.toXbfTargetKey(): String {
         val xbfFileName = fileName.toString().replaceAfterLast('.', "xbf")
         return parent.resolve(xbfFileName).toNormalizedPackagePathKey()
-    }
-
-    private fun copyFile(source: Path, target: Path) {
-        Files.createDirectories(target.parent)
-        Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING)
     }
 
     private data class ProjectPriFileInput(val source: Path, val relativeTarget: Path)
