@@ -4,9 +4,16 @@ plugins {
 
 mavenPublishing {
     publishToMavenCentral()
-    // Sign only when the in-memory key property is present so that local mavenLocal
-    // publishing (without credentials) works out of the box.
-    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+    // Sign only when a real in-memory key and password are present. GitHub Actions maps
+    // missing secrets to empty Gradle properties, and enabling signing for those values
+    // makes Gradle fail later while evaluating the signing task onlyIf predicate.
+    val hasSigningKey = providers.gradleProperty("signingInMemoryKey")
+        .map(String::isNotBlank)
+        .orElse(false)
+    val hasSigningPassword = providers.gradleProperty("signingInMemoryKeyPassword")
+        .map(String::isNotBlank)
+        .orElse(false)
+    if (hasSigningKey.zip(hasSigningPassword, Boolean::and).get()) {
         signAllPublications()
     }
 

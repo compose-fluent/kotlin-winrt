@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+      - codex/ci-snapshot-publish-test
+  workflow_dispatch:
   schedule:
     # Run every Sunday at 00:00 UTC.
     - cron: '0 0 * * 0'
@@ -69,6 +71,25 @@ jobs:
         # This catches POM/metadata configuration issues before attempting the real publish.
         shell: bash
         run: ./gradlew publishToMavenLocal --no-configuration-cache
+
+      - name: Check Maven Central snapshot secrets
+        shell: bash
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_KEY: ${{ secrets.MAVEN_GPG_KEY }}
+          MAVEN_GPG_KEY_PASSWORD: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for name in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD MAVEN_GPG_KEY MAVEN_GPG_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            printf 'Missing required repository secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
 
       - name: Publish Snapshot
         shell: bash
