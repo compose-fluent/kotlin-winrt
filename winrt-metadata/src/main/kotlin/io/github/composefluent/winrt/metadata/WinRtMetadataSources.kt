@@ -146,7 +146,7 @@ sealed interface WinRtMetadataSource {
                 if (value.startsWith("@") && value.length > 1) {
                     val responsePath = Path.of(value.drop(1))
                     val extension = responsePath.name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
-                    require(!responsePath.isDirectory() && extension != "winmd") {
+                    require(!responsePath.isDirectory() && extension !in setOf("winmd", "dll")) {
                         "'@' is reserved for response files"
                     }
                     tokenizeResponseFile(responsePath.readText())

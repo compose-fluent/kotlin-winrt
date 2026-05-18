@@ -298,7 +298,7 @@ class KotlinWinRtIrGenerationExtension(
                             reportedMissingDirectLowering = true
                             pluginContext.messageCollector.report(
                                 CompilerMessageSeverity.ERROR,
-                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with a JDK that exposes java.lang.foreign. Use JDK 22 or newer for Kotlin/JVM compilation; otherwise generated WinRT projection calls would remain as runtime fallback intrinsics.",
+                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with a JDK that exposes java.lang.foreign. Use JDK 25 for Kotlin/JVM compilation; otherwise generated WinRT projection calls would remain as runtime fallback intrinsics.",
                                 null,
                             )
                         }
@@ -309,7 +309,7 @@ class KotlinWinRtIrGenerationExtension(
                             reportedMissingDirectLowering = true
                             pluginContext.messageCollector.report(
                                 CompilerMessageSeverity.ERROR,
-                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with JVM target 22 and a JDK that exposes java.lang.foreign. The compiler plugin loaded, but JVM FFM symbols were not visible to IR lowering; remove lower -Xjdk-release values such as -Xjdk-release=17 for WinRT JVM compilation.",
+                                "kotlin-winrt projection intrinsic lowering requires compiling JVM projections with JVM target 25 and a JDK that exposes java.lang.foreign. The compiler plugin loaded, but JVM FFM symbols were not visible to IR lowering; remove lower -Xjdk-release values such as -Xjdk-release=17 for WinRT JVM compilation.",
                                 null,
                             )
                         }

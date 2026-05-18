@@ -1,9 +1,12 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    id("build-convention")
+    id("winrt.publish")
 }
 
+description = "Kotlin/JVM and Kotlin/Native runtime for WinRT and WinUI projection"
+
 kotlin {
-    jvmToolchain(22)
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
