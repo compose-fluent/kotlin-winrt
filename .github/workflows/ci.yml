@@ -61,7 +61,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: ./gradlew build -x test
+        run: ./gradlew assemble --no-configuration-cache
 
       - name: Test
         # Pass winmd.nugetComponents so that:
@@ -72,4 +72,4 @@ jobs:
         shell: bash
         env:
           WINDOWS_KITS_10_DIR: C:\Program Files (x86)\Windows Kits\10
-        run: ./gradlew test -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@1.8.260317003
+        run: ./gradlew test -Pwinmd.nugetComponents=Microsoft.WindowsAppSDK@1.8.260317003 --no-configuration-cache

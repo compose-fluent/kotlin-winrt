@@ -139,6 +139,7 @@ val verifyWinRtSampleIdentity by tasks.registering {
     group = "verification"
     description = "Verifies the sample application aggregates Kotlin WinRT identity metadata from projection dependencies."
     val identityFile = layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json")
+    val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.orNull
     dependsOn(tasks.named("generateWinRtApplicationIdentity"))
     inputs.file(identityFile)
 
@@ -153,7 +154,6 @@ val verifyWinRtSampleIdentity by tasks.registering {
         check("winrt-runtime" !in identityJson) {
             "Runtime implementation dependencies must not be treated as Kotlin WinRT identity metadata."
         }
-        val expectedWindowsAppSdkVersion = sampleWindowsAppSdkVersion.orNull
         if (expectedWindowsAppSdkVersion == null) {
             check("Microsoft.WindowsAppSDK" !in identityJson) {
                 "WindowsAppSDK should only be declared when kotlinWinRt.samples.windowsAppSdkVersion is set."

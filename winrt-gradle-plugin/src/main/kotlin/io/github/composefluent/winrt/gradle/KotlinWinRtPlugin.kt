@@ -284,6 +284,8 @@ private fun configureWinRtApplicationTasks(
                             spec.include("**/*.resw")
                             spec.exclude(".gradle/**")
                             spec.exclude("build/**")
+                            spec.exclude("**/.gradle/**")
+                            spec.exclude("**/build/**")
                         }
                     } else {
                         project.files()
@@ -298,6 +300,8 @@ private fun configureWinRtApplicationTasks(
                             spec.include("**/*.xbf")
                             spec.exclude(".gradle/**")
                             spec.exclude("build/**")
+                            spec.exclude("**/.gradle/**")
+                            spec.exclude("**/build/**")
                         }
                     } else {
                         project.files()
@@ -317,6 +321,8 @@ private fun configureWinRtApplicationTasks(
                             spec.include("**/*.gif")
                             spec.exclude(".gradle/**")
                             spec.exclude("build/**")
+                            spec.exclude("**/.gradle/**")
+                            spec.exclude("**/build/**")
                         }
                     } else {
                         project.files()
@@ -377,6 +383,8 @@ private fun configureWinRtApplicationTasks(
                             spec.include("**/*.resw")
                             spec.exclude(".gradle/**")
                             spec.exclude("build/**")
+                            spec.exclude("**/.gradle/**")
+                            spec.exclude("**/build/**")
                         }
                     } else {
                         project.files()
@@ -391,6 +399,8 @@ private fun configureWinRtApplicationTasks(
                             spec.include("**/*.xbf")
                             spec.exclude(".gradle/**")
                             spec.exclude("build/**")
+                            spec.exclude("**/.gradle/**")
+                            spec.exclude("**/build/**")
                         }
                     } else {
                         project.files()
@@ -410,6 +420,8 @@ private fun configureWinRtApplicationTasks(
                             spec.include("**/*.gif")
                             spec.exclude(".gradle/**")
                             spec.exclude("build/**")
+                            spec.exclude("**/.gradle/**")
+                            spec.exclude("**/build/**")
                         }
                     } else {
                         project.files()
