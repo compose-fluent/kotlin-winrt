@@ -64,6 +64,8 @@ winRt {
         type("Microsoft.UI.Xaml.Media.MicaBackdrop")
         type("Microsoft.UI.Xaml.Media.RectangleGeometry")
         type("Microsoft.UI.Xaml.Media.SystemBackdrop")
+        type("Microsoft.UI.Dispatching.DispatcherQueue")
+        type("Microsoft.UI.Dispatching.DispatcherQueueTimer")
         type("Microsoft.UI.Dispatching.IDispatcherQueue2")
         type("Microsoft.UI.Windowing.AppWindow")
         type("Microsoft.UI.Windowing.AppWindowClosingEventArgs")

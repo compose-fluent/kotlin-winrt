@@ -535,6 +535,7 @@ internal fun KotlinProjectionRenderer.customObjectAsyncOperationResultReadbackEx
 ): CodeBlock? {
     val customAbi = customObjectAbi(resultBinding) ?: return null
     val projectedType = resolveTypeName(resultBinding.resolvedTypeName)
+    val projectedClassLiteralType = projectedType.copy(nullable = false)
     val nullReadback = if (resultBinding.isNullableAbiReturn) {
         CodeBlock.of("if (%T.isNull(__operationResultPointer)) null else ", PLATFORM_ABI_CLASS_NAME)
     } else {
@@ -971,14 +972,15 @@ internal fun KotlinProjectionRenderer.collectionReferenceAdapterCode(
         else -> return null
     }
     val projectedType = resolveTypeName(typeBinding.resolvedTypeName)
+    val projectedClassLiteralType = projectedType.copy(nullable = false)
     val projectedTypeName = typeBinding.resolvedTypeName
     if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
         return CodeBlock.of(
             "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
             WINRT_REFERENCE_VALUE_ADAPTERS_CLASS_NAME,
-            projectedType,
+            projectedClassLiteralType,
             projectedTypeName,
-            projectedType,
+            projectedClassLiteralType,
             projectedType,
         )
     }

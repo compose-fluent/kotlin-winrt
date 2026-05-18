@@ -63,6 +63,9 @@ object WinRtSystemProjectionMarshalers {
     fun dateTimeFromAbi(source: RawAddress): Instant =
         DateTimeProjection.fromAbi(PlatformAbi.readInt64(source))
 
+    fun dateTimeToAbi(value: Instant): Long =
+        DateTimeProjection.toAbi(value)
+
     fun copyDateTimeTo(
         value: Instant,
         destination: RawAddress,
@@ -73,6 +76,9 @@ object WinRtSystemProjectionMarshalers {
     fun timeSpanFromAbi(source: RawAddress): Duration =
         TimeSpanProjection.fromAbi(PlatformAbi.readInt64(source))
 
+    fun timeSpanToAbi(value: Duration): Long =
+        TimeSpanProjection.toAbi(value)
+
     fun copyTimeSpanTo(
         value: Duration,
         destination: RawAddress,
@@ -82,6 +88,9 @@ object WinRtSystemProjectionMarshalers {
 
     fun hResultFromAbi(source: RawAddress): Exception =
         ExceptionProjection.fromAbi(PlatformAbi.readInt32(source))
+
+    fun hResultToAbi(value: Exception): Int =
+        ExceptionProjection.toAbi(value)
 
     fun copyHResultTo(
         value: Exception,

@@ -210,6 +210,7 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
 ): CodeBlock? {
     val customAbi = customObjectAbi(binding) ?: return null
     val projectedType = resolveTypeName(binding.resolvedTypeName)
+    val projectedClassLiteralType = projectedType.copy(nullable = false)
     val nullReadback = abiNullReturnReadback(binding)
     return if (customAbi.fromAbiFunctionName == "objectFromAbi") {
         CodeBlock.of(
@@ -222,7 +223,7 @@ internal fun KotlinProjectionRenderer.customObjectReturnReadback(
             customAbi.typeHandleName,
             GUID_CLASS_NAME,
             customAbi.interfaceId.toString(),
-            projectedType,
+            projectedClassLiteralType,
             "WINRT_E_NULL_ABI_PROJECTED_RETURN",
         )
     } else {
@@ -384,6 +385,17 @@ internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
 ): KotlinProjectionAbiMarshalerPlan? {
     customStructAbi(parameterBinding.typeBinding)?.let { customAbi ->
         val parameterName = parameterBinding.name
+        val toAbiFunctionName = customAbi.toAbiFunctionName
+        val abiArgumentKind = customAbi.abiArgumentKind
+        if (toAbiFunctionName != null && abiArgumentKind != null) {
+            return KotlinProjectionAbiMarshalerPlan(
+                name = parameterName,
+                typeBinding = parameterBinding.typeBinding,
+                isReturn = false,
+                abiArgumentExpression = CodeBlock.of("%T.%L(%L)", customAbi.helperTypeName, toAbiFunctionName, parameterName),
+                abiArgumentKind = abiArgumentKind,
+            )
+        }
         val scopeName = "__${parameterName}StructScope"
         val abiLocalName = "__${parameterName}Abi"
         return KotlinProjectionAbiMarshalerPlan(
@@ -596,7 +608,7 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayElementMarshalerExpressio
         KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.inspectableAny()", MARSHALER_CLASS_NAME)
         KotlinProjectionAbiValueKind.ProjectedInterface -> {
             val interfaceId = elementBinding.interfaceId ?: return null
-            val projectedType = resolveTypeName(elementBinding.resolvedTypeName)
+            val projectedType = resolveTypeName(elementBinding.resolvedTypeName).copy(nullable = false)
             CodeBlock.of(
                 "%T.interfaceType(%T(%S, %T(%S)), %T::class)",
                 MARSHALER_CLASS_NAME,
@@ -608,7 +620,7 @@ internal fun KotlinProjectionRenderer.nonBlittableArrayElementMarshalerExpressio
             )
         }
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass -> {
-            val projectedType = resolveTypeName(elementBinding.resolvedTypeName)
+            val projectedType = resolveTypeName(elementBinding.resolvedTypeName).copy(nullable = false)
             CodeBlock.of("%T.inspectable(%T::class)", MARSHALER_CLASS_NAME, projectedType)
         }
         KotlinProjectionAbiValueKind.GenericParameter ->

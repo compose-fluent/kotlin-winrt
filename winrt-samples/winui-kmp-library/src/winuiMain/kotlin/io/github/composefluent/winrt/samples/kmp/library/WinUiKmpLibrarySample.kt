@@ -4,7 +4,9 @@ import io.github.composefluent.winrt.runtime.EventRegistrationToken
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import io.github.composefluent.winrt.samples.kmp.base.WinUiKmpBaseLibrarySample
+import microsoft.ui.dispatching.DispatcherQueue
 import microsoft.ui.dispatching.DispatcherQueueHandler
+import microsoft.ui.dispatching.DispatcherQueueTimer
 import microsoft.ui.xaml.Application
 import microsoft.ui.xaml.FocusState
 import microsoft.ui.xaml.LaunchActivatedEventArgs
@@ -17,6 +19,8 @@ import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
+import kotlin.time.Duration.Companion.milliseconds
+import windows.foundation.TypedEventHandler
 
 object WinUiKmpLibrarySample {
     private var activeApplication: WinUiKmpLibraryApp? = null
@@ -47,7 +51,11 @@ object WinUiKmpLibrarySample {
 class WinUiKmpLibraryApp : Application(), AutoCloseable {
     private var activeWindow: Window? = null
     private val activeEventTokens = mutableListOf<EventRegistrationToken>()
+    private var activeTimer: DispatcherQueueTimer? = null
+    private var activeTimerToken: EventRegistrationToken? = null
     private var focusSmokeCompleted = false
+    @Volatile
+    private var timerSmokeCompleted = false
 
     override fun onLaunched(args: LaunchActivatedEventArgs) {
         launchWithResources()
@@ -55,11 +63,23 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
 
     override fun close() {
         activeWindow = null
+        activeTimer?.stop()
+        activeTimerToken?.let { token ->
+            activeTimer?.tick?.remove(token)
+        }
+        activeTimerToken = null
+        activeTimer = null
         activeEventTokens.clear()
         focusSmokeCompleted = false
+        timerSmokeCompleted = false
     }
 
     private fun launchWithResources() {
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.timerSmoke")) {
+            println("winui-kmp-library: timer smoke using current thread dispatcher")
+            runTimerSmoke(DispatcherQueue.getForCurrentThread())
+            return
+        }
         installXamlControlsResources()
         launchCore()
     }
@@ -226,12 +246,50 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         textBox.text = "changed"
         println("winui-kmp-library: textBox changed after focus")
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
+            if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.timerSmoke")) {
+                runTimerSmoke(checkNotNull(window.dispatcherQueue) {
+                    "Window dispatcher queue was not available."
+                })
+                return
+            }
             checkNotNull(window.dispatcherQueue) {
                 "Window dispatcher queue was not available."
             }.tryEnqueue(DispatcherQueueHandler {
                 println("winui-kmp-library: auto exit enqueued")
                 exit()
             })
+        }
+    }
+
+    private fun runTimerSmoke(dispatcherQueue: DispatcherQueue) {
+        println("winui-kmp-library: timer smoke starting")
+        val timer = dispatcherQueue.createTimer()
+        activeTimer = timer
+        timer.interval = 16.milliseconds
+        timer.isRepeating = false
+        println("winui-kmp-library: timer interval=${timer.interval} repeating=${timer.isRepeating} runningBefore=${timer.isRunning}")
+        activeTimerToken = timer.tick.add(TypedEventHandler { _, _ ->
+            timerSmokeCompleted = true
+            println("winui-kmp-library: timer tick callback running=${timer.isRunning}")
+            timer.stop()
+            exit()
+        })
+        println("winui-kmp-library: timer token=$activeTimerToken")
+        timer.start()
+        println("winui-kmp-library: timer started runningAfter=${timer.isRunning}")
+        Thread {
+            Thread.sleep(1_500)
+            dispatcherQueue.tryEnqueue(DispatcherQueueHandler {
+                println("winui-kmp-library: timer timeout completed=$timerSmokeCompleted running=${timer.isRunning}")
+                check(timerSmokeCompleted) {
+                    "DispatcherQueueTimer did not tick before timeout."
+                }
+                exit()
+            })
+        }.also { thread ->
+            thread.name = "kotlin-winrt timer smoke timeout"
+            thread.isDaemon = true
+            thread.start()
         }
     }
 }

@@ -499,6 +499,8 @@ internal data class KotlinProjectionCustomStructAbi(
     val fromAbiFunctionName: String,
     val copyToFunctionName: String,
     val disposeAbiFunctionName: String? = null,
+    val toAbiFunctionName: String? = null,
+    val abiArgumentKind: KotlinProjectionComArgumentKind? = null,
 )
 
 internal data class KotlinProjectionCustomObjectAbi(
@@ -526,14 +528,28 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.DateTime",
         { KOTLIN_INSTANT_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 8, "dateTimeFromAbi", "copyDateTimeTo"),
+        customStructAbi = KotlinProjectionCustomStructAbi(
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            8,
+            "dateTimeFromAbi",
+            "copyDateTimeTo",
+            toAbiFunctionName = "dateTimeToAbi",
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
+        ),
         descriptionName = "DateTime",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.TimeSpan",
         { KOTLIN_DURATION_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 8, "timeSpanFromAbi", "copyTimeSpanTo"),
+        customStructAbi = KotlinProjectionCustomStructAbi(
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            8,
+            "timeSpanFromAbi",
+            "copyTimeSpanTo",
+            toAbiFunctionName = "timeSpanToAbi",
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
+        ),
         descriptionName = "TimeSpan",
     ),
     KotlinProjectionMappedType(
@@ -562,7 +578,14 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.HResult",
         { EXCEPTION_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
-        customStructAbi = KotlinProjectionCustomStructAbi(WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME, 4, "hResultFromAbi", "copyHResultTo"),
+        customStructAbi = KotlinProjectionCustomStructAbi(
+            WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
+            4,
+            "hResultFromAbi",
+            "copyHResultTo",
+            toAbiFunctionName = "hResultToAbi",
+            abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
+        ),
         descriptionName = "HResult",
     ),
     KotlinProjectionMappedType(
