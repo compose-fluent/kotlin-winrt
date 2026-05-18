@@ -68,7 +68,7 @@ jobs:
         # Verify that the publication artifacts can be generated locally without signing.
         # This catches POM/metadata configuration issues before attempting the real publish.
         shell: bash
-        run: ./gradlew publishToMavenLocal
+        run: ./gradlew publishToMavenLocal --no-configuration-cache
 
       - name: Publish Snapshot
         shell: bash
@@ -78,4 +78,4 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
-        run: ./gradlew publishAllPublicationsToMavenCentralRepository
+        run: ./gradlew publishAllPublicationsToMavenCentralRepository --no-configuration-cache
