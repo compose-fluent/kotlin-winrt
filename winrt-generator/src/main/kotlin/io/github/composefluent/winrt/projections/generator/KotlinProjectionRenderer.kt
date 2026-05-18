@@ -1333,6 +1333,7 @@ class KotlinProjectionRenderer(
                         .build(),
                 )
             }
+        addRuntimeClassCollectionInterfaceCaches(builder, plan)
         val delegatedInterfaceTargets = runtimeClassDelegatedInterfaceTargets(plan)
         plan.defaultInterfaceName
             ?.takeUnless(::isMappedCollectionInterfaceName)
@@ -2287,6 +2288,41 @@ class KotlinProjectionRenderer(
                     iid = required.type.iid,
                 )
             }
+    }
+
+    private fun addRuntimeClassCollectionInterfaceCaches(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+    ) {
+        val existingCacheNames = buildSet {
+            plan.defaultInterfaceName?.let { add(requiredForwardOwnerCache(it, plan.defaultInterfaceName)) }
+            plan.implementedInterfaceBindings.mapTo(this) { requiredForwardOwnerCache(it.qualifiedName, plan.defaultInterfaceName) }
+            requiredInterfaceCacheBindings(plan).mapTo(this) { requiredForwardOwnerCache(it.qualifiedName, plan.defaultInterfaceName) }
+        }
+        val collectionCacheBindings =
+            (plan.mutableCollectionBindings.map(::KotlinProjectionCollectionSlotBinding) +
+                plan.readOnlyCollectionBindings
+                    .filterNot { readOnlyBinding ->
+                        plan.mutableCollectionBindings.any { mutableBinding -> mutableBinding.covers(readOnlyBinding) }
+                    }
+                    .map(::KotlinProjectionCollectionSlotBinding))
+                .filterNot { it.ownerCachePropertyName in existingCacheNames }
+                .distinctBy { it.ownerCachePropertyName }
+
+        collectionCacheBindings.forEach { binding ->
+            builder.addProperty(
+                PropertySpec.builder(binding.ownerCachePropertyName, IUNKNOWN_REFERENCE_CLASS_NAME)
+                    .addModifiers(KModifier.PRIVATE)
+                    .delegate(
+                        CodeBlock.of(
+                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %T.Metadata.IID) }",
+                            LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
+                            projectionClassName(binding.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+                        ),
+                    )
+                    .build(),
+            )
+        }
     }
 
     internal fun renderAttributeClassShell(plan: KotlinTypeProjectionPlan): TypeSpec =

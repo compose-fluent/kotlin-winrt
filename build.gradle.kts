@@ -3,11 +3,40 @@ import org.gradle.api.tasks.testing.Test
 plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.kotlinJvm) apply false
+    alias(libs.plugins.mavenPublish) apply false
 }
+
+val releaseTagRegex = Regex("v\\d+\\.\\d+\\.\\d+(-.*)?")
+
+/**
+ * Resolves the project version:
+ * - Release: read git tag name from CI environment (`GITHUB_REF_TYPE=tag`, `GITHUB_REF_NAME=vX.Y.Z`)
+ *   or explicit `-Pwinrt.releaseTag=vX.Y.Z`, then strip leading `v`.
+ * - Otherwise: `<winrt.baseVersion>-SNAPSHOT`.
+ */
+fun resolveVersion() = providers
+    .gradleProperty("winrt.baseVersion")
+    .orElse("0.1.0")
+    .zip(
+        providers
+            .environmentVariable("GITHUB_REF_TYPE")
+            .zip(providers.environmentVariable("GITHUB_REF_NAME")) { refType, refName ->
+                if (refType == "tag") refName else ""
+            }
+            .orElse(providers.gradleProperty("winrt.releaseTag").orElse("")),
+    ) { baseVersion, releaseTag ->
+        if (releaseTag.isNotBlank() && releaseTag.matches(releaseTagRegex)) {
+            releaseTag.removePrefix("v")
+        } else {
+            "$baseVersion-SNAPSHOT"
+        }
+    }
+
+val winrtVersion = resolveVersion().get()
 
 allprojects {
     group = "io.github.composefluent.winrt"
-    version = "0.1.0-SNAPSHOT"
+    version = winrtVersion
 
     tasks.withType<Test>().configureEach {
         maxParallelForks = 1

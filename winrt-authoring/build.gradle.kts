@@ -1,10 +1,10 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
+    id("build-convention")
+    id("winrt.publish")
 }
 
-kotlin {
-    jvmToolchain(22)
-}
+description = "WinRT and WinUI authoring support for the Kotlin projection"
 
 dependencies {
     implementation(projects.winrtRuntime)

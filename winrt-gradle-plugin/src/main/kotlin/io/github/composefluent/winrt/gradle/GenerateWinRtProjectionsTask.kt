@@ -14,7 +14,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
-import org.gradle.process.ExecOperations
+import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
@@ -23,6 +23,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.process.ExecOperations
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
@@ -108,7 +109,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val authoringTargetArtifactName: Property<String>
 
-    @get:Internal
+    @get:Classpath
     abstract val authoringScannerClasspath: ConfigurableFileCollection
 
     @get:Input

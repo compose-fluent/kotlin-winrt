@@ -9,7 +9,7 @@ val sampleWindowsAppSdkVersion = providers.gradleProperty("kotlinWinRt.samples.w
     .orElse("1.8.260416003")
 
 kotlin {
-    jvmToolchain(22)
+    jvmToolchain(25)
     jvm("winuiJvm")
     sourceSets {
         commonMain {

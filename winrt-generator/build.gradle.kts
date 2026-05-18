@@ -2,12 +2,12 @@ import org.gradle.api.tasks.testing.Test
 
 plugins {
     alias(libs.plugins.kotlinJvm)
+    id("build-convention")
+    id("winrt.publish")
     application
 }
 
-kotlin {
-    jvmToolchain(22)
-}
+description = "Kotlin source generator for WinRT and WinUI projection bindings"
 
 dependencies {
     implementation(projects.winrtRuntime)

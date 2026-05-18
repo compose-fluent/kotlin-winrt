@@ -3,6 +3,7 @@ rootProject.name = "winrt-gradle-plugin"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
+    includeBuild("../kotlin-winrt-build-convention")
     repositories {
         mavenCentral()
         gradlePluginPortal()
