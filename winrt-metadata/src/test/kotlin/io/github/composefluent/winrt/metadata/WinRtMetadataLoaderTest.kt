@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.metadata
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.zip.ZipFile
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
@@ -436,7 +437,7 @@ class WinRtMetadataLoaderTest {
 
         val discovered = WinRtMetadataLoader.discoverMetadataFiles(listOf(assembly.parent))
 
-        assertTrue(discovered.contains(assembly))
+        assertTrue(discovered.any { it.sameMetadataPathAs(assembly) })
     }
 
     @Test
@@ -805,7 +806,10 @@ class WinRtMetadataLoaderTest {
 
         assertEquals(listOf("Sample.Foundation.winmd"), cache.files.map { it.fileName.toString() })
         assertEquals(listOf(WinRtMetadataSourceKind.NuGetPackage), cache.resolvedFiles.map { it.sourceKind })
-        assertEquals(listOf(packageDir.toString()), cache.resolvedFiles.map { it.sourceDescription })
+        assertEquals(
+            listOf(packageDir.toCanonicalTestPath()),
+            cache.resolvedFiles.map { Path.of(it.sourceDescription).toCanonicalTestPath() },
+        )
         assertEquals(
             listOf(WinRtPackageAssetKind.Native, WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
             cache.packageAssets.map { it.kind }.sortedBy { it.name },
@@ -937,8 +941,29 @@ class WinRtMetadataLoaderTest {
                 }
             }
             .sortedWith(compareBy<Path> { it.name }.reversed())
+            .filter(::containsXamlWinmd)
             .firstOrNull()
     }
+
+    private fun containsXamlWinmd(packagePath: Path): Boolean =
+        runCatching {
+            ZipFile(packagePath.toFile()).use { zip ->
+                zip.entries().asSequence().any { entry ->
+                    !entry.isDirectory &&
+                        entry.name.replace('\\', '/').endsWith("Microsoft.UI.Xaml.winmd", ignoreCase = true)
+                }
+            }
+        }.getOrDefault(false)
+
+    private fun Path.sameMetadataPathAs(other: Path): Boolean =
+        toCanonicalTestPath().equals(other.toCanonicalTestPath(), ignoreCase = isWindowsHost())
+
+    private fun Path.toCanonicalTestPath(): String =
+        runCatching { toRealPath().toString() }
+            .getOrElse { toAbsolutePath().normalize().toString() }
+
+    private fun isWindowsHost(): Boolean =
+        System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 
     private fun createRestoredNuGetPackage(
         globalPackagesRoot: Path,
