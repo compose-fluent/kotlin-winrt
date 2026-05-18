@@ -1986,7 +1986,7 @@ class KotlinWinRtPluginTest {
             }
 
             kotlin {
-                jvmToolchain(22)
+                jvmToolchain(25)
             }
 
             dependencies {

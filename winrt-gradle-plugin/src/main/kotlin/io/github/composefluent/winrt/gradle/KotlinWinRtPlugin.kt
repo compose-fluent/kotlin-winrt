@@ -754,8 +754,8 @@ private fun configureKotlinWinRtCompilerPluginOptions(
     compilerSupportManifest: org.gradle.api.provider.Provider<org.gradle.api.file.RegularFile>,
 ) {
     project.tasks.withType(KotlinJvmCompile::class.java).configureEach(Action<KotlinJvmCompile> { task ->
-        task.compilerOptions.jvmTarget.set(JvmTarget.JVM_22)
-        task.compilerOptions.freeCompilerArgs.add("-Xjdk-release=22")
+        task.compilerOptions.jvmTarget.set(JvmTarget.JVM_25)
+        task.compilerOptions.freeCompilerArgs.add("-Xjdk-release=25")
         val freeCompilerArgs = task.compilerOptions.freeCompilerArgs
         val metadataIndexPath = metadataIndex.get().asFile.absolutePath
         freeCompilerArgs.add("-P")
