@@ -48,7 +48,6 @@ private fun configureWinRtLibraryModel(
         Action<GenerateWinRtIdentityTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Writes Kotlin WinRT projection identity metadata for downstream application packaging."
-            task.onlyIf { !extension.applicationEnabled.get() }
             task.outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt.json"))
             task.metadataInputs.set(extension.metadataInputs)
             task.includeNamespaces.set(extension.includeNamespaces)
@@ -127,6 +126,9 @@ private fun configureWinRtLibraryModel(
     }
     project.extensions.extraProperties["kotlinWinRtIdentityElements"] = identityElements.name
     extension.whenApplicationConfigured {
+        identityTask.configure { task ->
+            task.enabled = false
+        }
         identityElements.isCanBeConsumed = false
     }
     project.plugins.withId("java") {
@@ -199,7 +201,6 @@ private fun configureWinRtApplicationTasks(
         Action<GenerateWinRtApplicationIdentityTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Aggregates Kotlin WinRT identity metadata from application dependencies."
-            task.onlyIf { extension.applicationEnabled.get() }
             task.outputFile.set(project.layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json"))
             task.metadataInputs.set(extension.metadataInputs)
             task.includeNamespaces.set(extension.includeNamespaces)
@@ -227,7 +228,6 @@ private fun configureWinRtApplicationTasks(
         Action<BuildWinRtAuthoringHostTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Builds cswinrt-style native JVM host DLLs for authored WinRT activation."
-            task.onlyIf { extension.applicationEnabled.get() }
             task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/bin"))
             task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/src"))
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
@@ -247,7 +247,6 @@ private fun configureWinRtApplicationTasks(
         Action<StageWinRtRuntimeAssetsTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Stages WinRT NuGet runtime and resource assets for application execution."
-            task.onlyIf { extension.applicationEnabled.get() }
             task.outputDirectory.set(runtimeAssetsDirectory)
             task.nugetPackages.set(
                 project.provider {
@@ -361,7 +360,6 @@ private fun configureWinRtApplicationTasks(
         Action<StageWinRtApplicationPackageTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Stages WinRT application package resources and generates the application PRI."
-            task.onlyIf { extension.applicationEnabled.get() }
             task.runtimeAssetsDirectory.set(stageRuntimeAssetsTask.flatMap { it.outputDirectory })
             task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/application-package"))
             task.generateProjectPri.set(extension.application.generateProjectPri)
