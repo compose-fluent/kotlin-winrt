@@ -77,12 +77,12 @@ jobs:
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          MAVEN_GPG_FULL_KEY_ID: ${{ secrets.MAVEN_GPG_FULL_KEY_ID }}
+          MAVEN_GPG_KEY_ID: ${{ secrets.MAVEN_GPG_KEY_ID }}
           MAVEN_GPG_KEY_ARMOR: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
           MAVEN_GPG_KEY_PASSWORD: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
         run: |
           missing=()
-          for name in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD MAVEN_GPG_FULL_KEY_ID MAVEN_GPG_KEY_ARMOR MAVEN_GPG_KEY_PASSWORD; do
+          for name in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD MAVEN_GPG_KEY_ID MAVEN_GPG_KEY_ARMOR MAVEN_GPG_KEY_PASSWORD; do
             if [ -z "${!name}" ]; then
               missing+=("$name")
             fi
@@ -97,7 +97,7 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_FULL_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_GPG_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_GPG_KEY_ARMOR }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_KEY_PASSWORD }}
         run: ./gradlew publishAllPublicationsToMavenCentralRepository --no-configuration-cache
