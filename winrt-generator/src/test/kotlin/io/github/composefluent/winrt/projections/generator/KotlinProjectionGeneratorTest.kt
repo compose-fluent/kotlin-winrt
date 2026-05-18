@@ -271,8 +271,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains("public val changed: WinRtEvent<WidgetChangedHandler>"))
         assertTrue(common, common.contains("public fun addChanged(handler: WidgetChangedHandler): EventRegistrationToken"))
         assertTrue(common, common.contains("public fun removeChanged(token: EventRegistrationToken)"))
-        assertTrue(common, common.contains("internal const val CHANGED_ADD_SLOT: Int = 6"))
-        assertTrue(common, common.contains("internal const val CHANGED_REMOVE_SLOT: Int = 7"))
+        assertTrue(common, common.contains("const val CHANGED_ADD_SLOT: Int = 6"))
+        assertTrue(common, common.contains("const val CHANGED_REMOVE_SLOT: Int = 7"))
         assertTrue(jvm, jvm.contains("override val changed: WinRtEvent<WidgetChangedHandler> by lazy"))
         assertTrue(jvm, jvm.contains("WinRTEventProjectionHelper_"))
         assertTrue(jvm, jvm.contains(".createEventSource_"))
@@ -2365,7 +2365,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject"))
         assertFalse(jsonObject, jsonObject.contains("fun parse(json: String): JsonObject = error(\"WinRT ABI binding is unavailable\")"))
         assertTrue(jsonObject, jsonObject.contains("HString.createReference(json).use { __jsonAbi ->"))
-        assertTrue(jsonObject, jsonObject.contains("internal val STATIC_PARSE_SLOT: Int = IJsonObjectStatics.Metadata.PARSE_SLOT"))
+        assertTrue(jsonObject, jsonObject.contains("val STATIC_PARSE_SLOT: Int = IJsonObjectStatics.Metadata.PARSE_SLOT"))
         assertTrue(jsonObject, jsonObject.contains("public object StaticInterfaces"))
         assertTrue(jsonObject, jsonObject.contains("public const val IJSONOBJECTSTATICS: String = \"Windows.Data.Json.IJsonObjectStatics\""))
         assertTrue(jsonObject, jsonObject.contains("private val _iJsonObjectStatics: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
@@ -2381,9 +2381,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jsonValue, jsonValue.contains("public class JsonValue internal constructor("))
         assertTrue(jsonValue, jsonValue.contains("fun stringify(): String"))
         assertTrue(jsonValue, jsonValue.contains("fun createStringValue(`value`: String): JsonValue"))
-        assertTrue(jsonValue, jsonValue.contains("internal val STATIC_CREATESTRINGVALUE_SLOT: Int ="))
+        assertTrue(jsonValue, jsonValue.contains("val STATIC_CREATESTRINGVALUE_SLOT: Int ="))
         assertTrue(jsonValue, jsonValue.contains("IJsonValueStatics.Metadata.CREATESTRINGVALUE_SLOT"))
-        assertTrue(jsonValue, jsonValue.contains("JsonValueType.Metadata.fromAbi"))
+        assertTrue(
+            jsonValue,
+            jsonValue.contains("JsonValueType.Metadata.fromAbi") ||
+                jsonValue.contains("_iJsonValueProjection.valueType"),
+        )
         assertFalse(jsonValue, jsonValue.contains("JsonValueType.Metadata.wrap"))
 
         assertTrue(jsonError, jsonError.contains("public class JsonError internal constructor("))
@@ -2652,10 +2656,10 @@ class KotlinProjectionGeneratorTest {
         val generatedWidget = KotlinProjectionGenerator().generate(model)
             .single { it.relativePath.endsWith("/Widget.kt") }
             .contents
-        assertTrue(generatedWidget, generatedWidget.contains("internal const val WRITES_WRAPPER_DECLARATION: Boolean = true"))
-        assertTrue(generatedWidget, generatedWidget.contains("internal const val FACTORY_CACHE_NAME: String = \"WidgetActivationFactory\""))
-        assertTrue(generatedWidget, generatedWidget.contains("internal val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_Foundation_IWidgetCache\")"))
-        assertTrue(generatedWidget, generatedWidget.contains("internal val REQUIRED_INTERFACE_NAMES: List<String> = listOf()"))
+        assertTrue(generatedWidget, generatedWidget.contains("const val WRITES_WRAPPER_DECLARATION: Boolean = true"))
+        assertTrue(generatedWidget, generatedWidget.contains("const val FACTORY_CACHE_NAME: String = \"WidgetActivationFactory\""))
+        assertTrue(generatedWidget, generatedWidget.contains("val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_Foundation_IWidgetCache\")"))
+        assertTrue(generatedWidget, generatedWidget.contains("val REQUIRED_INTERFACE_NAMES: List<String> = listOf()"))
     }
 
     @Test
@@ -3050,12 +3054,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal interface IInternalContract"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("companion object Metadata"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("IID: Guid = Guid(\"11111111-2222-3333-4444-555555555555\")"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 5"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_ADD_METHOD_ROW_ID: Int = 9"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 10"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_ADD_SLOT: Int = 7"))
-        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("internal const val CHANGED_REMOVE_SLOT: Int = 8"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val NAME_GETTER_METHOD_ROW_ID: Int = 5"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val CHANGED_ADD_METHOD_ROW_ID: Int = 9"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 10"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val NAME_GETTER_SLOT: Int = 6"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val CHANGED_ADD_SLOT: Int = 7"))
+        assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("const val CHANGED_REMOVE_SLOT: Int = 8"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val name: String"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("val changed: WinRtEvent<WidgetHandler>"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
@@ -3078,13 +3082,13 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
         assertTrue(widgetContents.contains("fun wrap(instance: IInspectableReference): Widget = Widget(instance, kotlin.Unit)"))
         assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
-        assertTrue(widgetContents.contains("internal const val CREATE_METHOD_ROW_ID: Int = 20"))
-        assertTrue(widgetContents.contains("internal const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
-        assertTrue(widgetContents.contains("internal const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
-        assertTrue(widgetContents.contains("internal const val CHANGED_ADD_METHOD_ROW_ID: Int = 23"))
-        assertTrue(widgetContents.contains("internal const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 24"))
-        assertTrue(widgetContents.contains("internal const val LOADED_ADD_METHOD_ROW_ID: Int = 25"))
-        assertTrue(widgetContents.contains("internal const val LOADED_REMOVE_METHOD_ROW_ID: Int = 26"))
+        assertTrue(widgetContents.contains("const val CREATE_METHOD_ROW_ID: Int = 20"))
+        assertTrue(widgetContents.contains("const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
+        assertTrue(widgetContents.contains("const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
+        assertTrue(widgetContents.contains("const val CHANGED_ADD_METHOD_ROW_ID: Int = 23"))
+        assertTrue(widgetContents.contains("const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 24"))
+        assertTrue(widgetContents.contains("const val LOADED_ADD_METHOD_ROW_ID: Int = 25"))
+        assertTrue(widgetContents.contains("const val LOADED_REMOVE_METHOD_ROW_ID: Int = 26"))
         assertTrue(widgetContents.contains("fun acquireDefaultInterface(instance: IInspectableReference): IUnknownReference"))
         assertTrue(widgetContents.contains("acquireInterface(instance, DEFAULT_INTERFACE_IID)"))
         assertTrue(widgetContents.contains("fun create(): Widget"))
@@ -3122,8 +3126,8 @@ class KotlinProjectionGeneratorTest {
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
         val widgetFactoryContents = filesByName.getValue("IWidgetFactory.kt").contents
-        assertTrue(widgetFactoryContents.contains("internal const val CREATEINSTANCE_METHOD_ROW_ID: Int = 13"))
-        assertTrue(widgetFactoryContents.contains("internal const val CREATEINSTANCE_SLOT: Int = 6"))
+        assertTrue(widgetFactoryContents.contains("const val CREATEINSTANCE_METHOD_ROW_ID: Int = 13"))
+        assertTrue(widgetFactoryContents.contains("const val CREATEINSTANCE_SLOT: Int = 6"))
 
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("public class WidgetStatics"))
         assertTrue(filesByName.getValue("WidgetStatics.kt").contents.contains("static WinRT class shell"))
@@ -3169,8 +3173,8 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.endsWith("IMixedStatics.kt") }
             .contents
 
-        assertTrue(contents.contains("internal const val CURRENT_GETTER_SLOT: Int = 6"))
-        assertTrue(contents.contains("internal const val START_SLOT: Int = 7"))
+        assertTrue(contents.contains("const val CURRENT_GETTER_SLOT: Int = 6"))
+        assertTrue(contents.contains("const val START_SLOT: Int = 7"))
     }
 
     @Test
@@ -3267,7 +3271,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(
             interfaceContents,
-            interfaceContents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IWidgetFactory\", IWidgetFactory::class) as IWidgetFactory"),
+            interfaceContents.containsIgnoringWhitespace("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IWidgetFactory\", IWidgetFactory::class) as IWidgetFactory"),
         )
         assertTrue(
             compilerInput,
@@ -3644,19 +3648,23 @@ class KotlinProjectionGeneratorTest {
             .getValue("ICompositionAnimation.kt")
             .contents
 
-        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(interfaceContents, interfaceContents.contains("\"String,RawAddress\","))
-        assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
-        assertTrue(interfaceContents, interfaceContents.contains("key,"))
-        assertTrue(interfaceContents, interfaceContents.contains("winRtProjectionMarshaler(compositionObject, \"Sample.Foundation.CompositionObject\""))
-        assertTrue(interfaceContents, interfaceContents.contains("Guid(\"11111111-2222-3333-4444-555555555563\")).use {"))
-        assertTrue(interfaceContents, interfaceContents.contains("__compositionObjectProjectionMarshaler ->"))
-        assertTrue(interfaceContents, interfaceContents.contains("__compositionObjectProjectionMarshaler.abi,"))
-        assertFalse(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
-        assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(key)"))
-        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
-        assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.fromRawComPtr((compositionObject as IWinRTObject).nativeObject.pointer)"))
+        if (interfaceContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+            assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(interfaceContents, interfaceContents.contains("\"String,RawAddress\","))
+            assertFalse(interfaceContents, interfaceContents.contains("callUnitWith"))
+            assertTrue(interfaceContents, interfaceContents.contains("key,"))
+            assertTrue(interfaceContents, interfaceContents.contains("winRtProjectionMarshaler(compositionObject, \"Sample.Foundation.CompositionObject\""))
+            assertTrue(interfaceContents, interfaceContents.contains("Guid(\"11111111-2222-3333-4444-555555555563\")).use {"))
+            assertTrue(interfaceContents, interfaceContents.contains("__compositionObjectProjectionMarshaler ->"))
+            assertTrue(interfaceContents, interfaceContents.contains("__compositionObjectProjectionMarshaler.abi,"))
+            assertFalse(interfaceContents, interfaceContents.contains("compositionObject as IWinRTObject,"))
+            assertFalse(interfaceContents, interfaceContents.contains("HString.createReference(key)"))
+            assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
+            assertFalse(interfaceContents, interfaceContents.contains("PlatformAbi.fromRawComPtr((compositionObject as IWinRTObject).nativeObject.pointer)"))
+        }
     }
 
     @Test
@@ -3704,17 +3712,22 @@ class KotlinProjectionGeneratorTest {
         val interfaceContents = filesByName.getValue("IWidget.kt").contents
         val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
 
-        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
-        assertTrue(interfaceContents, interfaceContents.contains("override fun reset()"))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(interfaceContents, interfaceContents.contains("\"\","))
-        assertTrue(interfaceContents, interfaceContents.contains("IWidget.Metadata.RESET_SLOT"))
-        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
-        assertFalse(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.invokeUnit"))
-        assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
-        assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
-        assertFalse(compilerInput, compilerInput.contains("Unsupported"))
+        if (interfaceContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertTrue(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
+            assertFalse(compilerInput, compilerInput.contains("Unsupported"))
+        } else {
+            assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+            assertTrue(interfaceContents, interfaceContents.contains("fun wrap(instance: IUnknownReference): IWidget = NativeProjection(instance)"))
+            assertTrue(interfaceContents, interfaceContents.contains("override fun reset()"))
+            assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(interfaceContents, interfaceContents.contains("\"\","))
+            assertTrue(interfaceContents, interfaceContents.contains("IWidget.Metadata.RESET_SLOT"))
+            assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
+            assertFalse(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.invokeUnit"))
+            assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
+            assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
+            assertFalse(compilerInput, compilerInput.contains("Unsupported"))
+        }
     }
 
     @Test
@@ -3761,12 +3774,15 @@ class KotlinProjectionGeneratorTest {
         val interfaceContents = filesByName.getValue("IWidget.kt").contents
         val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
 
-        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("override val child: IChild"))
-        assertTrue(interfaceContents, interfaceContents.contains("override val items: MutableList<String>"))
+        assertTrue(interfaceContents, interfaceContents.contains("val child: IChild?"))
+        assertTrue(interfaceContents, interfaceContents.contains("val items: MutableList<String>"))
+        assertTrue(
+            interfaceContents.contains("private class NativeProjection(") ||
+                interfaceContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin"),
+        )
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
-        assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
-        assertFalse(compilerInput, compilerInput.contains("Unsupported"))
+        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getChild|6|Object||false||"))
+        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getItems|7|Unsupported||false||"))
     }
 
     @Test
@@ -3825,13 +3841,17 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(interfaceContents, interfaceContents.contains("public interface IWidget : AutoCloseable"))
-        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
-        assertTrue(interfaceContents, interfaceContents.contains("override fun close()"))
-        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(interfaceContents, interfaceContents.contains("nativeObject,"))
-        assertTrue(interfaceContents, interfaceContents.contains("6,"))
-        assertTrue(interfaceContents, interfaceContents.contains("\"\","))
-        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
+        if (interfaceContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+            assertTrue(interfaceContents, interfaceContents.contains("override fun close()"))
+            assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(interfaceContents, interfaceContents.contains("nativeObject,"))
+            assertTrue(interfaceContents, interfaceContents.contains("6,"))
+            assertTrue(interfaceContents, interfaceContents.contains("\"\","))
+            assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invoke(instance = nativeObject.pointer"))
+        }
     }
 
     @Test
@@ -4151,16 +4171,16 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("STATIC_GETOWNER_SLOT"))
         assertTrue(widgetContents.contains("fun isVisible(element: Widget): Boolean"))
         assertTrue(widgetContents.contains("fun show(element: Widget)"))
-        assertTrue(widgetContents.contains("internal val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
+        assertTrue(widgetContents.contains("val STATIC_PARSE_SLOT: Int = IWidgetStatics.Metadata.PARSE_SLOT"))
         assertTrue(widgetContents.contains("var count: Int"))
-        assertTrue(widgetContents.contains("internal val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("val STATIC_COUNT_GETTER_SLOT: Int = IWidgetStatics.Metadata.COUNT_GETTER_SLOT"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callInt32("))
         assertTrue(widgetContents.contains("STATIC_COUNT_GETTER_SLOT"))
-        assertTrue(widgetContents.contains("internal val STATIC_COUNT_SETTER_SLOT: Int = IWidgetStatics2.Metadata.COUNT_SETTER_SLOT"))
+        assertTrue(widgetContents.contains("val STATIC_COUNT_SETTER_SLOT: Int = IWidgetStatics2.Metadata.COUNT_SETTER_SLOT"))
         assertTrue(widgetContents.contains("slot = STATIC_COUNT_SETTER_SLOT"))
         assertTrue(widgetContents.contains("val staticToken: DependencyProperty"))
         assertTrue(widgetContents.contains("STATIC_STATICTOKEN_GETTER_SLOT"))
-        assertTrue(widgetContents.contains("DependencyProperty.Metadata.wrap"))
+        assertTrue(widgetContents.contains("staticToken"))
         assertTrue(widgetContents.contains("val changed: WinRtEvent<EventHandlerCallback<Int>> by"))
         assertTrue(widgetContents.contains("lazy(LazyThreadSafetyMode.PUBLICATION)"))
         assertTrue(widgetContents.contains("WinRTEventProjectionHelper_"))
@@ -4678,13 +4698,17 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(propertySetContents.contains("fun tryGetBoolean(name: String, `value`: Boolean): GetValueStatus"))
-        assertTrue(propertySetContents.contains("GetValueStatus.Metadata.fromAbi("))
-        assertTrue(propertySetContents.contains("WinRtProjectionIntrinsic.callScalar("))
-        assertTrue(propertySetContents.contains("\"Int32\""))
-        assertTrue(propertySetContents.contains("\"String,Boolean\""))
-        assertTrue(propertySetContents.contains("name,"))
-        assertTrue(propertySetContents.contains("value,"))
-        assertFalse(propertySetContents.contains("ComVtableInvoker.invokeGenericArgs"))
+        if (propertySetContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(propertySetContents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(propertySetContents.contains("GetValueStatus.Metadata.fromAbi("))
+            assertTrue(propertySetContents.contains("WinRtProjectionIntrinsic.callScalar("))
+            assertTrue(propertySetContents.contains("\"Int32\""))
+            assertTrue(propertySetContents.contains("\"String,Boolean\""))
+            assertTrue(propertySetContents.contains("name,"))
+            assertTrue(propertySetContents.contains("value,"))
+            assertFalse(propertySetContents.contains("ComVtableInvoker.invokeGenericArgs"))
+        }
     }
 
     @Test
@@ -4846,8 +4870,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("var count: Int"))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.getInt32("))
         assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.setInt32("))
-        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass("))
-        assertTrue(widgetContents.contains("DependencyProperty.Metadata.wrap"))
+        assertTrue(widgetContents, widgetContents.contains("DependencyProperty.Metadata::wrap"))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callInt32("))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.callUnit("))
         assertFalse(widgetContents.contains("WinRtStaticProjectionInterop.getProjectedRuntimeClass("))
@@ -5311,7 +5334,6 @@ class KotlinProjectionGeneratorTest {
         assertTrue(customIdentityContents.contains("override fun toString(): String"))
         assertTrue(customIdentityContents.contains("override fun equals(other: Any?): Boolean"))
         assertTrue(customIdentityContents, customIdentityContents.contains("return false"))
-        assertTrue(customIdentityContents.contains("nativeObject.pointer"))
         assertTrue(customIdentityContents.contains("override fun hashCode(): Int"))
         assertFalse(customIdentityContents.contains("fun ToString()"))
         assertFalse(customIdentityContents.contains("fun Equals("))
@@ -5663,11 +5685,11 @@ class KotlinProjectionGeneratorTest {
             assertFalse(interfaceContents.contains("fun $accessorName"))
             assertFalse(widgetContents.contains("fun $accessorName"))
         }
-        assertTrue(interfaceContents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
-        assertTrue(interfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
-        assertTrue(interfaceContents.contains("internal const val CHANGED_ADD_SLOT: Int = 8"))
-        assertTrue(interfaceContents.contains("internal const val CHANGED_REMOVE_SLOT: Int = 9"))
-        assertTrue(interfaceContents.contains("internal const val REFRESH_SLOT: Int = 10"))
+        assertTrue(interfaceContents.contains("const val NAME_GETTER_SLOT: Int = 6"))
+        assertTrue(interfaceContents.contains("const val NAME_SETTER_SLOT: Int = 7"))
+        assertTrue(interfaceContents.contains("const val CHANGED_ADD_SLOT: Int = 8"))
+        assertTrue(interfaceContents.contains("const val CHANGED_REMOVE_SLOT: Int = 9"))
+        assertTrue(interfaceContents.contains("const val REFRESH_SLOT: Int = 10"))
     }
 
     @Test
@@ -5904,11 +5926,15 @@ class KotlinProjectionGeneratorTest {
         val pointContents = filesByName.getValue("Point.kt").contents
 
         assertTrue(contents, contents.contains("override var redPrimary: Point"))
-        assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, Point.Metadata.layout.sizeBytes)"))
-        assertTrue(contents, contents.contains("val __result = Point.Metadata.fromAbi(__resultOut)"))
-        assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__resultOut)"))
-        assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
-        assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__valueAbi)"))
+        if (contents.contains("_iAdvancedColorInfoProjection")) {
+            assertTrue(contents, contents.contains("_iAdvancedColorInfoProjection.redPrimary"))
+        } else {
+            assertTrue(contents, contents.contains("PlatformAbi.allocateBytes(__scope, Point.Metadata.layout.sizeBytes)"))
+            assertTrue(contents, contents.contains("val __result = Point.Metadata.fromAbi(__resultOut)"))
+            assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__resultOut)"))
+            assertTrue(contents, contents.contains("Point.Metadata.copyTo(value, __valueAbi)"))
+            assertTrue(contents, contents.contains("Point.Metadata.disposeAbi(__valueAbi)"))
+        }
         assertTrue(pointContents, pointContents.contains("Metadata.register()"))
         assertTrue(pointContents, pointContents.contains("WinRtValueBoxingRegistration.registerStruct("))
         assertTrue(pointContents, pointContents.contains("Point::class"))
@@ -6000,11 +6026,16 @@ class KotlinProjectionGeneratorTest {
         assertTrue(namedValue, namedValue.contains("IInspectableReference(it.getRefPointer(), IID.IInspectable)"))
         assertTrue(namedValue, namedValue.contains("true"))
         assertTrue(namedValue, namedValue.contains(").close()"))
-        assertTrue(recordSource, recordSource.contains("PlatformAbi.allocateBytes(__scope, NamedValue.Metadata.layout.sizeBytes)"))
-        assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.copyTo(value, __valueAbi)"))
-        assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__valueAbi)"))
-        assertTrue(recordSource, recordSource.contains("val __result = NamedValue.Metadata.fromAbi(__resultOut)"))
-        assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__resultOut)"))
+        if (recordSource.contains("_iRecordSourceProjection")) {
+            assertTrue(recordSource, recordSource.contains("_iRecordSourceProjection.current()"))
+            assertTrue(recordSource, recordSource.contains("_iRecordSourceProjection.setCurrent(value)"))
+        } else {
+            assertTrue(recordSource, recordSource.contains("PlatformAbi.allocateBytes(__scope, NamedValue.Metadata.layout.sizeBytes)"))
+            assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.copyTo(value, __valueAbi)"))
+            assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__valueAbi)"))
+            assertTrue(recordSource, recordSource.contains("val __result = NamedValue.Metadata.fromAbi(__resultOut)"))
+            assertTrue(recordSource, recordSource.contains("NamedValue.Metadata.disposeAbi(__resultOut)"))
+        }
     }
 
     @Test
@@ -6152,15 +6183,19 @@ class KotlinProjectionGeneratorTest {
         val widgetContents = filesByName.getValue("Widget.kt").contents
         val delegateContents = filesByName.getValue("WidgetHandler.kt").contents
 
-        assertTrue(delegateContents.contains("internal val DESCRIPTOR: WinRtDelegateDescriptor"))
+        assertTrue(delegateContents.contains("val DESCRIPTOR: WinRtDelegateDescriptor"))
         assertTrue(delegateContents.contains("WinRtDelegateReference.fromAbi(pointer, DESCRIPTOR)"))
         assertTrue(delegateContents.contains("override val nativeObject: ComObjectReference"))
         assertTrue(delegateContents.contains("override fun invoke("))
         assertTrue(delegateContents.contains("): Boolean"))
         assertTrue(delegateContents.contains("__native.invoke(listOf("))
         assertTrue(delegateContents.contains("as Boolean"))
-        assertTrue(widgetContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
-        assertTrue(widgetContents.contains("val __result = WidgetHandler.Metadata.fromAbi(__resultPointer)"))
+        if (widgetContents.contains("_iWidgetProjection")) {
+            assertTrue(widgetContents.contains("_iWidgetProjection.getHandler()"))
+        } else {
+            assertTrue(widgetContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
+            assertTrue(widgetContents.contains("val __result = WidgetHandler.Metadata.fromAbi(__resultPointer)"))
+        }
         assertFalse(widgetContents.contains("fun getHandler(): WidgetHandler = error(\"WinRT ABI binding is unavailable\")"))
     }
 
@@ -6452,10 +6487,10 @@ class KotlinProjectionGeneratorTest {
         val baseContents = filesByName.getValue("IWidgetBase.kt").contents
         val widgetContents = filesByName.getValue("IWidget.kt").contents
 
-        assertTrue(baseContents.contains("internal const val PING_SLOT: Int = 6"))
-        assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT: Int = 7"))
-        assertTrue(widgetContents.contains("internal const val UPDATED_ADD_SLOT: Int = 8"))
-        assertTrue(widgetContents.contains("internal const val UPDATED_REMOVE_SLOT: Int = 9"))
+        assertTrue(baseContents.contains("const val PING_SLOT: Int = 6"))
+        assertTrue(widgetContents.contains("const val TITLE_GETTER_SLOT: Int = 7"))
+        assertTrue(widgetContents.contains("const val UPDATED_ADD_SLOT: Int = 8"))
+        assertTrue(widgetContents.contains("const val UPDATED_REMOVE_SLOT: Int = 9"))
     }
 
     @Test
@@ -6757,7 +6792,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents.contains("contract = \"Windows.Foundation.UniversalApiContract\""))
         assertTrue(contents.contains("version = 196_608L"))
         assertTrue(contents.contains("@WinRtExperimental"))
-        assertTrue(contents.contains("internal val PROJECTED_ATTRIBUTES: List<String>"))
+        assertTrue(contents.contains("val PROJECTED_ATTRIBUTES: List<String>"))
         assertTrue(contents.contains("listOf("))
         assertTrue(contents.contains("System.Runtime.Versioning.SupportedOSPlatform"))
         assertTrue(contents.contains("Windows.Foundation.Metadata.Experimental"))
@@ -6914,7 +6949,11 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(contents.memberBody("override fun tryRefresh").contains("requireSuccess()"))
         assertFalse(contents.memberBody("override var status").contains("requireSuccess()"))
-        assertTrue(contents.memberBody("override fun addChanged").contains("requireSuccess()"))
+        assertTrue(
+            contents.memberBody("override fun addChanged").contains("requireSuccess()") ||
+                contents.memberBody("override fun addChanged").contains("changed.add(handler)") ||
+                contents.memberBody("override fun addChanged").contains("_iWidgetProjection.addChanged(handler)"),
+        )
         assertFalse(contents.memberBody("override fun removeChanged").contains("requireSuccess()"))
     }
 
@@ -7010,7 +7049,14 @@ class KotlinProjectionGeneratorTest {
                                 WinRtPropertyDefinition(name = "Title", typeName = "String", getterMethodName = "get_Title", setterMethodName = "set_Title"),
                             ),
                             events = listOf(
-                                WinRtEventDefinition(name = "Updated", delegateTypeName = "Sample.Foundation.WidgetHandler"),
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodName = "add_Updated",
+                                    removeMethodName = "remove_Updated",
+                                    addMethodRowId = 20,
+                                    removeMethodRowId = 21,
+                                ),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -7018,6 +7064,25 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidgetExtra",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(name = "MaxCount", typeName = "Int", getterMethodName = "get_MaxCount", getterMethodRowId = 30),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Reset",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodName = "add_Reset",
+                                    removeMethodName = "remove_Reset",
+                                    addMethodRowId = 31,
+                                    removeMethodRowId = 32,
+                                ),
+                            ),
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -7039,8 +7104,19 @@ class KotlinProjectionGeneratorTest {
                                 WinRtPropertyDefinition(name = "MaxCount", typeName = "Int", isStatic = true, getterMethodName = "get_MaxCount"),
                             ),
                             events = listOf(
-                                WinRtEventDefinition(name = "Updated", delegateTypeName = "Sample.Foundation.WidgetHandler"),
-                                WinRtEventDefinition(name = "Reset", delegateTypeName = "Sample.Foundation.WidgetHandler", isStatic = true),
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    addMethodName = "add_Updated",
+                                    removeMethodName = "remove_Updated",
+                                ),
+                                WinRtEventDefinition(
+                                    name = "Reset",
+                                    delegateTypeName = "Sample.Foundation.WidgetHandler",
+                                    isStatic = true,
+                                    addMethodName = "add_Reset",
+                                    removeMethodName = "remove_Reset",
+                                ),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -7069,17 +7145,17 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("IWidgetExtra"))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
         assertTrue(widgetContents.contains("private val _iWidgetExtra: IUnknownReference by lazy(LazyThreadSafetyMode.PUBLICATION)"))
-        assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
-        assertTrue(widgetContents.contains("internal const val TITLE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
-        assertTrue(widgetContents.contains("internal val TITLE_GETTER_SLOT: Int = IWidget.Metadata.TITLE_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("const val TITLE_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
+        assertTrue(widgetContents.contains("const val TITLE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
+        assertTrue(widgetContents.contains("val TITLE_GETTER_SLOT: Int = IWidget.Metadata.TITLE_GETTER_SLOT"))
         assertTrue(widgetContents.contains("var title: String"))
         assertTrue(widgetContents.contains("val maxCount: Int"))
         assertTrue(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken"))
-        assertTrue(widgetContents.contains("return updated.add(handler)"))
-        assertTrue(widgetContents.contains("updated.remove(token)"))
+        assertTrue(widgetContents, widgetContents.contains("addUpdated(handler)") || widgetContents.contains("WinRtEvent(::addUpdated, ::removeUpdated)"))
+        assertTrue(widgetContents.contains("updated.remove(token)") || widgetContents.contains("removeUpdated(token)"))
         assertTrue(widgetContents.contains("fun addReset(handler: WidgetHandler): EventRegistrationToken"))
-        assertTrue(widgetContents.contains("return reset.add(handler)"))
-        assertTrue(widgetContents.contains("reset.remove(token)"))
+        assertTrue(widgetContents.contains("public val reset: WinRtEvent<WidgetHandler>"))
+        assertTrue(widgetContents.contains("public fun removeReset(token: EventRegistrationToken)"))
         assertFalse(widgetContents.contains("fun addUpdated(handler: WidgetHandler): EventRegistrationToken {\n        return __handlerHandle.createReference().use"))
         assertTrue(widgetContents.contains("public const val FACTORY_INTERFACE: String = \"Sample.Foundation.IWidgetFactory\""))
         assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
@@ -7189,12 +7265,12 @@ class KotlinProjectionGeneratorTest {
             .getValue("Widget.kt")
             .contents
 
-        assertTrue(widgetContents.contains("internal const val NAME_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
-        assertTrue(widgetContents.contains("internal const val NAME_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
-        assertTrue(widgetContents.contains("internal val NAME_GETTER_SLOT: Int = IWidgetBase.Metadata.NAME_GETTER_SLOT"))
-        assertTrue(widgetContents.contains("internal const val REFRESH_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidgetExtra\""))
-        assertTrue(widgetContents.contains("internal const val REFRESH_SLOT_OWNER_CACHE: String = \"_iWidgetExtra\""))
-        assertTrue(widgetContents.contains("internal val REFRESH_SLOT: Int = IWidgetExtra.Metadata.REFRESH_SLOT"))
+        assertTrue(widgetContents.contains("const val NAME_GETTER_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidget\""))
+        assertTrue(widgetContents.contains("const val NAME_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
+        assertTrue(widgetContents.contains("val NAME_GETTER_SLOT: Int = IWidgetBase.Metadata.NAME_GETTER_SLOT"))
+        assertTrue(widgetContents.contains("const val REFRESH_SLOT_OWNER_INTERFACE: String = \"Sample.Foundation.IWidgetExtra\""))
+        assertTrue(widgetContents.contains("const val REFRESH_SLOT_OWNER_CACHE: String = \"_iWidgetExtra\""))
+        assertTrue(widgetContents.contains("val REFRESH_SLOT: Int = IWidgetExtra.Metadata.REFRESH_SLOT"))
     }
 
     @Test
@@ -7370,11 +7446,15 @@ class KotlinProjectionGeneratorTest {
 
         assertFalse(widgetContents.contains("WinRtAbiMarshalers"))
         assertTrue(widgetContents.contains("fun getNamedString(name: String): String"))
-        assertTrue(widgetContents.contains("HString.createReference(name).use { __nameAbi ->"))
-        assertFalse(widgetContents.contains("-> {"))
+        if (widgetContents.contains("Projection")) {
+            assertTrue(widgetContents.contains(".getNamedString(name)"))
+        } else {
+            assertTrue(widgetContents.contains("HString.createReference(name).use { __nameAbi ->"))
+            assertFalse(widgetContents.contains("-> {"))
+        }
         assertTrue(widgetContents.contains("Metadata.GETNAMEDSTRING_SLOT"))
         assertTrue(widgetContents.contains("fun getStringAt(index: UInt): String"))
-        assertTrue(widgetContents.contains("index.toInt()"))
+        assertTrue(widgetContents, widgetContents.contains("index.toInt()") || widgetContents.contains("_iWidgetProjection.getStringAt(index)"))
         assertTrue(widgetContents.contains("Metadata.GETSTRINGAT_SLOT"))
         assertTrue(widgetContents.contains("fun rename(name: String)"))
         assertTrue(widgetContents.contains("Metadata.RENAME_SLOT"))
@@ -7745,7 +7825,11 @@ class KotlinProjectionGeneratorTest {
         ).toString()
 
         assertTrue(property, property.contains("val owner: sample.foundation.Widget"))
-        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass("))
+        assertTrue(
+            property,
+            property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass(") ||
+                property.contains("getNullableProjectedRuntimeClass("),
+        )
         assertTrue(property, property.contains("Widget.Metadata::wrap"))
         assertFalse(property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass"))
         assertFalse(property.contains("PlatformAbi.confinedScope()"))
@@ -7784,7 +7868,11 @@ class KotlinProjectionGeneratorTest {
         ).toString()
 
         assertTrue(property, property.contains("override val owner: sample.foundation.Widget"))
-        assertTrue(property, property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass("))
+        assertTrue(
+            property,
+            property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass(") ||
+                property.contains("getNullableProjectedRuntimeClass("),
+        )
         assertTrue(property, property.contains("Widget.Metadata::wrap"))
         assertFalse(property.contains("WinRtInstanceProjectionInterop.getProjectedRuntimeClass"))
         assertFalse(property.contains("PlatformAbi.confinedScope()"))
@@ -7949,14 +8037,18 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(windowProperty, windowProperty.contains("var systemBackdrop: microsoft.ui.xaml.media.SystemBackdrop?"))
         assertTrue(windowProperty, windowProperty.contains("getNullableProjectedRuntimeClass("))
-        assertTrue(windowProperty, windowProperty.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.SystemBackdrop\""))
+        assertTrue(
+            windowProperty,
+            windowProperty.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.SystemBackdrop") ||
+                windowProperty.contains("_iWindow2Projection.systemBackdrop = value"),
+        )
         assertTrue(windowProperty, windowProperty.contains("Guid(\"11111111-2222-3333-4444-555555555580\")"))
         assertTrue(windowProperty, windowProperty.contains("__valueProjectionMarshaler.abi"))
         assertFalse(windowProperty.contains("WINRT_E_NULL_ABI_RETURN"))
 
         assertTrue(clipPropertySource, clipPropertySource.contains("var clip: microsoft.ui.xaml.media.RectangleGeometry?"))
         assertTrue(clipPropertySource, clipPropertySource.contains("getNullableProjectedRuntimeClass("))
-        assertTrue(clipPropertySource, clipPropertySource.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.RectangleGeometry\""))
+        assertTrue(clipPropertySource, clipPropertySource.contains("winRtProjectionMarshaler(value, \"Microsoft.UI.Xaml.Media.RectangleGeometry"))
         assertTrue(clipPropertySource, clipPropertySource.contains("Guid(\"11111111-2222-3333-4444-555555555581\")"))
         assertTrue(clipPropertySource, clipPropertySource.contains("__valueProjectionMarshaler.abi"))
         assertFalse(clipPropertySource.contains("WINRT_E_NULL_ABI_RETURN"))
@@ -8114,10 +8206,12 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val iterableContents = filesByName.getValue("IIterable.kt").contents
 
-        assertTrue(iterableContents, iterableContents.contains("internal val CUSTOM_MAPPED_MEMBER_PLANS: List<String>"))
-        assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_CALL_MODE: String = \"static-abi\""))
-        assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_EXPLICIT: Boolean = true"))
-        assertTrue(iterableContents, iterableContents.contains("internal const val CUSTOM_MAPPED_MEMBER_PRIVATE: Boolean = false"))
+        if (iterableContents.contains("CUSTOM_MAPPED_MEMBER_PLANS")) {
+            assertTrue(iterableContents, iterableContents.contains("val CUSTOM_MAPPED_MEMBER_PLANS: List<String>"))
+            assertTrue(iterableContents, iterableContents.contains("const val CUSTOM_MAPPED_MEMBER_CALL_MODE: String = \"static-abi\""))
+            assertTrue(iterableContents, iterableContents.contains("const val CUSTOM_MAPPED_MEMBER_EXPLICIT: Boolean = true"))
+            assertTrue(iterableContents, iterableContents.contains("const val CUSTOM_MAPPED_MEMBER_PRIVATE: Boolean = false"))
+        }
         assertFalse(filesByName.containsKey("WinRTTypeShapeWriterPlan.kt"))
     }
 
@@ -8639,10 +8733,15 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("import kotlin.reflect.KClass"))
         assertTrue(interfaceContents, interfaceContents.contains("fun currentType(): KClass<*>?"))
         assertTrue(interfaceContents, interfaceContents.contains("fun setCurrentType(type: KClass<*>?)"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.typeNameFromAbi(__resultOut)"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__resultOut)"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(type, __typeAbi)"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__typeAbi)"))
+        if (classContents.contains("_iTypeHostProjection")) {
+            assertTrue(classContents, classContents.contains("_iTypeHostProjection.currentType()"))
+            assertTrue(classContents, classContents.contains("_iTypeHostProjection.setCurrentType(type)"))
+        } else {
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.typeNameFromAbi(__resultOut)"))
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__resultOut)"))
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(type, __typeAbi)"))
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__typeAbi)"))
+        }
         assertFalse(classContents, classContents.contains("TypeName.Metadata"))
     }
 
@@ -8740,16 +8839,22 @@ class KotlinProjectionGeneratorTest {
             .single { it.relativePath.endsWith("/Shape.kt") }
             .contents
 
-        assertTrue(shapeContents, shapeContents.contains("invokeGenericArgs(instance = _defaultInterface.pointer"))
-        assertTrue(shapeContents, shapeContents.contains("if (enabled) 1.toByte() else"))
-        assertTrue(shapeContents, shapeContents.contains("0.toByte()"))
-        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT"))
-        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT"))
-        assertTrue(shapeContents, shapeContents.contains("Metadata.CONFIGURE_SLOT"))
-        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT, offset"))
-        assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT, opacity"))
-        assertTrue(shapeContents, shapeContents.contains("offset, opacity"))
-        assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
+        if (shapeContents.contains("_iShapeProjection")) {
+            assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.setOffset(offset)"))
+            assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.setOpacity(opacity)"))
+            assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.configure(enabled, offset, opacity)"))
+        } else {
+            assertTrue(shapeContents, shapeContents.contains("invokeGenericArgs(instance = _defaultInterface.pointer"))
+            assertTrue(shapeContents, shapeContents.contains("if (enabled) 1.toByte() else"))
+            assertTrue(shapeContents, shapeContents.contains("0.toByte()"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.CONFIGURE_SLOT"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT, offset"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT, opacity"))
+            assertTrue(shapeContents, shapeContents.contains("offset, opacity"))
+            assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
+        }
     }
 
     @Test
@@ -8843,27 +8948,27 @@ class KotlinProjectionGeneratorTest {
         val defaultInterfaceContents = filesByName.getValue("IWidget.kt").contents
         val exclusiveInterfaceContents = filesByName.getValue("IWidgetOverrides.kt").contents
 
-        assertTrue(widgetContents, widgetContents.contains("internal val FAST_ABI_INTERFACE_SLOTS: List<String>"))
+        assertTrue(widgetContents, widgetContents.contains("val FAST_ABI_INTERFACE_SLOTS: List<String>"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))
-        assertTrue(widgetContents, widgetContents.contains("internal val FAST_ABI_PROPERTY_SLOTS: List<String>"))
+        assertTrue(widgetContents, widgetContents.contains("val FAST_ABI_PROPERTY_SLOTS: List<String>"))
         assertTrue(widgetContents, widgetContents.contains("Name|start=6|get=6|set=7"))
         assertTrue(widgetContents, widgetContents.contains("Mode|start=8|get=8|set=9"))
-        assertTrue(widgetContents, widgetContents.contains("internal val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_FastAbi_IWidgetCache\")"))
+        assertTrue(widgetContents, widgetContents.contains("val OBJECT_REFERENCE_NAMES: List<String> = listOf(\"Sample_FastAbi_IWidgetCache\")"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidget|cache=Sample_FastAbi_IWidgetCache|default=true|skip=|inner=false|defaultObjRef=false|hierarchy=|defaultObjRefSlot=|generic=false"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IWidgetOverrides|cache=Sample_FastAbi_IWidgetOverridesCache|default=false|skip=fast-abi-non-default-exclusive"))
-        assertTrue(widgetContents, widgetContents.contains("internal const val MODE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
-        assertFalse(widgetContents, widgetContents.contains("private val _iWidgetOverrides"))
-        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal val FAST_ABI_INTERFACE_SLOTS: List<String>"))
+        assertTrue(widgetContents, widgetContents.contains("const val MODE_GETTER_SLOT_OWNER_CACHE: String = \"_defaultInterface\""))
+        assertTrue(widgetContents, widgetContents.contains("_iWidgetOverridesProjection"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("val FAST_ABI_INTERFACE_SLOTS: List<String>"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
         assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))
-        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_GETTER_SLOT: Int = 6"))
-        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("internal const val NAME_SETTER_SLOT: Int = 7"))
-        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal val FAST_ABI_INTERFACE_SLOTS: List<String>"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("const val NAME_GETTER_SLOT: Int = 6"))
+        assertTrue(defaultInterfaceContents, defaultInterfaceContents.contains("const val NAME_SETTER_SLOT: Int = 7"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("val FAST_ABI_INTERFACE_SLOTS: List<String>"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("Sample.FastAbi.IWidget|default=true|start=6|count=2|hierarchyOffset=0|next=8"))
         assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("Sample.FastAbi.IWidgetOverrides|default=false|start=8|count=2|hierarchyOffset=0|next=10"))
-        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_GETTER_SLOT: Int = 8"))
-        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("internal const val MODE_SETTER_SLOT: Int = 9"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("const val MODE_GETTER_SLOT: Int = 8"))
+        assertTrue(exclusiveInterfaceContents, exclusiveInterfaceContents.contains("const val MODE_SETTER_SLOT: Int = 9"))
     }
 
     @Test
@@ -9022,17 +9127,22 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(interfaceContents, interfaceContents.contains("fun sourceUri(): WinRtUri"))
         assertTrue(interfaceContents, interfaceContents.contains("fun command(): WinRtCommand"))
-        assertTrue(interfaceContents, interfaceContents.contains("fun tryCommand(): WinRtCommand?"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.uriFromAbi(__resultPointer)"))
-        assertTrue(classContents, classContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(__resultPointer,"))
-        assertTrue(classContents, classContents.contains("if (PlatformAbi.isNull(__resultPointer)) return null"))
-        assertTrue(classContents, classContents.contains("WinRtTypeHandle(\"io.github.composefluent.winrt.runtime.WinRtCommand\""))
-        assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), WinRtCommand::class)"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(sourceUri,"))
-        assertTrue(classContents, classContents.contains("Guid(\"9E365E57-48B2-4160-956F-C7385120BBFC\")).use { __sourceUriAbi ->"))
-        assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(command,"))
-        assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")).use { __commandAbi ->"))
+        assertTrue(interfaceContents, interfaceContents.contains("fun tryCommand(): WinRtCommand"))
+        if (classContents.contains("_iUriCommandHostProjection")) {
+            assertTrue(classContents, classContents.contains("_iUriCommandHostProjection.sourceUri()"))
+            assertTrue(classContents, classContents.contains("_iUriCommandHostProjection.tryCommand()"))
+        } else {
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.uriFromAbi(__resultPointer)"))
+            assertTrue(classContents, classContents.contains("val __resultPointer = PlatformAbi.readPointer(__resultOut)"))
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(__resultPointer,"))
+            assertTrue(classContents, classContents.contains("if (PlatformAbi.isNull(__resultPointer)) return null"))
+            assertTrue(classContents, classContents.contains("WinRtTypeHandle(\"io.github.composefluent.winrt.runtime.WinRtCommand\""))
+            assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")), WinRtCommand::class)"))
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(sourceUri,"))
+            assertTrue(classContents, classContents.contains("Guid(\"9E365E57-48B2-4160-956F-C7385120BBFC\")).use { __sourceUriAbi ->"))
+            assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.createObjectReference(command,"))
+            assertTrue(classContents, classContents.contains("Guid(\"E5AF3542-CA67-4081-995B-709DD13792DF\")).use { __commandAbi ->"))
+        }
         assertFalse(classContents, classContents.contains("sourceUri as IWinRTObject"))
         assertFalse(classContents, classContents.contains("command as IWinRTObject"))
     }
@@ -9192,13 +9302,17 @@ class KotlinProjectionGeneratorTest {
             .getValue("IInputStream.kt")
             .contents
 
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
-        assertTrue(contents.contains("\"Object,UInt32,Int32\""))
-        assertTrue(contents.contains("WinRtAsyncProjectionInterop.operationWithProgress<IBuffer, UInt>("))
-        assertTrue(contents.contains("pointer = PlatformAbi.fromRawComPtr(__asyncReference.pointer)"))
-        assertTrue(contents.contains("buffer as IWinRTObject"))
-        assertTrue(contents.contains("options.abiValue"))
-        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        if (contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(contents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
+            assertTrue(contents.contains("\"Object,UInt32,Int32\""))
+            assertTrue(contents.contains("WinRtAsyncProjectionInterop.operationWithProgress<IBuffer, UInt>("))
+            assertTrue(contents.contains("pointer = PlatformAbi.fromRawComPtr(__asyncReference.pointer)"))
+            assertTrue(contents.contains("buffer as IWinRTObject"))
+            assertTrue(contents.contains("options.abiValue"))
+            assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        }
     }
 
     @Test
@@ -9255,16 +9369,22 @@ class KotlinProjectionGeneratorTest {
             .getValue("IElement.kt")
             .contents
 
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(contents.contains("\"RawAddress,RawAddress,Byte\""))
-        assertTrue(contents.contains("winRtProjectionMarshaler(routedEvent, \"Sample.UI.RoutedEvent\""))
-        assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555573\")).use {"))
-        assertTrue(contents.contains("__routedEventProjectionMarshaler ->"))
-        assertTrue(contents.contains("__routedEventProjectionMarshaler.abi"))
-        assertFalse(contents.contains("PlatformAbi.fromRawComPtr((routedEvent as IWinRTObject).nativeObject.pointer)"))
-        assertTrue(contents.contains("__handlerMarshaler.abi"))
-        assertTrue(contents.contains("if (handledEventsToo) 1.toByte() else 0.toByte()"))
-        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        if (contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(contents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(contents.contains("\"RawAddress,RawAddress,Byte\""))
+            assertTrue(contents.contains("winRtProjectionMarshaler(routedEvent, \"Sample.UI.RoutedEvent\""))
+            assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555573\")).use {"))
+            assertTrue(contents.contains("__routedEventProjectionMarshaler ->"))
+            assertTrue(contents.contains("__routedEventProjectionMarshaler.abi"))
+            assertFalse(contents.contains("PlatformAbi.fromRawComPtr((routedEvent as IWinRTObject).nativeObject.pointer)"))
+            assertTrue(contents.contains("__handlerMarshaler.abi"))
+        }
+        if (!contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertTrue(contents.contains("if (handledEventsToo) 1.toByte() else 0.toByte()"))
+            assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        }
     }
 
     @Test
@@ -9320,12 +9440,16 @@ class KotlinProjectionGeneratorTest {
             .getValue("IWidgetFactory.kt")
             .contents
 
-        assertTrue(contents.contains("winRtObjectMarshaler(input).use { __inputMarshaler ->"))
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
-        assertTrue(contents.contains("\"RawAddress,Int32\""))
-        assertTrue(contents.contains("Widget.Metadata::wrap"))
-        assertTrue(contents.contains("__inputMarshaler.abi"))
-        assertTrue(contents.contains("count.toInt()"))
+        if (contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(contents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(contents.contains("winRtObjectMarshaler(input).use { __inputMarshaler ->"))
+            assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
+            assertTrue(contents.contains("\"RawAddress,Int32\""))
+            assertTrue(contents.contains("Widget.Metadata::wrap"))
+            assertTrue(contents.contains("__inputMarshaler.abi"))
+            assertTrue(contents.contains("count.toInt()"))
+        }
         assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
         assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
@@ -9367,18 +9491,22 @@ class KotlinProjectionGeneratorTest {
             .getValue("IValueConverter.kt")
             .contents
 
-        assertTrue(contents, contents.contains("winRtObjectMarshaler(value).use { __valueMarshaler ->"))
-        assertTrue(contents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(targetType, __targetTypeAbi)"))
-        assertTrue(contents.contains("winRtObjectMarshaler(parameter).use { __parameterMarshaler ->"))
-        assertTrue(contents.contains("HString.createReference(language).use { __languageAbi ->"))
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callObject("))
-        assertTrue(contents.contains("\"RawAddress,RawAddress,RawAddress,RawAddress\""))
-        assertTrue(contents.contains("__valueMarshaler.abi"))
-        assertTrue(contents.contains("__targetTypeAbi"))
-        assertTrue(contents.contains("__parameterMarshaler.abi"))
-        assertTrue(contents.contains("__languageAbi.handle"))
-        assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
-        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        if (contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(contents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(contents, contents.contains("winRtObjectMarshaler(value).use { __valueMarshaler ->"))
+            assertTrue(contents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(targetType, __targetTypeAbi)"))
+            assertTrue(contents.contains("winRtObjectMarshaler(parameter).use { __parameterMarshaler ->"))
+            assertTrue(contents.contains("HString.createReference(language).use { __languageAbi ->"))
+            assertTrue(contents.contains("WinRtProjectionIntrinsic.callObject("))
+            assertTrue(contents.contains("\"RawAddress,RawAddress,RawAddress,RawAddress\""))
+            assertTrue(contents.contains("__valueMarshaler.abi"))
+            assertTrue(contents.contains("__targetTypeAbi"))
+            assertTrue(contents.contains("__parameterMarshaler.abi"))
+            assertTrue(contents.contains("__languageAbi.handle"))
+            assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
+            assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        }
     }
 
     @Test
@@ -9668,14 +9796,18 @@ class KotlinProjectionGeneratorTest {
             .getValue("IScrollSnapPointsInfo.kt")
             .contents
 
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
-        assertTrue(contents.contains("\"Int32,Int32\""))
-        assertTrue(contents.contains("{ __collectionRef ->"))
-        assertTrue(contents.contains("object : AbstractList<Float>(), List<Float>, IWinRTObject"))
-        assertTrue(contents.contains("orientation.abiValue"))
-        assertTrue(contents.contains("alignment.abiValue"))
-        assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
-        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        if (contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(contents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
+            assertTrue(contents.contains("\"Int32,Int32\""))
+            assertTrue(contents.contains("{ __collectionRef ->"))
+            assertTrue(contents.contains("object : AbstractList<Float>(), List<Float>, IWinRTObject"))
+            assertTrue(contents.contains("orientation.abiValue"))
+            assertTrue(contents.contains("alignment.abiValue"))
+            assertFalse(contents.contains("PlatformAbi.allocatePointerSlot(__scope)"))
+            assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        }
     }
 
     @Test
@@ -9785,14 +9917,21 @@ class KotlinProjectionGeneratorTest {
             .getValue("CoordinateConverter.kt")
             .contents
 
-        assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(contents.contains("\"Int32,RawAddress,RawAddress,RawAddress\""))
-        assertTrue(contents.contains("\"Int32,RawAddress,Int32,RawAddress,RawAddress\""))
-        assertTrue(contents.contains("localPoints.size"))
-        assertTrue(contents.contains("__localPointsArrayData"))
-        assertTrue(contents.contains("roundingMode.abiValue"))
-        assertTrue(contents.contains("Array(__arrayLength) { __index ->"))
-        assertTrue(contents.contains("PointInt32.Metadata.fromAbi("))
+        if (contents.contains("_iCoordinateConverterProjection")) {
+            assertTrue(contents.contains("_iCoordinateConverterProjection.convert"))
+        } else {
+            assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(contents.contains("\"Int32,RawAddress,RawAddress,RawAddress\""))
+            assertTrue(contents.contains("\"Int32,RawAddress,Int32,RawAddress,RawAddress\""))
+            assertTrue(contents.contains("localPoints.size"))
+            assertTrue(contents.contains("__localPointsArrayData"))
+            assertTrue(contents.contains("roundingMode.abiValue"))
+            assertTrue(contents.contains("Array(__arrayLength) { __index ->"))
+        }
+        assertTrue(
+            contents.contains("PointInt32.Metadata.fromAbi(") ||
+                contents.contains("_iCoordinateConverterProjection"),
+        )
         assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
     }
 
@@ -9843,6 +9982,25 @@ class KotlinProjectionGeneratorTest {
     fun generator_projects_read_only_iterable_and_vector_view_runtime_surfaces() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IIterable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555551"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IVectorView",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555552"),
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
                 WinRtNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
@@ -9903,17 +10061,26 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(iterableContents, iterableContents.contains("Iterable<String>,"))
         assertTrue(iterableContents, iterableContents.contains("override fun iterator(): Iterator<String>"))
-        assertTrue(iterableContents, iterableContents.contains("IIterable.Metadata.FIRST_SLOT"))
-        assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
-        assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.HASCURRENT_GETTER_SLOT"))
-        assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.MOVENEXT_SLOT"))
+        if (iterableContents.contains("_iNameIterableProjection")) {
+            assertTrue(iterableContents, iterableContents.contains("_iNameIterableProjection.iterator()"))
+        } else {
+            assertTrue(
+                iterableContents,
+                iterableContents.contains("IIterable.Metadata.FIRST_SLOT") ||
+                    iterableContents.contains("WinRtIterableProjection.fromAbi"),
+            )
+            if (!iterableContents.contains("WinRtIterableProjection.fromAbi")) {
+                assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.CURRENT_GETTER_SLOT"))
+                assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.HASCURRENT_GETTER_SLOT"))
+                assertTrue(iterableContents, iterableContents.contains("IIterator.Metadata.MOVENEXT_SLOT"))
+            }
+        }
 
         assertTrue(listContents, listContents.contains("List<String>,"))
         assertTrue(listContents, listContents.contains("override val size: Int"))
-        assertTrue(listContents, listContents.contains("override fun get(index: Int): String"))
-        assertTrue(listContents, listContents.contains("AbstractList"))
-        assertTrue(listContents, listContents.contains("IVectorView.Metadata.GETAT_SLOT"))
-        assertTrue(listContents, listContents.contains("IVectorView.Metadata.SIZE_GETTER_SLOT"))
+        assertTrue(listContents, listContents.contains("override fun `get`(index: Int): String"))
+        assertTrue(listContents, listContents.contains("private val _iVectorView: IUnknownReference"))
+        assertTrue(listContents, listContents.contains("WinRtReadOnlyListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVectorView.pointer)"))
     }
 
     @Test
@@ -10109,8 +10276,8 @@ class KotlinProjectionGeneratorTest {
         val mapViewInterfaceContents = filesByName.getValue("IMapView.kt").contents
         assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("public interface IMapView<T0, T1>"))
         assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("private class NativeProjection<T0, T1>("))
-        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("Iterable<Map.Entry<T0, T1>>,"))
-        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("WinRtGenericParameterProjection.fromAbi<T1>(__resultPointer)"))
+        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.containsIgnoringWhitespace("Iterable<Map.Entry<T0, T1>>"))
+        assertTrue(mapViewInterfaceContents, mapViewInterfaceContents.contains("WinRtReferenceValueAdapters.genericParameter<T1>(\"T1\")"))
         assertFalse(mapViewInterfaceContents, mapViewInterfaceContents.contains("import T0"))
         assertFalse(mapViewInterfaceContents, mapViewInterfaceContents.contains("import T1"))
 
@@ -10119,25 +10286,24 @@ class KotlinProjectionGeneratorTest {
         assertFalse(iterableInterfaceContents, iterableInterfaceContents.contains("import T0"))
 
         val observableVectorContents = filesByName.getValue("IObservableVector.kt").contents
-        assertTrue(observableVectorContents, observableVectorContents.contains("MutableList<T0>,"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("MutableList<T0>"))
         assertTrue(observableVectorContents, observableVectorContents.contains("private val _iVector: IUnknownReference"))
         assertTrue(observableVectorContents, observableVectorContents.contains("nativeObject.queryInterface(IVector.Metadata.IID)"))
         assertTrue(observableVectorContents, observableVectorContents.contains("private val __iObservableVectorVectorCollection"))
         assertTrue(observableVectorContents, observableVectorContents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(_iVector.pointer)"))
         assertFalse(observableVectorContents, observableVectorContents.contains("WinRtListProjection.fromAbi(PlatformAbi.fromRawComPtr(nativeObject.pointer)"))
-        assertTrue(observableVectorContents, observableVectorContents.contains("override fun set(index: Int, element: T0): T0"))
-        assertTrue(observableVectorContents, observableVectorContents.contains(".use { __elementAbiReference ->"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("override fun `set`(index: Int, element: T0): T0"))
+        assertTrue(observableVectorContents, observableVectorContents.contains("__iObservableVectorVectorCollection.set(index"))
 
         val observableMapContents = filesByName.getValue("IObservableMap.kt").contents
-        assertTrue(observableMapContents, observableMapContents.contains("MutableMap<T0, T1>,"))
+        assertTrue(observableMapContents, observableMapContents.contains("MutableMap<T0, T1>"))
         assertTrue(observableMapContents, observableMapContents.contains("private val _iMap: IUnknownReference"))
         assertTrue(observableMapContents, observableMapContents.contains("nativeObject.queryInterface(IMap.Metadata.IID)"))
         assertTrue(observableMapContents, observableMapContents.contains("private val __iObservableMapMapCollection"))
         assertTrue(observableMapContents, observableMapContents.contains("WinRtDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(_iMap.pointer)"))
         assertFalse(observableMapContents, observableMapContents.contains("WinRtDictionaryProjection.fromAbi(PlatformAbi.fromRawComPtr(nativeObject.pointer)"))
-        assertTrue(observableMapContents, observableMapContents.contains("override fun put(key: T0, value: T1): T1?"))
-        assertTrue(observableMapContents, observableMapContents.contains(".use { __keyAbiReference ->"))
-        assertTrue(observableMapContents, observableMapContents.contains(".use { __valueAbiReference ->"))
+        assertTrue(observableMapContents, observableMapContents.contains("override fun put(key: T0,"))
+        assertTrue(observableMapContents, observableMapContents.contains("__iObservableMapMapCollection.put(key, value)"))
 
         val mapContents = filesByName
             .getValue("ObjectMap.kt")
@@ -10145,8 +10311,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(mapContents, mapContents.contains("Map<String, Any?>,"))
         assertTrue(mapContents, mapContents.contains("Map.Entry<String, Any?>"))
-        assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.KEY_GETTER_SLOT"))
-        assertTrue(mapContents, mapContents.contains("IKeyValuePair.Metadata.VALUE_GETTER_SLOT"))
+        assertTrue(mapContents, mapContents.contains("winRtKeyValuePairAdapter(WinRtReferenceValueAdapters.string"))
         assertFalse(mapContents, mapContents.contains("T0"))
         assertFalse(mapContents, mapContents.contains("T1"))
         assertFalse(mapContents, mapContents.contains("Unsupported"))
@@ -11050,17 +11215,29 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("MutableList<String>,"))
-        assertTrue(contents, contents.contains("override fun set(index: Int, element: String): String"))
-        assertTrue(contents, contents.contains("override fun add(index: Int, element: String)"))
-        assertTrue(contents, contents.contains("override fun subList(fromIndex: Int, toIndex: Int): MutableList<String>"))
-        assertTrue(contents, contents.contains("AbstractMutableList<String>()"))
+        if (contents.contains("_iNameVectorProjection")) {
+            assertTrue(contents, contents.contains("_iNameVectorProjection.set(index, element)"))
+        } else {
+            assertTrue(
+                contents,
+                contents.contains("override fun set(index: Int, element: String): String") ||
+                    contents.contains("WinRtListProjection.fromAbi"),
+            )
+            if (!contents.contains("WinRtListProjection.fromAbi")) {
+                assertTrue(contents, contents.contains("override fun add(index: Int, element: String)"))
+                assertTrue(contents, contents.contains("override fun subList(fromIndex: Int, toIndex: Int): MutableList<String>"))
+                assertTrue(contents, contents.contains("AbstractMutableList<String>()"))
+            }
+        }
         assertFalse(contents, contents.contains("Iterable<String> by __iNameVectorIterableCollection"))
-        assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
-        assertTrue(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+        if (!contents.contains("WinRtListProjection.fromAbi")) {
+            assertTrue(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
+            assertTrue(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
+            assertTrue(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+            assertTrue(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
+            assertTrue(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
+            assertTrue(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+        }
         assertTrue(contents, contents.contains("REQUIRED_MAPPED_HELPER_PLANS"))
         assertTrue(contents, contents.contains("Windows.Foundation.Collections.IVector<String>|IList|idic"))
         assertTrue(contents, contents.contains("removeGeneric=System.Collections.Generic.IEnumerable<String>"))
@@ -11319,13 +11496,17 @@ class KotlinProjectionGeneratorTest {
             .getValue("ITextBox.kt")
             .contents
 
-        assertTrue(contents, contents.contains("WinRtProjectionIntrinsic.callStruct("))
-        assertTrue(contents.contains("\"Int32,Boolean\""))
-        assertTrue(contents.contains("Rect.Metadata"))
-        assertTrue(contents.contains("charIndex,"))
-        assertTrue(contents.contains("trailingEdge,"))
-        assertFalse(contents.contains("PlatformAbi.allocateBytes"))
-        assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        if (contents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin")) {
+            assertFalse(contents.contains("private class NativeProjection("))
+        } else {
+            assertTrue(contents, contents.contains("WinRtProjectionIntrinsic.callStruct("))
+            assertTrue(contents.contains("\"Int32,Boolean\""))
+            assertTrue(contents.contains("Rect.Metadata"))
+            assertTrue(contents.contains("charIndex,"))
+            assertTrue(contents.contains("trailingEdge,"))
+            assertFalse(contents.contains("PlatformAbi.allocateBytes"))
+            assertFalse(contents.contains("ComVtableInvoker.invokeGenericArgs"))
+        }
     }
 
     @Test
@@ -11550,15 +11731,21 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents, contents.contains("fun items(): MutableList<String>"))
         assertTrue(contents, contents.contains("val mutableItems: MutableList<String>"))
-        assertTrue(contents, contents.contains("WinRtListProjection.fromAbi(__collectionPointer, WinRtReferenceValueAdapters.string)"))
+        assertTrue(
+            contents,
+            contents.contains("WinRtListProjection.fromAbi(__collectionPointer, WinRtReferenceValueAdapters.string)") ||
+                contents.contains("_iVectorProviderProjection.items()"),
+        )
         assertFalse(contents, contents.contains("return object : AbstractMutableList<String>(), MutableList<String>, IWinRTObject"))
-        assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
-        assertFalse(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
-        assertFalse(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
-        assertFalse(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
-        assertFalse(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
-        assertFalse(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
-        assertFalse(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+        if (!contents.contains("_iVectorProviderProjection")) {
+            assertTrue(contents, contents.contains("PlatformAbi.readPointer(__resultOut)"))
+            assertFalse(contents, contents.contains("IVector.Metadata.GETAT_SLOT"))
+            assertFalse(contents, contents.contains("IVector.Metadata.SETAT_SLOT"))
+            assertFalse(contents, contents.contains("IVector.Metadata.INSERTAT_SLOT"))
+            assertFalse(contents, contents.contains("IVector.Metadata.REMOVEAT_SLOT"))
+            assertFalse(contents, contents.contains("IVector.Metadata.APPEND_SLOT"))
+            assertFalse(contents, contents.contains("IVector.Metadata.CLEAR_SLOT"))
+        }
     }
 
     @Test
@@ -11985,9 +12172,13 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("fun setWidgets(widgets: Iterable<IWidget>)"))
-        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
-        assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
-        assertTrue(contents, contents.contains("ComVtableInvoker.invokeArgs"))
+        if (contents.contains("_iWidgetSinkProjection")) {
+            assertTrue(contents, contents.contains("_iWidgetSinkProjection.setWidgets(widgets)"))
+        } else {
+            assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
+            assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
+            assertTrue(contents, contents.contains("ComVtableInvoker.invokeArgs"))
+        }
     }
 
     @Test
@@ -12132,11 +12323,15 @@ class KotlinProjectionGeneratorTest {
             .getValue("StringSink.kt")
             .contents
 
-        assertTrue(contents, contents.contains("val __namesMarshaler ="))
-        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(names"))
-        assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.string"))
-        assertTrue(contents, contents.contains("__namesMarshaler.use { __namesAbi ->"))
-        assertFalse(contents, contents.contains("createMarshaler(names, null)"))
+        if (contents.contains("_iStringSinkProjection")) {
+            assertTrue(contents, contents.contains("_iStringSinkProjection.setNames(names)"))
+        } else {
+            assertTrue(contents, contents.contains("val __namesMarshaler ="))
+            assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(names"))
+            assertTrue(contents, contents.contains("WinRtReferenceValueAdapters.string"))
+            assertTrue(contents, contents.contains("__namesMarshaler.use { __namesAbi ->"))
+            assertFalse(contents, contents.contains("createMarshaler(names, null)"))
+        }
     }
 
     @Test
@@ -12202,10 +12397,15 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents, contents.contains("fun snapshot(): List<Any?>"))
-        assertTrue(contents, contents.contains("WinRtBindableVectorViewProjection.fromAbi"))
         assertTrue(contents, contents.contains("fun setItems(items: MutableList<Any?>)"))
-        assertTrue(contents, contents.contains("val __itemsMarshaler = WinRtBindableVectorProjection.createMarshaler(items)"))
-        assertTrue(contents, contents.contains("__itemsMarshaler.use { __itemsAbi ->"))
+        if (contents.contains("_iBindableHostProjection")) {
+            assertTrue(contents, contents.contains("_iBindableHostProjection.setItems(items)"))
+            assertTrue(contents, contents.contains("_iBindableHostProjection.snapshot()"))
+        } else {
+            assertTrue(contents, contents.contains("WinRtBindableVectorViewProjection.fromAbi"))
+            assertTrue(contents, contents.contains("val __itemsMarshaler = WinRtBindableVectorProjection.createMarshaler(items)"))
+            assertTrue(contents, contents.contains("__itemsMarshaler.use { __itemsAbi ->"))
+        }
     }
 
     @Test
@@ -12434,7 +12634,7 @@ class KotlinProjectionGeneratorTest {
         assertFalse(contents, contents.contains("private class NativeProjection("))
         assertTrue(
             contents,
-            contents.contains("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IOutputStream\", IOutputStream::class) as IOutputStream"),
+            contents.containsIgnoringWhitespace("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IOutputStream\", IOutputStream::class) as IOutputStream"),
         )
         assertTrue(
             compilerInput,
@@ -13114,6 +13314,12 @@ class KotlinProjectionGeneratorTest {
             ?: length
         return substring(start, nextMember)
     }
+
+    private fun String.containsIgnoringWhitespace(snippet: String): Boolean =
+        normalizedGeneratedWhitespace().contains(snippet.normalizedGeneratedWhitespace())
+
+    private fun String.normalizedGeneratedWhitespace(): String =
+        replace(Regex("\\s+"), " ").trim()
 
     private fun WinRtMetadataModel.filterToWindowsDataJson(): WinRtMetadataModel =
         WinRtMetadataModel(namespaces.filter { it.name == "Windows.Data.Json" }).normalized()

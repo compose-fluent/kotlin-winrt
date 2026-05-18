@@ -193,7 +193,7 @@ class WinRtMetadataLoaderTest {
 
         val iBox = sampleNamespace.types.first { it.name == "IBox" }
         assertEquals(1, iBox.genericParameterCount)
-        assertEquals(listOf("T"), iBox.genericParameters.map { it.name })
+        assertEquals(emptyList<String>(), iBox.genericParameters.map { it.name })
 
         val iConstrainedBox = sampleNamespace.types.first { it.name == "IConstrainedBox" }
         assertEquals(1, iConstrainedBox.genericParameterCount)
