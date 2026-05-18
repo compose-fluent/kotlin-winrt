@@ -681,6 +681,24 @@ data class WinRtTypeDefinition(
             .values
             .map { duplicates -> duplicates.reduce(WinRtEventDefinition::merge) }
             .sortedWith(compareBy<WinRtEventDefinition>({ it.addMethodRowId ?: it.removeMethodRowId ?: Int.MAX_VALUE }, { it.signatureKey() }))
+        val normalizedGenericParameters = genericParameters
+            .map(WinRtGenericParameterDefinition::normalized)
+            .groupBy(WinRtGenericParameterDefinition::index)
+            .values
+            .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
+            .sortedBy(WinRtGenericParameterDefinition::index)
+        val normalizedGenericParameterCount = maxOf(
+            genericParameterCount.coerceAtLeast(0),
+            normalizedGenericParameters.maxOfOrNull { it.index + 1 } ?: 0,
+        )
+        val genericParametersByIndex = normalizedGenericParameters.associateBy(WinRtGenericParameterDefinition::index)
+        val completeGenericParameters = (0 until normalizedGenericParameterCount)
+            .map { index ->
+                genericParametersByIndex[index] ?: WinRtGenericParameterDefinition(
+                    name = if (normalizedGenericParameterCount == 1) "T" else "T$index",
+                    index = index,
+                )
+            }
 
         return copy(
             namespace = namespace.trim(),
@@ -711,16 +729,8 @@ data class WinRtTypeDefinition(
             methodImplementations = methodImplementations
                 .map(WinRtMethodImplementationDefinition::normalized)
                 .sortedWith(compareBy({ it.declaration.ownerTypeName.orEmpty() }, { it.declaration.name.orEmpty() }, { it.body.name.orEmpty() })),
-            genericParameters = genericParameters
-                .map(WinRtGenericParameterDefinition::normalized)
-                .groupBy(WinRtGenericParameterDefinition::index)
-                .values
-                .map { duplicates -> duplicates.reduce(WinRtGenericParameterDefinition::merge) }
-                .sortedBy(WinRtGenericParameterDefinition::index),
-            genericParameterCount = maxOf(
-                genericParameterCount.coerceAtLeast(0),
-                genericParameters.maxOfOrNull { it.index + 1 } ?: 0,
-            ),
+            genericParameters = completeGenericParameters,
+            genericParameterCount = normalizedGenericParameterCount,
             customAttributes = customAttributes.map(WinRtCustomAttributeDefinition::normalized),
             activation = activation.normalized(),
             availability = availability.normalized(),

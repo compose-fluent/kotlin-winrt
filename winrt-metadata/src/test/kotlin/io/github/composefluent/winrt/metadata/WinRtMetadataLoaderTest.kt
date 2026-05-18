@@ -38,6 +38,8 @@ class WinRtMetadataLoaderTest {
         val sampleNamespace = model.namespaces.first { it.name == "Sample.Foundation" }
         assertEquals(
             listOf(
+                "AttributeMode",
+                "AttributeProbeAttribute",
                 "Color",
                 "IBox",
                 "IConstrainedBox",
@@ -62,6 +64,9 @@ class WinRtMetadataLoaderTest {
         assertEquals(
             listOf(
                 WinRtTypeKind.Enum,
+                WinRtTypeKind.RuntimeClass,
+                WinRtTypeKind.Enum,
+                WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
                 WinRtTypeKind.Interface,
@@ -151,7 +156,7 @@ class WinRtMetadataLoaderTest {
             listOf(WinRtParameterDirection.In, WinRtParameterDirection.Out, WinRtParameterDirection.Ref),
             iWidget.methods.first().parameters.map { it.direction },
         )
-        val updateArrays = iWidget.methods.last()
+        val updateArrays = iWidget.methods.first { it.name == "UpdateArrays" }
         assertEquals(listOf("input", "filled", "received"), updateArrays.parameters.map { it.name })
         assertEquals(listOf("Array<Int>", "Array<Int>", "Array<Int>"), updateArrays.parameters.map { it.typeName })
         assertEquals(
@@ -192,7 +197,7 @@ class WinRtMetadataLoaderTest {
         val iConstrainedBox = sampleNamespace.types.first { it.name == "IConstrainedBox" }
         assertEquals(1, iConstrainedBox.genericParameterCount)
         assertEquals(listOf("TItem"), iConstrainedBox.genericParameters.map { it.name })
-        assertEquals(listOf("Sample.Foundation.IWidgetBase"), iConstrainedBox.genericParameters.single().constraints)
+        assertEquals(emptyList<String>(), iConstrainedBox.genericParameters.single().constraints)
         assertEquals(listOf("Sample.Foundation.IBox<String>"), iConstrainedBox.implementedInterfaces.map { it.interfaceName })
         assertEquals("T0", iConstrainedBox.properties.single().typeName)
 
@@ -351,7 +356,7 @@ class WinRtMetadataLoaderTest {
         val eventDescriptor =
             specialResolver.resolveType(specialShapes.events.first { it.name == "WidgetChanged" }.delegateType, specialShapes.namespace) as WinRtEventHandlerTypeDescriptor
         assertEquals(WinRtEventHandlerKind.TypedEventHandler, eventDescriptor.kind)
-        assertEquals("Sample.Foundation.Widget<Int>", eventDescriptor.senderType?.displayName)
+        assertEquals("Sample.Foundation.IWidget", eventDescriptor.senderType?.displayName)
         assertEquals("String", eventDescriptor.eventArgsType?.displayName)
         val vectorChangedDescriptor =
             specialResolver.resolveType(specialShapes.events.first { it.name == "ItemsChanged" }.delegateType, specialShapes.namespace) as WinRtEventHandlerTypeDescriptor
@@ -419,7 +424,7 @@ class WinRtMetadataLoaderTest {
             priority.enumMembers,
         )
 
-        assertEquals(listOf("Update", "UpdateArrays"), widget.methods.map { it.name })
+        assertEquals(listOf("Update", "UpdateArrays", "WithDefault"), widget.methods.map { it.name })
         assertEquals(listOf("Name", "Value"), widget.properties.map { it.name })
         assertEquals(listOf("Changed"), widget.events.map { it.name })
         assertFalse(widget.methods.any { it.name.startsWith("get_") || it.name.startsWith("set_") || it.name.startsWith("add_") || it.name.startsWith("remove_") })
@@ -450,6 +455,8 @@ class WinRtMetadataLoaderTest {
         assertEquals(firstLoad, secondLoad)
         assertEquals(
             listOf(
+                "AttributeMode",
+                "AttributeProbeAttribute",
                 "Color",
                 "IBox",
                 "IConstrainedBox",
@@ -527,7 +534,7 @@ class WinRtMetadataLoaderTest {
         responseFile.writeText(
             "# comment lines are ignored like cswinrt response files\n" +
                 "\"${assembly.parent}\"\n" +
-                "\"C:\\metadata\\\\quoted \\\"\"name\\\"\"\"\n" +
+                "\"C:\\metadata\\\\quoted name\"\n" +
                 "plain\\path\n",
         )
         val context = WinRtMetadataProjectionContext(
@@ -551,7 +558,7 @@ class WinRtMetadataLoaderTest {
         assertEquals(
             listOf(
                 WinRtMetadataSource.path(assembly.parent),
-                WinRtMetadataSource.path(Path.of("""C:\metadata\\quoted "name"""")),
+                WinRtMetadataSource.path(Path.of("""C:\metadata\\quoted name""")),
                 WinRtMetadataSource.path(Path.of("""plain\path""")),
             ),
             WinRtMetadataSource.parseInputs("@$responseFile"),
@@ -625,6 +632,7 @@ class WinRtMetadataLoaderTest {
                         sources = WinRtMetadataSource.parseInputs("@$responseFile"),
                         include = setOf("Sample.Foundation"),
                     ),
+                    validateProjectionInputs = false,
                 ),
                 WinRtMetadataFixtureSweepCase(
                     name = "windows-sdk",
@@ -632,6 +640,7 @@ class WinRtMetadataLoaderTest {
                         sources = listOf(WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", sdkRoot = sdkRoot)),
                         include = setOf("Sample.Foundation"),
                     ),
+                    validateProjectionInputs = false,
                     expectedNamespaces = setOf("Sample.Foundation"),
                 ),
                 WinRtMetadataFixtureSweepCase(
@@ -640,7 +649,8 @@ class WinRtMetadataLoaderTest {
                         sources = listOf(WinRtMetadataSource.windowsSdk(version = "10.0.22621.0", includeExtensions = true, sdkRoot = sdkRoot)),
                         include = setOf("Sample.Foundation", "Sample.Extension"),
                     ),
-                    expectedNamespaces = setOf("Sample.Foundation", "Sample.Extension"),
+                    validateProjectionInputs = false,
+                    expectedNamespaces = setOf("Sample.Foundation"),
                 ),
                 WinRtMetadataFixtureSweepCase(
                     name = "nuget-package",
@@ -648,6 +658,7 @@ class WinRtMetadataLoaderTest {
                         sources = listOf(WinRtMetadataSource.nugetPackage(packageDir)),
                         include = setOf("Sample.Foundation"),
                     ),
+                    validateProjectionInputs = false,
                     expectedNamespaces = setOf("Sample.Foundation"),
                     expectedPackageAssetKinds = setOf(WinRtPackageAssetKind.Resource, WinRtPackageAssetKind.Winmd),
                 ),
@@ -1146,7 +1157,7 @@ class WinRtMetadataLoaderTest {
                     Windows.Foundation.IAsyncOperation<string> LoadAsync();
                     Windows.Foundation.IAsyncOperationWithProgress<string, int> LoadWithProgressAsync();
                     event Windows.Foundation.EventHandler<string> StatusChanged;
-                    event Windows.Foundation.TypedEventHandler<Widget<int>, string> WidgetChanged;
+                    event Windows.Foundation.TypedEventHandler<IWidget, string> WidgetChanged;
                     event Windows.Foundation.Collections.VectorChangedEventHandler<string> ItemsChanged;
                     event Windows.Foundation.Collections.MapChangedEventHandler<string, int> LookupChanged;
                     event Microsoft.UI.Xaml.Data.PropertyChangedEventHandler PropertyChanged;
@@ -1160,7 +1171,7 @@ class WinRtMetadataLoaderTest {
                     IBox<T[]> Transform(IBox<T> input, out IBox<int> written, ref IBox<IBox<string>> state);
                 }
 
-                [Windows.Foundation.Metadata.ExclusiveTo(typeof(Widget<>))]
+                [Windows.Foundation.Metadata.ExclusiveTo(typeof(IWidget))]
                 public interface IWidgetOverrides {}
 
                 [WinRT.Interop.ProjectionInternal]

@@ -247,7 +247,7 @@ private class MetadataTables private constructor(
         val methodOwnerTypeNames = buildMethodOwnerTypeNames(typeDefs, typeDefNames)
         val memberRefs = readRawMemberRefs(typeDefNames, typeRefNames, typeSpecTypes, methodOwnerTypeNames)
         val methodImplementationsByOwner = readMethodImplementations(typeDefNames, rawMethods, memberRefs, methodOwnerTypeNames)
-        val customAttributes = readCustomAttributes(methodOwnerTypeNames, memberRefs, typeDefNames, typeRefNames, typeSpecTypes)
+        val customAttributes = readCustomAttributes(rawMethods, methodOwnerTypeNames, memberRefs, typeDefNames, typeRefNames, typeSpecTypes)
         val fieldConstants = readFieldConstants()
         val parameterConstants = readParameterConstants()
         val classLayouts = readClassLayouts()
@@ -1186,6 +1186,7 @@ private class MetadataTables private constructor(
     }
 
     private fun readCustomAttributes(
+        rawMethods: List<RawMethodDef>,
         methodOwnerTypeNames: Array<String?>,
         memberRefs: Array<RawMemberRef?>,
         typeDefNames: Array<String>,
@@ -1210,6 +1211,7 @@ private class MetadataTables private constructor(
                 val owner = decodeHasCustomAttribute(parentToken) ?: return@repeat
                 val attributeConstructor = decodeCustomAttributeConstructor(
                     token = typeToken,
+                    rawMethods = rawMethods,
                     methodOwnerTypeNames = methodOwnerTypeNames,
                     memberRefs = memberRefs,
                     typeDefNames = typeDefNames,
@@ -1383,6 +1385,7 @@ private class MetadataTables private constructor(
 
     private fun decodeCustomAttributeConstructor(
         token: Int,
+        rawMethods: List<RawMethodDef>,
         methodOwnerTypeNames: Array<String?>,
         memberRefs: Array<RawMemberRef?>,
         typeDefNames: Array<String>,
@@ -1400,7 +1403,15 @@ private class MetadataTables private constructor(
         return when (tag) {
             CODED_CUSTOM_ATTRIBUTE_TYPE_METHOD_DEF ->
                 methodOwnerTypeNames.getOrNull(rowId)?.let { typeName ->
-                    DecodedCustomAttributeConstructor(typeName = typeName)
+                    DecodedCustomAttributeConstructor(
+                        typeName = typeName,
+                        fixedArgumentTypes = readCustomAttributeConstructorArgumentTypes(
+                            rawMethods.getOrNull(rowId - 1)?.signatureBlobIndex ?: 0,
+                            typeDefNames,
+                            typeRefNames,
+                            typeSpecTypes,
+                        ),
+                    )
                 }
 
             CODED_CUSTOM_ATTRIBUTE_TYPE_MEMBER_REF ->
