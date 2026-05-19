@@ -122,17 +122,90 @@ fun readProfile(json: String): String =
     }
 ```
 
-For Windows App SDK or WinUI projection work, add the corresponding WinMD sources and opt into the specific types that the application needs:
+For Windows App SDK or WinUI projection work, add the corresponding WinMD sources, opt into the specific types that the application needs, and enable the application model:
 
 ```kotlin
 winRt {
+    application {
+        // Defaults generate the project PRI inputs needed by a WinUI app.
+        // Add appxManifest(...) or projectPriResource(...) here when the app has custom assets.
+    }
+
     windowsSdk(includeExtensions = true)
     nugetPackage("Microsoft.WindowsAppSDK", "1.8.260317003")
 
+    type("Microsoft.UI.Xaml.LaunchActivatedEventArgs")
     type("Microsoft.UI.Xaml.Application")
+    type("Microsoft.UI.Xaml.ResourceDictionary")
     type("Microsoft.UI.Xaml.Window")
     type("Microsoft.UI.Xaml.Controls.Button")
-    type("Windows.Foundation.Uri")
+    type("Microsoft.UI.Xaml.Controls.StackPanel")
+    type("Microsoft.UI.Xaml.Controls.TextBlock")
+    type("Microsoft.UI.Xaml.Controls.XamlControlsResources")
+    type("Microsoft.UI.Xaml.Thickness")
+}
+```
+
+The `application {}` block belongs in the final executable app module, not in reusable projection libraries. It switches the WinRT identity model from library to application and enables application-oriented tasks such as `generateWinRtApplicationIdentity`, `stageWinRtRuntimeAssets`, and `buildWinRtAuthoringHost`. If an app is launched from a custom Gradle `JavaExec`, distribution, or packaging task, make that task consume the staged runtime assets and authoring host outputs; otherwise WinUI activation or Windows App SDK bootstrap can fail at runtime even though compilation succeeds.
+
+For a Gradle `application` project, the run task should also enable JVM native access:
+
+```kotlin
+tasks.named<JavaExec>("run") {
+    dependsOn(tasks.named("stageWinRtRuntimeAssets"))
+    dependsOn(tasks.named("buildWinRtAuthoringHost"))
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+```
+
+A minimal WinUI entry point looks like this:
+
+```kotlin
+import io.github.composefluent.winrt.runtime.RuntimeScope
+import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
+import microsoft.ui.xaml.Application
+import microsoft.ui.xaml.LaunchActivatedEventArgs
+import microsoft.ui.xaml.Thickness
+import microsoft.ui.xaml.Window
+import microsoft.ui.xaml.controls.Button
+import microsoft.ui.xaml.controls.StackPanel
+import microsoft.ui.xaml.controls.TextBlock
+import microsoft.ui.xaml.controls.XamlControlsResources
+
+fun main() {
+    WinRtWindowsAppSdkBootstrap.initialize().use {
+        RuntimeScope.initializeSingleThreaded().use {
+            Application.start {
+                DemoApp()
+            }
+        }
+    }
+}
+
+class DemoApp : Application() {
+    private var window: Window? = null
+
+    override fun onLaunched(args: LaunchActivatedEventArgs) {
+        Application.current.resources.mergedDictionaries.add(XamlControlsResources())
+
+        val root = StackPanel().apply {
+            padding = Thickness(24.0, 24.0, 24.0, 24.0)
+            spacing = 12.0
+            children.add(TextBlock().apply {
+                text = "Hello from Kotlin WinRT"
+                fontSize = 24.0
+            })
+            children.add(Button().apply {
+                content = "OK"
+            })
+        }
+
+        window = Window().apply {
+            title = "Kotlin WinRT"
+            content = root
+            activate()
+        }
+    }
 }
 ```
 
