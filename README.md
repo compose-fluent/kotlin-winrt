@@ -1,5 +1,8 @@
 # kotlin-winrt
 
+[![Publish Snapshot](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml/badge.svg?branch=master)](https://github.com/compose-fluent/kotlin-winrt/actions/workflows/publish-snapshot.yml)
+[![Snapshot](https://img.shields.io/maven-metadata/v?label=snapshot&metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Fcompose-fluent%2Fwinrt-runtime%2Fmaven-metadata.xml)](https://central.sonatype.com/repository/maven-snapshots/io/github/compose-fluent/winrt-runtime/maven-metadata.xml)
+
 `kotlin-winrt` is a Windows-focused Kotlin workspace for building WinRT and WinUI 3 applications from:
 
 - Kotlin/JVM
@@ -7,24 +10,81 @@
 
 The repository is organized around a layered runtime and generation pipeline:
 
-- `kom`: low-level COM ABI interop primitives
-- `winrt-core`: WinRT object model and shared runtime helpers
-- `winmd-parser-plugin`: reads WinMD files and builds an intermediate model
-- `winmd-parser`: generates Kotlin bindings from the intermediate model
-- `generated-winrt-bindings`: checked-in generated bindings used by samples
-- `sample-jvm-winui3`: JVM-first sample application exercising the generated bindings
+- `winrt-runtime`: WinRT ABI, COM interop, activation, marshaling, and runtime helpers
+- `winrt-metadata`: WinMD loading and normalized metadata model construction
+- `winrt-generator`: Kotlin source generation for WinRT and WinUI projection bindings
+- `winrt-projections`: checked-in generated projection output and projection support assets
+- `winrt-authoring`: authoring and hosting support for Kotlin-authored WinRT types
+- `winrt-samples`: sample applications and validation surfaces
 
 ## Development status
 
 This repository currently provides:
 
-- a multi-module Gradle skeleton
-- minimal multiplatform runtime abstractions for COM and WinRT
-- a small WinMD inspection and code generation pipeline
-- a JVM sample that exercises the generated bindings and emits a Windows launch script scaffold
-- a JVM interop baseline built around JDK 22+ Foreign Function and Memory API
+- a layered Kotlin workspace for WinRT runtime, metadata, generation, projection, authoring, and samples
+- multiplatform runtime abstractions for COM and WinRT
+- a WinMD inspection and code generation pipeline
+- JVM and `mingwX64` runtime build coverage
+- a JVM interop baseline built around the Foreign Function and Memory API
 
 The native JVM and WinUI 3 runtime bridge is intentionally kept behind interfaces so the project can evolve without rewriting generated bindings.
+
+## Using Snapshot Builds
+
+Snapshot artifacts are published to Maven Central's snapshot repository under the group `io.github.compose-fluent`.
+Add the snapshot repository only for snapshot versions:
+
+```kotlin
+repositories {
+    mavenCentral()
+    maven {
+        name = "mavenCentralSnapshots"
+        url = uri("https://central.sonatype.com/repository/maven-snapshots/")
+        mavenContent {
+            snapshotsOnly()
+        }
+    }
+}
+```
+
+Use the runtime from a Kotlin/JVM project:
+
+```kotlin
+dependencies {
+    implementation("io.github.compose-fluent:winrt-runtime-jvm:0.1.0-SNAPSHOT")
+}
+```
+
+Use the runtime from a Kotlin Multiplatform project:
+
+```kotlin
+kotlin {
+    jvm()
+    mingwX64()
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation("io.github.compose-fluent:winrt-runtime:0.1.0-SNAPSHOT")
+        }
+    }
+}
+```
+
+Add authoring or tooling modules only when the project needs those surfaces:
+
+```kotlin
+dependencies {
+    implementation("io.github.compose-fluent:winrt-authoring:0.1.0-SNAPSHOT")
+    implementation("io.github.compose-fluent:winrt-metadata:0.1.0-SNAPSHOT")
+    implementation("io.github.compose-fluent:winrt-generator:0.1.0-SNAPSHOT")
+}
+```
+
+Snapshot badge:
+
+```markdown
+[![Snapshot](https://img.shields.io/maven-metadata/v?label=snapshot&metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Fcompose-fluent%2Fwinrt-runtime%2Fmaven-metadata.xml)](https://central.sonatype.com/repository/maven-snapshots/io/github/compose-fluent/winrt-runtime/maven-metadata.xml)
+```
 
 ## Projection references
 
@@ -37,7 +97,7 @@ When local behavior disagrees with those projections, the intent is to change `k
 
 ## Build
 
-Use Windows for full build and runtime validation. JVM builds target JDK 22 or newer because the JVM-side Win32/COM bridge is based on the stable FFM API in `java.lang.foreign`.
+Use Windows for full build and runtime validation. JVM builds target JDK 25 because the JVM-side Win32/COM bridge is based on the FFM API in `java.lang.foreign`.
 
 ### Linux/macOS static verification
 
@@ -49,7 +109,7 @@ Use Windows for full build and runtime validation. JVM builds target JDK 22 or n
 
 ```powershell
 .\gradlew.bat test
-.\gradlew.bat :sample-jvm-winui3:run
+.\gradlew.bat :winrt-samples:check
 ```
 
 The sample prints guidance when the process is not running on Windows.
