@@ -5,6 +5,10 @@ on:
     branches:
       - master
       - codex/ci-snapshot-publish-test
+    paths-ignore:
+      - '**/*.md'
+      - '.gitignore'
+      - 'LICENSE*'
   workflow_dispatch:
   schedule:
     # Run every Sunday at 00:00 UTC.
