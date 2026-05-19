@@ -32,7 +32,7 @@ The native JVM and WinUI 3 runtime bridge is intentionally kept behind interface
 ## Using Snapshot Builds
 
 Snapshot artifacts are published to Maven Central's snapshot repository under the group `io.github.compose-fluent`.
-Add the snapshot repository only for snapshot versions:
+Add the snapshot repository only for snapshot versions, then add the runtime dependency:
 
 ```kotlin
 repositories {
@@ -55,7 +55,7 @@ dependencies {
 }
 ```
 
-Use the runtime from a Kotlin Multiplatform project:
+Use the runtime from a Kotlin Multiplatform project when sharing WinRT-facing code between JVM and `mingwX64`:
 
 ```kotlin
 kotlin {
@@ -70,7 +70,7 @@ kotlin {
 }
 ```
 
-Add authoring or tooling modules only when the project needs those surfaces:
+Add authoring or tooling modules only when the project needs those surfaces directly:
 
 ```kotlin
 dependencies {
@@ -80,10 +80,60 @@ dependencies {
 }
 ```
 
-Snapshot badge:
+## Basic Usage
 
-```markdown
-[![Snapshot](https://img.shields.io/maven-metadata/v?label=snapshot&metadataUrl=https%3A%2F%2Fcentral.sonatype.com%2Frepository%2Fmaven-snapshots%2Fio%2Fgithub%2Fcompose-fluent%2Fwinrt-runtime%2Fmaven-metadata.xml)](https://central.sonatype.com/repository/maven-snapshots/io/github/compose-fluent/winrt-runtime/maven-metadata.xml)
+`kotlin-winrt` projects normally have three parts:
+
+- add `winrt-runtime`
+- declare the WinRT namespaces or types that should be projected
+- initialize the WinRT runtime before calling projected APIs
+
+For example, a JVM project that uses `Windows.Data.Json` can configure projection generation like this:
+
+```kotlin
+plugins {
+    kotlin("jvm")
+    id("io.github.composefluent.winrt")
+}
+
+dependencies {
+    implementation("io.github.compose-fluent:winrt-runtime-jvm:0.1.0-SNAPSHOT")
+}
+
+winRt {
+    namespace("Windows.Data.Json")
+}
+```
+
+Then use the generated Kotlin projection types from normal Kotlin code:
+
+```kotlin
+import io.github.composefluent.winrt.runtime.RuntimeScope
+import windows.`data`.json.JsonArray
+import windows.`data`.json.JsonObject
+
+fun readProfile(json: String): String =
+    RuntimeScope.initializeSingleThreaded().use {
+        val profile = JsonObject.parse(json)
+        val education = profile.getNamedArray("education", JsonArray())
+        val firstSchool = education.getObjectAt(0u).getNamedObject("school")
+
+        "${profile.getNamedString("name")} attended ${firstSchool.getNamedString("name")}"
+    }
+```
+
+For Windows App SDK or WinUI projection work, add the corresponding WinMD sources and opt into the specific types that the application needs:
+
+```kotlin
+winRt {
+    windowsSdk(includeExtensions = true)
+    nugetPackage("Microsoft.WindowsAppSDK", "1.8.260317003")
+
+    type("Microsoft.UI.Xaml.Application")
+    type("Microsoft.UI.Xaml.Window")
+    type("Microsoft.UI.Xaml.Controls.Button")
+    type("Windows.Foundation.Uri")
+}
 ```
 
 ## Projection references
