@@ -35,7 +35,7 @@ fun resolveVersion() = providers
 val winrtVersion = resolveVersion().get()
 
 allprojects {
-    group = "io.github.composefluent.winrt"
+    group = "io.github.compose-fluent"
     version = winrtVersion
 
     tasks.withType<Test>().configureEach {
