@@ -52,16 +52,7 @@ object WinRtEventSourceRuntime {
         objectReference: ComObjectReference,
         vtableIndexForAddHandler: Int,
     ): EventSource<*>? {
-        var descriptor = descriptorFor(eventType, ownerType)
-        if (descriptor?.eventSourceFactory == null) {
-            run {
-                registerCompilerGeneratedEventSources()
-                descriptorFor(eventType, ownerType)
-            }
-                ?.takeIf { candidate -> candidate.eventSourceFactory != null || descriptor == null }
-                ?.let { candidate -> descriptor = candidate }
-        }
-        return descriptor
+        return descriptorFor(eventType, ownerType)
             ?.eventSourceFactory
             ?.invoke(objectReference, vtableIndexForAddHandler)
     }

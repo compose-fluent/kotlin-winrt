@@ -159,7 +159,9 @@ object WinRtReferenceValueAdapters {
                     }
                 }
             },
-            marshaller = { value -> IUnknownReference((value as IWinRTObject).nativeObject.getRefPointer()) },
+            marshaller = { value ->
+                (value as IWinRTObject).nativeObject.queryInterface(defaultInterfaceId).getOrThrow()
+            },
         )
 
     @Suppress("UNCHECKED_CAST")

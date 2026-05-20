@@ -86,12 +86,14 @@ class KotlinProjectionGeneratorTest {
 
         val registrar = filesByName.getValue("projection-registrar.tsv").contents
         val manifest = filesByName.getValue("compiler-support.tsv").contents
+        val widget = filesByName.getValue("Widget.kt").contents
 
         assertFalse(filesByName.containsKey("WinRTProjectionRegistrar.kt"))
         assertTrue(registrar, registrar.contains("kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName"))
         assertTrue(registrar, registrar.contains("sample.foundation.IWidget\tSample.Foundation.IWidget\tInterface\t\t"))
         assertTrue(registrar, registrar.contains("sample.foundation.Widget\tSample.Foundation.Widget\tRuntimeClass\tSample.Foundation.WidgetBase\tsample.foundation.Widget.Metadata"))
-        assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv\t2"))
+        assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv\t2"))
+        assertTrue(widget, widget.contains("WinRtProjectionSupportIntrinsic.ensureInitialized()"))
     }
 
     @Test
@@ -159,7 +161,7 @@ class KotlinProjectionGeneratorTest {
         assertEquals(131, registrar.lineSequence().count { it.isNotBlank() })
         assertTrue(registrar, registrar.contains("sample.foundation.Widget0\tSample.Foundation.Widget0\tRuntimeClass\t\tsample.foundation.Widget0.Metadata"))
         assertTrue(registrar, registrar.contains("sample.foundation.Widget129\tSample.Foundation.Widget129\tRuntimeClass\t\tsample.foundation.Widget129.Metadata"))
-        assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv\t130"))
+        assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv\t130"))
     }
 
     @Test
@@ -3122,7 +3124,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(widgetContents.contains("fun createInstance(): IInspectableReference"))
         assertTrue(widgetContents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
-        assertTrue(widgetContents.contains("initializeComposableReference(it.asInspectable())"))
+        assertTrue(widgetContents.contains("initializeComposableReference(it, DEFAULT_INTERFACE_IID)"))
+        assertTrue(widgetContents.contains("ComWrappersSupport.registerComposableWrapper(this, _inner)"))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
         val widgetFactoryContents = filesByName.getValue("IWidgetFactory.kt").contents
@@ -3269,6 +3272,8 @@ class KotlinProjectionGeneratorTest {
         val manifest = filesByName.getValue("compiler-support.tsv").contents
 
         assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        val supportInitializeIndex = interfaceContents.indexOf("WinRtProjectionSupportIntrinsic.ensureInitialized()")
+        assertTrue(interfaceContents, supportInitializeIndex >= 0)
         assertTrue(
             interfaceContents,
             interfaceContents.containsIgnoringWhitespace("ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, \"Sample.Foundation.IWidgetFactory\", IWidgetFactory::class) as IWidgetFactory"),
@@ -3340,7 +3345,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_lowers_projected_object_interface_native_projection_members_as_object_abi() {
+    fun generator_keeps_projected_object_interface_native_projection_members_on_kotlin_fallback() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -3383,14 +3388,18 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val compilerInput = KotlinProjectionGenerator(emitSupportFiles = true)
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
-            .single { it.relativePath.endsWith("interface-native-projections.tsv") }
-            .contents
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val interfaceContents = filesByName.getValue("IPanel.kt").contents
+        val compilerInput = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
 
-        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getContent|6|Object||false"))
-        assertTrue(compilerInput, compilerInput.contains("PropertySet|setContent|7|Unit|Object|false"))
-        assertFalse(compilerInput, compilerInput.contains("PropertySet|setContent|7|Unit|Unsupported|false"))
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.getNullableProjectedRuntimeClass("))
+        assertTrue(interfaceContents, interfaceContents.contains("winRtProjectionMarshaler(value, \"Sample.Xaml.Element?\""))
+        assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance"))
+        assertFalse(compilerInput, compilerInput.contains("Sample.Xaml.IPanel"))
+        assertFalse(compilerInput, compilerInput.contains("PropertySet|setContent|7|Unit|Object|false"))
     }
 
     @Test
@@ -5579,6 +5588,18 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Microsoft.UI.Xaml",
+                            name = "IApplicationStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Start",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
                             name = "Application",
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Microsoft.UI.Xaml.IApplication",
@@ -5594,6 +5615,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                             activation = WinRtActivationShape(
                                 composableFactoryInterfaceName = "Microsoft.UI.Xaml.IApplicationFactory",
+                                staticInterfaceNames = listOf("Microsoft.UI.Xaml.IApplicationStatics"),
                             ),
                         ),
                     ),
@@ -5609,6 +5631,10 @@ class KotlinProjectionGeneratorTest {
         assertFalse(application, application.contains("_winUiResourceManagerRegistration"))
         assertTrue(application, application.contains("internal constructor(_inner: IInspectableReference, __winrtWrapper: Unit)"))
         assertTrue(application, application.contains("public constructor()"))
+        val constructor = application.substringAfter("public constructor()").substringBefore("override fun equals")
+        assertTrue(constructor, constructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
+        val start = application.substringAfter("public fun start()").substringBefore("}")
+        assertFalse(start, start.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
     }
 
     @Test
@@ -9661,7 +9687,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(createInstance.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
         assertTrue(createInstance.contains("\"Int32,Int32,RawAddress,RawAddress\""))
         assertTrue(createInstance.contains("{ __result -> __result.use {"))
-        assertTrue(createInstance.contains("ComWrappersSupport.initializeComposableReference(it.asInspectable())"))
+        assertTrue(createInstance.contains("ComWrappersSupport.initializeComposableReference(it, DEFAULT_INTERFACE_IID)"))
         assertTrue(createInstance.contains("PlatformAbi.nullPointer"))
         assertTrue(createInstance.contains("__innerOut"))
         assertTrue(createInstance.contains("return __result"))
@@ -9726,9 +9752,13 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
             .getValue("Widget.kt")
             .contents
+        val publicConstructor = contents.substringAfter("public constructor()")
+            .substringBefore("override fun equals")
         val createInstanceForSubclass = contents.substringAfter("internal fun createInstanceForSubclass")
             .substringBefore("public fun acquire")
 
+        assertTrue(publicConstructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
+        assertTrue(publicConstructor.indexOf("WinRtAuthoringSupportIntrinsic.ensureInitialized()") < publicConstructor.indexOf("ComposableFactory.createInstanceForSubclass"))
         assertTrue(createInstanceForSubclass.contains("createComposableCCWForObject"))
         assertTrue(createInstanceForSubclass.contains("outerInterfaceId"))
         assertTrue(createInstanceForSubclass.contains("WinRtProjectionIntrinsic.callUnit("))
@@ -10889,10 +10919,10 @@ class KotlinProjectionGeneratorTest {
             .associateBy { it.relativePath.substringAfterLast('/') }
         val compilerSupportManifest = filesByName.getValue("compiler-support.tsv").contents
         assertTrue(compilerSupportManifest.contains("kind\tclassName\tsourceFile\tentries"))
-        assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar\tprojection-registrar.tsv"))
+        assertTrue(compilerSupportManifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv"))
         assertFalse(compilerSupportManifest.contains("event-source\t"))
         assertTrue(compilerSupportManifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations\tgeneric-instantiations.tsv"))
-        assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact\tgeneric-abi-registry.tsv"))
+        assertTrue(compilerSupportManifest.contains("generic-abi-registry\tio.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic\tgeneric-abi-registry.tsv"))
 
         val typeShapeDescriptors = filesByName.getValue("type-shape-descriptors.tsv").contents
         assertTrue(typeShapeDescriptors.contains("projectedTypeName\tkey\tvalue"))
@@ -10908,6 +10938,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericAbiRegistry.contains("_get_Value_Int"))
         assertTrue(genericAbiRegistry.contains("Windows.Foundation.IReference<Int>"))
         assertTrue(genericAbiRegistrySource.contains("fun registerAbiDelegates"))
+        assertTrue(genericAbiRegistrySource.contains("WinRtGenericAbiSupportIntrinsic"))
+        assertFalse(genericAbiRegistrySource.contains("Class.forName"))
         assertFalse(genericAbiRegistrySource.contains("_get_Value_Int"))
         assertFalse(genericAbiRegistrySource.contains("GENERIC_ABI_DELEGATES"))
         val genericTypeInstantiations = filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents
@@ -10935,12 +10967,14 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initProjectedGenericFallbacks(entry, entry.projectedGenericFallbacks)"))
         assertTrue(genericTypeInstantiations.contains("runtimeBinding.initDelegateCcwInvoke(entry)"))
         assertTrue(genericTypeInstantiations.contains("private fun registerGenericInstantiation(entry: GenericTypeInstantiationEntry)"))
-        assertTrue(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
+        assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationSupportIntrinsic.initializeAll()"))
+        assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationSupportIntrinsic.initializeBySourceType(sourceType)"))
+        assertFalse(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
+        assertFalse(genericTypeInstantiations.contains("Class.forName"))
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         assertFalse(filesByName.containsKey("event-sources.tsv"))
-        val interfaceNativeProjections = filesByName.getValue("interface-native-projections.tsv").contents
+        val interfaceNativeProjections = filesByName["interface-native-projections.tsv"]?.contents.orEmpty()
         assertFalse(interfaceNativeProjections.contains("Microsoft.UI.Dispatching.IDispatcherQueueTimer"))
-        assertTrue(interfaceNativeProjections.contains("Windows.UI.Core.ICoreDispatcher"))
         assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_IS_CHECK\""))
         assertTrue(eventProjectionHelpers.contains("\"USELESS_CAST\""))
@@ -10963,13 +10997,33 @@ class KotlinProjectionGeneratorTest {
         assertFalse(eventProjectionHelpers.contains("\"_EventSource_Sample_Foundation_WidgetHandler\" ->"))
         assertTrue(eventProjectionHelpers.contains("_EventSource_Sample_Foundation_WidgetHandler(objectReference, vtableIndexForAddHandler)"))
         assertTrue(eventProjectionHelpers.contains("internal class _EventSource_Windows_Foundation_Collections_MapChangedEventHandler"))
-        assertTrue(eventProjectionHelpers.contains("internal object ${eventSourceOwnerHelperName("Windows.Foundation.Collections.IObservableMap")}"))
+        assertTrue(
+            eventProjectionHelpers.contains(
+                "internal object ${
+                    eventSourceOwnerHelperName(
+                        ownerType = "Windows.Foundation.Collections.IObservableMap",
+                        eventType = "Windows.Foundation.Collections.MapChangedEventHandler<T0, T1>",
+                    )
+                }",
+            ),
+        )
         assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.Collections.MapChangedEventHandler<T0, T1>", "Windows.Foundation.Collections.IObservableMap")}"))
         assertFalse(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.Collections.MapChangedEventHandler<String, System.Object>", "Windows.Foundation.Collections.IObservableMap")}"))
         assertTrue(eventProjectionHelpers.contains("IObservableMap.Metadata.wrap"))
         assertTrue(eventProjectionHelpers.contains("IMapChangedEventArgs.Metadata.wrap"))
-        assertTrue(eventProjectionHelpers.contains("internal object ${eventSourceOwnerHelperName("Windows.UI.Core.ICoreDispatcher")}"))
-        assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.TypedEventHandler<Windows.UI.Core.ICoreDispatcher, Windows.UI.Core.AcceleratorKeyEventArgs>", "Windows.UI.Core.ICoreDispatcher")}"))
+        if (eventProjectionHelpers.contains("Windows.UI.Core.ICoreDispatcher")) {
+            assertTrue(
+                eventProjectionHelpers.contains(
+                    "internal object ${
+                        eventSourceOwnerHelperName(
+                            ownerType = "Windows.UI.Core.ICoreDispatcher",
+                            eventType = "Windows.Foundation.TypedEventHandler<Windows.UI.Core.ICoreDispatcher,Windows.UI.Core.AcceleratorKeyEventArgs>",
+                        )
+                    }",
+                ),
+            )
+            assertTrue(eventProjectionHelpers.contains("fun ${eventSourceCreateFunctionName("Windows.Foundation.TypedEventHandler<Windows.UI.Core.ICoreDispatcher, Windows.UI.Core.AcceleratorKeyEventArgs>", "Windows.UI.Core.ICoreDispatcher")}"))
+        }
         assertFalse(eventProjectionHelpers.contains("fun installEventSources()"))
         assertFalse(eventProjectionHelpers.contains("WinRTEventProjectionRegistry"))
         assertFalse(eventProjectionHelpers.contains("fun createEventSource("))

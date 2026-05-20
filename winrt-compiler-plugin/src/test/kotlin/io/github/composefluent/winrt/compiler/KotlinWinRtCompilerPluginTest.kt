@@ -152,7 +152,7 @@ class KotlinWinRtCompilerPluginTest {
             manifest,
             """
             kind	className	sourceFile	entries
-            projection-registrar	io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar	projection-registrar.tsv	12
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	12
             event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	event-sources.tsv	3
             """.trimIndent() + "\n",
         )
@@ -161,7 +161,7 @@ class KotlinWinRtCompilerPluginTest {
 
         assertEquals(2, entries.size)
         assertEquals("projection-registrar", entries[0].kind)
-        assertEquals("io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar", entries[0].className)
+        assertEquals("io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic", entries[0].className)
         assertEquals("projection-registrar.tsv", entries[0].sourceFile)
         assertEquals(12, entries[0].entries)
         assertEquals("event-source", entries[1].kind)
@@ -174,7 +174,7 @@ class KotlinWinRtCompilerPluginTest {
             entries = listOf(
                 KotlinWinRtCompilerSupportManifestEntry(
                     kind = "projection-registrar",
-                    className = "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar",
+                    className = "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic",
                     sourceFile = "projection-registrar.tsv",
                     entries = 12,
                 ),
@@ -192,7 +192,7 @@ class KotlinWinRtCompilerPluginTest {
                 ),
                 KotlinWinRtCompilerSupportManifestEntry(
                     kind = "generic-abi-registry",
-                    className = "io.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact",
+                    className = "io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
                     sourceFile = "generic-abi-registry.tsv",
                     entries = 4,
                 ),
@@ -215,29 +215,41 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
-    fun projection_registrar_input_writes_class_artifact() {
-        val input = Files.createTempFile("kotlin-winrt-projection-registrar-", ".tsv")
+    fun projection_support_initializer_input_writes_content_addressed_class_artifact() {
+        val input = Files.createTempFile("kotlin-winrt-projection-support-", ".tsv")
         Files.writeString(
             input,
             listOf(
                 listOf("kotlinClassName", "projectedTypeName", "kind", "baseTypeName", "metadataClassName"),
                 listOf("java.lang.String", "Sample.Foundation.Widget", "RuntimeClass", "Sample.Foundation.WidgetBase", ""),
-                listOf("java.lang.Integer", "Sample.Foundation.IWidget", "Interface", "", ""),
             ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
         )
-        val outputDirectory = Files.createTempDirectory("kotlin-winrt-registrar-class-")
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-projection-support-class-")
 
         val entries = readProjectionRegistrarEntries(input)
-        writeProjectionRegistrarClass(entries, outputDirectory)
+        val internalName = writeProjectionSupportInitializerClass(entries, outputDirectory)
 
-        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
-            val klass = Class.forName(
-                "io.github.composefluent.winrt.projections.support.WinRTProjectionRegistrar",
-                false,
-                classLoader,
-            )
-            assertEquals("register", klass.getDeclaredMethod("register").name)
-        }
+        assertNotNull(internalName)
+        assertTrue(internalName!!.startsWith("io/github/composefluent/winrt/projections/support/WinRTProjectionSupport_"))
+        val supportClass = ClassReader(Files.readAllBytes(outputDirectory.resolve("$internalName.class")))
+        val methodNames = mutableSetOf<String>()
+        supportClass.accept(
+            object : ClassVisitor(Opcodes.ASM9) {
+                override fun visitMethod(
+                    access: Int,
+                    name: String?,
+                    descriptor: String?,
+                    signature: String?,
+                    exceptions: Array<out String>?,
+                ): MethodVisitor? {
+                    name?.let(methodNames::add)
+                    return null
+                }
+            },
+            0,
+        )
+        assertTrue(methodNames.contains("initialize"))
+        assertTrue(methodNames.contains("registerChunk000"))
     }
 
     @Test
@@ -305,33 +317,7 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
-    fun generic_instantiation_input_writes_registry_class_artifact() {
-        val input = Files.createTempFile("kotlin-winrt-generic-instantiations-", ".tsv")
-        Files.writeString(
-            input,
-            listOf(
-                listOf("className", "sourceType", "isDelegate", "rcwFunctions", "vtableFunctions", "propertyAccessors", "genericReturnOnlyRcwFunctions", "projectedGenericFallbacks", "dependencies"),
-                listOf("Windows_Foundation_IReference_Int", "Windows.Foundation.IReference<Int>", "false", "get_Value", "get_Value", "Value", "", "", ""),
-            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
-        )
-        val outputDirectory = Files.createTempDirectory("kotlin-winrt-generic-registry-class-")
-
-        val entries = readGenericTypeInstantiationEntries(input)
-        writeGenericTypeInstantiationRegistryClass(entries, outputDirectory)
-
-        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
-            val klass = Class.forName(
-                "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry",
-                false,
-                classLoader,
-            )
-            assertEquals("initializeAll", klass.getDeclaredMethod("initializeAll").name)
-            assertEquals("initializeBySourceType", klass.getDeclaredMethod("initializeBySourceType", String::class.java).name)
-        }
-    }
-
-    @Test
-    fun generic_abi_registry_input_writes_artifact_class() {
+    fun generic_abi_registry_input_reads_compile_time_facts() {
         val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-", ".tsv")
         Files.writeString(
             input,
@@ -349,39 +335,17 @@ class KotlinWinRtCompilerPluginTest {
                 ),
             ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
         )
-        val outputDirectory = Files.createTempDirectory("kotlin-winrt-generic-abi-class-")
 
         val entries = readGenericAbiRegistryEntries(input)
-        writeGenericAbiRegistryArtifactClass(entries, outputDirectory)
 
-        val artifactClass = ClassReader(
-            Files.readAllBytes(
-                outputDirectory.resolve(
-                    "io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact.class",
-                ),
-            ),
-        )
-        val methodNames = mutableSetOf<String>()
-        artifactClass.accept(
-            object : ClassVisitor(Opcodes.ASM9) {
-                override fun visitMethod(
-                    access: Int,
-                    name: String?,
-                    descriptor: String?,
-                    signature: String?,
-                    exceptions: Array<out String>?,
-                ): MethodVisitor? {
-                    name?.let(methodNames::add)
-                    return null
-                }
-            },
-            0,
-        )
-        assertEquals("io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact", artifactClass.className)
-        assertTrue(methodNames.contains("delegateNamed"))
-        assertTrue(methodNames.contains("delegatesForSourceType"))
-        assertTrue(methodNames.contains("isDerivedGenericInterface"))
-        assertTrue(methodNames.contains("registerAbiDelegates"))
+        assertEquals(2, entries.size)
+        assertEquals("derived-interface", entries[0].kind)
+        assertEquals("Windows.Foundation.Collections.IVector", entries[0].name)
+        assertEquals("delegate", entries[1].kind)
+        assertEquals("_get_Value_Int", entries[1].name)
+        assertEquals("Windows.Foundation.IReference<Int>", entries[1].sourceGenericType)
+        assertEquals(listOf("void*", "out int", "int"), entries[1].abiParameterTypes)
+        assertEquals(listOf("void*", "int.MakeByRefType()", "int"), entries[1].typeArrayShape)
     }
 
     @Test

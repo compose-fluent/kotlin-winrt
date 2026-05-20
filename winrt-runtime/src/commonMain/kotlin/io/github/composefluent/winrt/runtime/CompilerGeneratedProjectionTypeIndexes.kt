@@ -2,12 +2,6 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.reflect.KClass
 
-internal const val WINRT_PROJECTION_TYPE_INDEX_RESOURCE: String = "kotlin-winrt/type-index.tsv"
-
-internal expect fun registerCompilerGeneratedProjectionTypeIndexes()
-internal expect fun registerCompilerGeneratedProjectionRegistry(registryClassName: String)
-internal expect fun registerCompilerGeneratedEventSources()
-
 @Suppress("UNCHECKED_CAST")
 public fun registerGeneratedProjectionTypeIndex(
     kClass: KClass<*>,

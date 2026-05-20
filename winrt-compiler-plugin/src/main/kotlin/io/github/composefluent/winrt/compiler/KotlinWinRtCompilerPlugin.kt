@@ -26,14 +26,17 @@ import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
+import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.expressions.IrVararg
+import org.jetbrains.kotlin.ir.expressions.impl.IrVarargImpl
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
 import org.jetbrains.kotlin.ir.symbols.IrConstructorSymbol
 import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.symbols.UnsafeDuringIrConstructionAPI
 import org.jetbrains.kotlin.ir.builders.irAs
 import org.jetbrains.kotlin.ir.builders.irBlock
+import org.jetbrains.kotlin.ir.builders.irBlockBody
 import org.jetbrains.kotlin.ir.builders.irBoolean
 import org.jetbrains.kotlin.ir.builders.irByte
 import org.jetbrains.kotlin.ir.builders.declarations.buildFun
@@ -47,6 +50,8 @@ import org.jetbrains.kotlin.ir.builders.irIfNull
 import org.jetbrains.kotlin.ir.builders.irGetField
 import org.jetbrains.kotlin.ir.builders.irGet
 import org.jetbrains.kotlin.ir.builders.irGetObject
+import org.jetbrains.kotlin.ir.builders.irEquals
+import org.jetbrains.kotlin.ir.builders.irIfThen
 import org.jetbrains.kotlin.ir.builders.irIfThenElse
 import org.jetbrains.kotlin.ir.builders.irLong
 import org.jetbrains.kotlin.ir.builders.irNotEquals
@@ -57,6 +62,7 @@ import org.jetbrains.kotlin.ir.builders.irTry
 import org.jetbrains.kotlin.ir.builders.irUnit
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
+import org.jetbrains.kotlin.ir.expressions.impl.IrClassReferenceImpl
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
@@ -65,6 +71,7 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.org.objectweb.asm.ClassWriter
 import org.jetbrains.org.objectweb.asm.Opcodes
 import org.jetbrains.org.objectweb.asm.Type
+import java.security.MessageDigest
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -157,8 +164,42 @@ class KotlinWinRtIrGenerationExtension(
         pluginContext: IrPluginContext,
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
+        val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
         val interfaceNativeProjectionEntries = readInterfaceNativeProjectionEntries(compilerSupportEntries)
-        writeCompilerSupportClasses(compilerSupportEntries)
+        val genericTypeInstantiationEntries = readGenericTypeInstantiationEntries(compilerSupportEntries)
+        val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
+        writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries)
+        val projectionSupportInitialize = addProjectionSupportInitializerFunction(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            entries = projectionRegistrarEntries,
+        )
+        val genericTypeInstantiationSupport = addGenericTypeInstantiationSupportFunctions(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            entries = genericTypeInstantiationEntries,
+        )
+        val genericAbiSupport = addGenericAbiSupportFunctions(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            entries = genericAbiRegistryEntries,
+        )
+        lowerProjectionSupportIntrinsicCalls(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            initialize = projectionSupportInitialize,
+        )
+        lowerGenericTypeInstantiationSupportIntrinsicCalls(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            support = genericTypeInstantiationSupport,
+        )
+        lowerGenericAbiSupportIntrinsicCalls(
+            moduleFragment = moduleFragment,
+            pluginContext = pluginContext,
+            support = genericAbiSupport,
+        )
+        lowerAuthoringSupportIntrinsicCalls(moduleFragment, pluginContext)
         lowerGeneratedInterfaceProjectionCompilerPluginCalls(
             moduleFragment = moduleFragment,
             pluginContext = pluginContext,
@@ -179,6 +220,10 @@ class KotlinWinRtIrGenerationExtension(
             .filterNot { file -> isGeneratedSourceFile(file.fileEntry.name, generatedSourceRoot) }
             .flatMap { file -> file.declarations.asSequence().flatMap { declaration -> classContextsIn(declaration).asSequence() } }
             .toList()
+        val authoredTypeNames = classContexts
+            .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes)?.sourceTypeName }
+            .toSet()
+        lowerAuthoredTypeConstructorCalls(moduleFragment, pluginContext, authoredTypeNames)
         writeProjectionTypeIndex(classContexts, winRtTypes)
         classContexts.forEach { context ->
             val klass = context.klass
@@ -2814,27 +2859,22 @@ class KotlinWinRtIrGenerationExtension(
         return readCompilerSupportManifest(manifestPath)
     }
 
-    private fun writeCompilerSupportClasses(entries: List<KotlinWinRtCompilerSupportManifestEntry>) {
+    private fun writeCompilerSupportClasses(
+        entries: List<KotlinWinRtCompilerSupportManifestEntry>,
+        projectionRegistrarEntries: List<KotlinWinRtProjectionRegistrarEntry>,
+    ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         if (entries.isEmpty()) {
             return
         }
         writeCompilerSupportManifestClass(entries, outputDirectory)
-        writeProjectionRegistrarClass(
-            entries = readProjectionRegistrarEntries(entries),
+        writeProjectionSupportInitializerClass(
+            entries = projectionRegistrarEntries,
             outputDirectory = outputDirectory,
         )
         val eventProjectionEntries = readEventProjectionEntries(entries)
         writeEventProjectionRegistryClass(
             entries = eventProjectionEntries,
-            outputDirectory = outputDirectory,
-        )
-        writeGenericTypeInstantiationRegistryClass(
-            entries = readGenericTypeInstantiationEntries(entries),
-            outputDirectory = outputDirectory,
-        )
-        writeGenericAbiRegistryArtifactClass(
-            entries = readGenericAbiRegistryEntries(entries),
             outputDirectory = outputDirectory,
         )
     }
@@ -3023,6 +3063,691 @@ class KotlinWinRtIrGenerationExtension(
         val klass: IrClass,
         val containingTypesPublic: Boolean,
     )
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun addProjectionSupportInitializerFunction(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    ): IrSimpleFunctionSymbol? {
+        if (entries.isEmpty()) {
+            return null
+        }
+        val file = moduleFragment.files.firstOrNull() ?: return null
+        val registerGeneratedProjectionTypeIndex = pluginContext.referenceFunctions(
+            CallableId(
+                FqName("io.github.composefluent.winrt.runtime"),
+                Name.identifier("registerGeneratedProjectionTypeIndex"),
+            ),
+        )
+            .map { symbol -> symbol.owner }
+            .singleOrNull { function ->
+                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 4
+            }
+            ?.symbol
+            ?: return null
+        val function = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtProjectionSupportInitialize_${projectionSupportInitializerHash(entries)}")
+            returnType = pluginContext.irBuiltIns.unitType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+        }
+        val builder = DeclarationIrBuilder(pluginContext, function.symbol)
+        function.body = builder.irBlockBody {
+            entries
+                .sortedWith(compareBy(KotlinWinRtProjectionRegistrarEntry::kotlinClassName, KotlinWinRtProjectionRegistrarEntry::projectedTypeName))
+                .forEach { entry ->
+                    val projectedClass = pluginContext.referenceClass(ClassId.topLevel(FqName(entry.kotlinClassName)))
+                        ?: return@forEach
+                    +builder.irCall(registerGeneratedProjectionTypeIndex).apply {
+                        arguments[0] = IrClassReferenceImpl(
+                            startOffset = 0,
+                            endOffset = 0,
+                            type = pluginContext.irBuiltIns.kClassClass.owner.defaultType,
+                            symbol = projectedClass,
+                            classType = projectedClass.owner.defaultType,
+                        )
+                        arguments[1] = builder.irString(entry.projectedTypeName)
+                        arguments[2] = builder.irString(entry.kind)
+                        arguments[3] = builder.irString(entry.baseTypeName)
+                    }
+                }
+        }
+        file.declarations += function
+        return function.symbol
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerProjectionSupportIntrinsicCalls(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        initialize: IrSimpleFunctionSymbol?,
+    ) {
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    if (!call.isProjectionSupportEnsureInitializedCall()) {
+                        return call
+                    }
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
+                    return initialize?.let { symbol -> builder.irCall(symbol) } ?: builder.irUnit()
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrCall.isProjectionSupportEnsureInitializedCall(): Boolean {
+        val function = symbol.owner
+        if (function.name.asString() != "ensureInitialized") {
+            return false
+        }
+        val ownerClass = function.parent as? IrClass ?: return false
+        return ownerClass.fqNameWhenAvailable?.asString() ==
+            "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic"
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun addGenericTypeInstantiationSupportFunctions(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
+    ): GenericTypeInstantiationSupportFunctions? {
+        if (entries.isEmpty()) {
+            return null
+        }
+        val file = moduleFragment.files.firstOrNull() ?: return null
+        val supportClass = pluginContext.referenceClass(
+            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations")),
+        ) ?: return null
+        val entryClass = pluginContext.referenceClass(
+            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry")),
+        ) ?: return null
+        val entryConstructor = entryClass.owner.declarations
+            .filterIsInstance<IrConstructor>()
+            .singleOrNull { constructor ->
+                constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 9
+            }
+            ?.symbol
+            ?: return null
+        val initializeEntry = supportClass.owner.declarations
+            .filterIsInstance<IrSimpleFunction>()
+            .singleOrNull { function ->
+                function.name.asString() == "initializeEntry" &&
+                    function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 1
+            }
+            ?.symbol
+            ?: return null
+        val listOf = pluginContext.referenceFunctions(
+            CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
+        ).singleOrNull { function ->
+            function.owner.parameters
+                .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
+                ?.varargElementType != null
+        } ?: return null
+
+        val sortedEntries = entries.sortedWith(
+            compareBy(KotlinWinRtGenericTypeInstantiationEntry::sourceType, KotlinWinRtGenericTypeInstantiationEntry::className),
+        )
+        val initializeAll = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeAll")
+            returnType = pluginContext.irBuiltIns.unitType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+        }
+        val initializeAllBuilder = DeclarationIrBuilder(pluginContext, initializeAll.symbol)
+        initializeAll.body = initializeAllBuilder.irBlockBody {
+            sortedEntries.forEach { entry ->
+                +initializeAllBuilder.genericTypeInstantiationInitializeEntryCall(
+                    pluginContext = pluginContext,
+                    supportClass = supportClass,
+                    initializeEntry = initializeEntry,
+                    entryConstructor = entryConstructor,
+                    listOf = listOf,
+                    entry = entry,
+                )
+            }
+        }
+
+        val initializeBySourceType = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtGenericTypeInstantiationInitializeBySourceType")
+            returnType = pluginContext.irBuiltIns.unitType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+            parameters = listOf(
+                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                    name = Name.identifier("sourceType")
+                    type = pluginContext.irBuiltIns.stringType
+                    kind = IrParameterKind.Regular
+                }, this),
+            )
+        }
+        val initializeBySourceTypeBuilder = DeclarationIrBuilder(pluginContext, initializeBySourceType.symbol)
+        val sourceTypeParameter = initializeBySourceType.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        initializeBySourceType.body = initializeBySourceTypeBuilder.irBlockBody {
+            sortedEntries.forEach { entry ->
+                +initializeBySourceTypeBuilder.irIfThen(
+                    type = pluginContext.irBuiltIns.unitType,
+                    condition = initializeBySourceTypeBuilder.irEquals(
+                        initializeBySourceTypeBuilder.irGet(sourceTypeParameter),
+                        initializeBySourceTypeBuilder.irString(entry.sourceType),
+                    ),
+                    thenPart = initializeBySourceTypeBuilder.genericTypeInstantiationInitializeEntryCall(
+                        pluginContext = pluginContext,
+                        supportClass = supportClass,
+                        initializeEntry = initializeEntry,
+                        entryConstructor = entryConstructor,
+                        listOf = listOf,
+                        entry = entry,
+                    ),
+                )
+            }
+        }
+        file.declarations += initializeAll
+        file.declarations += initializeBySourceType
+        return GenericTypeInstantiationSupportFunctions(
+            initializeAll = initializeAll.symbol,
+            initializeBySourceType = initializeBySourceType.symbol,
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun DeclarationIrBuilder.genericTypeInstantiationInitializeEntryCall(
+        pluginContext: IrPluginContext,
+        supportClass: IrClassSymbol,
+        initializeEntry: IrSimpleFunctionSymbol,
+        entryConstructor: IrConstructorSymbol,
+        listOf: IrSimpleFunctionSymbol,
+        entry: KotlinWinRtGenericTypeInstantiationEntry,
+    ): IrExpression =
+        irCall(initializeEntry).apply {
+            dispatchReceiver = irGetObject(supportClass)
+            arguments[1] = irCall(entryConstructor).apply {
+                arguments[0] = irString(entry.className)
+                arguments[1] = irString(entry.sourceType)
+                arguments[2] = irBoolean(entry.isDelegate)
+                arguments[3] = irStringList(pluginContext, listOf, entry.rcwFunctions)
+                arguments[4] = irStringList(pluginContext, listOf, entry.vtableFunctions)
+                arguments[5] = irStringList(pluginContext, listOf, entry.propertyAccessors)
+                arguments[6] = irStringList(pluginContext, listOf, entry.genericReturnOnlyRcwFunctions)
+                arguments[7] = irStringList(pluginContext, listOf, entry.projectedGenericFallbacks)
+                arguments[8] = irStringList(pluginContext, listOf, entry.dependencies)
+            }
+        }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun DeclarationIrBuilder.irStringList(
+        pluginContext: IrPluginContext,
+        listOf: IrSimpleFunctionSymbol,
+        values: List<String>,
+    ): IrExpression {
+        val parameter = listOf.owner.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        return irCall(listOf).apply {
+            arguments[0] = IrVarargImpl(
+                startOffset = startOffset,
+                endOffset = endOffset,
+                type = parameter.type,
+                varargElementType = pluginContext.irBuiltIns.stringType,
+                elements = values.map { value -> irString(value) },
+            )
+        }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerGenericTypeInstantiationSupportIntrinsicCalls(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        support: GenericTypeInstantiationSupportFunctions?,
+    ) {
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    val genericCall = call.genericTypeInstantiationSupportIntrinsicCallName() ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
+                    return when (genericCall) {
+                        "initializeAll" -> support?.let { builder.irCall(it.initializeAll) } ?: builder.irUnit()
+                        "initializeBySourceType" -> support?.let {
+                            builder.irCall(it.initializeBySourceType).apply {
+                                arguments[0] = call.arguments[1]
+                            }
+                        } ?: builder.irUnit()
+                        else -> call
+                    }
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrCall.genericTypeInstantiationSupportIntrinsicCallName(): String? {
+        val function = symbol.owner
+        val name = function.name.asString()
+        if (name != "initializeAll" && name != "initializeBySourceType") {
+            return null
+        }
+        val ownerClass = function.parent as? IrClass ?: return null
+        return name.takeIf {
+            ownerClass.fqNameWhenAvailable?.asString() ==
+                "io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationSupportIntrinsic"
+        }
+    }
+
+    private data class GenericTypeInstantiationSupportFunctions(
+        val initializeAll: IrSimpleFunctionSymbol,
+        val initializeBySourceType: IrSimpleFunctionSymbol,
+    )
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun addGenericAbiSupportFunctions(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        entries: List<KotlinWinRtGenericAbiRegistryEntry>,
+    ): GenericAbiSupportFunctions? {
+        if (entries.isEmpty()) {
+            return null
+        }
+        val file = moduleFragment.files.firstOrNull() ?: return null
+        val entryClass = pluginContext.referenceClass(
+            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry")),
+        ) ?: return null
+        val entryConstructor = entryClass.owner.declarations
+            .filterIsInstance<IrConstructor>()
+            .singleOrNull { constructor ->
+                constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 6
+            }
+            ?.symbol
+            ?: return null
+        val intrinsicClass = pluginContext.referenceClass(
+            ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic")),
+        ) ?: return null
+        val delegateNamedIntrinsic = intrinsicClass.functionNamedWithRegularParameterCount("delegateNamed", 1) ?: return null
+        val delegatesForSourceTypeIntrinsic =
+            intrinsicClass.functionNamedWithRegularParameterCount("delegatesForSourceType", 1) ?: return null
+        val isDerivedGenericInterfaceIntrinsic =
+            intrinsicClass.functionNamedWithRegularParameterCount("isDerivedGenericInterface", 1) ?: return null
+        val registerAbiDelegatesIntrinsic =
+            intrinsicClass.functionNamedWithRegularParameterCount("registerAbiDelegates", 1) ?: return null
+        val listOf = pluginContext.referenceFunctions(
+            CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
+        ).singleOrNull { function ->
+            function.owner.parameters
+                .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
+                ?.varargElementType != null
+        } ?: return null
+        val emptyList = pluginContext.referenceFunctions(
+            CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+        ).singleOrNull() ?: return null
+        val function2 = pluginContext.referenceClass(KOTLIN_FUNCTION2_CLASS_ID) ?: return null
+        val function2Invoke = function2.functionNamed("invoke") ?: return null
+
+        val delegates = entries
+            .filter { entry -> entry.kind == "delegate" }
+            .sortedWith(compareBy(KotlinWinRtGenericAbiRegistryEntry::name, KotlinWinRtGenericAbiRegistryEntry::sourceGenericType))
+        val derivedInterfaces = entries
+            .filter { entry -> entry.kind == "derived-interface" }
+            .map { entry -> entry.name }
+            .distinct()
+            .sorted()
+
+        val delegateNamed = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtGenericAbiDelegateNamed")
+            returnType = delegateNamedIntrinsic.owner.returnType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+            parameters = listOf(
+                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                    name = Name.identifier("name")
+                    type = pluginContext.irBuiltIns.stringType
+                    kind = IrParameterKind.Regular
+                }, this),
+            )
+        }
+        val delegateNamedBuilder = DeclarationIrBuilder(pluginContext, delegateNamed.symbol)
+        val nameParameter = delegateNamed.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        delegateNamed.body = delegateNamedBuilder.irBlockBody {
+            +delegates.asReversed().fold(delegateNamedBuilder.irNull() as IrExpression) { elsePart, entry ->
+                delegateNamedBuilder.irIfThenElse(
+                    type = delegateNamed.returnType,
+                    condition = delegateNamedBuilder.irEquals(
+                        delegateNamedBuilder.irGet(nameParameter),
+                        delegateNamedBuilder.irString(entry.name),
+                    ),
+                    thenPart = delegateNamedBuilder.genericAbiDelegateEntryCall(
+                        pluginContext = pluginContext,
+                        entryConstructor = entryConstructor,
+                        listOf = listOf,
+                        entry = entry,
+                    ),
+                    elsePart = elsePart,
+                )
+            }
+        }
+
+        val delegatesForSourceType = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtGenericAbiDelegatesForSourceType")
+            returnType = delegatesForSourceTypeIntrinsic.owner.returnType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+            parameters = listOf(
+                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                    name = Name.identifier("sourceGenericType")
+                    type = pluginContext.irBuiltIns.stringType
+                    kind = IrParameterKind.Regular
+                }, this),
+            )
+        }
+        val delegatesForSourceTypeBuilder = DeclarationIrBuilder(pluginContext, delegatesForSourceType.symbol)
+        val sourceGenericTypeParameter =
+            delegatesForSourceType.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        val delegatesBySourceType = delegates.groupBy { entry -> entry.sourceGenericType }.toSortedMap()
+        delegatesForSourceType.body = delegatesForSourceTypeBuilder.irBlockBody {
+            +delegatesBySourceType.entries.toList().asReversed().fold(
+                delegatesForSourceTypeBuilder.irCall(emptyList) as IrExpression,
+            ) { elsePart, (sourceGenericType, sourceEntries) ->
+                delegatesForSourceTypeBuilder.irIfThenElse(
+                    type = delegatesForSourceType.returnType,
+                    condition = delegatesForSourceTypeBuilder.irEquals(
+                        delegatesForSourceTypeBuilder.irGet(sourceGenericTypeParameter),
+                        delegatesForSourceTypeBuilder.irString(sourceGenericType),
+                    ),
+                    thenPart = delegatesForSourceTypeBuilder.genericAbiDelegateEntryList(
+                        pluginContext = pluginContext,
+                        entryConstructor = entryConstructor,
+                        listOf = listOf,
+                        entries = sourceEntries,
+                    ),
+                    elsePart = elsePart,
+                )
+            }
+        }
+
+        val isDerivedGenericInterface = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtGenericAbiIsDerivedGenericInterface")
+            returnType = isDerivedGenericInterfaceIntrinsic.owner.returnType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+            parameters = listOf(
+                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                    name = Name.identifier("typeName")
+                    type = pluginContext.irBuiltIns.stringType
+                    kind = IrParameterKind.Regular
+                }, this),
+            )
+        }
+        val isDerivedGenericInterfaceBuilder = DeclarationIrBuilder(pluginContext, isDerivedGenericInterface.symbol)
+        val typeNameParameter = isDerivedGenericInterface.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        isDerivedGenericInterface.body = isDerivedGenericInterfaceBuilder.irBlockBody {
+            +derivedInterfaces.asReversed().fold(isDerivedGenericInterfaceBuilder.irBoolean(false) as IrExpression) { elsePart, typeName ->
+                isDerivedGenericInterfaceBuilder.irIfThenElse(
+                    type = isDerivedGenericInterface.returnType,
+                    condition = isDerivedGenericInterfaceBuilder.irEquals(
+                        isDerivedGenericInterfaceBuilder.irGet(typeNameParameter),
+                        isDerivedGenericInterfaceBuilder.irString(typeName),
+                    ),
+                    thenPart = isDerivedGenericInterfaceBuilder.irBoolean(true),
+                    elsePart = elsePart,
+                )
+            }
+        }
+
+        val registerAbiDelegates = pluginContext.irFactory.buildFun {
+            name = Name.identifier("kotlinWinRtGenericAbiRegisterAbiDelegates")
+            returnType = registerAbiDelegatesIntrinsic.owner.returnType
+            visibility = DescriptorVisibilities.INTERNAL
+            modality = Modality.FINAL
+        }.apply {
+            parent = file
+            parameters = listOf(
+                pluginContext.irFactory.buildValueParameter(IrValueParameterBuilder().apply {
+                    name = Name.identifier("register")
+                    type = registerAbiDelegatesIntrinsic.owner.parameters
+                        .single { parameter -> parameter.kind == IrParameterKind.Regular }
+                        .type
+                    kind = IrParameterKind.Regular
+                }, this),
+            )
+        }
+        val registerAbiDelegatesBuilder = DeclarationIrBuilder(pluginContext, registerAbiDelegates.symbol)
+        val registerParameter = registerAbiDelegates.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        registerAbiDelegates.body = registerAbiDelegatesBuilder.irBlockBody {
+            delegates.forEach { entry ->
+                +registerAbiDelegatesBuilder.irCall(function2Invoke).apply {
+                    arguments[0] = registerAbiDelegatesBuilder.irGet(registerParameter)
+                    arguments[1] = registerAbiDelegatesBuilder.irStringList(pluginContext, listOf, entry.typeArrayShape)
+                    arguments[2] = registerAbiDelegatesBuilder.irString(entry.name)
+                }
+            }
+        }
+
+        file.declarations += delegateNamed
+        file.declarations += delegatesForSourceType
+        file.declarations += isDerivedGenericInterface
+        file.declarations += registerAbiDelegates
+        return GenericAbiSupportFunctions(
+            delegateNamed = delegateNamed.symbol,
+            delegatesForSourceType = delegatesForSourceType.symbol,
+            isDerivedGenericInterface = isDerivedGenericInterface.symbol,
+            registerAbiDelegates = registerAbiDelegates.symbol,
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun DeclarationIrBuilder.genericAbiDelegateEntryList(
+        pluginContext: IrPluginContext,
+        entryConstructor: IrConstructorSymbol,
+        listOf: IrSimpleFunctionSymbol,
+        entries: List<KotlinWinRtGenericAbiRegistryEntry>,
+    ): IrExpression {
+        val parameter = listOf.owner.parameters.single { parameter -> parameter.kind == IrParameterKind.Regular }
+        return irCall(listOf).apply {
+            arguments[0] = IrVarargImpl(
+                startOffset = startOffset,
+                endOffset = endOffset,
+                type = parameter.type,
+                varargElementType = pluginContext.irBuiltIns.anyNType,
+                elements = entries.map { entry ->
+                    genericAbiDelegateEntryCall(
+                        pluginContext = pluginContext,
+                        entryConstructor = entryConstructor,
+                        listOf = listOf,
+                        entry = entry,
+                    )
+                },
+            )
+        }
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun DeclarationIrBuilder.genericAbiDelegateEntryCall(
+        pluginContext: IrPluginContext,
+        entryConstructor: IrConstructorSymbol,
+        listOf: IrSimpleFunctionSymbol,
+        entry: KotlinWinRtGenericAbiRegistryEntry,
+    ): IrExpression =
+        irCall(entryConstructor).apply {
+            arguments[0] = irString(entry.name)
+            arguments[1] = irString(entry.sourceGenericType)
+            arguments[2] = irString(entry.operation)
+            arguments[3] = irString(entry.declaration)
+            arguments[4] = irStringList(pluginContext, listOf, entry.abiParameterTypes)
+            arguments[5] = irStringList(pluginContext, listOf, entry.typeArrayShape)
+        }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerGenericAbiSupportIntrinsicCalls(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        support: GenericAbiSupportFunctions?,
+    ) {
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    val genericAbiCall = call.genericAbiSupportIntrinsicCallName() ?: return call
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
+                    return when (genericAbiCall) {
+                        "delegateNamed" -> support?.let {
+                            builder.irCall(it.delegateNamed).apply {
+                                arguments[0] = call.arguments[1]
+                            }
+                        } ?: builder.irNull()
+                        "delegatesForSourceType" -> support?.let {
+                            builder.irCall(it.delegatesForSourceType).apply {
+                                arguments[0] = call.arguments[1]
+                            }
+                        } ?: builder.irCall(
+                            pluginContext.referenceFunctions(
+                                CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
+                            ).single(),
+                        )
+                        "isDerivedGenericInterface" -> support?.let {
+                            builder.irCall(it.isDerivedGenericInterface).apply {
+                                arguments[0] = call.arguments[1]
+                            }
+                        } ?: builder.irBoolean(false)
+                        "registerAbiDelegates" -> support?.let {
+                            builder.irCall(it.registerAbiDelegates).apply {
+                                arguments[0] = call.arguments[1]
+                            }
+                        } ?: builder.irUnit()
+                        else -> call
+                    }
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrCall.genericAbiSupportIntrinsicCallName(): String? {
+        val function = symbol.owner
+        val name = function.name.asString()
+        if (name !in GENERIC_ABI_SUPPORT_INTRINSIC_FUNCTIONS) {
+            return null
+        }
+        val ownerClass = function.parent as? IrClass ?: return null
+        return name.takeIf {
+            ownerClass.fqNameWhenAvailable?.asString() ==
+                "io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic"
+        }
+    }
+
+    private data class GenericAbiSupportFunctions(
+        val delegateNamed: IrSimpleFunctionSymbol,
+        val delegatesForSourceType: IrSimpleFunctionSymbol,
+        val isDerivedGenericInterface: IrSimpleFunctionSymbol,
+        val registerAbiDelegates: IrSimpleFunctionSymbol,
+    )
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerAuthoringSupportIntrinsicCalls(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+    ) {
+        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext)
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitCall(expression: IrCall): IrExpression {
+                    val call = super.visitCall(expression) as IrCall
+                    if (!call.isAuthoringSupportEnsureInitializedCall()) {
+                        return call
+                    }
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
+                    if (registrar == null) {
+                        return builder.irUnit()
+                    }
+                    return builder.irCall(registrar.register).apply {
+                        dispatchReceiver = builder.irGetObject(registrar.registrarClass)
+                    }
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerAuthoredTypeConstructorCalls(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        authoredTypeNames: Set<String>,
+    ) {
+        if (authoredTypeNames.isEmpty()) {
+            return
+        }
+        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext) ?: return
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitConstructorCall(expression: IrConstructorCall): IrExpression {
+                    val call = super.visitConstructorCall(expression) as IrConstructorCall
+                    val constructedClass = call.symbol.owner.parent as? IrClass ?: return call
+                    val constructedTypeName = constructedClass.fqNameWhenAvailable?.asString() ?: return call
+                    if (constructedTypeName !in authoredTypeNames) {
+                        return call
+                    }
+                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
+                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
+                    return builder.irBlock(resultType = call.type) {
+                        +builder.irCall(registrar.register).apply {
+                            dispatchReceiver = builder.irGetObject(registrar.registrarClass)
+                        }
+                        +call
+                    }
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun authoringTypeDetailsRegistrarRegister(
+        pluginContext: IrPluginContext,
+    ): AuthoringTypeDetailsRegistrar? {
+        val registrarClass = pluginContext.referenceClass(
+            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.WinRTAuthoringTypeDetailsRegistrar")),
+        ) ?: return null
+        val register = registrarClass
+            .owner
+            .declarations
+            .filterIsInstance<IrSimpleFunction>()
+            .singleOrNull { function ->
+                function.name.asString() == "register" &&
+                    function.parameters.none { parameter -> parameter.kind == IrParameterKind.Regular }
+            }
+            ?.symbol
+            ?: return null
+        return AuthoringTypeDetailsRegistrar(registrarClass, register)
+    }
+
+    private data class AuthoringTypeDetailsRegistrar(
+        val registrarClass: IrClassSymbol,
+        val register: IrSimpleFunctionSymbol,
+    )
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun IrCall.isAuthoringSupportEnsureInitializedCall(): Boolean {
+        val function = symbol.owner
+        if (function.name.asString() != "ensureInitialized") {
+            return false
+        }
+        val ownerClass = function.parent as? IrClass ?: return false
+        return ownerClass.fqNameWhenAvailable?.asString() ==
+            "io.github.composefluent.winrt.runtime.WinRtAuthoringSupportIntrinsic"
+    }
 }
 
 private val WINRT_PROJECTION_INTRINSIC_FQ_NAME =
@@ -3142,6 +3867,12 @@ private val KOTLIN_ULONG_CLASS_ID =
 
 private val KOTLIN_FUNCTION1_CLASS_ID =
     ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("Function1"))
+
+private val KOTLIN_FUNCTION2_CLASS_ID =
+    ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("Function2"))
+
+private val GENERIC_ABI_SUPPORT_INTRINSIC_FUNCTIONS =
+    setOf("delegateNamed", "delegatesForSourceType", "isDerivedGenericInterface", "registerAbiDelegates")
 
 private val WINRT_COM_VTABLE_INVOKER_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.ComVtableInvoker")
@@ -3304,23 +4035,15 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
 private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest"
 
-private const val PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME: String =
-    "io/github/composefluent/winrt/projections/support/WinRTProjectionRegistrar"
+private const val PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX: String =
+    "io/github/composefluent/winrt/projections/support/WinRTProjectionSupport_"
 
 private const val EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry"
 
-private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME: String =
-    "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiationRegistry"
-
-private const val GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME: String =
-    "io/github/composefluent/winrt/projections/support/WinRTGenericAbiRegistryArtifact"
-
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
 
 private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
-
-private const val GENERIC_TYPE_INSTANTIATION_REGISTRY_CHUNK_SIZE: Int = 96
 
 private const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR: String = "\u001F"
 
@@ -3386,55 +4109,98 @@ private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionReg
     )
 }
 
-fun writeProjectionRegistrarClass(
+fun writeProjectionSupportInitializerClass(
     entries: List<KotlinWinRtProjectionRegistrarEntry>,
     outputDirectory: Path,
-) {
+): String? {
     if (entries.isEmpty()) {
-        return
+        return null
     }
+    val internalName = projectionSupportInitializerInternalName(entries)
     val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
     classWriter.visit(
         Opcodes.V17,
         Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME,
+        internalName,
         null,
         "java/lang/Object",
         null,
     )
-    classWriter.visitSource("projection-registrar.tsv", null)
+    classWriter.visitSource("compiler-support.tsv", null)
+    classWriter.visitField(
+        Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
+        "initialized",
+        "Z",
+        null,
+        null,
+    ).visitEnd()
     classWriter.addDefaultConstructor()
     val chunks = entries.chunked(PROJECTION_REGISTRAR_CHUNK_SIZE)
-    val register = classWriter.visitMethod(
+    val initialize = classWriter.visitMethod(
         Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        "register",
+        "initialize",
         "()V",
         null,
         null,
     )
-    register.visitCode()
+    initialize.visitCode()
+    val alreadyInitialized = org.jetbrains.org.objectweb.asm.Label()
+    initialize.visitFieldInsn(Opcodes.GETSTATIC, internalName, "initialized", "Z")
+    initialize.visitJumpInsn(Opcodes.IFNE, alreadyInitialized)
+    initialize.visitInsn(Opcodes.ICONST_1)
+    initialize.visitFieldInsn(Opcodes.PUTSTATIC, internalName, "initialized", "Z")
     chunks.indices.forEach { index ->
-        register.visitMethodInsn(
+        initialize.visitMethodInsn(
             Opcodes.INVOKESTATIC,
-            PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME,
+            internalName,
             projectionRegistrarChunkName(index),
             "()V",
             false,
         )
     }
-    register.visitInsn(Opcodes.RETURN)
-    register.visitMaxs(0, 0)
-    register.visitEnd()
+    initialize.visitLabel(alreadyInitialized)
+    initialize.visitInsn(Opcodes.RETURN)
+    initialize.visitMaxs(0, 0)
+    initialize.visitEnd()
 
     chunks.forEachIndexed { index, chunk ->
         classWriter.addProjectionRegistrarChunk(projectionRegistrarChunkName(index), chunk)
     }
     classWriter.visitEnd()
 
-    val target = outputDirectory.resolve("$PROJECTION_REGISTRAR_CLASS_INTERNAL_NAME.class")
+    val target = outputDirectory.resolve("$internalName.class")
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
+    return internalName
 }
+
+fun projectionSupportInitializerInternalName(
+    entries: List<KotlinWinRtProjectionRegistrarEntry>,
+): String {
+    val digest = projectionSupportInitializerHash(entries)
+    return "$PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX$digest"
+}
+
+fun projectionSupportInitializerHash(
+    entries: List<KotlinWinRtProjectionRegistrarEntry>,
+): String =
+    MessageDigest.getInstance("SHA-256")
+        .digest(
+            entries
+                .sortedWith(compareBy(KotlinWinRtProjectionRegistrarEntry::kotlinClassName, KotlinWinRtProjectionRegistrarEntry::projectedTypeName))
+                .joinToString(separator = "\n") { entry ->
+                    listOf(
+                        entry.kotlinClassName,
+                        entry.projectedTypeName,
+                        entry.kind,
+                        entry.baseTypeName,
+                        entry.metadataClassName,
+                    ).joinToString("\t")
+                }
+                .toByteArray(StandardCharsets.UTF_8),
+        )
+        .joinToString(separator = "") { byte -> "%02x".format(byte) }
+        .take(16)
 
 private fun projectionRegistrarChunkName(index: Int): String =
     "registerChunk${index.toString().padStart(3, '0')}"
@@ -3720,151 +4486,6 @@ private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericT
 private fun String.splitListField(): List<String> =
     split(',').filter(String::isNotBlank)
 
-fun writeGenericTypeInstantiationRegistryClass(
-    entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
-    outputDirectory: Path,
-) {
-    if (entries.isEmpty()) {
-        return
-    }
-    val classWriter = ClassWriter(ClassWriter.COMPUTE_FRAMES)
-    classWriter.visit(
-        Opcodes.V17,
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME,
-        null,
-        "java/lang/Object",
-        null,
-    )
-    classWriter.visitSource("generic-instantiations.tsv", null)
-    classWriter.addDefaultConstructor()
-    val chunks = entries.chunked(GENERIC_TYPE_INSTANTIATION_REGISTRY_CHUNK_SIZE)
-    classWriter.addGenericRegistryDispatcher("initializeAll", "()V", chunks.indices) { method, index ->
-        method.visitMethodInsn(
-            Opcodes.INVOKESTATIC,
-            GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME,
-            genericRegistryChunkName(index),
-            "()V",
-            false,
-        )
-    }
-    classWriter.addGenericRegistryDispatcher("initializeBySourceType", "(Ljava/lang/String;)V", chunks.indices) { method, index ->
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.visitMethodInsn(
-            Opcodes.INVOKESTATIC,
-            GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME,
-            genericRegistrySourceChunkName(index),
-            "(Ljava/lang/String;)V",
-            false,
-        )
-    }
-    chunks.forEachIndexed { index, chunk ->
-        classWriter.addGenericRegistryChunk(genericRegistryChunkName(index), chunk)
-        classWriter.addGenericRegistrySourceChunk(genericRegistrySourceChunkName(index), chunk)
-    }
-    classWriter.visitEnd()
-
-    val target = outputDirectory.resolve("$GENERIC_TYPE_INSTANTIATION_REGISTRY_CLASS_INTERNAL_NAME.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
-}
-
-private fun ClassWriter.addGenericRegistryDispatcher(
-    name: String,
-    descriptor: String,
-    indices: IntRange,
-    callChunk: (org.jetbrains.org.objectweb.asm.MethodVisitor, Int) -> Unit,
-) {
-    val method = visitMethod(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, name, descriptor, null, null)
-    method.visitCode()
-    indices.forEach { index -> callChunk(method, index) }
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun genericRegistryChunkName(index: Int): String =
-    "initializeAllChunk${index.toString().padStart(3, '0')}"
-
-private fun genericRegistrySourceChunkName(index: Int): String =
-    "initializeBySourceTypeChunk${index.toString().padStart(3, '0')}"
-
-private fun ClassWriter.addGenericRegistryChunk(
-    name: String,
-    entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
-) {
-    val method = visitMethod(Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC, name, "()V", null, null)
-    method.visitCode()
-    entries.forEach { entry ->
-        method.addGenericInstantiationEntry(entry)
-        method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
-            "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
-            "initializeEntry",
-            "(Lio/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry;)V",
-            false,
-        )
-    }
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addGenericRegistrySourceChunk(
-    name: String,
-    entries: List<KotlinWinRtGenericTypeInstantiationEntry>,
-) {
-    val method = visitMethod(Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC, name, "(Ljava/lang/String;)V", null, null)
-    method.visitCode()
-    entries.forEach { entry ->
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.visitLdcInsn(entry.sourceType)
-        method.visitMethodInsn(Opcodes.INVOKESTATIC, "kotlin/jvm/internal/Intrinsics", "areEqual", "(Ljava/lang/Object;Ljava/lang/Object;)Z", false)
-        val next = org.jetbrains.org.objectweb.asm.Label()
-        method.visitJumpInsn(Opcodes.IFEQ, next)
-        method.addGenericInstantiationEntry(entry)
-        method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
-            "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
-            "initializeEntry",
-            "(Lio/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry;)V",
-            false,
-        )
-        method.visitInsn(Opcodes.RETURN)
-        method.visitLabel(next)
-    }
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addGenericInstantiationEntry(entry: KotlinWinRtGenericTypeInstantiationEntry) {
-    visitFieldInsn(
-        Opcodes.GETSTATIC,
-        "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
-        "INSTANCE",
-        "Lio/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations;",
-    )
-    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry")
-    visitInsn(Opcodes.DUP)
-    visitLdcInsn(entry.className)
-    visitLdcInsn(entry.sourceType)
-    visitInsn(if (entry.isDelegate) Opcodes.ICONST_1 else Opcodes.ICONST_0)
-    addStringList(entry.rcwFunctions)
-    addStringList(entry.vtableFunctions)
-    addStringList(entry.propertyAccessors)
-    addStringList(entry.genericReturnOnlyRcwFunctions)
-    addStringList(entry.projectedGenericFallbacks)
-    addStringList(entry.dependencies)
-    visitMethodInsn(
-        Opcodes.INVOKESPECIAL,
-        "io/github/composefluent/winrt/projections/support/GenericTypeInstantiationEntry",
-        "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V",
-        false,
-    )
-}
-
 data class KotlinWinRtGenericAbiRegistryEntry(
     val kind: String,
     val name: String,
@@ -3901,165 +4522,6 @@ private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegi
 
 private fun String.splitGenericAbiRegistryListField(): List<String> =
     split(GENERIC_ABI_REGISTRY_LIST_SEPARATOR).filter(String::isNotBlank)
-
-fun writeGenericAbiRegistryArtifactClass(
-    entries: List<KotlinWinRtGenericAbiRegistryEntry>,
-    outputDirectory: Path,
-) {
-    if (entries.isEmpty()) {
-        return
-    }
-    val classWriter = ClassWriter(ClassWriter.COMPUTE_FRAMES)
-    classWriter.visit(
-        Opcodes.V17,
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME,
-        null,
-        "java/lang/Object",
-        null,
-    )
-    classWriter.visitSource("generic-abi-registry.tsv", null)
-    classWriter.addDefaultConstructor()
-    val delegates = entries.filter { it.kind == "delegate" }
-    val derivedInterfaces = entries.filter { it.kind == "derived-interface" }.map { it.name }
-    classWriter.addGenericAbiDelegateNamedMethod(delegates)
-    classWriter.addGenericAbiDelegatesForSourceTypeMethod(delegates)
-    classWriter.addGenericAbiIsDerivedGenericInterfaceMethod(derivedInterfaces)
-    classWriter.addGenericAbiRegisterDelegatesMethod(delegates)
-    classWriter.visitEnd()
-
-    val target = outputDirectory.resolve("$GENERIC_ABI_REGISTRY_ARTIFACT_CLASS_INTERNAL_NAME.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
-}
-
-private fun ClassWriter.addGenericAbiDelegateNamedMethod(entries: List<KotlinWinRtGenericAbiRegistryEntry>) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        "delegateNamed",
-        "(Ljava/lang/String;)Lio/github/composefluent/winrt/projections/support/GenericAbiDelegateEntry;",
-        null,
-        null,
-    )
-    method.visitCode()
-    entries.forEach { entry ->
-        method.visitLdcInsn(entry.name)
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false)
-        val next = org.jetbrains.org.objectweb.asm.Label()
-        method.visitJumpInsn(Opcodes.IFEQ, next)
-        method.addGenericAbiDelegateEntry(entry)
-        method.visitInsn(Opcodes.ARETURN)
-        method.visitLabel(next)
-    }
-    method.visitInsn(Opcodes.ACONST_NULL)
-    method.visitInsn(Opcodes.ARETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addGenericAbiDelegatesForSourceTypeMethod(entries: List<KotlinWinRtGenericAbiRegistryEntry>) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        "delegatesForSourceType",
-        "(Ljava/lang/String;)Ljava/util/List;",
-        null,
-        null,
-    )
-    method.visitCode()
-    method.visitTypeInsn(Opcodes.NEW, "java/util/ArrayList")
-    method.visitInsn(Opcodes.DUP)
-    method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/util/ArrayList", "<init>", "()V", false)
-    method.visitVarInsn(Opcodes.ASTORE, 1)
-    entries.forEach { entry ->
-        method.visitLdcInsn(entry.sourceGenericType)
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false)
-        val next = org.jetbrains.org.objectweb.asm.Label()
-        method.visitJumpInsn(Opcodes.IFEQ, next)
-        method.visitVarInsn(Opcodes.ALOAD, 1)
-        method.addGenericAbiDelegateEntry(entry)
-        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/util/ArrayList", "add", "(Ljava/lang/Object;)Z", false)
-        method.visitInsn(Opcodes.POP)
-        method.visitLabel(next)
-    }
-    method.visitVarInsn(Opcodes.ALOAD, 1)
-    method.visitInsn(Opcodes.ARETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addGenericAbiIsDerivedGenericInterfaceMethod(typeNames: List<String>) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        "isDerivedGenericInterface",
-        "(Ljava/lang/String;)Z",
-        null,
-        null,
-    )
-    method.visitCode()
-    typeNames.forEach { typeName ->
-        method.visitLdcInsn(typeName)
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals", "(Ljava/lang/Object;)Z", false)
-        val next = org.jetbrains.org.objectweb.asm.Label()
-        method.visitJumpInsn(Opcodes.IFEQ, next)
-        method.visitInsn(Opcodes.ICONST_1)
-        method.visitInsn(Opcodes.IRETURN)
-        method.visitLabel(next)
-    }
-    method.visitInsn(Opcodes.ICONST_0)
-    method.visitInsn(Opcodes.IRETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun ClassWriter.addGenericAbiRegisterDelegatesMethod(entries: List<KotlinWinRtGenericAbiRegistryEntry>) {
-    val method = visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        "registerAbiDelegates",
-        "(Lkotlin/jvm/functions/Function2;)V",
-        null,
-        null,
-    )
-    method.visitCode()
-    entries.forEach { entry ->
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.addStringList(entry.typeArrayShape)
-        method.visitLdcInsn(entry.name)
-        method.visitMethodInsn(
-            Opcodes.INVOKEINTERFACE,
-            "kotlin/jvm/functions/Function2",
-            "invoke",
-            "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-            true,
-        )
-        method.visitInsn(Opcodes.POP)
-    }
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addGenericAbiDelegateEntry(
-    entry: KotlinWinRtGenericAbiRegistryEntry,
-) {
-    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/projections/support/GenericAbiDelegateEntry")
-    visitInsn(Opcodes.DUP)
-    visitLdcInsn(entry.name)
-    visitLdcInsn(entry.sourceGenericType)
-    visitLdcInsn(entry.operation)
-    visitLdcInsn(entry.declaration)
-    addStringList(entry.abiParameterTypes)
-    addStringList(entry.typeArrayShape)
-    visitMethodInsn(
-        Opcodes.INVOKESPECIAL,
-        "io/github/composefluent/winrt/projections/support/GenericAbiDelegateEntry",
-        "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V",
-        false,
-    )
-}
 
 data class KotlinWinRtInterfaceNativeProjectionEntry(
     val projectedTypeName: String,

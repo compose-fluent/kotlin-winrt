@@ -237,7 +237,15 @@ internal fun KotlinProjectionRenderer.renderEventProperty(
                     .indent()
                     .addStatement(
                         "val __eventSource = %T.%L(%L, %L) as? %T",
-                        ClassName(WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName, eventSourceOwnerHelperName(eventSourceOwnerTypeName)),
+                        ClassName(
+                            WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName,
+                            eventSourceOwnerHelperName(
+                                ownerType = eventSourceOwnerTypeName,
+                                eventType = eventSourceEventTypeName
+                                    ?: eventInvokeDescriptor?.delegateTypeName
+                                    ?: event.delegateTypeName,
+                            ),
+                        ),
                         eventSourceCreateFunctionName(
                             eventType = eventSourceEventTypeName ?: eventInvokeDescriptor?.delegateTypeName ?: event.delegateTypeName,
                             ownerType = eventSourceOwnerTypeName,
@@ -1027,6 +1035,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                     )
                     constructor.addStatement("    _innerStorage = ComposableFactory.%L(%L)", factoryCreateFunctionName(method), arguments)
                     constructor.addCode("} else {\n")
+                    constructor.addStatement("    %T.ensureInitialized()", WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME)
                     constructor.addStatement(
                         "    _composableReference = ComposableFactory.%LForSubclass(this, %T.Metadata.IID%L)",
                         factoryCreateFunctionName(method),
@@ -1346,7 +1355,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInvocation(
         }
         code.addComposableFactoryInnerCleanup()
         code.add("val __resultRef = %T(%T.toRawComPtr(%T.readPointer(__resultOut)))\n", IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, PLATFORM_ABI_CLASS_NAME)
-        code.add("return __resultRef.use { %T.initializeComposableReference(it.asInspectable()) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+        code.add("return __resultRef.use { %T.initializeComposableReference(it, DEFAULT_INTERFACE_IID) }\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
         if (finallyStatements.isNotEmpty()) {
             code.unindent()
             code.add("} finally {\n")
@@ -1390,7 +1399,7 @@ private fun KotlinProjectionRenderer.renderComposableFactoryInspectableIntrinsic
     code.add("__factory,\n")
     code.add("%T.Metadata.%L,\n", factoryClassName, method.abiSlotConstantName(factoryType.methods))
     code.add("%S,\n", argumentShapes.joinToString(","))
-    code.add("{ __result -> __result.use { %T.initializeComposableReference(it.asInspectable()) } },\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
+    code.add("{ __result -> __result.use { %T.initializeComposableReference(it, DEFAULT_INTERFACE_IID) } },\n", COM_WRAPPERS_SUPPORT_CLASS_NAME)
     abiArguments.forEach { argument ->
         code.add("%L,\n", argument.expression)
     }
@@ -1509,6 +1518,14 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
         builder.addFunction(
             FunSpec.builder("register")
                 .addModifiers(KModifier.INTERNAL)
+                .apply {
+                    if (useProjectionIntrinsics) {
+                        addCode(
+                            "%T.ensureInitialized()\n",
+                            WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
+                        )
+                    }
+                }
                 .addCode(
                     "%T.registerRuntimeClassFactory(TYPE_NAME) { instance -> wrap(instance) }\n",
                     COM_WRAPPERS_SUPPORT_CLASS_NAME,
@@ -1576,6 +1593,12 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .returns(plan.projectedSelfTypeName())
                 .apply {
                     if (canRenderInterfaceNativeProjectionArtifact(plan)) {
+                        if (useProjectionIntrinsics) {
+                            addCode(
+                                "%T.ensureInitialized()\n",
+                                WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
+                            )
+                        }
                         addCode(
                             "return %T.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, %S, %T::class) as %T\n",
                             COM_WRAPPERS_SUPPORT_CLASS_NAME,
@@ -1893,8 +1916,8 @@ internal fun eventSourceCreateFunctionName(eventType: String, ownerType: String)
     return "createEventSource_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
 }
 
-internal fun eventSourceOwnerHelperName(ownerType: String): String {
+internal fun eventSourceOwnerHelperName(ownerType: String, eventType: String): String {
     val digest = MessageDigest.getInstance("SHA-256")
-        .digest(ownerType.toByteArray(StandardCharsets.UTF_8))
+        .digest("$ownerType\t$eventType".toByteArray(StandardCharsets.UTF_8))
     return "WinRTEventProjectionHelper_${digest.take(8).joinToString("") { byte -> "%02x".format(byte) }}"
 }

@@ -775,7 +775,13 @@ class KotlinProjectionRenderer(
                 interfaceType.genericParameterCount == 0 && '<' !in interfaceType.qualifiedName
             } &&
             !plan.isRuntimeClassDefaultInterfaceWithEvents() &&
-            interfaceNativeProjectionMemberDescriptors(plan) != null
+            interfaceNativeProjectionMemberDescriptors(plan)?.all { descriptor ->
+                descriptor.returnKind.canRenderInInterfaceNativeProjectionArtifact() &&
+                    descriptor.parameterKinds.all { kind -> kind.canRenderInInterfaceNativeProjectionArtifact() }
+            } == true
+
+    private fun String.canRenderInInterfaceNativeProjectionArtifact(): Boolean =
+        this != "Unsupported" && this != "Object"
 
     private fun KotlinTypeProjectionPlan.isRuntimeClassDefaultInterfaceWithEvents(): Boolean =
         type.events.any { event -> !event.isStatic } &&
@@ -1241,6 +1247,11 @@ class KotlinProjectionRenderer(
                 )
                 .build(),
         )
+        if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds && !supportsDerivedComposableConstruction) {
+            builder.addInitializerBlock(
+                CodeBlock.of("%T.registerComposableWrapper(this, _inner)\n", COM_WRAPPERS_SUPPORT_CLASS_NAME),
+            )
+        }
         addRuntimeClassIdentityMembers(builder, plan)
         val objectReferencePlansByInterface = plan.objectReferenceSurfaceDescriptor
             ?.objectReferencePlans

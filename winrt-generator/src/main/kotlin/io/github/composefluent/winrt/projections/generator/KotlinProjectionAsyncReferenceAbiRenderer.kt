@@ -799,7 +799,13 @@ internal fun KotlinProjectionRenderer.observableVectorReturnReadback(
         COM_OBJECT_REFERENCE_CLASS_NAME,
         vectorChangedEventType,
         LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-        ClassName(WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName, eventSourceOwnerHelperName("Windows.Foundation.Collections.IObservableVector")),
+        ClassName(
+            WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME.packageName,
+            eventSourceOwnerHelperName(
+                ownerType = "Windows.Foundation.Collections.IObservableVector",
+                eventType = "Windows.Foundation.Collections.VectorChangedEventHandler<${elementBinding.resolvedTypeName}>",
+            ),
+        ),
         eventSourceCreateFunctionName(
             eventType = "Windows.Foundation.Collections.VectorChangedEventHandler<${elementBinding.resolvedTypeName}>",
             ownerType = "Windows.Foundation.Collections.IObservableVector",
