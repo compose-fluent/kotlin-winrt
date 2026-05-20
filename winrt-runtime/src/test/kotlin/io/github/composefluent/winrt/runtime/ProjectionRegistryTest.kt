@@ -5,7 +5,6 @@ import io.github.composefluent.winrt.projections.support.GeneratedRegistrarRunti
 import java.lang.foreign.Arena
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -94,70 +93,30 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun compiler_generated_projection_registrar_registers_class_literal_type_index() {
+    fun projection_mapping_initialization_does_not_load_fixed_projection_registrar_or_resource_indexes() {
         ComWrappersSupport.clearRegistriesForTests()
 
-        registerCompilerGeneratedProjectionTypeIndexes()
+        ensureProjectionMappingsRegistered()
 
-        val typeId = WinRtTypeRegistry.findByClass(GeneratedRegistrarRuntimeClass::class)
-        assertEquals("Contoso.GeneratedRegistrarRuntimeClass", typeId?.projectedTypeName)
-        assertEquals("Contoso.GeneratedRegistrarRuntimeClass", typeId?.runtimeClassName)
-        assertTrue(typeId?.isRuntimeClass == true)
-        assertEquals(
-            GeneratedRegistrarRuntimeClass::class,
-            TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarRuntimeClass"),
-        )
-        TypeNameSupport.registerProjectionTypeBaseTypeMapping(
-            mapOf("Contoso.GeneratedRegistrarDerived" to "Contoso.GeneratedRegistrarRuntimeClass"),
-        )
-        assertEquals(
-            GeneratedRegistrarRuntimeClass::class,
-            TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarDerived"),
-        )
+        assertNull(WinRtTypeRegistry.findByClass(GeneratedRegistrarRuntimeClass::class))
+        assertNull(TypeNameSupport.findRcwKClassByNameCached("Contoso.GeneratedRegistrarRuntimeClass"))
+        assertNull(WinRtTypeRegistry.findByClass(FallbackIndexedRuntimeClass::class))
+        assertNull(TypeNameSupport.findRcwKClassByNameCached("Contoso.FallbackIndexedRuntimeClass"))
     }
 
     @Test
-    fun compiler_generated_projection_loader_keeps_resource_indexes_after_fixed_registrar() {
-        ComWrappersSupport.clearRegistriesForTests()
-
-        registerCompilerGeneratedProjectionTypeIndexes()
-
-        val typeId = WinRtTypeRegistry.findByClass(FallbackIndexedRuntimeClass::class)
-        assertEquals("Contoso.FallbackIndexedRuntimeClass", typeId?.projectedTypeName)
-        assertEquals("Contoso.FallbackIndexedRuntimeClass", typeId?.runtimeClassName)
-        assertTrue(typeId?.isRuntimeClass == true)
-        assertEquals(
-            FallbackIndexedRuntimeClass::class,
-            TypeNameSupport.findRcwKClassByNameCached("Contoso.FallbackIndexedRuntimeClass"),
-        )
-        TypeNameSupport.registerProjectionTypeBaseTypeMapping(
-            mapOf("Contoso.FallbackIndexedDerived" to "Contoso.FallbackIndexedRuntimeClass"),
-        )
-        assertEquals(
-            FallbackIndexedRuntimeClass::class,
-            TypeNameSupport.findRcwKClassByNameCached("Contoso.FallbackIndexedDerived"),
-        )
-    }
-
-    @Test
-    fun compiler_generated_event_source_loader_keeps_resource_entries_after_fixed_registry() {
+    fun event_source_runtime_does_not_load_resource_entries_on_lookup() {
         WinRtEventSourceRuntime.clearForTests()
-
-        registerCompilerGeneratedEventSources()
 
         val descriptor = WinRtEventSourceRuntime.descriptorFor(
             eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
             ownerType = "Contoso.ResourceIndexedOwner",
         )
-        assertEquals("Contoso.ResourceIndexedOwner", descriptor?.ownerType)
-        assertEquals(Guid("aaaaaaaa-bbbb-5ccc-8ddd-eeeeeeeeeeee"), descriptor?.interfaceId)
-        assertEquals(listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.IINSPECTABLE), descriptor?.parameterKinds)
-        assertEquals(WinRtDelegateValueKind.UNIT, descriptor?.returnKind)
-        assertTrue(descriptor?.eventSourceFactory != null)
+        assertNull(descriptor)
     }
 
     @Test
-    fun compiler_generated_event_source_loader_upgrades_incomplete_duplicate_entries() {
+    fun event_source_runtime_does_not_upgrade_incomplete_duplicate_entries_on_lookup() {
         WinRtEventSourceRuntime.clearForTests()
         WinRtEventSourceRuntime.registerEventSource(
             WinRtEventSourceDescriptor(
@@ -187,10 +146,10 @@ class ProjectionRegistryTest {
             ownerType = "Contoso.ResourceIndexedOwner",
         )
 
-        assertNotNull(source)
-        assertEquals(Guid("aaaaaaaa-bbbb-5ccc-8ddd-eeeeeeeeeeee"), descriptor?.interfaceId)
-        assertEquals(listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.IINSPECTABLE), descriptor?.parameterKinds)
-        assertTrue(descriptor?.eventSourceFactory != null)
+        assertNull(source)
+        assertNull(descriptor?.interfaceId)
+        assertTrue(descriptor?.parameterKinds.orEmpty().isEmpty())
+        assertNull(descriptor?.eventSourceFactory)
     }
 
     @Test

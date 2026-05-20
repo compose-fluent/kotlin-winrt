@@ -80,6 +80,16 @@ val runWinuiKmpSample by tasks.registering(JavaExec::class) {
     providers.systemProperty("kotlin.winrt.samples.timerSmoke").orNull?.let { value ->
         systemProperty("kotlin.winrt.samples.timerSmoke", value)
     }
+    listOf(
+        "kotlin.winrt.samples.skipWindowContent",
+        "kotlin.winrt.samples.skipCallbackSmoke",
+        "kotlin.winrt.samples.skipLayoutUpdated",
+        "kotlin.winrt.samples.debugWaitBeforeChildren",
+    ).forEach { propertyName ->
+        providers.systemProperty(propertyName).orNull?.let { value ->
+            systemProperty(propertyName, value)
+        }
+    }
     providers.systemProperty("KOTLIN_WINRT_TRACE_CCW").orNull?.let { value ->
         systemProperty("KOTLIN_WINRT_TRACE_CCW", value)
     }

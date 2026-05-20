@@ -67,7 +67,7 @@ object ComWrappersSupport {
         typeHandle: WinRtTypeHandle,
         instance: IUnknownReference,
     ): Any =
-        resolveInterfaceProjectionFactoryWithGeneratedRegistryFallback(typeHandle, typeHandle.projectedTypeName)
+        resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
             ?.invoke(instance)
             ?: throw WinRtUnsupportedOperationException(
                 "Generated interface projection factory for '${typeHandle.projectedTypeName}' is not registered.",
@@ -79,11 +79,7 @@ object ComWrappersSupport {
         instance: IUnknownReference,
         compilerGeneratedRegistryClassName: String,
     ): Any =
-        resolveInterfaceProjectionFactoryWithGeneratedRegistryFallback(
-            typeHandle,
-            typeHandle.projectedTypeName,
-            compilerGeneratedRegistryClassName,
-        )
+        resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
             ?.invoke(instance)
             ?: throw WinRtUnsupportedOperationException(
                 "Generated interface projection factory for '${typeHandle.projectedTypeName}' is not registered.",
@@ -94,7 +90,7 @@ object ComWrappersSupport {
         projectedTypeName: String,
         instance: IUnknownReference,
     ): Any =
-        resolveInterfaceProjectionFactoryWithGeneratedRegistryFallback(null, projectedTypeName)
+        resolveInterfaceProjectionFactory(null, projectedTypeName)
             ?.invoke(instance)
             ?: throw WinRtUnsupportedOperationException(
                 "Generated interface projection factory for '$projectedTypeName' is not registered.",
@@ -302,6 +298,20 @@ object ComWrappersSupport {
 
     fun initializeComposableReference(instance: IInspectableReference): IInspectableReference =
         instance.also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
+
+    fun initializeComposableReference(
+        instance: IUnknownReference,
+        defaultInterfaceId: Guid,
+    ): IInspectableReference =
+        IInspectableReference(instance.getRefPointer(), defaultInterfaceId)
+            .also { it.tryInitializeReferenceTracker(addRefFromTrackerSource = false) }
+
+    fun registerComposableWrapper(
+        value: Any,
+        instance: IInspectableReference,
+    ) {
+        registerObjectForComInterface(value, PlatformAbi.fromRawComPtr(instance.pointer))
+    }
 
     fun createCCWForObject(
         value: Any,
@@ -538,27 +548,6 @@ object ComWrappersSupport {
         }
         return null
     }
-
-    private fun resolveInterfaceProjectionFactoryWithGeneratedRegistryFallback(
-        staticallyDeterminedType: WinRtTypeHandle?,
-        projectedTypeName: String?,
-    ): ((IUnknownReference) -> Any)? =
-        resolveInterfaceProjectionFactory(staticallyDeterminedType, projectedTypeName)
-            ?: run {
-                registerCompilerGeneratedProjectionTypeIndexes()
-                resolveInterfaceProjectionFactory(staticallyDeterminedType, projectedTypeName)
-            }
-
-    private fun resolveInterfaceProjectionFactoryWithGeneratedRegistryFallback(
-        staticallyDeterminedType: WinRtTypeHandle?,
-        projectedTypeName: String?,
-        compilerGeneratedRegistryClassName: String,
-    ): ((IUnknownReference) -> Any)? =
-        resolveInterfaceProjectionFactory(staticallyDeterminedType, projectedTypeName)
-            ?: run {
-                registerCompilerGeneratedProjectionRegistry(compilerGeneratedRegistryClassName)
-                resolveInterfaceProjectionFactory(staticallyDeterminedType, projectedTypeName)
-            }
 
     private fun ComObjectReference.asUnknownReference(interfaceId: Guid): IUnknownReference =
         this as? IUnknownReference ?: try {

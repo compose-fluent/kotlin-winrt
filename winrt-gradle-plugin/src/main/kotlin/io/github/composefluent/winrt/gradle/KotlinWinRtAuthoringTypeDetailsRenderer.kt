@@ -177,7 +177,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 renderReflectionParameterTypes(method),
             )
             .addStatement("method.isAccessible = true")
-            .addStatement("method.invoke(value%L)", renderInvokeArguments(method))
+            .add("try {\n")
+            .indent()
+            .addStatement("method.invoke(value%L)", renderReflectionInvokeArguments(method))
+            .unindent()
+            .add("} catch (failure: %T) {\n", java.lang.reflect.InvocationTargetException::class)
+            .indent()
+            .addStatement("throw (failure.targetException ?: failure)")
+            .unindent()
+            .add("}\n")
             .addStatement("%T.S_OK.value", knownHResultsType)
             .unindent()
             .add("}")
@@ -193,7 +201,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             }
             .build()
 
-    private fun renderInvokeArguments(method: WinRtMethodDefinition): CodeBlock =
+    private fun renderReflectionInvokeArguments(method: WinRtMethodDefinition): CodeBlock =
         CodeBlock.builder()
             .apply {
                 method.parameters.indices.forEach { index ->
@@ -242,27 +250,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             )
         }
 
-    private fun projectedParameterType(parameter: WinRtParameterDefinition) =
-        when (parameter.typeName) {
-            "Boolean" -> Boolean::class.asClassName()
-            "Int8", "SByte" -> Byte::class.asClassName()
-            "UInt8", "Byte" -> UByte::class.asClassName()
-            "Int16" -> Short::class.asClassName()
-            "UInt16" -> UShort::class.asClassName()
-            "Int32" -> Int::class.asClassName()
-            "UInt32" -> UInt::class.asClassName()
-            "Int64" -> Long::class.asClassName()
-            "UInt64" -> ULong::class.asClassName()
-            "Single", "Float" -> Float::class.asClassName()
-            "Double" -> Double::class.asClassName()
-            "String" -> String::class.asClassName()
-            else -> if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
-                rawAddressType
-            } else {
-                projectionClassName(parameter.typeName)
-            }
-        }
-
     private fun renderSignature(method: WinRtMethodDefinition): CodeBlock =
         if (method.parameters.isEmpty()) {
             CodeBlock.of("%T()", comMethodSignatureType)
@@ -290,6 +277,27 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Single", "Float" -> "Float"
             "Double" -> "Double"
             else -> "Pointer"
+        }
+
+    private fun projectedParameterType(parameter: WinRtParameterDefinition) =
+        when (parameter.typeName) {
+            "Boolean" -> Boolean::class.asClassName()
+            "Int8", "SByte" -> Byte::class.asClassName()
+            "UInt8", "Byte" -> UByte::class.asClassName()
+            "Int16" -> Short::class.asClassName()
+            "UInt16" -> UShort::class.asClassName()
+            "Int32" -> Int::class.asClassName()
+            "UInt32" -> UInt::class.asClassName()
+            "Int64" -> Long::class.asClassName()
+            "UInt64" -> ULong::class.asClassName()
+            "Single", "Float" -> Float::class.asClassName()
+            "Double" -> Double::class.asClassName()
+            "String" -> String::class.asClassName()
+            else -> if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
+                rawAddressType
+            } else {
+                projectionClassName(parameter.typeName)
+            }
         }
 
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =

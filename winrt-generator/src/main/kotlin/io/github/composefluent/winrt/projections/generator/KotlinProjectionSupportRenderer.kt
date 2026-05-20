@@ -329,7 +329,7 @@ class KotlinProjectionSupportRenderer {
         val rows = listOf(
             compilerSupportManifestRow(
                 kind = "projection-registrar",
-                className = "$SUPPORT_PACKAGE.WinRTProjectionRegistrar",
+                className = WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "projection-registrar.tsv",
                 entries = registrarEntries,
             ),
@@ -341,7 +341,7 @@ class KotlinProjectionSupportRenderer {
             ),
             compilerSupportManifestRow(
                 kind = "generic-abi-registry",
-                className = "$SUPPORT_PACKAGE.WinRTGenericAbiRegistryArtifact",
+                className = WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "generic-abi-registry.tsv",
                 entries = genericAbiRegistryEntries,
             ),
@@ -560,7 +560,7 @@ class KotlinProjectionSupportRenderer {
                         FunSpec.builder("delegateNamed")
                             .addParameter("name", String::class)
                             .returns(entryClass.copy(nullable = true))
-                            .addStatement("return artifactMethod(%S, String::class.java)?.invoke(null, name) as? %T", "delegateNamed", entryClass)
+                            .addStatement("return %T.delegateNamed(name) as? %T", WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME, entryClass)
                             .build(),
                     )
                     .addFunction(
@@ -569,8 +569,8 @@ class KotlinProjectionSupportRenderer {
                             .returns(List::class.asClassName().parameterizedBy(entryClass))
                             .addAnnotation(Suppress::class.asClassName().let { AnnotationSpec.builder(it).addMember("%S", "UNCHECKED_CAST").build() })
                             .addStatement(
-                                "return artifactMethod(%S, String::class.java)?.invoke(null, sourceGenericType) as? %T ?: emptyList()",
-                                "delegatesForSourceType",
+                                "return %T.delegatesForSourceType(sourceGenericType) as %T",
+                                WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME,
                                 List::class.asClassName().parameterizedBy(entryClass),
                             )
                             .build(),
@@ -579,7 +579,7 @@ class KotlinProjectionSupportRenderer {
                         FunSpec.builder("isDerivedGenericInterface")
                             .addParameter("typeName", String::class)
                             .returns(Boolean::class)
-                            .addStatement("return artifactMethod(%S, String::class.java)?.invoke(null, typeName) as? Boolean ?: false", "isDerivedGenericInterface")
+                            .addStatement("return %T.isDerivedGenericInterface(typeName)", WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME)
                             .build(),
                     )
                     .addFunction(
@@ -588,27 +588,7 @@ class KotlinProjectionSupportRenderer {
                                 "register",
                                 Function2::class.asClassName().parameterizedBy(stringListTypeName(), stringTypeName(), UNIT),
                             )
-                            .addStatement("artifactMethod(%S, Function2::class.java)?.invoke(null, register)", "registerAbiDelegates")
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("artifactMethod")
-                            .addModifiers(KModifier.PRIVATE)
-                            .addParameter("name", String::class)
-                            .addParameter(
-                                "parameterTypes",
-                                Class::class.asClassName().parameterizedBy(STAR),
-                                KModifier.VARARG,
-                            )
-                            .returns(java.lang.reflect.Method::class.asClassName().copy(nullable = true))
-                            .addCode(
-                                """
-                                val artifactClass = runCatching {
-                                    Class.forName("io.github.composefluent.winrt.projections.support.WinRTGenericAbiRegistryArtifact")
-                                }.getOrNull() ?: return null
-                                return artifactClass.getDeclaredMethod(name, *parameterTypes)
-                                """.trimIndent() + "\n",
-                            )
+                            .addStatement("%T.registerAbiDelegates(register)", WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME)
                             .build(),
                     )
                     .build(),
@@ -697,8 +677,8 @@ class KotlinProjectionSupportRenderer {
                 }
             }
         eventSourceEntries
-            .groupBy(WinRtEventHelperSubclassDescriptor::ownerTypeName)
-            .toSortedMap()
+            .groupBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
+            .toSortedMap(compareBy({ it.first }, { it.second }))
             .values
             .forEach { ownerEntries ->
                 eventSourceOwnerHelperType(ownerEntries, typesByQualifiedName, plansByType)?.let(fileBuilder::addType)
@@ -2797,11 +2777,11 @@ class KotlinProjectionSupportRenderer {
                 .addStatement("return entry.className in INITIALIZED_CLASS_NAMES")
                 .build(),
             FunSpec.builder("initializeAll")
-                .addCode("genericInstantiationRegistryMethod(%S)?.invoke(null)\n", "initializeAll")
+                .addCode("%T.initializeAll()\n", WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME)
                 .build(),
             FunSpec.builder("initializeBySourceType")
                 .addParameter("sourceType", String::class)
-                .addCode("genericInstantiationRegistryMethod(%S, String::class.java)?.invoke(null, sourceType)\n", "initializeBySourceType")
+                .addCode("%T.initializeBySourceType(sourceType)\n", WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME)
                 .build(),
             FunSpec.builder("initializeEntry")
                 .addParameter("entry", entryClass)
@@ -2815,24 +2795,6 @@ class KotlinProjectionSupportRenderer {
             FunSpec.builder("initializeDependencies")
                 .addParameter("entry", entryClass)
                 .addCode("entry.dependencies.forEach(::initializeBySourceType)\n")
-                .build(),
-            FunSpec.builder("genericInstantiationRegistryMethod")
-                .addModifiers(KModifier.PRIVATE)
-                .addParameter("name", String::class)
-                .addParameter(
-                    "parameterTypes",
-                    Class::class.asClassName().parameterizedBy(STAR),
-                    KModifier.VARARG,
-                )
-                .returns(java.lang.reflect.Method::class.asClassName().copy(nullable = true))
-                .addCode(
-                    """
-                    val registryClass = runCatching {
-                        Class.forName("io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry")
-                    }.getOrNull() ?: return null
-                    return registryClass.getDeclaredMethod(name, *parameterTypes)
-                    """.trimIndent() + "\n",
-                )
                 .build(),
             FunSpec.builder("registerGenericInstantiation")
                 .addModifiers(KModifier.PRIVATE)
@@ -3033,7 +2995,13 @@ class KotlinProjectionSupportRenderer {
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         plansByType: Map<String, KotlinTypeProjectionPlan>,
     ): TypeSpec? {
-        val builder = TypeSpec.objectBuilder(eventSourceOwnerHelperName(ownerEntries.first().ownerTypeName))
+        val firstEntry = ownerEntries.first()
+        val builder = TypeSpec.objectBuilder(
+            eventSourceOwnerHelperName(
+                ownerType = firstEntry.ownerTypeName,
+                eventType = firstEntry.eventTypeName,
+            ),
+        )
             .addModifiers(KModifier.INTERNAL)
         var hasFunctions = false
         ownerEntries.sortedBy(WinRtEventHelperSubclassDescriptor::eventTypeName).forEach { descriptor ->

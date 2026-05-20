@@ -95,6 +95,8 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("\"onLaunched\""))
         assertTrue(generated.contains("LaunchActivatedEventArgs::class.java"))
         assertTrue(generated.contains("method.invoke(value, __arg0)"))
+        assertTrue(generated.contains("catch (failure: InvocationTargetException)"))
+        assertTrue(generated.contains("throw (failure.targetException ?: failure)"))
         val registrar = output.resolve("io/github/composefluent/winrt/projections/support/WinRTAuthoringTypeDetailsRegistrar.kt").readText()
         assertTrue(registrar.contains("object WinRTAuthoringTypeDetailsRegistrar"))
         assertTrue(registrar.contains("WinRT_App_TypeDetails.register()"))

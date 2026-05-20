@@ -128,11 +128,25 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         button.content = "KMP library WinUI"
         textBox.text = "initial"
         println("winui-kmp-library: textBox initial text set")
-        val children = checkNotNull(panel.children) {
-            "Canvas children collection was not initialized."
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.debugWaitBeforeChildren")) {
+            println("winui-kmp-library: debug wait before canvas children; pid=${ProcessHandle.current().pid()}")
+            Thread.sleep(60_000)
         }
+        println("winui-kmp-library: resolving canvas children")
+        val children = try {
+            checkNotNull(panel.children) {
+                "Canvas children collection was not initialized."
+            }
+        } catch (failure: Throwable) {
+            println("winui-kmp-library: canvas children failed: ${failure::class.qualifiedName}: ${failure.message}")
+            failure.printStackTrace()
+            throw failure
+        }
+        println("winui-kmp-library: canvas children resolved size=${children.size}")
+        println("winui-kmp-library: adding button to canvas")
         children.add(button)
         println("winui-kmp-library: button added")
+        println("winui-kmp-library: adding textBox to canvas")
         children.add(textBox)
         println("winui-kmp-library: textBox added")
         check(children[0] is Button) {
@@ -151,9 +165,19 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             "AutomationProperties.accessibilityViewProperty was not available."
         })
         println("winui-kmp-library: detached automation accessibility view cleared")
-        window.content = panel
-        println("winui-kmp-library: window content set")
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWindowContent")) {
+            window.content = panel
+            println("winui-kmp-library: window content set")
+        } else {
+            println("winui-kmp-library: window content skipped")
+        }
         activeWindow = window
+        if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipCallbackSmoke")) {
+            println("winui-kmp-library: callbacks skipped")
+            window.activate()
+            println("winui-kmp-library: window activated native")
+            return
+        }
         registerCallbackSmoke(window, button, textBox)
         println("winui-kmp-library: callbacks registered")
         window.activate()
@@ -178,13 +202,17 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         activeEventTokens += button.loaded.add { _, _ ->
             println("winui-kmp-library: button loaded callback")
         }
-        println("winui-kmp-library: registering button layout")
-        activeEventTokens += button.layoutUpdated.add { _, _ ->
-            println("winui-kmp-library: button layout callback")
-            if (!focusSmokeCompleted) {
-                focusSmokeCompleted = true
-                runFocusSmoke(window, button, textBox)
+        if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipLayoutUpdated")) {
+            println("winui-kmp-library: registering button layout")
+            activeEventTokens += button.layoutUpdated.add { _, _ ->
+                println("winui-kmp-library: button layout callback")
+                if (!focusSmokeCompleted) {
+                    focusSmokeCompleted = true
+                    runFocusSmoke(window, button, textBox)
+                }
             }
+        } else {
+            println("winui-kmp-library: button layout skipped")
         }
         println("winui-kmp-library: registering button focus")
         activeEventTokens += button.gotFocus.add { _, _ ->
