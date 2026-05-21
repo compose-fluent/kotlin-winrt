@@ -76,6 +76,24 @@ internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtTyp
             .associateBy(IndexedWinRtType::qualifiedName)
     }
 
+internal fun inheritedOverridableInterfaceNames(
+    winRtBase: IndexedWinRtType?,
+    winRtTypes: Map<String, IndexedWinRtType>,
+): List<String> {
+    val names = linkedSetOf<String>()
+    val visited = mutableSetOf<String>()
+    var current = winRtBase
+    while (current != null && visited.add(current.qualifiedName)) {
+        names += current.overridableInterfaces
+        val baseTypeName = current.baseTypeName
+            .takeIf(String::isNotBlank)
+            ?.takeUnless { it == "System.Object" || it == "Any" }
+            ?: break
+        current = winRtTypes[baseTypeName]
+    }
+    return names.sorted()
+}
+
 internal fun resolveWinRtTypeName(
     typeName: String,
     packageName: String,

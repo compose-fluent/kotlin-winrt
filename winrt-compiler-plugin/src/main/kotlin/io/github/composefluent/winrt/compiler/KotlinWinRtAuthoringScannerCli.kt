@@ -78,16 +78,14 @@ object KotlinWinRtAuthoringScannerCli {
             val directInterfaces = resolvedWinRtTypes
                 .filter { type -> type.kind == "Interface" }
                 .map { type -> type.qualifiedName }
-            val overridableInterfaces = winRtBase
-                ?.overridableInterfaces
-                .orEmpty()
+            val overridableInterfaces = inheritedOverridableInterfaceNames(winRtBase, winRtTypes)
             KotlinWinRtAuthoredTypeCandidate(
                 packageName = packageName,
                 className = className,
                 sourceTypeName = sourceTypeName,
                 winRtBaseClassName = winRtBase?.qualifiedName,
                 winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
-                overridableInterfaceNames = overridableInterfaces.distinct().sorted(),
+                overridableInterfaceNames = overridableInterfaces,
                 isPublic = source.isEffectivelyPublicClass(klass),
             )
         }.toList()
