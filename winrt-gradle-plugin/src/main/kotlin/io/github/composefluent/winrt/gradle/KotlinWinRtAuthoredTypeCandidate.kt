@@ -10,6 +10,7 @@ data class KotlinWinRtAuthoredTypeCandidate(
     val winRtBaseClassName: String?,
     val winRtInterfaceNames: List<String>,
     val overridableInterfaceNames: List<String>,
+    val isPublic: Boolean = true,
 )
 
 object KotlinWinRtAuthoringCandidateFile {
@@ -28,6 +29,7 @@ object KotlinWinRtAuthoringCandidateFile {
                     winRtBaseClassName = parts.getOrElse(3) { "" }.takeIf(String::isNotBlank),
                     winRtInterfaceNames = parts.getOrElse(4) { "" }.semicolonList(),
                     overridableInterfaceNames = parts.getOrElse(5) { "" }.semicolonList(),
+                    isPublic = parts.getOrElse(6) { "true" }.toBoolean(),
                 )
             }
     }

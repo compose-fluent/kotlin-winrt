@@ -3022,6 +3022,7 @@ class KotlinWinRtIrGenerationExtension(
             winRtBaseClassName = winRtBase?.qualifiedName,
             winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
             overridableInterfaceNames = overridableInterfaces.distinct().sorted(),
+            isPublic = true,
         )
     }
 

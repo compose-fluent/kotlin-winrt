@@ -36,6 +36,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableInterfaceDefinition")
     private val winRtInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableMethodDefinition")
+    private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
 
     fun renderTo(
         candidates: List<KotlinWinRtAuthoredTypeCandidate>,
@@ -228,6 +229,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Single", "Float" -> CodeBlock.of("%L as %T", rawArg, Float::class.asClassName())
             "Double" -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
             "String" -> CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
+            "System.Object", "Object" -> CodeBlock.of("%T.fromAbi(%L as %T)", winRtObjectMarshallerType, rawArg, rawAddressType)
             else -> renderObjectParameterProjection(rawArg, parameter)
         }
     }
@@ -293,6 +295,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Single", "Float" -> Float::class.asClassName()
             "Double" -> Double::class.asClassName()
             "String" -> String::class.asClassName()
+            "System.Object", "Object" -> ANY
             else -> if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
                 rawAddressType
             } else {

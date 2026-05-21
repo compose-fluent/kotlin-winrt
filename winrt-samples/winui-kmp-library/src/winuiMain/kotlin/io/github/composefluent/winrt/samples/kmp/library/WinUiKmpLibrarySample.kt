@@ -8,14 +8,17 @@ import microsoft.ui.dispatching.DispatcherQueue
 import microsoft.ui.dispatching.DispatcherQueueHandler
 import microsoft.ui.dispatching.DispatcherQueueTimer
 import microsoft.ui.xaml.Application
+import microsoft.ui.xaml.DependencyProperty
 import microsoft.ui.xaml.FocusState
 import microsoft.ui.xaml.LaunchActivatedEventArgs
+import microsoft.ui.xaml.PropertyMetadata
 import microsoft.ui.xaml.ResourceDictionary
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.automation.AutomationProperties
 import microsoft.ui.xaml.automation.peers.AccessibilityView
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
+import microsoft.ui.xaml.controls.ContentControl
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
@@ -113,6 +116,8 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: button created")
         val textBox = TextBox()
         println("winui-kmp-library: textBox created")
+        val localControl = WinUiKmpLocalContentControl()
+        println("winui-kmp-library: local authored control created")
 
         button.content = "KMP library WinUI"
         println("winui-kmp-library: button content set")
@@ -128,6 +133,12 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         button.content = "KMP library WinUI"
         textBox.text = "initial"
         println("winui-kmp-library: textBox initial text set")
+        localControl.content = "Local authored control"
+        localControl.sampleText = "local metadata"
+        check(localControl.sampleText == "local metadata") {
+            "Local authored DependencyProperty did not round-trip: ${localControl.sampleText}"
+        }
+        println("winui-kmp-library: local authored dependency property round-trip")
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.debugWaitBeforeChildren")) {
             println("winui-kmp-library: debug wait before canvas children; pid=${ProcessHandle.current().pid()}")
             Thread.sleep(60_000)
@@ -149,6 +160,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: adding textBox to canvas")
         children.add(textBox)
         println("winui-kmp-library: textBox added")
+        println("winui-kmp-library: adding local authored control to canvas")
+        children.add(localControl)
+        println("winui-kmp-library: local authored control added")
         check(children[0] is Button) {
             "Canvas.children[0] did not recover the Button runtime-class wrapper: ${children[0]::class.qualifiedName}"
         }
@@ -319,5 +333,22 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             thread.isDaemon = true
             thread.start()
         }
+    }
+}
+
+internal class WinUiKmpLocalContentControl : ContentControl() {
+    var sampleText: String?
+        get() = getValue(SampleTextProperty) as String?
+        set(value) {
+            setValue(SampleTextProperty, value)
+        }
+
+    companion object {
+        val SampleTextProperty: DependencyProperty = DependencyProperty.register(
+            "SampleText",
+            String::class,
+            WinUiKmpLocalContentControl::class,
+            PropertyMetadata(null),
+        )
     }
 }
