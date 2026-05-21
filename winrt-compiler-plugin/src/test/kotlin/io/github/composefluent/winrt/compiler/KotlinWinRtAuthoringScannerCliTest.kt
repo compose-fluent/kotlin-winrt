@@ -105,4 +105,57 @@ class KotlinWinRtAuthoringScannerCliTest {
             output.readText().trimEnd(),
         )
     }
+
+    @Test
+    fun scans_inherited_winui_overridable_interfaces_for_grid_subclass() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-grid-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import microsoft.ui.xaml.automation.peers.AutomationPeer
+            import microsoft.ui.xaml.controls.Grid
+
+            class SampleHostPanel : Grid() {
+                override fun onCreateAutomationPeer(): AutomationPeer =
+                    SampleAutomationPeer()
+            }
+
+            class SampleAutomationPeer : AutomationPeer()
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Controls.Grid	RuntimeClass		Microsoft.UI.Xaml.Controls.Panel
+            Microsoft.UI.Xaml.Controls.Panel	RuntimeClass		Microsoft.UI.Xaml.FrameworkElement
+            Microsoft.UI.Xaml.FrameworkElement	RuntimeClass	Microsoft.UI.Xaml.IFrameworkElementOverrides	Microsoft.UI.Xaml.UIElement
+            Microsoft.UI.Xaml.UIElement	RuntimeClass	Microsoft.UI.Xaml.IUIElementOverrides	System.Object
+            Microsoft.UI.Xaml.Automation.Peers.AutomationPeer	RuntimeClass	Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides	System.Object
+            Microsoft.UI.Xaml.IFrameworkElementOverrides	Interface
+            Microsoft.UI.Xaml.IUIElementOverrides	Interface
+            Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "sample\tSampleAutomationPeer\tsample.SampleAutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.AutomationPeer\tMicrosoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides\tMicrosoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides\ttrue",
+                "sample\tSampleHostPanel\tsample.SampleHostPanel\tMicrosoft.UI.Xaml.Controls.Grid\tMicrosoft.UI.Xaml.IFrameworkElementOverrides;Microsoft.UI.Xaml.IUIElementOverrides\tMicrosoft.UI.Xaml.IFrameworkElementOverrides;Microsoft.UI.Xaml.IUIElementOverrides\ttrue",
+            ).joinToString("\n"),
+            output.readText().trimEnd(),
+        )
+    }
 }
