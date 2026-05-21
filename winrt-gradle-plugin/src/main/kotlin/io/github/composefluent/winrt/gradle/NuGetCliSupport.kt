@@ -12,6 +12,7 @@ internal class NuGetCliSupport(
     private val executable: String,
     private val cliVersion: String,
     private val cliCacheDirectory: Path,
+    private val scratchDirectory: Path? = null,
     private val logger: Logger,
 ) {
     fun run(
@@ -51,6 +52,14 @@ internal class NuGetCliSupport(
             .redirectErrorStream(true)
         if (workingDirectory != null) {
             processBuilder.directory(workingDirectory.toFile())
+        }
+        if (scratchDirectory != null) {
+            Files.createDirectories(scratchDirectory)
+            val scratchPath = scratchDirectory.toString()
+            processBuilder.environment()["TEMP"] = scratchPath
+            processBuilder.environment()["TMP"] = scratchPath
+            processBuilder.environment()["TMPDIR"] = scratchPath
+            processBuilder.environment()["NUGET_SCRATCH"] = scratchPath
         }
         val process = runCatching { processBuilder.start() }.getOrElse { error ->
             return NuGetInvocation(

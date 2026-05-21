@@ -135,6 +135,21 @@ class KotlinWinRtPluginTest {
             ),
             task.authoringScannerJvmArgs.get(),
         )
+        assertEquals(
+            listOf(
+                "-Xmx1024m",
+                "-XX:+UseSerialGC",
+                "-Dfile.encoding=UTF-8",
+            ),
+            task.generatorWorkerJvmArgs.get(),
+        )
+        val generatorWorkerConfiguration = project.configurations.getByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
+        assertTrue(generatorWorkerConfiguration.isCanBeResolved)
+        assertFalse(generatorWorkerConfiguration.isCanBeConsumed)
+        assertEquals(
+            setOf("winrt-runtime", "winrt-metadata", "winrt-generator", "kotlinpoet"),
+            generatorWorkerConfiguration.dependencies.mapTo(mutableSetOf()) { it.name },
+        )
         assertEquals(project.name, task.authoringAssemblyName.get())
         assertEquals("${project.name}.jar", task.authoringTargetArtifactName.get())
     }
