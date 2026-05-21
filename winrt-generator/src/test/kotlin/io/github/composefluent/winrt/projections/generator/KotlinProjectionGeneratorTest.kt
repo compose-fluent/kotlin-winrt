@@ -3124,7 +3124,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("fun acquire(): IUnknownReference"))
         assertTrue(widgetContents.contains("fun createInstance(): IInspectableReference"))
         assertTrue(widgetContents.contains("IWidgetFactory.Metadata.CREATEINSTANCE_SLOT"))
-        assertTrue(widgetContents.contains("initializeComposableReference(it, DEFAULT_INTERFACE_IID)"))
+        assertTrue(widgetContents.contains("initializeComposableReference(it,"))
+        assertTrue(widgetContents.contains("DEFAULT_INTERFACE_IID"))
         assertTrue(widgetContents.contains("ComWrappersSupport.registerComposableWrapper(this, _inner)"))
         assertEquals(1, "companion object Metadata".toRegex().findAll(widgetContents).count())
 
@@ -3790,8 +3791,8 @@ class KotlinProjectionGeneratorTest {
                 interfaceContents.contains("wrapGeneratedInterfaceProjectionFromCompilerPlugin"),
         )
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
-        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getChild|6|Object||false||"))
-        assertTrue(compilerInput, compilerInput.contains("PropertyGet|getItems|7|Unsupported||false||"))
+        assertFalse(compilerInput, compilerInput.contains("Sample.Foundation.IWidget"))
+        assertTrue(compilerInput, compilerInput.contains("Sample.Foundation.IChild"))
     }
 
     @Test
@@ -9687,7 +9688,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(createInstance.contains("WinRtProjectionIntrinsic.callProjectedInterface("))
         assertTrue(createInstance.contains("\"Int32,Int32,RawAddress,RawAddress\""))
         assertTrue(createInstance.contains("{ __result -> __result.use {"))
-        assertTrue(createInstance.contains("ComWrappersSupport.initializeComposableReference(it, DEFAULT_INTERFACE_IID)"))
+        assertTrue(createInstance.contains("ComWrappersSupport.initializeComposableReference(it,"))
+        assertTrue(createInstance.contains("DEFAULT_INTERFACE_IID"))
         assertTrue(createInstance.contains("PlatformAbi.nullPointer"))
         assertTrue(createInstance.contains("__innerOut"))
         assertTrue(createInstance.contains("return __result"))

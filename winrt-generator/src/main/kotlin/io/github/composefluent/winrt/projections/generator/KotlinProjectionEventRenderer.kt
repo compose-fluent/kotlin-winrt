@@ -1027,28 +1027,26 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                 val projectedClassName = ClassName(plan.packageName, plan.type.name)
                 val overridableInterface = plan.type.implementedInterfaces.firstOrNull { it.isOverridable }?.interfaceName
                 val overridableInterfaceType = overridableInterface?.let(::projectionClassName)
-                if (overridableInterfaceType != null) {
+                run {
                     val arguments = userParameters.joinToString(", ") { parameter -> parameter.name }
+                    constructor.callThisConstructor(CodeBlock.of("%T.Instance", DERIVED_COMPOSED_CLASS_NAME))
                     constructor.addCode(
                         "if (this::class == %T::class) {\n",
                         projectedClassName,
                     )
                     constructor.addStatement("    _innerStorage = ComposableFactory.%L(%L)", factoryCreateFunctionName(method), arguments)
+                    constructor.addStatement("    %T.registerComposableWrapper(this, _inner)", COM_WRAPPERS_SUPPORT_CLASS_NAME)
                     constructor.addCode("} else {\n")
                     constructor.addStatement("    %T.ensureInitialized()", WINRT_AUTHORING_SUPPORT_INTRINSIC_CLASS_NAME)
                     constructor.addStatement(
-                        "    _composableReference = ComposableFactory.%LForSubclass(this, %T.Metadata.IID%L)",
+                        "    _composableReference = ComposableFactory.%LForSubclass(this, %L%L)",
                         factoryCreateFunctionName(method),
-                        overridableInterfaceType,
+                        overridableInterfaceType?.let { CodeBlock.of("%T.Metadata.IID", it) } ?: CodeBlock.of("Metadata.DEFAULT_INTERFACE_IID"),
                         if (arguments.isBlank()) "" else ", $arguments",
                     )
                     constructor.addStatement("    _innerStorage = requireNotNull(_composableReference).instance")
                     constructor.addCode("}\n")
                     constructor.build()
-                } else {
-                    constructor
-                        .callThisConstructor(CodeBlock.of("ComposableFactory.%L(%L), kotlin.Unit", factoryCreateFunctionName(method), userParameters.joinToString(", ") { parameter -> parameter.name }))
-                        .build()
                 }
             } else {
                 constructor
