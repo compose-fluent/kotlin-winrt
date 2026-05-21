@@ -37,7 +37,9 @@ class KotlinWinRtAuthoringScannerCliTest {
         metadataIndex.writeText(
             """
             Microsoft.UI.Xaml.Application	RuntimeClass	Microsoft.UI.Xaml.IApplicationOverrides
+            Microsoft.UI.Xaml.Controls.ContentControl	RuntimeClass	Microsoft.UI.Xaml.Controls.IContentControlOverrides
             Microsoft.UI.Xaml.IApplicationOverrides	Interface	
+            Microsoft.UI.Xaml.Controls.IContentControlOverrides	Interface
             Windows.Foundation.IStringable	Interface	
             """.trimIndent(),
         )
@@ -55,10 +57,51 @@ class KotlinWinRtAuthoringScannerCliTest {
 
         assertEquals(
             listOf(
-                "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides",
-                "sample\tStringableContract\tsample.StringableContract\t\tWindows.Foundation.IStringable\t",
-                "sample\tStringableThing\tsample.StringableThing\t\tWindows.Foundation.IStringable",
+                "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue",
+                "sample\tInternalStringableThing\tsample.InternalStringableThing\t\tWindows.Foundation.IStringable\t\tfalse",
+                "sample\tStringableContract\tsample.StringableContract\t\tWindows.Foundation.IStringable\t\ttrue",
+                "sample\tStringableThing\tsample.StringableThing\t\tWindows.Foundation.IStringable\t\ttrue",
             ).joinToString("\n"),
+            output.readText().trimEnd(),
+        )
+    }
+
+    @Test
+    fun scans_internal_winui_runtime_class_for_local_type_details() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-internal-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import microsoft.ui.xaml.controls.ContentControl
+
+            internal class RootContentControl : ContentControl()
+
+            private class PrivateContentControl : ContentControl()
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Controls.ContentControl	RuntimeClass	Microsoft.UI.Xaml.Controls.IContentControlOverrides
+            Microsoft.UI.Xaml.Controls.IContentControlOverrides	Interface
+            """.trimIndent(),
+        )
+
+        KotlinWinRtAuthoringScannerCli.main(
+            arrayOf(
+                "--metadata-index",
+                metadataIndex.toString(),
+                "--output",
+                output.toString(),
+                "--source-root",
+                root.toString(),
+            ),
+        )
+
+        assertEquals(
+            "sample\tRootContentControl\tsample.RootContentControl\tMicrosoft.UI.Xaml.Controls.ContentControl\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides\tMicrosoft.UI.Xaml.Controls.IContentControlOverrides\tfalse",
             output.readText().trimEnd(),
         )
     }

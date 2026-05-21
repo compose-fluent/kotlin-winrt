@@ -149,20 +149,21 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             KotlinWinRtAuthoringCandidateFile.read(candidatesFile)
         }
         val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, dependencyIdentityFiles.files)
-        val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, authoringCandidates)
+        val exportedAuthoringCandidates = authoringCandidates.filter(KotlinWinRtAuthoredTypeCandidate::isPublic)
+        val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
         KotlinWinRtAuthoringMetadataModel.writeDescriptor(
-            candidates = authoringCandidates,
+            candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/authored-metadata.tsv"),
         )
         KotlinWinRtAuthoringMetadataModel.writeWinmd(
             assemblyName = authoringAssemblyName.get(),
-            candidates = authoringCandidates,
+            candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.winmd"),
         )
         KotlinWinRtAuthoringMetadataModel.writeHostManifest(
             assemblyName = authoringAssemblyName.get(),
             targetArtifactName = authoringTargetArtifactName.get(),
-            candidates = authoringCandidates,
+            candidates = exportedAuthoringCandidates,
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.host.json"),
         )
         KotlinProjectionGenerator(

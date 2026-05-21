@@ -103,6 +103,57 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_system_object_override_parameters_through_object_marshaller() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-object-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalContentControl",
+            sourceTypeName = "sample.LocalContentControl",
+            winRtBaseClassName = "Microsoft.UI.Xaml.Controls.ContentControl",
+            winRtInterfaceNames = listOf("Microsoft.UI.Xaml.Controls.IContentControlOverrides"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.Controls.IContentControlOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Controls",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Controls",
+                            name = "IContentControlOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("2504174a-017e-5a2d-9c28-d97c66ae9937"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "OnContentChanged",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("oldContent", "System.Object"),
+                                        WinRtParameterDefinition("newContent", "System.Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalContentControl_TypeDetails.kt").readText()
+        assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[1] as RawAddress)"))
+        assertTrue(generated.contains("type.getDeclaredMethod(\"onContentChanged\",\n                Any::class.java, Any::class.java)"))
+        assertTrue(generated, !generated.contains("Object.Metadata.wrap"))
+    }
+
+    @Test
     fun writes_authoring_host_manifest_for_scanned_authored_types() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-host-")
         val manifest = output.resolve("SampleComponent.host.json")

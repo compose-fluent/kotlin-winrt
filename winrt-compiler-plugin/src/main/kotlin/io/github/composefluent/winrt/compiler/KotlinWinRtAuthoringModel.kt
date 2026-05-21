@@ -17,6 +17,7 @@ internal data class KotlinWinRtAuthoredTypeCandidate(
     val winRtBaseClassName: String?,
     val winRtInterfaceNames: List<String>,
     val overridableInterfaceNames: List<String>,
+    val isPublic: Boolean,
 )
 
 internal data class KotlinWinRtProjectionTypeIndexRecord(

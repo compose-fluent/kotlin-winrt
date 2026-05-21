@@ -38,6 +38,7 @@ object KotlinWinRtAuthoringScannerCli {
                     candidate.winRtBaseClassName.orEmpty(),
                     candidate.winRtInterfaceNames.joinToString(";"),
                     candidate.overridableInterfaceNames.joinToString(";"),
+                    candidate.isPublic.toString(),
                 ).joinToString("\t")
             },
         )
@@ -64,7 +65,7 @@ object KotlinWinRtAuthoringScannerCli {
     ): List<KotlinWinRtAuthoredTypeCandidate> {
         val packageName = source.packageName()
         val imports = parseImports(source)
-        return source.classes().filter(source::isEffectivelyPublicClass).mapNotNull { klass ->
+        return source.classes().filter(source::isEffectivelyAuthorableClass).mapNotNull { klass ->
             val className = source.className(klass) ?: return@mapNotNull null
             val sourceTypeName = if (packageName.isBlank()) className else "$packageName.$className"
             val resolvedWinRtTypes = source.superTypeNames(klass)
@@ -87,6 +88,7 @@ object KotlinWinRtAuthoringScannerCli {
                 winRtBaseClassName = winRtBase?.qualifiedName,
                 winRtInterfaceNames = (directInterfaces + overridableInterfaces).distinct().sorted(),
                 overridableInterfaceNames = overridableInterfaces.distinct().sorted(),
+                isPublic = source.isEffectivelyPublicClass(klass),
             )
         }.toList()
     }
@@ -210,6 +212,13 @@ object KotlinWinRtAuthoringScannerCli {
         fun classes(): List<LighterASTNode> =
             tree.root.descendantsOfType(KtNodeTypes.CLASS)
 
+        fun isEffectivelyAuthorableClass(classNode: LighterASTNode): Boolean =
+            isPublicOrInternalClass(classNode) &&
+                classes()
+                    .filter { candidate -> candidate !== classNode }
+                    .filter { candidate -> candidate.startOffset < classNode.startOffset && candidate.endOffset > classNode.endOffset }
+                    .all(::isPublicOrInternalClass)
+
         fun isEffectivelyPublicClass(classNode: LighterASTNode): Boolean =
             isPublicClass(classNode) &&
                 classes()
@@ -261,6 +270,15 @@ object KotlinWinRtAuthoringScannerCli {
             return modifierList.descendants().none { node ->
                 node.tokenType == KtTokens.PRIVATE_KEYWORD ||
                     node.tokenType == KtTokens.INTERNAL_KEYWORD ||
+                    node.tokenType == KtTokens.PROTECTED_KEYWORD
+            }
+        }
+
+        private fun isPublicOrInternalClass(classNode: LighterASTNode): Boolean {
+            val modifierList = classNode.children().firstOrNull { child -> child.tokenType == KtNodeTypes.MODIFIER_LIST }
+                ?: return true
+            return modifierList.descendants().none { node ->
+                node.tokenType == KtTokens.PRIVATE_KEYWORD ||
                     node.tokenType == KtTokens.PROTECTED_KEYWORD
             }
         }
