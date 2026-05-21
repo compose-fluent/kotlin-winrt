@@ -30,6 +30,7 @@ class KotlinWinRtPlugin : Plugin<Project> {
 const val KOTLIN_WINRT_IDENTITY_CONFIGURATION: String = "kotlinWinRtIdentity"
 const val KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION: String = "kotlinWinRtIdentityElements"
 const val KOTLIN_WINRT_COMPILER_PLUGIN_CONFIGURATION: String = "kotlinWinRtCompilerPlugin"
+const val KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION: String = "kotlinWinRtGeneratorWorker"
 const val KOTLIN_WINRT_IDENTITY_USAGE: String = "kotlin-winrt-identity"
 const val KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY: String = "kotlin-winrt-runtime-assets"
 private const val KOTLIN_WINRT_COMPILER_PLUGIN_ID: String = "io.github.composefluent.winrt.compiler"
@@ -475,6 +476,7 @@ private fun configureWinRtGeneration(
     val generatedSources = project.layout.buildDirectory.dir("generated/kotlin-winrt/src/main/kotlin")
     val generatedAuthoringSources = project.layout.buildDirectory.dir("generated/kotlin-winrt-authoring/src/main/kotlin")
     val compilerPluginClasspath = kotlinWinRtCompilerPluginClasspath(project)
+    val generatorWorkerClasspath = kotlinWinRtGeneratorWorkerClasspath(project)
     val generateTask = project.tasks.register(
         "generateWinRtProjections",
         GenerateWinRtProjectionsTask::class.java,
@@ -534,6 +536,14 @@ private fun configureWinRtGeneration(
                     "-XX:ReservedCodeCacheSize=32m",
                 ),
             )
+            task.generatorWorkerJvmArgs.convention(
+                listOf(
+                    "-Xmx1024m",
+                    "-XX:+UseSerialGC",
+                    "-Dfile.encoding=UTF-8",
+                ),
+            )
+            task.generatorWorkerClasspath.from(generatorWorkerClasspath)
             task.authoringScannerClasspath.from(compilerPluginClasspath)
             task.sourceRoots.from(
                 project.provider {
@@ -627,6 +637,51 @@ private fun kotlinWinRtCompilerPluginClasspath(project: Project) =
             configuration.isCanBeResolved = true
             project.dependencies.add(configuration.name, kotlinWinRtCompilerPluginDependency(project))
         }
+
+private fun kotlinWinRtGeneratorWorkerClasspath(project: Project) =
+    project.files(
+        kotlinWinRtPluginClasspathLocation(project),
+        project.configurations.findByName(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION)
+            ?: project.configurations.create(KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION).also { configuration ->
+                configuration.isCanBeConsumed = false
+                configuration.isCanBeResolved = true
+                val version = kotlinWinRtPluginVersion()
+                project.dependencies.add(
+                    configuration.name,
+                    kotlinWinRtProjectOrModuleDependency(project, ":winrt-runtime", "winrt-runtime", version),
+                )
+                project.dependencies.add(
+                    configuration.name,
+                    kotlinWinRtProjectOrModuleDependency(project, ":winrt-metadata", "winrt-metadata", version),
+                )
+                project.dependencies.add(
+                    configuration.name,
+                    kotlinWinRtProjectOrModuleDependency(project, ":winrt-generator", "winrt-generator", version),
+                )
+                project.dependencies.add(configuration.name, "com.squareup:kotlinpoet:1.18.1")
+            },
+    )
+
+private fun kotlinWinRtProjectOrModuleDependency(
+    project: Project,
+    projectPath: String,
+    moduleName: String,
+    version: String,
+): Any =
+    if (project.rootProject.findProject(projectPath) != null) {
+        project.dependencies.project(mapOf("path" to projectPath))
+    } else {
+        "io.github.compose-fluent:$moduleName:$version"
+    }
+
+private fun kotlinWinRtPluginClasspathLocation(project: Project): Any =
+    runCatching {
+        val location = GenerateWinRtProjectionsTask::class.java.protectionDomain?.codeSource?.location
+        requireNotNull(location) { "kotlin-winrt Gradle plugin code source is unavailable." }
+        project.files(File(location.toURI()))
+    }.getOrElse {
+        project.files()
+    }
 
 private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
     val localCompilerPlugin = project.rootProject.findProject(":winrt-compiler-plugin")

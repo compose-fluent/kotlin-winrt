@@ -12,6 +12,7 @@ import io.github.composefluent.winrt.projections.generator.KotlinProjectionGener
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.logging.Logging
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Classpath
@@ -24,6 +25,9 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
+import org.gradle.workers.WorkAction
+import org.gradle.workers.WorkParameters
+import org.gradle.workers.WorkerExecutor
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.inject.Inject
@@ -115,30 +119,106 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     @get:Input
     abstract val authoringScannerJvmArgs: ListProperty<String>
 
+    @get:Classpath
+    abstract val generatorWorkerClasspath: ConfigurableFileCollection
+
+    @get:Input
+    abstract val generatorWorkerJvmArgs: ListProperty<String>
+
     @get:Inject
-    abstract val execOperations: ExecOperations
+    abstract val workerExecutor: WorkerExecutor
 
     @TaskAction
     fun generate() {
+        workerExecutor.processIsolation { spec ->
+            spec.classpath.from(generatorWorkerClasspath)
+            spec.forkOptions.jvmArgs(generatorWorkerJvmArgs.get())
+        }.submit(GenerateWinRtProjectionsWorkAction::class.java) { parameters ->
+            parameters.outputDirectory.set(outputDirectory)
+            parameters.authoringTypeDetailsOutputDirectory.set(authoringTypeDetailsOutputDirectory)
+            parameters.metadataInputs.set(metadataInputs)
+            parameters.metadataInputFiles.from(metadataInputFiles)
+            parameters.sourceRoots.from(sourceRoots)
+            parameters.includeNamespaces.set(includeNamespaces)
+            parameters.includeTypes.set(includeTypes)
+            parameters.excludeNamespaces.set(excludeNamespaces)
+            parameters.excludeTypes.set(excludeTypes)
+            parameters.additionExcludeNamespaces.set(additionExcludeNamespaces)
+            parameters.dependencyIdentityFiles.from(dependencyIdentityFiles)
+            parameters.windowsSdkVersion.set(windowsSdkVersion)
+            parameters.includeWindowsSdkExtensions.set(includeWindowsSdkExtensions)
+            parameters.nugetExecutable.set(nugetExecutable)
+            parameters.nugetCliVersion.set(nugetCliVersion)
+            parameters.nugetCliCacheDirectory.set(nugetCliCacheDirectory)
+            parameters.restoreNuGetPackages.set(restoreNuGetPackages)
+            parameters.useNuGetCliGlobalPackages.set(useNuGetCliGlobalPackages)
+            parameters.nugetGlobalPackagesRoots.set(nugetGlobalPackagesRoots)
+            parameters.nugetPackages.set(nugetPackages)
+            parameters.projectModel.set(projectModel)
+            parameters.authoringAssemblyName.set(authoringAssemblyName)
+            parameters.authoringTargetArtifactName.set(authoringTargetArtifactName)
+            parameters.authoringScannerClasspath.from(authoringScannerClasspath)
+            parameters.authoringScannerJvmArgs.set(authoringScannerJvmArgs)
+            parameters.workDirectory.set(project.layout.dir(project.provider { temporaryDir }))
+        }
+    }
+}
+
+internal interface GenerateWinRtProjectionsWorkParameters : WorkParameters {
+    val outputDirectory: DirectoryProperty
+    val authoringTypeDetailsOutputDirectory: DirectoryProperty
+    val metadataInputs: ListProperty<String>
+    val metadataInputFiles: ConfigurableFileCollection
+    val sourceRoots: ConfigurableFileCollection
+    val includeNamespaces: ListProperty<String>
+    val includeTypes: ListProperty<String>
+    val excludeNamespaces: ListProperty<String>
+    val excludeTypes: ListProperty<String>
+    val additionExcludeNamespaces: ListProperty<String>
+    val dependencyIdentityFiles: ConfigurableFileCollection
+    val windowsSdkVersion: Property<String>
+    val includeWindowsSdkExtensions: Property<Boolean>
+    val nugetExecutable: Property<String>
+    val nugetCliVersion: Property<String>
+    val nugetCliCacheDirectory: DirectoryProperty
+    val restoreNuGetPackages: Property<Boolean>
+    val useNuGetCliGlobalPackages: Property<Boolean>
+    val nugetGlobalPackagesRoots: ListProperty<String>
+    val nugetPackages: ListProperty<String>
+    val projectModel: Property<String>
+    val authoringAssemblyName: Property<String>
+    val authoringTargetArtifactName: Property<String>
+    val authoringScannerClasspath: ConfigurableFileCollection
+    val authoringScannerJvmArgs: ListProperty<String>
+    val workDirectory: DirectoryProperty
+}
+
+internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<GenerateWinRtProjectionsWorkParameters> {
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    private val logger = Logging.getLogger(GenerateWinRtProjectionsWorkAction::class.java)
+
+    override fun execute() {
         val sources = metadataSources()
         val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
-            namespaces = includeNamespaces.get().toSet(),
-            types = includeTypes.get().toSet(),
-            excludedNamespaces = excludeNamespaces.get().toSet(),
-            excludedTypes = excludeTypes.get().toSet(),
+            namespaces = parameters.includeNamespaces.get().toSet(),
+            types = parameters.includeTypes.get().toSet(),
+            excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
+            excludedTypes = parameters.excludeTypes.get().toSet(),
         )
-        val generatedRoot = outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val generatedRoot = parameters.outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
         Files.createDirectories(authoringMetadataIndex.parent)
         writeAuthoringMetadataIndex(baseModel, authoringMetadataIndex)
-        val authoringSourceRoots = sourceRoots.files
+        val authoringSourceRoots = parameters.sourceRoots.files
             .map { it.toPath().toAbsolutePath().normalize() }
             .filterNot { sourceRoot -> sourceRoot.startsWith(generatedRoot) }
             .filter(::containsKotlinSource)
         val authoringCandidates = if (authoringSourceRoots.isEmpty()) {
             emptyList()
         } else {
-            val scannerWorkDirectory = temporaryDir.toPath().resolve("authoring-scanner")
+            val scannerWorkDirectory = parameters.workDirectory.get().asFile.toPath().resolve("authoring-scanner")
             Files.createDirectories(scannerWorkDirectory)
             val candidatesFile = scannerWorkDirectory.resolve("candidates.tsv")
             runAuthoringScanner(
@@ -148,7 +228,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             )
             KotlinWinRtAuthoringCandidateFile.read(candidatesFile)
         }
-        val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, dependencyIdentityFiles.files)
+        val dependencyProjectionTypeNames = dependencyProjectedTypeNames(baseModel, parameters.dependencyIdentityFiles.files)
         val exportedAuthoringCandidates = authoringCandidates.filter(KotlinWinRtAuthoredTypeCandidate::isPublic)
         val model = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(baseModel, exportedAuthoringCandidates)
         KotlinWinRtAuthoringMetadataModel.writeDescriptor(
@@ -156,23 +236,23 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             outputFile = generatedRoot.resolve("kotlin-winrt-authoring/authored-metadata.tsv"),
         )
         KotlinWinRtAuthoringMetadataModel.writeWinmd(
-            assemblyName = authoringAssemblyName.get(),
+            assemblyName = parameters.authoringAssemblyName.get(),
             candidates = exportedAuthoringCandidates,
-            outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.winmd"),
+            outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.winmd"),
         )
         KotlinWinRtAuthoringMetadataModel.writeHostManifest(
-            assemblyName = authoringAssemblyName.get(),
-            targetArtifactName = authoringTargetArtifactName.get(),
+            assemblyName = parameters.authoringAssemblyName.get(),
+            targetArtifactName = parameters.authoringTargetArtifactName.get(),
             candidates = exportedAuthoringCandidates,
-            outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${authoringAssemblyName.get()}.host.json"),
+            outputFile = generatedRoot.resolve("kotlin-winrt-authoring/${parameters.authoringAssemblyName.get()}.host.json"),
         )
         KotlinProjectionGenerator(
             emitSupportFiles = true,
             projectionContext = WinRtMetadataProjectionContext(
                 sources = sources,
-                include = includeNamespaces.get().toSet() + includeTypes.get().toSet(),
-                exclude = excludeNamespaces.get().toSet() + excludeTypes.get().toSet(),
-                additionExclude = additionExcludeNamespaces.get().toSet(),
+                include = parameters.includeNamespaces.get().toSet() + parameters.includeTypes.get().toSet(),
+                exclude = parameters.excludeNamespaces.get().toSet() + parameters.excludeTypes.get().toSet(),
+                additionExclude = parameters.additionExcludeNamespaces.get().toSet(),
             ),
             suppressedProjectionTypeNames = (
                 dependencyProjectionTypeNames +
@@ -180,49 +260,49 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
                         .mapTo(mutableSetOf()) { candidate -> candidate.sourceTypeName }
                         .filterTo(mutableSetOf(), String::isNotBlank)
                 ),
-        ).generateTo(model, outputDirectory.get().asFile.toPath())
+        ).generateTo(model, parameters.outputDirectory.get().asFile.toPath())
         writeAuthoringMetadataIndex(model, authoringMetadataIndex)
         if (authoringCandidates.isNotEmpty()) {
             KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
                 candidates = authoringCandidates,
                 metadataModel = model,
-                outputDirectory = authoringTypeDetailsOutputDirectory.get().asFile.toPath(),
+                outputDirectory = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath(),
             )
         }
     }
 
     private fun metadataSources(): List<WinRtMetadataSource> {
-        val applicationPackagingOnly = projectModel.get() == "application" &&
-            metadataInputs.get().isEmpty() &&
-            includeNamespaces.get().isEmpty() &&
-            includeTypes.get().isEmpty() &&
-            !windowsSdkVersion.isPresent &&
-            !includeWindowsSdkExtensions.get()
-        val explicitSources = metadataInputs.get().map(WinRtMetadataSource::parse)
-        val sdkSource = if (windowsSdkVersion.isPresent || includeWindowsSdkExtensions.get()) {
+        val applicationPackagingOnly = parameters.projectModel.get() == "application" &&
+            parameters.metadataInputs.get().isEmpty() &&
+            parameters.includeNamespaces.get().isEmpty() &&
+            parameters.includeTypes.get().isEmpty() &&
+            !parameters.windowsSdkVersion.isPresent &&
+            !parameters.includeWindowsSdkExtensions.get()
+        val explicitSources = parameters.metadataInputs.get().map(WinRtMetadataSource::parse)
+        val sdkSource = if (parameters.windowsSdkVersion.isPresent || parameters.includeWindowsSdkExtensions.get()) {
             listOf(
                 WinRtMetadataSource.windowsSdk(
-                    version = windowsSdkVersion.orNull,
-                    includeExtensions = includeWindowsSdkExtensions.get(),
+                    version = parameters.windowsSdkVersion.orNull,
+                    includeExtensions = parameters.includeWindowsSdkExtensions.get(),
                 ),
             )
         } else {
             emptyList()
         }
-        val explicitNuGetRoots = nugetGlobalPackagesRoots.get().map(Path::of)
+        val explicitNuGetRoots = parameters.nugetGlobalPackagesRoots.get().map(Path::of)
         val cliNuGetRoots = nugetCliGlobalPackagesRoots()
         val packageIdentities = if (applicationPackagingOnly) {
             emptyList()
         } else {
-            nugetPackages.get().map(::parseNuGetPackageIdentity)
+            parameters.nugetPackages.get().map(::parseNuGetPackageIdentity)
         }
         val nugetRoots = explicitNuGetRoots + cliNuGetRoots
-        val restoredPackageDirectories = if (restoreNuGetPackages.get() && packageIdentities.isNotEmpty()) {
+        val restoredPackageDirectories = if (parameters.restoreNuGetPackages.get() && packageIdentities.isNotEmpty()) {
             restoreNuGetPackages(packageIdentities)
         } else {
             emptyList()
         }
-        val packageIdentitiesFromRoots = if (restoreNuGetPackages.get()) {
+        val packageIdentitiesFromRoots = if (parameters.restoreNuGetPackages.get()) {
             emptyList()
         } else {
             val missingNuGetIdentities = packageIdentities.filterNot { identity ->
@@ -242,7 +322,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         }
         val restoredNuGetSources = restoredPackageDirectories.map(WinRtMetadataSource::nugetPackage)
         val sources = explicitSources + sdkSource + resolvedNuGetSources + restoredNuGetSources
-        val hasProjectionFilter = includeNamespaces.get().isNotEmpty() || includeTypes.get().isNotEmpty()
+        val hasProjectionFilter = parameters.includeNamespaces.get().isNotEmpty() || parameters.includeTypes.get().isNotEmpty()
         return if (applicationPackagingOnly) {
             sources
         } else {
@@ -273,7 +353,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             return emptyList()
         }
 
-        val installRoot = temporaryDir.toPath().resolve("nuget-install")
+        val installRoot = parameters.workDirectory.get().asFile.toPath().resolve("nuget-install")
         Files.createDirectories(installRoot)
         packageIdentities.forEach { identity ->
             runNuGetInstall(identity, installRoot)
@@ -320,7 +400,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     }
 
     private fun nugetCliGlobalPackagesRoots(): List<Path> {
-        if (!useNuGetCliGlobalPackages.get()) {
+        if (!parameters.useNuGetCliGlobalPackages.get()) {
             return emptyList()
         }
         return runCatching {
@@ -375,10 +455,15 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
         metadataIndex: Path,
         candidatesFile: Path,
     ) {
+        val scannerWorkDirectory = candidatesFile.parent
         execOperations.javaexec { spec ->
-            spec.classpath = authoringScannerClasspath
+            spec.classpath = parameters.authoringScannerClasspath
             spec.mainClass.set("io.github.composefluent.winrt.compiler.KotlinWinRtAuthoringScannerCli")
-            spec.jvmArgs(authoringScannerJvmArgs.get())
+            spec.workingDir(scannerWorkDirectory.toFile())
+            spec.jvmArgs(
+                parameters.authoringScannerJvmArgs.get() +
+                    "-Djava.io.tmpdir=${scannerWorkDirectory.toAbsolutePath().normalize()}",
+            )
             spec.args(
                 buildList {
                     add("--metadata-index")
@@ -395,9 +480,10 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
     }
 
     private fun nuGetCli(): NuGetCliSupport = NuGetCliSupport(
-        executable = nugetExecutable.get(),
-        cliVersion = nugetCliVersion.get(),
-        cliCacheDirectory = nugetCliCacheDirectory.get().asFile.toPath(),
+        executable = parameters.nugetExecutable.get(),
+        cliVersion = parameters.nugetCliVersion.get(),
+        cliCacheDirectory = parameters.nugetCliCacheDirectory.get().asFile.toPath(),
+        scratchDirectory = parameters.workDirectory.get().asFile.toPath().resolve("nuget-scratch"),
         logger = logger,
     )
 }
