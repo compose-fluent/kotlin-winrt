@@ -1190,8 +1190,10 @@ class KotlinProjectionRenderer(
         val supportsDerivedComposableConstruction = plan.supportsDerivedComposableConstruction()
         plan.runtimeClassBaseTypeName?.let { baseTypeName ->
             builder.superclass(resolveTypeName(baseTypeName))
-            builder.addSuperclassConstructorParameter("_inner")
-            builder.addSuperclassConstructorParameter("kotlin.Unit")
+            if (!supportsDerivedComposableConstruction) {
+                builder.addSuperclassConstructorParameter("_inner")
+                builder.addSuperclassConstructorParameter("kotlin.Unit")
+            }
         }
         if (supportsDerivedComposableConstruction) {
             builder.addProperty(
@@ -1213,14 +1215,31 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .getter(
                         FunSpec.getterBuilder()
-                            .addCode("return requireNotNull(_innerStorage) { %S }\n", "WinRT runtime class object reference is not initialized.")
+                            .addStatement("_innerStorage?.let { return it }")
+                            .addStatement("return nativeObject.asInspectable()")
                             .build(),
                     )
                     .build(),
             )
             builder.addFunction(
                 constructorBuilder
+                    .apply {
+                        plan.runtimeClassBaseTypeName?.let {
+                            callSuperConstructor("_inner", "kotlin.Unit")
+                        }
+                    }
                     .addStatement("this._innerStorage = _inner")
+                    .build(),
+            )
+            builder.addFunction(
+                FunSpec.constructorBuilder()
+                    .addModifiers(KModifier.PROTECTED)
+                    .addParameter("__derivedComposed", DERIVED_COMPOSED_CLASS_NAME)
+                    .apply {
+                        plan.runtimeClassBaseTypeName?.let {
+                            callSuperConstructor("__derivedComposed")
+                        }
+                    }
                     .build(),
             )
         } else {
@@ -3342,8 +3361,17 @@ private fun propertySetterJvmName(
     }
 
 internal fun KotlinTypeProjectionPlan.supportsDerivedComposableConstruction(): Boolean =
-    classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor -> descriptor.isOverridableInterface } == true &&
-        type.baseTypeName?.takeUnless { it == "System.Object" || it == "Any" } == null &&
+    (
+        classMemberMergeDescriptor?.interfaceDescriptors?.any { descriptor ->
+            descriptor.isOverridableInterface
+        } == true ||
+            typesByQualifiedName.values.any { candidate ->
+                candidate.kind == WinRtTypeKind.RuntimeClass &&
+                    candidate.baseTypeName?.let { baseName ->
+                        baseName == type.qualifiedName || baseName == type.name
+                    } == true
+            }
+        ) &&
         KotlinProjectionCompanionKind.ComposableFactory in companionKinds
 
 private fun KotlinProjectionRenderer.supportsProjectedDelegateObjectMarshaller(
