@@ -627,10 +627,27 @@ private fun toJavaLayout(kind: ComAbiValueKind) =
         ComAbiValueKind.Int64 -> ValueLayout.JAVA_LONG
         ComAbiValueKind.Float -> ValueLayout.JAVA_FLOAT
         ComAbiValueKind.Double -> ValueLayout.JAVA_DOUBLE
-        is ComAbiValueKind.Struct ->
-            MemoryLayout.structLayout(MemoryLayout.paddingLayout(kind.layout.byteSize * 8))
-                .withByteAlignment(kind.layout.byteAlignment)
+        is ComAbiValueKind.Struct -> opaqueStructLayout(kind.layout)
     }
+
+private fun opaqueStructLayout(layout: NativeAbiLayout): MemoryLayout {
+    require(layout.byteSize > 0) {
+        "Struct ABI layout size must be positive."
+    }
+    val elementLayout = when (layout.byteAlignment) {
+        8L -> ValueLayout.JAVA_LONG
+        4L -> ValueLayout.JAVA_INT
+        2L -> ValueLayout.JAVA_SHORT
+        1L -> ValueLayout.JAVA_BYTE
+        else -> error("Unsupported struct ABI alignment: ${layout.byteAlignment}.")
+    }
+    require(layout.byteSize % layout.byteAlignment == 0L) {
+        "Struct ABI size ${layout.byteSize} must be a multiple of alignment ${layout.byteAlignment}."
+    }
+    return MemoryLayout.structLayout(
+        *Array((layout.byteSize / layout.byteAlignment).toInt()) { elementLayout },
+    )
+}
 
 private fun carrierClass(kind: ComAbiValueKind): Class<*> =
     when (kind) {

@@ -1,6 +1,8 @@
 package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
+import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
+import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
@@ -91,12 +93,12 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer))"))
         assertTrue(generated.contains("rawArgs"))
         assertTrue(generated.contains("LaunchActivatedEventArgs.Metadata.wrap"))
-        assertTrue(generated.contains("type.getDeclaredMethod("))
-        assertTrue(generated.contains("\"onLaunched\""))
-        assertTrue(generated.contains("LaunchActivatedEventArgs::class.java"))
-        assertTrue(generated.contains("method.invoke(value, __arg0)"))
-        assertTrue(generated.contains("catch (failure: InvocationTargetException)"))
-        assertTrue(generated.contains("throw (failure.targetException ?: failure)"))
+        assertTrue(generated.contains("(value as Application).__winrtAuthoringInvokeOnLaunched(__arg0)"))
+        assertTrue(generated, !generated.contains("findDeclaredMethod"))
+        assertTrue(generated, !generated.contains("getDeclaredMethod"))
+        assertTrue(generated, !generated.contains("method.invoke"))
+        assertTrue(generated, !generated.contains("InvocationTargetException"))
+        assertTrue(generated, !generated.contains("E_NOTIMPL"))
         val registrar = output.resolve("io/github/composefluent/winrt/projections/support/WinRTAuthoringTypeDetailsRegistrar.kt").readText()
         assertTrue(registrar.contains("object WinRTAuthoringTypeDetailsRegistrar"))
         assertTrue(registrar.contains("WinRT_App_TypeDetails.register()"))
@@ -149,8 +151,74 @@ class KotlinWinRtAuthoringSourceScannerTest {
         val generated = output.resolve("sample/WinRT_LocalContentControl_TypeDetails.kt").readText()
         assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(generated.contains("WinRtObjectMarshaller.fromAbi(rawArgs[1] as RawAddress)"))
-        assertTrue(generated.contains("type.getDeclaredMethod(\"onContentChanged\",\n                Any::class.java, Any::class.java)"))
+        assertTrue(generated.contains("(value as ContentControl).__winrtAuthoringInvokeOnContentChanged(__arg0, __arg1)"))
+        assertTrue(generated, !generated.contains("ContentControl::class.java"))
+        assertTrue(generated, !generated.contains("Any::class.java, Any::class.java"))
         assertTrue(generated, !generated.contains("Object.Metadata.wrap"))
+    }
+
+    @Test
+    fun renders_inherited_override_dispatch_against_declaring_winrt_base_class() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-inherited-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalContentControl",
+            sourceTypeName = "sample.LocalContentControl",
+            winRtBaseClassName = "Microsoft.UI.Xaml.Controls.ContentControl",
+            winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IUIElementOverrides"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IUIElementOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "UIElement",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Microsoft.UI.Xaml.IUIElementOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml",
+                            name = "IUIElementOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("bbbbbbbb-1111-2222-3333-444444444444"),
+                            isExclusiveTo = true,
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ExclusiveToAttribute",
+                                    fixedArguments = listOf(WinRtCustomAttributeValue.TypeValue("Microsoft.UI.Xaml.UIElement")),
+                                ),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "OnDisconnectVisualChildren",
+                                    returnTypeName = "Void",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalContentControl_TypeDetails.kt").readText()
+        assertTrue(generated.contains("(value as UIElement).__winrtAuthoringInvokeOnDisconnectVisualChildren()"))
+        assertTrue(generated, !generated.contains("ContentControl::__class.java"))
+        assertTrue(generated, !generated.contains("findDeclaredMethod"))
     }
 
     @Test

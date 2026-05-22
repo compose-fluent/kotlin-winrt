@@ -1451,6 +1451,7 @@ class KotlinProjectionRenderer(
             .forEach { method ->
                 builder.addFunction(renderRuntimeClassInterfaceForwardMethod(plan, method) ?: renderRuntimeMethod(plan, method))
             }
+        addRuntimeClassAuthoringInvokeBridges(builder, plan, mappedCollectionMemberNames)
         plan.type.properties
             .filterNot { it.isStatic }
             .filter { it.getterMethodName != null }
@@ -1511,6 +1512,54 @@ class KotlinProjectionRenderer(
         }
         appendCompanionShells(builder, plan, excludeKinds = setOf(KotlinProjectionCompanionKind.Metadata))
         return builder.build()
+    }
+
+    private fun addRuntimeClassAuthoringInvokeBridges(
+        builder: TypeSpec.Builder,
+        plan: KotlinTypeProjectionPlan,
+        mappedCollectionMemberNames: Set<String>,
+    ) {
+        plan.type.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filterNot { it.isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) }
+            .filterNot { method -> isRuntimeClassDelegatedMember(plan, method.abiSlotConstantName(plan.type.methods)) }
+            .filterNot { plan.usesMappedDisposableAugmentation && it.name == "Close" }
+            .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "GetErrors" }
+            .mapNotNull { method ->
+                val binding = plan.instanceMemberBindings.firstOrNull {
+                    it.bindingName == method.abiSlotConstantName(plan.type.methods)
+                } ?: return@mapNotNull null
+                val modifiers = runtimeClassMemberModifiers(plan, binding)
+                if (KModifier.PROTECTED !in modifiers) {
+                    return@mapNotNull null
+                }
+                renderRuntimeClassAuthoringInvokeBridge(method)
+            }
+            .forEach(builder::addFunction)
+    }
+
+    private fun renderRuntimeClassAuthoringInvokeBridge(method: WinRtMethodDefinition): FunSpec {
+        val methodName = method.projectedMethodName()
+        val parameterSpecs = method.parameters.map { parameter ->
+            ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
+        }
+        val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
+        val returns = if (method.returnTypeName == "Void" || method.returnTypeName == "System.Void") {
+            UNIT
+        } else {
+            resolveTypeName(method.returnTypeName)
+        }
+        return FunSpec.builder(authoringInvokeBridgeName(method))
+            .addParameters(parameterSpecs)
+            .returns(returns)
+            .apply {
+                if (returns == UNIT) {
+                    addCode("%L(%L)\n", methodName, arguments)
+                } else {
+                    addCode("return %L(%L)\n", methodName, arguments)
+                }
+            }
+            .build()
     }
 
     private fun addRuntimeClassInterfaceProjectionCaches(
