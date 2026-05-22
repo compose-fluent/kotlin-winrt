@@ -300,16 +300,16 @@ class KotlinWinRtPluginTest {
             localRoot.resolve("compiler-support.tsv"),
             """
             kind	className	sourceFile	entries
-            interface-native-projection	io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry	interface-native-projections.tsv	1
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
             event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry	event-sources.tsv	1
             event-source-mapping	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	EventSourceMappings.kt	1
             """.trimIndent(),
         )
         Files.writeString(
-            localRoot.resolve("interface-native-projections.tsv"),
+            localRoot.resolve("projection-registrar.tsv"),
             """
-            interfaceName	factoryClassName
-            Windows.Foundation.IStringable	windows.foundation.IStringableNativeProjection${'$'}Factory
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
             """.trimIndent(),
         )
         Files.writeString(
@@ -324,15 +324,15 @@ class KotlinWinRtPluginTest {
             dependencyRoot.resolve("compiler-support.tsv"),
             """
             kind	className	sourceFile	entries
-            interface-native-projection	io.github.composefluent.winrt.projections.support.WinRTInterfaceProjectionRegistry	interface-native-projections.tsv	1
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
             generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry	generic-instantiations.tsv	1
             """.trimIndent(),
         )
         Files.writeString(
-            dependencyRoot.resolve("interface-native-projections.tsv"),
+            dependencyRoot.resolve("projection-registrar.tsv"),
             """
-            interfaceName	factoryClassName
-            Windows.System.Display.IDisplayRequest	windows.system.display.IDisplayRequestNativeProjection${'$'}Factory
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            windows.system.display.DisplayRequest	Windows.System.Display.DisplayRequest	RuntimeClass	System.Object	windows.system.display.DisplayRequest.Metadata
             """.trimIndent(),
         )
         Files.writeString(
@@ -363,15 +363,15 @@ class KotlinWinRtPluginTest {
         task.merge()
 
         val manifest = Files.readString(outputRoot.resolve("compiler-support.tsv"))
-        val interfaceSupport = Files.readString(outputRoot.resolve("interface-native-projections.tsv"))
+        val projectionSupport = Files.readString(outputRoot.resolve("projection-registrar.tsv"))
         val eventSupport = Files.readString(outputRoot.resolve("event-sources.tsv"))
         val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
-        assertTrue(manifest.contains("interface-native-projection"))
+        assertTrue(manifest.contains("projection-registrar"))
         assertTrue(manifest.contains("event-source"))
         assertTrue(manifest.contains("generic-type-instantiation"))
         assertFalse(manifest.contains("event-source-mapping"))
-        assertTrue(interfaceSupport.contains("Windows.Foundation.IStringable"))
-        assertTrue(interfaceSupport.contains("Windows.System.Display.IDisplayRequest"))
+        assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
+        assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
         assertTrue(eventSupport.contains("Microsoft.UI.Xaml.Controls.Button"))
         assertTrue(genericSupport.contains("Windows.Foundation.IReference`1<String>"))
     }
@@ -2150,11 +2150,19 @@ class KotlinWinRtPluginTest {
             tasks.register("verifyWinuiJvmCompilerSupportOutput") {
                 dependsOn("compileKotlinWinuiJvm")
                 doLast {
-                    val winuiRegistry = layout.buildDirectory.file(
-                        "classes/kotlin/winuiJvm/main/io/github/composefluent/winrt/projections/support/WinRTInterfaceProjectionRegistry.class",
+                    val supportRoot = layout.buildDirectory.dir(
+                        "classes/kotlin/winuiJvm/main/io/github/composefluent/winrt/projections/support",
                     ).get().asFile
-                    check(winuiRegistry.isFile) {
-                        "Expected compiler support registry in WinUI JVM output: " + winuiRegistry
+                    val compilerManifest = supportRoot.resolve("WinRTCompilerSupportManifest.class")
+                    check(compilerManifest.isFile) {
+                        "Expected compiler support manifest in WinUI JVM output: " + compilerManifest
+                    }
+                    check(supportRoot.walkTopDown().any { it.name.startsWith("WinRTProjectionSupport_") && it.extension == "class" }) {
+                        "Expected compiler-generated projection support initializer under: " + supportRoot
+                    }
+                    val legacyInterfaceRegistry = supportRoot.resolve("WinRTInterfaceProjectionRegistry.class")
+                    check(!legacyInterfaceRegistry.exists()) {
+                        "Legacy interface projection registry must not be generated: " + legacyInterfaceRegistry
                     }
                 }
             }
