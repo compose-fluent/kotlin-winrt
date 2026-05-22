@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.config.CompilerConfigurationKey
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.descriptors.Modality
+import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrField
@@ -24,6 +25,7 @@ import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
+import org.jetbrains.kotlin.ir.expressions.IrBlockBody
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
@@ -223,6 +225,7 @@ class KotlinWinRtIrGenerationExtension(
         val authoredTypeNames = classContexts
             .mapNotNull { context -> authoredTypeFor(context.klass, winRtTypes)?.sourceTypeName }
             .toSet()
+        lowerAuthoredTypeConstructors(moduleFragment, pluginContext, authoredTypeNames)
         lowerAuthoredTypeConstructorCalls(moduleFragment, pluginContext, authoredTypeNames)
         writeProjectionTypeIndex(classContexts, winRtTypes)
         classContexts.forEach { context ->
@@ -3677,6 +3680,39 @@ class KotlinWinRtIrGenerationExtension(
                     return builder.irCall(registrar.register).apply {
                         dispatchReceiver = builder.irGetObject(registrar.registrarClass)
                     }
+                }
+            },
+        )
+    }
+
+    @OptIn(UnsafeDuringIrConstructionAPI::class)
+    private fun lowerAuthoredTypeConstructors(
+        moduleFragment: IrModuleFragment,
+        pluginContext: IrPluginContext,
+        authoredTypeNames: Set<String>,
+    ) {
+        if (authoredTypeNames.isEmpty()) {
+            return
+        }
+        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext) ?: return
+        moduleFragment.transformChildrenVoid(
+            object : IrElementTransformerVoidWithContext() {
+                override fun visitConstructor(declaration: IrConstructor): IrStatement {
+                    val constructor = super.visitConstructor(declaration) as IrConstructor
+                    val ownerClass = constructor.parent as? IrClass ?: return constructor
+                    val ownerTypeName = ownerClass.fqNameWhenAvailable?.asString() ?: return constructor
+                    if (ownerTypeName !in authoredTypeNames) {
+                        return constructor
+                    }
+                    val body = constructor.body as? IrBlockBody ?: return constructor
+                    val builder = DeclarationIrBuilder(pluginContext, constructor.symbol, constructor.startOffset, constructor.endOffset)
+                    body.statements.add(
+                        0,
+                        builder.irCall(registrar.register).apply {
+                            dispatchReceiver = builder.irGetObject(registrar.registrarClass)
+                        },
+                    )
+                    return constructor
                 }
             },
         )
