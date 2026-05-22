@@ -1,2 +1,0 @@
-eventType	ownerType	sourceClass	abiEventType	genericArguments	usesSharedEventHandlerSource	interfaceId	parameterKinds	returnKind	parameterTypeNames
-Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>	Contoso.ResourceIndexedOwner	_EventSource_Windows_Foundation_TypedEventHandler_System_Object__Contoso_GeneratedEventArgs_	Windows.Foundation.TypedEventHandler`2	System.Object,Contoso.GeneratedEventArgs	false	aaaaaaaa-bbbb-5ccc-8ddd-eeeeeeeeeeee	OBJECT,IINSPECTABLE	UNIT	System.Object,Contoso.GeneratedEventArgs

@@ -152,41 +152,6 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun generated_event_source_runtime_maps_acronym_namespaces_to_generated_packages() {
-        assertEquals(
-            "microsoft.ui.xaml.RoutedEventHandler",
-            projectedJvmClassName("Microsoft.UI.Xaml.RoutedEventHandler"),
-        )
-        assertEquals(
-            "windows.foundation.TypedEventHandler",
-            projectedJvmClassName("Windows.Foundation.TypedEventHandler"),
-        )
-    }
-
-    @Test
-    fun generated_event_source_runtime_invokes_kotlin_lambda_handlers_accessibly() {
-        val received = mutableListOf<String>()
-        val handler: (Any?, Any?) -> Unit = { _, args -> received += args?.javaClass?.simpleName ?: "null" }
-
-        invokeHandler(handler, listOf("sender", "args"))
-
-        assertEquals(listOf("String"), received)
-    }
-
-    @Test
-    fun generated_event_source_runtime_wraps_declared_projected_event_argument_type() {
-        val reference = IInspectableReference(
-            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
-            preventReleaseOnDispose = true,
-        )
-
-        val projected = projectTypedReference("Contoso.GeneratedEventArgs", reference)
-
-        assertTrue(projected is contoso.GeneratedEventArgs)
-        assertSame(reference, (projected as contoso.GeneratedEventArgs).reference)
-    }
-
-    @Test
     fun generated_interface_projection_registry_wraps_by_type_handle_and_type_name() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle(

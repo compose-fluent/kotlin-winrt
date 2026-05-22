@@ -153,18 +153,16 @@ class KotlinWinRtCompilerPluginTest {
             """
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	12
-            event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	event-sources.tsv	3
             """.trimIndent() + "\n",
         )
 
         val entries = readCompilerSupportManifest(manifest)
 
-        assertEquals(2, entries.size)
+        assertEquals(1, entries.size)
         assertEquals("projection-registrar", entries[0].kind)
         assertEquals("io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic", entries[0].className)
         assertEquals("projection-registrar.tsv", entries[0].sourceFile)
         assertEquals(12, entries[0].entries)
-        assertEquals("event-source", entries[1].kind)
     }
 
     @Test
@@ -177,12 +175,6 @@ class KotlinWinRtCompilerPluginTest {
                     className = "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic",
                     sourceFile = "projection-registrar.tsv",
                     entries = 12,
-                ),
-                KotlinWinRtCompilerSupportManifestEntry(
-                    kind = "event-source",
-                    className = "io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers",
-                    sourceFile = "event-sources.tsv",
-                    entries = 3,
                 ),
                 KotlinWinRtCompilerSupportManifestEntry(
                     kind = "generic-type-instantiation",
@@ -206,9 +198,8 @@ class KotlinWinRtCompilerPluginTest {
                 false,
                 classLoader,
             )
-            assertEquals(4, klass.getField("ENTRY_COUNT").getInt(null))
+            assertEquals(3, klass.getField("ENTRY_COUNT").getInt(null))
             assertEquals(12, klass.getField("PROJECTION_REGISTRAR_ENTRIES").getInt(null))
-            assertEquals(3, klass.getField("EVENT_SOURCE_ENTRIES").getInt(null))
             assertEquals(5, klass.getField("GENERIC_TYPE_INSTANTIATION_ENTRIES").getInt(null))
             assertEquals(4, klass.getField("GENERIC_ABI_REGISTRY_ENTRIES").getInt(null))
         }
@@ -250,70 +241,6 @@ class KotlinWinRtCompilerPluginTest {
         )
         assertTrue(methodNames.contains("initialize"))
         assertTrue(methodNames.contains("registerChunk000"))
-    }
-
-    @Test
-    fun event_projection_input_writes_registry_class_artifact() {
-        val input = Files.createTempFile("kotlin-winrt-event-sources-", ".tsv")
-        Files.writeString(
-            input,
-            listOf(
-                listOf("eventType", "ownerType", "sourceClass", "abiEventType", "genericArguments", "usesSharedEventHandlerSource"),
-                listOf("Windows.Foundation.EventHandler<Int>", "Sample.Foundation.IWidget", "EventHandlerEventSource", "Windows.Foundation.EventHandler`1", "Int", "true"),
-            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
-        )
-        val outputDirectory = Files.createTempDirectory("kotlin-winrt-event-registry-class-")
-
-        val entries = readEventProjectionEntries(input)
-        writeEventProjectionRegistryClass(entries, outputDirectory)
-
-        URLClassLoader(arrayOf(outputDirectory.toUri().toURL()), javaClass.classLoader).use { classLoader ->
-            val klass = Class.forName(
-                "io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry",
-                false,
-                classLoader,
-            )
-            assertEquals("register", klass.getDeclaredMethod("register").name)
-        }
-        val registryClass = ClassReader(
-            Files.readAllBytes(
-                outputDirectory.resolve(
-                    "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class",
-                ),
-            ),
-        )
-        val eventSourceRuntimeCalls = mutableListOf<Int>()
-        registryClass.accept(
-            object : ClassVisitor(Opcodes.ASM9) {
-                override fun visitMethod(
-                    access: Int,
-                    name: String?,
-                    descriptor: String?,
-                    signature: String?,
-                    exceptions: Array<out String>?,
-                ): MethodVisitor =
-                    object : MethodVisitor(Opcodes.ASM9) {
-                        override fun visitMethodInsn(
-                            opcode: Int,
-                            owner: String?,
-                            name: String?,
-                            descriptor: String?,
-                            isInterface: Boolean,
-                        ) {
-                            if (
-                                owner == "io/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime" &&
-                                name == "createEventSourceFactory"
-                            ) {
-                                eventSourceRuntimeCalls.add(opcode)
-                            }
-                        }
-                    }
-            },
-            0,
-        )
-        assertEquals(listOf(Opcodes.INVOKEVIRTUAL), eventSourceRuntimeCalls)
-        val resource = outputDirectory.resolve("kotlin-winrt/event-sources.tsv")
-        assertFalse(Files.exists(resource))
     }
 
     @Test

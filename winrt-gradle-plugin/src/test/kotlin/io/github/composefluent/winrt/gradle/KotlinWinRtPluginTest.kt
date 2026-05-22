@@ -301,7 +301,6 @@ class KotlinWinRtPluginTest {
             """
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
-            event-source	io.github.composefluent.winrt.projections.support.WinRTEventProjectionRegistry	event-sources.tsv	1
             event-source-mapping	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	EventSourceMappings.kt	1
             """.trimIndent(),
         )
@@ -310,13 +309,6 @@ class KotlinWinRtPluginTest {
             """
             kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
             windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
-            """.trimIndent(),
-        )
-        Files.writeString(
-            localRoot.resolve("event-sources.tsv"),
-            """
-            owner	member
-            Microsoft.UI.Xaml.Controls.Button	Click
             """.trimIndent(),
         )
         Files.writeString(localRoot.resolve("EventSourceMappings.kt"), "object EventSourceMappings")
@@ -364,15 +356,14 @@ class KotlinWinRtPluginTest {
 
         val manifest = Files.readString(outputRoot.resolve("compiler-support.tsv"))
         val projectionSupport = Files.readString(outputRoot.resolve("projection-registrar.tsv"))
-        val eventSupport = Files.readString(outputRoot.resolve("event-sources.tsv"))
         val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
         assertTrue(manifest.contains("projection-registrar"))
-        assertTrue(manifest.contains("event-source"))
+        assertFalse(manifest.contains("event-source"))
         assertTrue(manifest.contains("generic-type-instantiation"))
         assertFalse(manifest.contains("event-source-mapping"))
         assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
         assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
-        assertTrue(eventSupport.contains("Microsoft.UI.Xaml.Controls.Button"))
+        assertFalse(Files.exists(outputRoot.resolve("event-sources.tsv")))
         assertTrue(genericSupport.contains("Windows.Foundation.IReference`1<String>"))
     }
 

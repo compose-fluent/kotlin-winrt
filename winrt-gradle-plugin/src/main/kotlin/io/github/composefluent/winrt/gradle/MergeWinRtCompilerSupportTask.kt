@@ -104,7 +104,6 @@ private data class CompilerSupportSourceKey(
 
 private val MERGED_COMPILER_SUPPORT_KINDS = setOf(
     "projection-registrar",
-    "event-source",
     "generic-type-instantiation",
     "generic-abi-registry",
 )
