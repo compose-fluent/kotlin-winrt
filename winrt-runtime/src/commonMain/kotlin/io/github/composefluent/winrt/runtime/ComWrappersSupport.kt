@@ -368,7 +368,7 @@ object ComWrappersSupport {
         )
         val isAggregation = outerInterfaceId != null
         val requestedInterface = outerInterfaceId ?: definition.defaultInterfaceId
-        val outerReference = host.createReference(requestedInterface)
+        var outerReference: ComObjectReference? = null
         return try {
             PlatformAbi.confinedScope().use { scope ->
                 val innerOut = PlatformAbi.allocatePointerSlot(scope)
@@ -410,6 +410,7 @@ object ComWrappersSupport {
                         isAggregated = isAggregation,
                     )
                 }
+                outerReference = host.createReference(requestedInterface)
                 val composedReference = IInspectableReference(
                     PlatformAbi.toRawComPtr(instancePointer),
                     IID.IInspectable,
@@ -426,17 +427,14 @@ object ComWrappersSupport {
                     instance = projectedReference,
                     inner = innerReference,
                     composed = composedReference.takeUnless { it === projectedReference },
-                    outer = outerReference,
+                    outer = requireNotNull(outerReference),
                     isAggregatedReferenceTrackerObject = isAggregatedReferenceTrackerObject,
                     cleanup = host::releaseManagedReference,
                 )
             }
         } catch (failure: Throwable) {
-            try {
-                outerReference.close()
-            } finally {
-                host.releaseManagedReference()
-            }
+            outerReference?.close()
+            host.releaseManagedReference()
             throw failure
         }
     }
