@@ -167,7 +167,6 @@ class KotlinWinRtIrGenerationExtension(
     ) {
         val compilerSupportEntries = readCompilerSupportManifest()
         val projectionRegistrarEntries = readProjectionRegistrarEntries(compilerSupportEntries)
-        val interfaceNativeProjectionEntries = readInterfaceNativeProjectionEntries(compilerSupportEntries)
         val genericTypeInstantiationEntries = readGenericTypeInstantiationEntries(compilerSupportEntries)
         val genericAbiRegistryEntries = readGenericAbiRegistryEntries(compilerSupportEntries)
         writeCompilerSupportClasses(compilerSupportEntries, projectionRegistrarEntries)
@@ -202,11 +201,6 @@ class KotlinWinRtIrGenerationExtension(
             support = genericAbiSupport,
         )
         lowerAuthoringSupportIntrinsicCalls(moduleFragment, pluginContext)
-        lowerGeneratedInterfaceProjectionCompilerPluginCalls(
-            moduleFragment = moduleFragment,
-            pluginContext = pluginContext,
-            entries = interfaceNativeProjectionEntries,
-        )
         lowerProjectionIntrinsics(moduleFragment, pluginContext)
         if (metadataIndexPath.isNullOrBlank()) {
             return
@@ -238,74 +232,6 @@ class KotlinWinRtIrGenerationExtension(
                 messageCollector.report(CompilerMessageSeverity.ERROR, message, null)
             }
         }
-    }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun lowerGeneratedInterfaceProjectionCompilerPluginCalls(
-        moduleFragment: IrModuleFragment,
-        pluginContext: IrPluginContext,
-        entries: List<KotlinWinRtInterfaceNativeProjectionEntry>,
-    ) {
-        if (entries.isEmpty()) {
-            return
-        }
-        val entriesByProjectedTypeName = entries.associateBy { entry -> entry.projectedTypeName }
-        val comWrappersSupportClassId = ClassId.topLevel(
-            FqName("io.github.composefluent.winrt.runtime.ComWrappersSupport"),
-        )
-        val runtimeClassId = ClassId.topLevel(
-            FqName("io.github.composefluent.winrt.runtime.WinRtGeneratedInterfaceProjectionRuntime"),
-        )
-        val runtimeObject = pluginContext.referenceClass(runtimeClassId) ?: return
-        val createFromCompilerPlugin = pluginContext.referenceFunctions(
-            CallableId(
-                runtimeClassId,
-                Name.identifier("createFromCompilerPlugin"),
-            ),
-        )
-            .map { symbol -> symbol.owner }
-            .singleOrNull { function ->
-                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 4
-            }
-            ?.symbol
-            ?: return
-        moduleFragment.transformChildrenVoid(
-            object : IrElementTransformerVoidWithContext() {
-                override fun visitCall(expression: IrCall): IrExpression {
-                    val call = super.visitCall(expression) as IrCall
-                    if (!call.isGeneratedInterfaceProjectionWrapCall()) {
-                        return call
-                    }
-                    val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
-                    val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
-                    val projectedTypeName = (call.arguments[3] as? IrConst)?.value as? String ?: return call
-                    val entry = entriesByProjectedTypeName[projectedTypeName] ?: return call
-                    return builder.irAs(builder.irCall(createFromCompilerPlugin).apply {
-                        arguments[0] = builder.irGetObject(runtimeObject)
-                        arguments[1] = call.arguments[4]
-                        arguments[2] = call.arguments[1]
-                        arguments[3] = call.arguments[2]
-                        arguments[4] = builder.irString(entry.members.encodeInterfaceNativeProjectionMembers())
-                    }, call.type)
-                }
-            },
-        )
-    }
-
-    @OptIn(UnsafeDuringIrConstructionAPI::class)
-    private fun IrCall.isGeneratedInterfaceProjectionWrapCall(): Boolean {
-        val function = symbol.owner
-        if (function.name.asString() != "wrapGeneratedInterfaceProjectionFromCompilerPlugin") {
-            return false
-        }
-        val ownerClass = function.parent as? IrClass ?: return false
-        if (ownerClass.fqNameWhenAvailable?.asString() != "io.github.composefluent.winrt.runtime.ComWrappersSupport") {
-            return false
-        }
-        val regularParameters = function.parameters.filter { parameter -> parameter.kind == IrParameterKind.Regular }
-        return regularParameters.size == 4 &&
-            regularParameters[0].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.WinRtTypeHandle" &&
-            regularParameters[1].type.classFqName?.asString() == "io.github.composefluent.winrt.runtime.IUnknownReference"
     }
 
     @OptIn(UnsafeDuringIrConstructionAPI::class)
@@ -2958,25 +2884,6 @@ class KotlinWinRtIrGenerationExtension(
             .toList()
     }
 
-    private fun readInterfaceNativeProjectionEntries(
-        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
-    ): List<KotlinWinRtInterfaceNativeProjectionEntry> {
-        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
-        val manifestDirectory = manifestPath.parent ?: return emptyList()
-        return manifestEntries
-            .asSequence()
-            .filter { it.kind == "interface-native-projection" }
-            .flatMap { entry ->
-                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
-                if (Files.isRegularFile(sourcePath)) {
-                    readInterfaceNativeProjectionEntries(sourcePath).asSequence()
-                } else {
-                    emptySequence()
-                }
-            }
-            .toList()
-    }
-
     private fun writeProjectionTypeIndex(
         classContexts: List<AuthoredIrClassContext>,
         winRtTypes: Map<String, IndexedWinRtType>,
@@ -4559,87 +4466,6 @@ private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegi
 
 private fun String.splitGenericAbiRegistryListField(): List<String> =
     split(GENERIC_ABI_REGISTRY_LIST_SEPARATOR).filter(String::isNotBlank)
-
-data class KotlinWinRtInterfaceNativeProjectionEntry(
-    val projectedTypeName: String,
-    val kotlinInterfaceClassName: String,
-    val implementationClassName: String,
-    val interfaceId: String,
-    val memberCount: Int,
-    val members: List<KotlinWinRtInterfaceNativeProjectionMemberEntry> = emptyList(),
-)
-
-data class KotlinWinRtInterfaceNativeProjectionMemberEntry(
-    val kind: String,
-    val jvmName: String,
-    val slot: Int,
-    val returnKind: String,
-    val parameterKinds: List<String>,
-    val suppressHResultCheck: Boolean,
-    val eventTypeName: String = "",
-    val ownerTypeName: String = "",
-)
-
-private const val INTERFACE_NATIVE_PROJECTION_MEMBER_FIELD_SEPARATOR: Char = '\u001F'
-
-private fun List<KotlinWinRtInterfaceNativeProjectionMemberEntry>.encodeInterfaceNativeProjectionMembers(): String =
-    joinToString("\n") { member ->
-        listOf(
-            member.kind,
-            member.jvmName,
-            member.slot.toString(),
-            member.returnKind,
-            member.parameterKinds.joinToString(","),
-            member.suppressHResultCheck.toString(),
-            member.eventTypeName,
-            member.ownerTypeName,
-        ).joinToString(INTERFACE_NATIVE_PROJECTION_MEMBER_FIELD_SEPARATOR.toString())
-    }
-
-fun readInterfaceNativeProjectionEntries(path: Path): List<KotlinWinRtInterfaceNativeProjectionEntry> =
-    Files.readAllLines(path)
-        .asSequence()
-        .drop(1)
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseInterfaceNativeProjectionLine)
-        .toList()
-
-private fun parseInterfaceNativeProjectionLine(line: String): KotlinWinRtInterfaceNativeProjectionEntry? {
-    val parts = line.split('\t', limit = 6)
-    if (parts.size < 5) {
-        return null
-    }
-    val memberCount = parts[4].toIntOrNull() ?: return null
-    val members = parts.getOrElse(5) { "" }
-        .split(';')
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseInterfaceNativeProjectionMember)
-    return KotlinWinRtInterfaceNativeProjectionEntry(
-        projectedTypeName = parts[0],
-        kotlinInterfaceClassName = parts[1],
-        implementationClassName = parts[2],
-        interfaceId = parts[3],
-        memberCount = memberCount,
-        members = members,
-    )
-}
-
-private fun parseInterfaceNativeProjectionMember(value: String): KotlinWinRtInterfaceNativeProjectionMemberEntry? {
-    val parts = value.split('|', limit = 8)
-    if (parts.size < 6) {
-        return null
-    }
-    return KotlinWinRtInterfaceNativeProjectionMemberEntry(
-        kind = parts[0],
-        jvmName = parts[1],
-        slot = parts[2].toIntOrNull() ?: return null,
-        returnKind = parts[3],
-        parameterKinds = parts[4].split(',').filter(String::isNotBlank),
-        suppressHResultCheck = parts[5].toBooleanStrictOrNull() ?: false,
-        eventTypeName = parts.getOrElse(6) { "" },
-        ownerTypeName = parts.getOrElse(7) { "" },
-    )
-}
 
 private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addWinRtTypeHandle(
     projectedTypeName: String,

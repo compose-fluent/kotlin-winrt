@@ -8,7 +8,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 import kotlin.reflect.KClass
 import kotlin.time.Duration
@@ -188,54 +187,6 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun generated_interface_projection_runtime_creates_proxy_from_compiler_plugin_plan() {
-        val nativeReference = IUnknownReference(
-            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
-            Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-            preventReleaseOnDispose = true,
-        )
-        val typeHandle = WinRtTypeHandle(
-            projectedTypeName = "Contoso.IGeneratedRegistrarInterface",
-            interfaceId = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-        )
-
-        val projected = WinRtGeneratedInterfaceProjectionRuntime.createFromCompilerPlugin(
-            SampleGeneratedInterface::class,
-            typeHandle,
-            nativeReference,
-            "",
-        ) as IWinRTObject
-
-        assertSame(nativeReference, projected.nativeObject)
-        assertEquals(typeHandle, projected.primaryTypeHandle)
-    }
-
-    @Test
-    fun generated_interface_projection_marker_fails_when_compiler_plugin_does_not_lower() {
-        val nativeReference = IUnknownReference(
-            Arena.ofAuto().allocate(8).asNativePointer().asRawComPtr(),
-            Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-            preventReleaseOnDispose = true,
-        )
-        val typeHandle = WinRtTypeHandle(
-            projectedTypeName = "Contoso.IGeneratedRegistrarInterface",
-            interfaceId = Guid("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-        )
-
-        try {
-            ComWrappersSupport.wrapGeneratedInterfaceProjectionFromCompilerPlugin(
-                typeHandle,
-                nativeReference,
-                typeHandle.projectedTypeName,
-                SampleGeneratedInterface::class,
-            )
-            fail("Expected WinRtUnsupportedOperationException")
-        } catch (error: WinRtUnsupportedOperationException) {
-            assertEquals(KnownHResults.E_NOTIMPL, error.hResult)
-        }
-    }
-
-    @Test
     fun generated_interface_projection_registry_wraps_by_type_handle_and_type_name() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle(
@@ -258,170 +209,6 @@ class ProjectionRegistryTest {
 
         assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle, nativeReference))
         assertSame(projected, ComWrappersSupport.wrapGeneratedInterfaceProjection(typeHandle.projectedTypeName, nativeReference))
-    }
-
-    @Test
-    fun generated_interface_projection_object_return_uses_object_marshaller_from_abi() {
-        ComWrappersSupport.clearRegistriesForTests()
-        val interfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-        val typeHandle = WinRtTypeHandle("Contoso.IGeneratedObjectReturn", interfaceId)
-        val payload = GeneratedObjectPayload("payload")
-        val returnedReference = ComWrappersSupport.createCCWForObject(payload, IID.IInspectable)
-        var returnedPointer = PlatformAbi.nullPointer
-        val host = WinRtInspectableComObject(
-            interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
-                    interfaceId = interfaceId,
-                    methods = listOf(
-                        WinRtInspectableMethodDefinition(
-                            ComMethodSignature.of(ComAbiValueKind.Pointer),
-                        ) { args ->
-                            returnedPointer = PlatformAbi.fromRawComPtr(returnedReference.getRefPointer())
-                            PlatformAbi.writePointer(args[0] as RawAddress, returnedPointer)
-                            KnownHResults.S_OK.value
-                        },
-                    ),
-                ),
-            ),
-        )
-        val nativeReference = host.createReference(interfaceId)
-        val unknownReference = IUnknownReference(nativeReference.getRefPointer(), interfaceId)
-        try {
-            val projected = WinRtGeneratedInterfaceProjectionRuntime.create(
-                interfaceClass = GeneratedObjectReturnProjection::class.java,
-                typeHandle = typeHandle,
-                nativeObject = unknownReference,
-                members = listOf(
-                    GeneratedInterfaceProjectionMemberDescriptor(
-                        kind = GeneratedInterfaceProjectionMemberKind.Method,
-                        jvmName = "getObjectValue",
-                        slot = IInspectableVftblSlots.FirstCustom,
-                        returnKind = GeneratedInterfaceProjectionValueKind.Object,
-                        parameterKinds = emptyList(),
-                        suppressHResultCheck = false,
-                    ),
-                ),
-            ) as GeneratedObjectReturnProjection
-
-            assertSame(payload, projected.getObjectValue())
-        } finally {
-            if (!PlatformAbi.isNull(returnedPointer)) {
-                IUnknownReference(returnedPointer.asRawComPtr(), IID.IInspectable).close()
-            }
-            unknownReference.close()
-            nativeReference.close()
-            returnedReference.close()
-            host.close()
-        }
-    }
-
-    @Test
-    fun generated_interface_projection_no_arg_unit_uses_fixed_vtable_primitive() {
-        val interfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeef")
-        val typeHandle = WinRtTypeHandle("Contoso.IGeneratedNoArgUnit", interfaceId)
-        var invocationCount = 0
-        val host = WinRtInspectableComObject(
-            interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
-                    interfaceId = interfaceId,
-                    methods = listOf(
-                        WinRtInspectableMethodDefinition(ComMethodSignature()) {
-                            invocationCount += 1
-                            KnownHResults.S_OK.value
-                        },
-                    ),
-                ),
-            ),
-        )
-        val nativeReference = host.createReference(interfaceId)
-        val unknownReference = IUnknownReference(nativeReference.getRefPointer(), interfaceId)
-        try {
-            val projected = WinRtGeneratedInterfaceProjectionRuntime.create(
-                interfaceClass = GeneratedNoArgUnitProjection::class.java,
-                typeHandle = typeHandle,
-                nativeObject = unknownReference,
-                members = listOf(
-                    GeneratedInterfaceProjectionMemberDescriptor(
-                        kind = GeneratedInterfaceProjectionMemberKind.Method,
-                        jvmName = "invoke",
-                        slot = IInspectableVftblSlots.FirstCustom,
-                        returnKind = GeneratedInterfaceProjectionValueKind.Unit,
-                        parameterKinds = emptyList(),
-                        suppressHResultCheck = false,
-                    ),
-                ),
-            ) as GeneratedNoArgUnitProjection
-
-            projected.invoke()
-
-            assertEquals(1, invocationCount)
-        } finally {
-            unknownReference.close()
-            nativeReference.close()
-            host.close()
-        }
-    }
-
-    @Test
-    fun generated_interface_projection_object_argument_accepts_projected_winrt_object() {
-        val targetInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee1")
-        val payloadInterfaceId = Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeee2")
-        val typeHandle = WinRtTypeHandle("Contoso.IGeneratedObjectArgument", targetInterfaceId)
-        var receivedPointer = PlatformAbi.nullPointer
-        val targetHost = WinRtInspectableComObject(
-            interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
-                    interfaceId = targetInterfaceId,
-                    methods = listOf(
-                        WinRtInspectableMethodDefinition(ComMethodSignature.of(ComAbiValueKind.Pointer)) { args ->
-                            receivedPointer = args[0] as RawAddress
-                            KnownHResults.S_OK.value
-                        },
-                    ),
-                ),
-            ),
-        )
-        val payloadHost = WinRtInspectableComObject(
-            interfaceDefinitions = listOf(
-                WinRtInspectableInterfaceDefinition(
-                    interfaceId = payloadInterfaceId,
-                    methods = emptyList(),
-                ),
-            ),
-        )
-        val targetReference = targetHost.createReference(targetInterfaceId)
-        val targetUnknown = IUnknownReference(targetReference.getRefPointer(), targetInterfaceId)
-        val payloadReference = payloadHost.createReference(payloadInterfaceId)
-        val payloadUnknown = IUnknownReference(payloadReference.getRefPointer(), payloadInterfaceId)
-        try {
-            val payload = SampleGeneratedInterfaceProjection(payloadUnknown)
-            val projected = WinRtGeneratedInterfaceProjectionRuntime.create(
-                interfaceClass = GeneratedObjectArgumentProjection::class.java,
-                typeHandle = typeHandle,
-                nativeObject = targetUnknown,
-                members = listOf(
-                    GeneratedInterfaceProjectionMemberDescriptor(
-                        kind = GeneratedInterfaceProjectionMemberKind.Method,
-                        jvmName = "setObjectValue",
-                        slot = IInspectableVftblSlots.FirstCustom,
-                        returnKind = GeneratedInterfaceProjectionValueKind.Unit,
-                        parameterKinds = listOf(GeneratedInterfaceProjectionValueKind.Object),
-                        suppressHResultCheck = false,
-                    ),
-                ),
-            ) as GeneratedObjectArgumentProjection
-
-            projected.setObjectValue(payload)
-
-            assertFalse(PlatformAbi.isNull(receivedPointer))
-        } finally {
-            payloadUnknown.close()
-            payloadReference.close()
-            targetUnknown.close()
-            targetReference.close()
-            payloadHost.close()
-            targetHost.close()
-        }
     }
 
     @Test
@@ -601,23 +388,9 @@ class ProjectionRegistryTest {
 
     private interface SampleGeneratedInterface
 
-    private interface GeneratedObjectReturnProjection {
-        fun getObjectValue(): Any?
-    }
-
-    private interface GeneratedNoArgUnitProjection {
-        fun invoke()
-    }
-
-    private interface GeneratedObjectArgumentProjection {
-        fun setObjectValue(value: Any?)
-    }
-
     private class SampleRuntimeClass
 
     private class SampleGenericRuntimeClass
-
-    private data class GeneratedObjectPayload(val value: String)
 
     private class SampleMappedTypeHelper
 
@@ -702,17 +475,8 @@ class ProjectionRegistryTest {
         WinRtTypeRegistry.register<TestProjectedEnum>(
             projectedTypeName = "Contoso.Priority",
             signature = "enum(Contoso.Priority;i4)",
-            enumAbiValue = { value -> (value as TestProjectedEnum).abiValue },
+            enumAbiValue = { value -> value.abiValue },
             isWindowsRuntimeType = true,
         )
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun clearGeneratedInterfaceProjectionFactoriesForTest() {
-        listOf("interfaceProjectionFactoriesByHandle", "interfaceProjectionFactoriesByTypeName").forEach { fieldName ->
-            val field = ComWrappersSupport::class.java.getDeclaredField(fieldName)
-            field.isAccessible = true
-            (field.get(ComWrappersSupport) as ConcurrentCacheMap<Any, Any>).clear()
-        }
     }
 }

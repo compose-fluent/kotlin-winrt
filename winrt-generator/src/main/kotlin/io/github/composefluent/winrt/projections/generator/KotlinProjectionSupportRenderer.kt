@@ -152,7 +152,6 @@ class KotlinProjectionSupportRenderer {
             renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans),
-            renderInterfaceNativeProjectionCompilerInput(plans),
             renderCompilerSupportManifest(model, plans, inventory, genericInstantiationWriters, excludedProjectionTypeNames, emitProjectionRegistrar),
             renderAuthoringMetadataTypeMappingHelper(inventory),
             renderAuthoringWrapperPlan(inventory, plans),
@@ -323,7 +322,6 @@ class KotlinProjectionSupportRenderer {
             0
         }
         val genericInstantiationEntries = genericInstantiationWriters.size
-        val interfaceNativeProjectionEntries = interfaceNativeProjectionPlans(plans).size
         val genericAbiRegistryEntries = inventory.genericAbiInventory.genericAbiDelegates.size +
             inventory.genericAbiInventory.derivedGenericInterfaces.size
         val rows = listOf(
@@ -344,12 +342,6 @@ class KotlinProjectionSupportRenderer {
                 className = WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME.canonicalName,
                 sourceFile = "generic-abi-registry.tsv",
                 entries = genericAbiRegistryEntries,
-            ),
-            compilerSupportManifestRow(
-                kind = "interface-native-projection",
-                className = "io.github.composefluent.winrt.runtime.WinRtGeneratedInterfaceProjectionRuntime",
-                sourceFile = "interface-native-projections.tsv",
-                entries = interfaceNativeProjectionEntries,
             ),
         ).filterNot { row -> row.endsWith("\t0") }
         if (rows.isEmpty()) {
@@ -373,55 +365,6 @@ class KotlinProjectionSupportRenderer {
         entries: Int,
     ): String =
         listOf(kind, className, sourceFile, entries.toString()).joinToString("\t")
-
-    private fun renderInterfaceNativeProjectionCompilerInput(
-        plans: List<KotlinTypeProjectionPlan>,
-    ): KotlinProjectionFile? {
-        val rows = interfaceNativeProjectionPlans(plans)
-            .sortedBy { plan -> plan.type.qualifiedName }
-            .map { plan ->
-                val artifactRenderer = KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true)
-                val members = artifactRenderer.interfaceNativeProjectionMemberDescriptors(plan).orEmpty()
-                listOf(
-                    plan.type.qualifiedName,
-                    ClassName(plan.packageName, plan.type.name).canonicalName,
-                    interfaceNativeProjectionImplementationClassName(plan),
-                    plan.interfaceIid?.toString().orEmpty(),
-                    members.size.toString(),
-                    members.joinToString(";") { member ->
-                        listOf(
-                            member.kind,
-                            member.jvmName,
-                            member.slot.toString(),
-                            member.returnKind,
-                            member.parameterKinds.joinToString(","),
-                            member.suppressHResultCheck.toString(),
-                            member.eventTypeName,
-                            member.ownerTypeName,
-                        ).joinToString("|")
-                    },
-                ).joinToString("\t")
-            }
-        if (rows.isEmpty()) {
-            return null
-        }
-        return KotlinProjectionFile(
-            relativePath = "kotlin-winrt-support/interface-native-projections.tsv",
-            packageName = "",
-            contents = rows.joinToString(
-                separator = "\n",
-                postfix = "\n",
-                prefix = "projectedTypeName\tkotlinInterfaceClassName\timplementationClassName\tinterfaceId\tmemberCount\tmembers\n",
-            ),
-        )
-    }
-
-    private fun interfaceNativeProjectionPlans(plans: List<KotlinTypeProjectionPlan>): List<KotlinTypeProjectionPlan> {
-        return emptyList()
-    }
-
-    private fun interfaceNativeProjectionImplementationClassName(plan: KotlinTypeProjectionPlan): String =
-        ClassName(plan.packageName, "${plan.type.name}NativeProjection").canonicalName
 
     private fun renderGenericTypeInstantiationCompilerInput(
         descriptors: List<WinRtGenericInstantiationWriterDescriptor>,
