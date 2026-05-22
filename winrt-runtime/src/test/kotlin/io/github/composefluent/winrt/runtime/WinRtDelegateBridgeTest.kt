@@ -581,6 +581,26 @@ class WinRtDelegateBridgeTest {
     }
 
     @Test
+    fun delegate_reference_invokes_struct_signature_with_natural_ffm_alignment() {
+        val handle = WinRtDelegateBridge.createDelegate(
+            iid = Guid("f0f0f0f0-f0f0-f0f0-f0f0-f0f0f0f0f0f0"),
+            parameterKinds = listOf(WinRtDelegateValueKind.STRUCT),
+            returnKind = WinRtDelegateValueKind.STRUCT,
+            parameterStructAdapters = listOf(TestPointAdapter),
+            returnStructAdapter = TestPointAdapter,
+        ) { args ->
+            val point = args.single() as TestPoint
+            TestPoint(point.x + 1.0f, point.y + 1.0f)
+        }
+
+        handle.use {
+            it.createReference().use { reference ->
+                assertEquals(TestPoint(2.5f, 3.5f), reference.invoke(listOf(TestPoint(1.5f, 2.5f))))
+            }
+        }
+    }
+
+    @Test
     fun delegate_descriptor_expands_uint8_array_parameters() {
         val descriptor = WinRtDelegateDescriptor(
             interfaceId = Guid("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),

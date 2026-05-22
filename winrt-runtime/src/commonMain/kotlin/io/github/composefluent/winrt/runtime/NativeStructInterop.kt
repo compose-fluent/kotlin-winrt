@@ -29,15 +29,15 @@ data class NativeAbiLayout(
 
         /**
          * Windows `TypeName` struct: HSTRING name (ADDRESS) + INT32 kind.
-         * Total 12 bytes, alignment 8 (largest member).
+         * Native struct size is rounded to the largest member alignment.
          */
-        val TYPE_NAME: NativeAbiLayout = NativeAbiLayout(byteSize = 12, byteAlignment = 8)
+        val TYPE_NAME: NativeAbiLayout = NativeAbiLayout(byteSize = 16, byteAlignment = 8)
     }
 }
 
 /** Returns a [NativeAbiLayout] covering this [NativeStructLayout]'s flat binary footprint. */
 val NativeStructLayout.abiLayout: NativeAbiLayout
-    get() = NativeAbiLayout(byteSize = sizeBytes, byteAlignment = 1)
+    get() = NativeAbiLayout(byteSize = sizeBytes, byteAlignment = alignmentBytes)
 
 // ---------------------------------------------------------------------------
 // NativeStructScalarKind — scalar element sizes for struct field descriptors.
@@ -65,6 +65,7 @@ enum class NativeStructScalarKind(
 sealed interface NativeStructMemberSpec {
     val name: String
     val sizeBytes: Long
+    val alignmentBytes: Long
 }
 
 data class NativeScalarFieldSpec(
@@ -72,6 +73,7 @@ data class NativeScalarFieldSpec(
     val kind: NativeStructScalarKind,
 ) : NativeStructMemberSpec {
     override val sizeBytes: Long get() = kind.sizeBytes
+    override val alignmentBytes: Long get() = kind.alignmentBytes
 }
 
 data class NativeNestedStructFieldSpec(
@@ -79,6 +81,7 @@ data class NativeNestedStructFieldSpec(
     val layout: NativeStructLayout,
 ) : NativeStructMemberSpec {
     override val sizeBytes: Long get() = layout.sizeBytes
+    override val alignmentBytes: Long get() = layout.alignmentBytes
 }
 
 data class NativeStructField(
@@ -90,6 +93,7 @@ data class NativeStructField(
 class NativeStructLayout private constructor(
     val fields: List<NativeStructField>,
     val sizeBytes: Long,
+    val alignmentBytes: Long,
 ) {
     private val fieldByName: Map<String, NativeStructField> = fields.associateBy(NativeStructField::name)
 
@@ -104,14 +108,29 @@ class NativeStructLayout private constructor(
     companion object {
         fun sequential(vararg members: NativeStructMemberSpec): NativeStructLayout {
             var offsetBytes = 0L
+            var maxAlignmentBytes = 1L
             val fields = members.map { member ->
+                maxAlignmentBytes = maxOf(maxAlignmentBytes, member.alignmentBytes)
+                offsetBytes = alignTo(offsetBytes, member.alignmentBytes)
                 NativeStructField(
                     name = member.name,
                     offsetBytes = offsetBytes,
                     sizeBytes = member.sizeBytes,
                 ).also { offsetBytes += member.sizeBytes }
             }
-            return NativeStructLayout(fields = fields, sizeBytes = offsetBytes)
+            return NativeStructLayout(
+                fields = fields,
+                sizeBytes = alignTo(offsetBytes, maxAlignmentBytes),
+                alignmentBytes = maxAlignmentBytes,
+            )
+        }
+
+        private fun alignTo(value: Long, alignment: Long): Long {
+            if (alignment <= 1L) {
+                return value
+            }
+            val remainder = value % alignment
+            return if (remainder == 0L) value else value + alignment - remainder
         }
     }
 }

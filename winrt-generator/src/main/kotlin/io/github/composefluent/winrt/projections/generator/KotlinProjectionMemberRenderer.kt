@@ -1117,6 +1117,9 @@ internal fun runtimeClassMemberModifiers(
     }
 }
 
+internal fun authoringInvokeBridgeName(method: WinRtMethodDefinition): String =
+    "__winrtAuthoringInvoke${method.name}"
+
 internal fun KotlinProjectionRenderer.renderBoundInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
 ): CodeBlock {

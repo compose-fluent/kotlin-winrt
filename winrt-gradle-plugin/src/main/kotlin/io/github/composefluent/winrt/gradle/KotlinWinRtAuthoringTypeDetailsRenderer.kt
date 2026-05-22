@@ -10,6 +10,7 @@ import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
+import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDirection
@@ -29,6 +30,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val iidType = ClassName("io.github.composefluent.winrt.runtime", "IID")
     private val knownHResultsType = ClassName("io.github.composefluent.winrt.runtime", "KnownHResults")
     private val platformAbiType = ClassName("io.github.composefluent.winrt.runtime", "PlatformAbi")
+    private val projectionsType = ClassName("io.github.composefluent.winrt.runtime", "Projections")
     private val rawAddressType = ClassName("io.github.composefluent.winrt.runtime", "RawAddress")
     private val comWrappersSupportType = ClassName("io.github.composefluent.winrt.runtime", "ComWrappersSupport")
     private val winRtCcwDefinitionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtCcwDefinition")
@@ -46,6 +48,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val typesByName = metadataModel.namespaces
             .flatMap { namespace -> namespace.types }
             .associateBy { type -> type.qualifiedName }
+        val semanticHelpers = WinRtMetadataSemanticHelpers(metadataModel)
         val renderedCandidates = candidates.mapNotNull { candidate ->
             val interfaces = candidate.winRtInterfaceNames.mapNotNull(typesByName::get)
                 .filter { type -> type.kind == WinRtTypeKind.Interface && type.iid != null }
@@ -54,7 +57,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             }
             val packageDirectory = outputDirectory.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
-            render(candidate, interfaces).writeTo(outputDirectory)
+            render(candidate, interfaces, typesByName, semanticHelpers).writeTo(outputDirectory)
             candidate
         }
         if (renderedCandidates.isNotEmpty()) {
@@ -65,13 +68,16 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun render(
         candidate: KotlinWinRtAuthoredTypeCandidate,
         interfaces: List<WinRtTypeDefinition>,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): FileSpec {
         val typeDetailsName = detailsObjectName(candidate)
         return FileSpec.builder(candidate.packageName, typeDetailsName)
+            .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
             .addType(
                 TypeSpec.objectBuilder(typeDetailsName)
                     .addFunction(renderRegister(candidate))
-                    .addFunction(renderCreateCcwDefinition(candidate, interfaces))
+                    .addFunction(renderCreateCcwDefinition(candidate, interfaces, typesByName, semanticHelpers))
                     .build(),
             )
             .build()
@@ -80,6 +86,18 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderRegister(candidate: KotlinWinRtAuthoredTypeCandidate): FunSpec =
         FunSpec.builder("register")
             .addAnnotation(JvmStatic::class)
+            .addStatement(
+                "%T.registerAuthoredRuntimeClassType(%T::class, %S)",
+                projectionsType,
+                sourceClassName(candidate),
+                candidate.sourceTypeName,
+            )
+            .addStatement(
+                "%T.registerAuthoringMetadataTypeMappings(mapOf(%S to %S))",
+                comWrappersSupportType,
+                candidate.sourceTypeName,
+                "ABI.${candidate.sourceTypeName}",
+            )
             .addStatement(
                 "%T.registerAuthoringTypeDetailsFactory(%T::class, ::createCcwDefinition)",
                 comWrappersSupportType,
@@ -90,6 +108,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderCreateCcwDefinition(
         candidate: KotlinWinRtAuthoredTypeCandidate,
         interfaces: List<WinRtTypeDefinition>,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): FunSpec {
         val defaultInterface = interfaces.first()
         return FunSpec.builder("createCcwDefinition")
@@ -104,7 +124,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     .indent()
                     .apply {
                         interfaces.forEach { type ->
-                            add("%L,\n", renderInterface(type))
+                            add("%L,\n", renderInterface(candidate, type, typesByName, semanticHelpers))
                         }
                     }
                     .unindent()
@@ -140,8 +160,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .build()
     }
 
-    private fun renderInterface(type: WinRtTypeDefinition): CodeBlock =
-        CodeBlock.builder()
+    private fun renderInterface(
+        candidate: KotlinWinRtAuthoredTypeCandidate,
+        type: WinRtTypeDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): CodeBlock {
+        val dispatchBaseClassName = semanticHelpers.getExclusiveToType(type)?.qualifiedName
+            ?: candidate.winRtBaseClassName
+        return CodeBlock.builder()
             .add("%T(\n", winRtInspectableInterfaceDefinitionType)
             .indent()
             .add("interfaceId = %T(%S),\n", guidType, type.iid.toString().lowercase())
@@ -149,7 +176,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .indent()
             .apply {
                 type.methods.filterNot { method -> method.isStatic }.forEach { method ->
-                    add("%L,\n", renderMethod(method))
+                    add("%L,\n", renderMethod(method, typesByName, dispatchBaseClassName))
                 }
             }
             .unindent()
@@ -157,67 +184,59 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .unindent()
             .add(")")
             .build()
+    }
 
     private fun renderMethod(
         method: WinRtMethodDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+        dispatchBaseClassName: String?,
     ): CodeBlock {
-        val sourceMethodName = method.name.replaceFirstChar(Char::lowercase)
+        val dispatchBase = dispatchBaseClassName
+            ?: error("Authored WinRT override ${method.name} has no declaring WinRT base class.")
+        val bridgeMethodName = authoringInvokeBridgeName(method)
+        val bridgeArguments = method.parameters.indices.joinToString(", ") { index -> "__arg$index" }
         return CodeBlock.builder()
-            .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method))
+            .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method, typesByName))
             .indent()
             .apply {
                 method.parameters.forEachIndexed { index, parameter ->
-                    addStatement("val __arg%L = %L", index, renderParameterProjection(index, parameter))
+                    add("%L", renderParameterProjectionStatement(index, parameter, typesByName))
                 }
             }
-            .add(
-                "val method = generateSequence(value.javaClass) { type -> type.superclass }\n" +
-                    ".mapNotNull { type -> runCatching { type.getDeclaredMethod(%S%L) }.getOrNull() }\n" +
-                    ".first()\n",
-                sourceMethodName,
-                renderReflectionParameterTypes(method),
-            )
-            .addStatement("method.isAccessible = true")
-            .add("try {\n")
-            .indent()
-            .addStatement("method.invoke(value%L)", renderReflectionInvokeArguments(method))
-            .unindent()
-            .add("} catch (failure: %T) {\n", java.lang.reflect.InvocationTargetException::class)
-            .indent()
-            .addStatement("throw (failure.targetException ?: failure)")
-            .unindent()
-            .add("}\n")
+            .apply {
+                if (isVoidReturn(method)) {
+                    addStatement("(value as %T).%L(%L)", projectionClassName(dispatchBase), bridgeMethodName, bridgeArguments)
+                } else {
+                    addStatement(
+                        "val __result = (value as %T).%L(%L)",
+                        projectionClassName(dispatchBase),
+                        bridgeMethodName,
+                        bridgeArguments,
+                    )
+                    add(
+                        "%L\n",
+                        renderReturnProjection(
+                            method,
+                            "rawArgs[${method.parameters.size}] as RawAddress",
+                            "__result",
+                            typesByName,
+                        ),
+                    )
+                }
+            }
             .addStatement("%T.S_OK.value", knownHResultsType)
-            .unindent()
             .add("}")
             .build()
     }
 
-    private fun renderReflectionParameterTypes(method: WinRtMethodDefinition): CodeBlock =
-        CodeBlock.builder()
-            .apply {
-                method.parameters.forEach { parameter ->
-                    add(", %T::class.java", projectedParameterType(parameter))
-                }
-            }
-            .build()
-
-    private fun renderReflectionInvokeArguments(method: WinRtMethodDefinition): CodeBlock =
-        CodeBlock.builder()
-            .apply {
-                method.parameters.indices.forEach { index ->
-                    add(", __arg%L", index)
-                }
-            }
-            .build()
-
     private fun renderParameterProjection(
         index: Int,
         parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
         val rawArg = CodeBlock.of("rawArgs[%L]", index)
         return when (parameter.typeName) {
-            "Boolean" -> CodeBlock.of("(%L as %T) != 0", rawArg, Int::class.asClassName())
+            "Boolean" -> CodeBlock.of("(%L as %T).toInt() != 0", rawArg, Byte::class.asClassName())
             "Int8", "SByte" -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
             "UInt8", "Byte" -> CodeBlock.of("(%L as %T).toUByte()", rawArg, Byte::class.asClassName())
             "Int16" -> CodeBlock.of("%L as %T", rawArg, Short::class.asClassName())
@@ -230,16 +249,48 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Double" -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
             "String" -> CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
             "System.Object", "Object" -> CodeBlock.of("%T.fromAbi(%L as %T)", winRtObjectMarshallerType, rawArg, rawAddressType)
-            else -> renderObjectParameterProjection(rawArg, parameter)
+            else -> renderComplexParameterProjection(rawArg, parameter, typesByName)
         }
     }
 
-    private fun renderObjectParameterProjection(
+    private fun renderParameterProjectionStatement(
+        index: Int,
+        parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock =
+        if (parameter.typeName == "String") {
+            CodeBlock.builder()
+                .addStatement(
+                    "val __hString%L = %T.fromHandle(rawArgs[%L] as %T, owner = false)",
+                    index,
+                    hStringType,
+                    index,
+                    rawAddressType,
+                )
+                .add("val __arg%L = try {\n", index)
+                .indent()
+                .addStatement("__hString%L.toKString()", index)
+                .unindent()
+                .add("} finally {\n")
+                .indent()
+                .addStatement("__hString%L.close()", index)
+                .unindent()
+                .add("}\n")
+                .build()
+        } else {
+            CodeBlock.of("val __arg%L = %L\n", index, renderParameterProjection(index, parameter, typesByName))
+        }
+
+    private fun renderComplexParameterProjection(
         rawArg: CodeBlock,
         parameter: WinRtParameterDefinition,
-    ): CodeBlock =
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
         if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
-            CodeBlock.of("%L as %T", rawArg, rawAddressType)
+            return CodeBlock.of("%L as %T", rawArg, rawAddressType)
+        }
+        return if (typesByName[parameter.typeName]?.kind == WinRtTypeKind.Struct) {
+            CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName), rawArg, rawAddressType)
         } else {
             CodeBlock.of(
                 "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
@@ -251,57 +302,132 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 iidType,
             )
         }
+    }
 
-    private fun renderSignature(method: WinRtMethodDefinition): CodeBlock =
-        if (method.parameters.isEmpty()) {
+    private fun renderSignature(
+        method: WinRtMethodDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        val kinds = method.parameters.map { parameter -> abiKindName(parameter, typesByName) } +
+            listOfNotNull("Pointer".takeUnless { isVoidReturn(method) })
+        return if (kinds.isEmpty()) {
             CodeBlock.of("%T()", comMethodSignatureType)
         } else {
             CodeBlock.builder()
                 .add("%T.of(", comMethodSignatureType)
                 .apply {
-                    method.parameters.forEachIndexed { index, parameter ->
+                    kinds.forEachIndexed { index, kind ->
                         if (index > 0) {
                             add(", ")
                         }
-                        add("%T.%L", comAbiValueKindType, abiKindName(parameter))
+                        if (kind.startsWith("Struct:")) {
+                            add(
+                                "%T.Struct(%T.Metadata.layout.abiLayout)",
+                                comAbiValueKindType,
+                                projectionClassName(kind.removePrefix("Struct:")),
+                            )
+                        } else {
+                            add("%T.%L", comAbiValueKindType, kind)
+                        }
                     }
                 }
                 .add(")")
                 .build()
         }
+    }
 
-    private fun abiKindName(parameter: WinRtParameterDefinition): String =
+    private fun abiKindName(
+        parameter: WinRtParameterDefinition,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): String =
         when (parameter.typeName) {
-            "Int8", "SByte" -> "Int8"
-            "Int16" -> "Int16"
-            "Int32", "UInt32", "Boolean" -> "Int32"
+            "Int8", "SByte", "UInt8", "Byte", "Boolean" -> "Int8"
+            "Int16", "UInt16" -> "Int16"
+            "Int32", "UInt32" -> "Int32"
             "Int64", "UInt64" -> "Int64"
             "Single", "Float" -> "Float"
             "Double" -> "Double"
-            else -> "Pointer"
-        }
-
-    private fun projectedParameterType(parameter: WinRtParameterDefinition) =
-        when (parameter.typeName) {
-            "Boolean" -> Boolean::class.asClassName()
-            "Int8", "SByte" -> Byte::class.asClassName()
-            "UInt8", "Byte" -> UByte::class.asClassName()
-            "Int16" -> Short::class.asClassName()
-            "UInt16" -> UShort::class.asClassName()
-            "Int32" -> Int::class.asClassName()
-            "UInt32" -> UInt::class.asClassName()
-            "Int64" -> Long::class.asClassName()
-            "UInt64" -> ULong::class.asClassName()
-            "Single", "Float" -> Float::class.asClassName()
-            "Double" -> Double::class.asClassName()
-            "String" -> String::class.asClassName()
-            "System.Object", "Object" -> ANY
-            else -> if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
-                rawAddressType
+            else -> if (typesByName[parameter.typeName]?.kind == WinRtTypeKind.Struct &&
+                parameter.direction != WinRtParameterDirection.Out &&
+                !parameter.typeIsByRef
+            ) {
+                "Struct:${parameter.typeName}"
             } else {
-                projectionClassName(parameter.typeName)
+                "Pointer"
             }
         }
+
+    private fun renderReturnProjection(
+        method: WinRtMethodDefinition,
+        outExpression: String,
+        valueExpression: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock =
+        when (method.returnTypeName) {
+            "Boolean" -> CodeBlock.of(
+                "%T.writeInt8(%L, if (%L as %T) 1.toByte() else 0.toByte())",
+                platformAbiType,
+                outExpression,
+                valueExpression,
+                Boolean::class.asClassName(),
+            )
+            "Int8", "SByte" -> CodeBlock.of("%T.writeInt8(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Byte::class.asClassName())
+            "UInt8", "Byte" -> CodeBlock.of("%T.writeInt8(%L, (%L as %T).toByte())", platformAbiType, outExpression, valueExpression, UByte::class.asClassName())
+            "Int16" -> CodeBlock.of("%T.writeInt16(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Short::class.asClassName())
+            "UInt16" -> CodeBlock.of("%T.writeInt16(%L, (%L as %T).toShort())", platformAbiType, outExpression, valueExpression, UShort::class.asClassName())
+            "Int32" -> CodeBlock.of("%T.writeInt32(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Int::class.asClassName())
+            "UInt32" -> CodeBlock.of("%T.writeInt32(%L, (%L as %T).toInt())", platformAbiType, outExpression, valueExpression, UInt::class.asClassName())
+            "Int64" -> CodeBlock.of("%T.writeInt64(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Long::class.asClassName())
+            "UInt64" -> CodeBlock.of("%T.writeInt64(%L, (%L as %T).toLong())", platformAbiType, outExpression, valueExpression, ULong::class.asClassName())
+            "Single", "Float" -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
+            "Double" -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
+            "String" -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
+            "System.Object", "Object" -> CodeBlock.of(
+                "%T.createMarshaler(%L).use { __returnMarshaler -> %T.writePointer(%L, __returnMarshaler.abi) }",
+                winRtObjectMarshallerType,
+                valueExpression,
+                platformAbiType,
+                outExpression,
+            )
+            else -> if (typesByName[method.returnTypeName]?.kind == WinRtTypeKind.Struct) {
+                CodeBlock.of(
+                    "%T.Metadata.copyTo(%L as %T, %L)",
+                    projectionClassName(method.returnTypeName),
+                    valueExpression,
+                    projectionClassName(method.returnTypeName),
+                    outExpression,
+                )
+            } else {
+                CodeBlock.builder()
+                    .addStatement(
+                        "val __returnReference = %T.createCCWForObject(%L, %T.IInspectable)",
+                        comWrappersSupportType,
+                        valueExpression,
+                        iidType,
+                    )
+                    .add("try {\n")
+                    .indent()
+                    .addStatement(
+                        "%T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer()))",
+                        platformAbiType,
+                        outExpression,
+                        platformAbiType,
+                    )
+                    .unindent()
+                    .add("} finally {\n")
+                    .indent()
+                    .addStatement("__returnReference.close()")
+                    .unindent()
+                    .add("}")
+                    .build()
+            }
+        }
+
+    private fun isVoidReturn(method: WinRtMethodDefinition): Boolean =
+        method.returnTypeName == "Void" || method.returnTypeName == "System.Void" || method.returnTypeName == "Unit"
+
+    private fun authoringInvokeBridgeName(method: WinRtMethodDefinition): String =
+        "__winrtAuthoringInvoke${method.name}"
 
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"

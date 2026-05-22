@@ -605,7 +605,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
         customStructAbi = KotlinProjectionCustomStructAbi(
             WINRT_SYSTEM_PROJECTION_MARSHALERS_CLASS_NAME,
-            12,
+            16,
             "typeNameFromAbi",
             "copyTypeNameTo",
             "disposeTypeNameAbi",

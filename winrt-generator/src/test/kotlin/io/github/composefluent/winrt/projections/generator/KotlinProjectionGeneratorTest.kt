@@ -8766,6 +8766,7 @@ class KotlinProjectionGeneratorTest {
         } else {
             assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.typeNameFromAbi(__resultOut)"))
             assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__resultOut)"))
+            assertTrue(classContents, classContents.contains("PlatformAbi.allocateBytes(__typeStructScope, 16L)"))
             assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(type, __typeAbi)"))
             assertTrue(classContents, classContents.contains("WinRtSystemProjectionMarshalers.disposeTypeNameAbi(__typeAbi)"))
         }
@@ -9522,6 +9523,7 @@ class KotlinProjectionGeneratorTest {
             assertFalse(contents.contains("private class NativeProjection("))
         } else {
             assertTrue(contents, contents.contains("winRtObjectMarshaler(value).use { __valueMarshaler ->"))
+            assertTrue(contents.contains("PlatformAbi.allocateBytes(__targetTypeStructScope, 16L)"))
             assertTrue(contents.contains("WinRtSystemProjectionMarshalers.copyTypeNameTo(targetType, __targetTypeAbi)"))
             assertTrue(contents.contains("winRtObjectMarshaler(parameter).use { __parameterMarshaler ->"))
             assertTrue(contents.contains("HString.createReference(language).use { __languageAbi ->"))

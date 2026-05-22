@@ -67,6 +67,29 @@ object Projections {
         return helperAdded && publicAdded && abiNameAdded && typeNameAdded
     }
 
+    fun registerAuthoredRuntimeClassType(
+        publicType: KClass<*>,
+        runtimeClassName: String,
+    ): Boolean {
+        require(runtimeClassName.isNotBlank()) { "Runtime class name must not be blank." }
+        ensureProjectionMappingsRegistered()
+        clearDerivedCaches()
+        val abiNameAdded = customAbiTypeNameToTypeMappings.putIfAbsent(runtimeClassName, publicType) == null
+        val typeNameAdded = customTypeToAbiTypeNameMappings.putIfAbsent(publicType, runtimeClassName) == null
+        projectedRuntimeClassNames.add(runtimeClassName)
+        projectedCustomTypeRuntimeClasses.add(publicType)
+        registerTypeDescriptor(
+            type = publicType,
+            projectedTypeName = runtimeClassName,
+            helperType = findCustomHelperTypeMapping(publicType),
+            runtimeClassName = runtimeClassName,
+            defaultInterface = tryGetDefaultInterfaceTypeForRuntimeClassType(publicType),
+            isRuntimeClass = true,
+            isWindowsRuntimeType = true,
+        )
+        return abiNameAdded || typeNameAdded
+    }
+
     fun registerDefaultInterfaceType(
         runtimeClass: KClass<*>,
         defaultInterface: KClass<*>,

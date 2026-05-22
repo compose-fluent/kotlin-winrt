@@ -337,6 +337,10 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
 }
 
 internal class WinUiKmpLocalContentControl : ContentControl() {
+    init {
+        println("winui-kmp-library: local authored control init")
+    }
+
     var sampleText: String?
         get() = getValue(SampleTextProperty) as String?
         set(value) {
@@ -344,11 +348,16 @@ internal class WinUiKmpLocalContentControl : ContentControl() {
         }
 
     companion object {
-        val SampleTextProperty: DependencyProperty = DependencyProperty.register(
-            "SampleText",
-            String::class,
-            WinUiKmpLocalContentControl::class,
-            PropertyMetadata(null),
-        )
+        val SampleTextProperty: DependencyProperty = run {
+            println("winui-kmp-library: local authored control register SampleTextProperty start")
+            val property = DependencyProperty.register(
+                "SampleText",
+                String::class,
+                WinUiKmpLocalContentControl::class,
+                PropertyMetadata(null),
+            )
+            println("winui-kmp-library: local authored control register SampleTextProperty done")
+            property
+        }
     }
 }
