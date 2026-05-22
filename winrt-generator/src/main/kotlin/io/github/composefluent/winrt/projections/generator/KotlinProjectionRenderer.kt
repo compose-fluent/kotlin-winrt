@@ -146,7 +146,7 @@ class KotlinProjectionRenderer(
             builder.addProperty(renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
             renderEventFunctions(event, abstract = true).forEach(builder::addFunction)
         }
-        if (canRenderInterfaceProxy(plan) && !canRenderInterfaceNativeProjectionArtifact(plan)) {
+        if (canRenderInterfaceProxy(plan)) {
             builder.addType(renderInterfaceNativeProjection(plan))
         }
         appendCompanionShells(builder, plan)
@@ -1084,7 +1084,7 @@ class KotlinProjectionRenderer(
         val normalizedType = typeRef.normalized()
         val trimmed = normalizedType.typeName
         val rawTypeName = when (normalizedType.kind) {
-            WinRtTypeRefKind.Named -> normalizedType.qualifiedName ?: trimmed.substringBefore('<').removeSuffix("?")
+            WinRtTypeRefKind.Named -> (normalizedType.qualifiedName ?: trimmed.substringBefore('<')).removeSuffix("?")
             WinRtTypeRefKind.Array -> "Array"
             else -> trimmed
         }
@@ -1117,6 +1117,10 @@ class KotlinProjectionRenderer(
             "Float",
             "Single" -> KotlinProjectionAbiValueKind.Float
             "Double" -> KotlinProjectionAbiValueKind.Double
+            "Char",
+            "Char16" -> KotlinProjectionAbiValueKind.Char16
+            "Guid",
+            "System.Guid" -> KotlinProjectionAbiValueKind.GuidValue
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
@@ -1139,6 +1143,27 @@ class KotlinProjectionRenderer(
                 }
             }
         }
+        val delegateInvokeShape = if (kind == KotlinProjectionAbiValueKind.Delegate && resolvedType != null) {
+            val invokeMethod = requireDelegateInvokeMethod(resolvedType)
+            KotlinProjectionDelegateInvokeShape(
+                interfaceId = resolvedType.iid,
+                parameterBindings = invokeMethod.parameters.map { parameter ->
+                    KotlinProjectionAbiParameterBinding(
+                        name = parameter.name,
+                        typeBinding = renderAbiTypeBinding(
+                            WinRtTypeRef.fromDisplayName(parameter.typeName).normalized(),
+                            typesByQualifiedName,
+                        ).withDelegateGenericArgumentProjection(typeArguments),
+                    )
+                },
+                returnBinding = renderAbiTypeBinding(
+                    WinRtTypeRef.fromDisplayName(invokeMethod.returnTypeName).normalized(),
+                    typesByQualifiedName,
+                ).withDelegateGenericArgumentProjection(typeArguments),
+            )
+        } else {
+            null
+        }
         val interfaceId = when (resolvedType?.kind) {
             WinRtTypeKind.RuntimeClass -> resolvedType.defaultInterfaceName
                 ?.let { defaultInterfaceName ->
@@ -1155,8 +1180,21 @@ class KotlinProjectionRenderer(
             sourceTypeKind = resolvedType?.kind,
             interfaceId = interfaceId,
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
+            delegateInvokeShape = delegateInvokeShape,
             typeArguments = typeArguments,
         )
+    }
+
+    private fun KotlinProjectionAbiTypeBinding.withDelegateGenericArgumentProjection(
+        genericArguments: List<KotlinProjectionAbiTypeBinding>,
+    ): KotlinProjectionAbiTypeBinding {
+        if (kind != KotlinProjectionAbiValueKind.GenericParameter || genericArguments.isEmpty()) {
+            return this
+        }
+        val index = resolvedTypeName.removePrefix("T").removePrefix("M").toIntOrNull()
+            ?: typeName.removePrefix("T").removePrefix("M").toIntOrNull()
+            ?: return this
+        return genericArguments.getOrNull(index) ?: this
     }
 
     private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =

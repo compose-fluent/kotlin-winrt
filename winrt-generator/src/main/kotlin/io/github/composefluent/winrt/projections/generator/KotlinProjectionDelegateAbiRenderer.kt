@@ -124,6 +124,9 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
         return null
     }
     val delegateIid = delegateInterfaceIdCode(parameterBinding.typeBinding, invokeShape) ?: return null
+    if (parameterBinding.typeBinding.isNullableAbiTypeName) {
+        return nullableDelegateParameterMarshaler(parameterBinding, invokeShape, delegateIid)
+    }
     val handleName = "__${parameterBinding.name}Handle"
     val abiReferenceName = "__${parameterBinding.name}Abi"
     return KotlinProjectionAbiMarshalerPlan(
@@ -146,6 +149,49 @@ internal fun KotlinProjectionRenderer.delegateParameterMarshaler(
                 handleName,
             ),
             CodeBlock.of("%L.createReference().use { %L ->", handleName, abiReferenceName),
+        ),
+    )
+}
+
+private fun KotlinProjectionRenderer.nullableDelegateParameterMarshaler(
+    parameterBinding: KotlinProjectionAbiParameterBinding,
+    invokeShape: KotlinProjectionDelegateInvokeShape,
+    delegateIid: CodeBlock,
+): KotlinProjectionAbiMarshalerPlan {
+    val callbackName = "__${parameterBinding.name}Callback"
+    val abiName = "__${parameterBinding.name}Abi"
+    return KotlinProjectionAbiMarshalerPlan(
+        name = parameterBinding.name,
+        typeBinding = parameterBinding.typeBinding,
+        isReturn = false,
+        abiArgumentExpression = CodeBlock.of("%L.abi", abiName),
+        abiArgumentKind = KotlinProjectionComArgumentKind.Pointer,
+        scopeOpeners = listOf(
+            CodeBlock.of(
+                """
+                val %L = %L?.let { %L ->
+                { __args: %T<%T?> ->
+                %L(%L)
+                }
+                }
+                %T.createDelegateArgument(iid = %L, parameterKinds = %L, returnKind = %L, parameterStructAdapters = %L, returnStructAdapter = %L, callback = %L).use { %L ->
+                """.trimIndent(),
+                callbackName,
+                parameterBinding.name,
+                parameterBinding.name,
+                LIST_CLASS_NAME,
+                ANY,
+                parameterBinding.name,
+                delegateCallbackArgumentCodeList(invokeShape.parameterBindings),
+                WINRT_DELEGATE_BRIDGE_CLASS_NAME,
+                delegateIid,
+                delegateParameterKindsCode(invokeShape.parameterBindings),
+                delegateInvokeReturnKindCode(invokeShape.returnBinding),
+                delegateParameterStructAdaptersCode(invokeShape.parameterBindings),
+                delegateReturnStructAdapterCode(invokeShape.returnBinding),
+                callbackName,
+                abiName,
+            ),
         ),
     )
 }

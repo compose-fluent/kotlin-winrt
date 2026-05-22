@@ -417,8 +417,7 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun interfaceNativeProjectionPlans(plans: List<KotlinTypeProjectionPlan>): List<KotlinTypeProjectionPlan> {
-        val artifactRenderer = KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true)
-        return plans.filter(artifactRenderer::canRenderInterfaceNativeProjectionArtifact)
+        return emptyList()
     }
 
     private fun interfaceNativeProjectionImplementationClassName(plan: KotlinTypeProjectionPlan): String =

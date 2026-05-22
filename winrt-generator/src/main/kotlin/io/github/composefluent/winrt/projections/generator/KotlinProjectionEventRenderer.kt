@@ -1590,37 +1590,14 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 .addParameter("instance", IUNKNOWN_REFERENCE_CLASS_NAME)
                 .returns(plan.projectedSelfTypeName())
                 .apply {
-                    if (canRenderInterfaceNativeProjectionArtifact(plan)) {
-                        if (useProjectionIntrinsics) {
-                            addCode(
-                                "%T.ensureInitialized()\n",
-                                WINRT_PROJECTION_SUPPORT_INTRINSIC_CLASS_NAME,
-                            )
-                        }
-                        addCode(
-                            "return %T.wrapGeneratedInterfaceProjectionFromCompilerPlugin(TYPE_HANDLE, instance, %S, %T::class) as %T\n",
-                            COM_WRAPPERS_SUPPORT_CLASS_NAME,
-                            plan.type.qualifiedName,
-                            plan.projectedSelfTypeName(),
-                            plan.projectedSelfTypeName(),
-                        )
-                    } else if (canRenderInterfaceProxy(plan)) {
-                        addCode(
-                            "return NativeProjection%L(instance)\n",
-                            if (plan.type.genericParameterCount == 0) {
-                                ""
-                            } else {
-                                "<${(0 until plan.type.genericParameterCount).joinToString(", ") { index -> "T$index" }}>"
-                            },
-                        )
-                    } else {
-                        addCode(
-                            "return %T.create(%T::class.java, TYPE_HANDLE, instance, emptyList()) as %T\n",
-                            WINRT_GENERATED_INTERFACE_PROJECTION_RUNTIME_CLASS_NAME,
-                            ClassName(plan.packageName, plan.type.name),
-                            plan.projectedSelfTypeName(),
-                        )
-                    }
+                    addCode(
+                        "return NativeProjection%L(instance)\n",
+                        if (plan.type.genericParameterCount == 0) {
+                            ""
+                        } else {
+                            "<${(0 until plan.type.genericParameterCount).joinToString(", ") { index -> "T$index" }}>"
+                        },
+                    )
                 }
                 .build(),
         )
@@ -1733,17 +1710,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
 }
 
 internal fun KotlinProjectionRenderer.canRenderInterfaceWrapper(plan: KotlinTypeProjectionPlan): Boolean =
-    canRenderInterfaceProxy(plan) ||
-        canRenderInterfaceNativeProjectionArtifact(plan) ||
-        (
-            useInterfaceProjectionArtifacts &&
-                plan.declarationKind == KotlinProjectionDeclarationKind.Interface &&
-                plan.type.genericParameterCount == 0 &&
-                plan.interfaceIid != null &&
-                !isRuntimeOwnedMappedTypeName(plan.type.qualifiedName) &&
-                mappedTypeByAbiName(plan.type.qualifiedName)?.abiValueKind != KotlinProjectionAbiValueKind.MappedKeyValuePair &&
-                !isMappedCollectionInterfaceName(plan.type.qualifiedName)
-            )
+    canRenderInterfaceProxy(plan)
 
 internal fun KotlinProjectionRenderer.appendDescriptorHandoffCompanionMembers(
     builder: TypeSpec.Builder,

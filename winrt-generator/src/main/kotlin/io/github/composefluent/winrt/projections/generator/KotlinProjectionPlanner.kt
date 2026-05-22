@@ -1087,7 +1087,7 @@ class KotlinProjectionPlanner(
         val normalizedType = WinRtTypeRef.fromDisplayName(typeName).normalized()
         val trimmedTypeName = normalizedType.typeName
         val rawTypeName = when (normalizedType.kind) {
-            WinRtTypeRefKind.Named -> normalizedType.qualifiedName ?: trimmedTypeName.substringBefore('<').removeSuffix("?")
+            WinRtTypeRefKind.Named -> (normalizedType.qualifiedName ?: trimmedTypeName.substringBefore('<')).removeSuffix("?")
             WinRtTypeRefKind.Array -> "Array"
             else -> trimmedTypeName
         }
