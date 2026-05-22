@@ -16,9 +16,12 @@ import microsoft.ui.xaml.ResourceDictionary
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.automation.AutomationProperties
 import microsoft.ui.xaml.automation.peers.AccessibilityView
+import microsoft.ui.xaml.automation.peers.AutomationPeer
+import microsoft.ui.xaml.automation.peers.FrameworkElementAutomationPeer
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.ContentControl
+import microsoft.ui.xaml.controls.Panel
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
@@ -118,6 +121,8 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: textBox created")
         val localControl = WinUiKmpLocalContentControl()
         println("winui-kmp-library: local authored control created")
+        val localPanel = WinUiKmpLocalPanel()
+        println("winui-kmp-library: local authored panel created")
 
         button.content = "KMP library WinUI"
         println("winui-kmp-library: button content set")
@@ -163,6 +168,9 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
         println("winui-kmp-library: adding local authored control to canvas")
         children.add(localControl)
         println("winui-kmp-library: local authored control added")
+        println("winui-kmp-library: adding local authored panel to canvas")
+        children.add(localPanel)
+        println("winui-kmp-library: local authored panel added")
         check(children[0] is Button) {
             "Canvas.children[0] did not recover the Button runtime-class wrapper: ${children[0]::class.qualifiedName}"
         }
@@ -179,6 +187,11 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             "AutomationProperties.accessibilityViewProperty was not available."
         })
         println("winui-kmp-library: detached automation accessibility view cleared")
+        val localPanelPeer = FrameworkElementAutomationPeer.createPeerForElement(localPanel)
+        check(WinUiKmpLocalPanel.createAutomationPeerCalls == 1) {
+            "Local authored Panel OnCreateAutomationPeer was not dispatched; calls=${WinUiKmpLocalPanel.createAutomationPeerCalls}, peer=${localPanelPeer.javaClass.name}"
+        }
+        println("winui-kmp-library: local authored panel automation peer override dispatched")
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWindowContent")) {
             window.content = panel
             println("winui-kmp-library: window content set")
@@ -359,5 +372,17 @@ internal class WinUiKmpLocalContentControl : ContentControl() {
             println("winui-kmp-library: local authored control register SampleTextProperty done")
             property
         }
+    }
+}
+
+internal class WinUiKmpLocalPanel : Panel() {
+    override fun onCreateAutomationPeer(): AutomationPeer {
+        createAutomationPeerCalls += 1
+        return FrameworkElementAutomationPeer(this)
+    }
+
+    companion object {
+        var createAutomationPeerCalls: Int = 0
+            private set
     }
 }

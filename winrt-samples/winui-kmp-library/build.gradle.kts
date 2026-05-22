@@ -59,6 +59,8 @@ winRt {
         type("Microsoft.UI.Xaml.WindowActivatedEventArgs")
         type("Microsoft.UI.Xaml.WindowActivationState")
         type("Microsoft.UI.Xaml.Automation.AutomationProperties")
+        type("Microsoft.UI.Xaml.Automation.Peers.AutomationPeer")
+        type("Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer")
         type("Microsoft.UI.Xaml.Automation.Peers.AccessibilityView")
         type("Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop")
         type("Microsoft.UI.Xaml.Media.MicaBackdrop")
