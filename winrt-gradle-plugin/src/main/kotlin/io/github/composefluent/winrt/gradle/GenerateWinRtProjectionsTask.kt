@@ -159,7 +159,7 @@ abstract class GenerateWinRtProjectionsTask : DefaultTask() {
             parameters.authoringTargetArtifactName.set(authoringTargetArtifactName)
             parameters.authoringScannerClasspath.from(authoringScannerClasspath)
             parameters.authoringScannerJvmArgs.set(authoringScannerJvmArgs)
-            parameters.workDirectory.set(project.layout.dir(project.provider { temporaryDir }))
+            parameters.workDirectory.set(temporaryDir)
         }
     }
 }
@@ -200,6 +200,12 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
     private val logger = Logging.getLogger(GenerateWinRtProjectionsWorkAction::class.java)
 
     override fun execute() {
+        val generatedRoot = parameters.outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val authoringTypeDetailsRoot = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath()
+            .toAbsolutePath()
+            .normalize()
+        cleanDirectory(generatedRoot)
+        cleanDirectory(authoringTypeDetailsRoot)
         val sources = metadataSources()
         val baseModel = WinRtMetadataLoader.loadSources(sources).filterProjectionSurface(
             namespaces = parameters.includeNamespaces.get().toSet(),
@@ -207,7 +213,6 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             excludedNamespaces = parameters.excludeNamespaces.get().toSet(),
             excludedTypes = parameters.excludeTypes.get().toSet(),
         )
-        val generatedRoot = parameters.outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         val authoringMetadataIndex = generatedRoot.resolve("kotlin-winrt-authoring/metadata-index.tsv")
         Files.createDirectories(authoringMetadataIndex.parent)
         writeAuthoringMetadataIndex(baseModel, authoringMetadataIndex)
@@ -266,8 +271,17 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
                 candidates = authoringCandidates,
                 metadataModel = model,
-                outputDirectory = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath(),
+                outputDirectory = authoringTypeDetailsRoot,
             )
+        }
+    }
+
+    private fun cleanDirectory(path: Path) {
+        if (!Files.exists(path)) {
+            return
+        }
+        Files.walk(path).use { stream ->
+            stream.sorted(Comparator.reverseOrder()).forEach(Files::delete)
         }
     }
 

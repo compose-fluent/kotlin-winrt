@@ -107,7 +107,6 @@ private val MERGED_COMPILER_SUPPORT_KINDS = setOf(
     "event-source",
     "generic-type-instantiation",
     "generic-abi-registry",
-    "interface-native-projection",
 )
 
 private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifestRow> =
@@ -124,4 +123,3 @@ private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifes
             }
         }
         .toList()
-
