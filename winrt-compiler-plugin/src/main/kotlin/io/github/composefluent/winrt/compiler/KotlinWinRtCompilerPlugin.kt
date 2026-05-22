@@ -2793,17 +2793,13 @@ class KotlinWinRtIrGenerationExtension(
         projectionRegistrarEntries: List<KotlinWinRtProjectionRegistrarEntry>,
     ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
+        Files.deleteIfExists(outputDirectory.resolve(DEPRECATED_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
         if (entries.isEmpty()) {
             return
         }
         writeCompilerSupportManifestClass(entries, outputDirectory)
         writeProjectionSupportInitializerClass(
             entries = projectionRegistrarEntries,
-            outputDirectory = outputDirectory,
-        )
-        val eventProjectionEntries = readEventProjectionEntries(entries)
-        writeEventProjectionRegistryClass(
-            entries = eventProjectionEntries,
             outputDirectory = outputDirectory,
         )
     }
@@ -2820,25 +2816,6 @@ class KotlinWinRtIrGenerationExtension(
                 val sourcePath = manifestDirectory.resolve(entry.sourceFile)
                 if (Files.isRegularFile(sourcePath)) {
                     readProjectionRegistrarEntries(sourcePath).asSequence()
-                } else {
-                    emptySequence()
-                }
-            }
-            .toList()
-    }
-
-    private fun readEventProjectionEntries(
-        manifestEntries: List<KotlinWinRtCompilerSupportManifestEntry>,
-    ): List<KotlinWinRtEventProjectionEntry> {
-        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
-        val manifestDirectory = manifestPath.parent ?: return emptyList()
-        return manifestEntries
-            .asSequence()
-            .filter { it.kind == "event-source" }
-            .flatMap { entry ->
-                val sourcePath = manifestDirectory.resolve(entry.sourceFile)
-                if (Files.isRegularFile(sourcePath)) {
-                    readEventProjectionEntries(sourcePath).asSequence()
                 } else {
                     emptySequence()
                 }
@@ -3982,12 +3959,10 @@ private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
 private const val PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX: String =
     "io/github/composefluent/winrt/projections/support/WinRTProjectionSupport_"
 
-private const val EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME: String =
-    "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry"
+private const val DEPRECATED_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
+    "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class"
 
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
-
-private const val EVENT_PROJECTION_REGISTRY_CHUNK_SIZE: Int = 96
 
 private const val GENERIC_ABI_REGISTRY_LIST_SEPARATOR: String = "\u001F"
 
@@ -4202,193 +4177,6 @@ private fun String.toInternalName(): String =
 private fun String.toMetadataInternalName(): String =
     removeSuffix(".Metadata").toInternalName() + "\$Metadata"
 
-data class KotlinWinRtEventProjectionEntry(
-    val eventType: String,
-    val ownerType: String,
-    val sourceClass: String,
-    val abiEventType: String,
-    val genericArguments: List<String>,
-    val usesSharedEventHandlerSource: Boolean,
-    val interfaceId: String,
-    val parameterKinds: List<String>,
-    val returnKind: String,
-    val parameterTypeNames: List<String>,
-)
-
-fun readEventProjectionEntries(path: Path): List<KotlinWinRtEventProjectionEntry> =
-    Files.readAllLines(path)
-        .asSequence()
-        .drop(1)
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseEventProjectionLine)
-        .toList()
-
-private fun parseEventProjectionLine(line: String): KotlinWinRtEventProjectionEntry? {
-    val parts = line.split('\t', limit = 10)
-    if (parts.size < 6) {
-        return null
-    }
-    return KotlinWinRtEventProjectionEntry(
-        eventType = parts[0],
-        ownerType = parts[1],
-        sourceClass = parts[2],
-        abiEventType = parts[3],
-        genericArguments = parts[4].split(',').filter(String::isNotBlank),
-        usesSharedEventHandlerSource = parts[5].toBooleanStrictOrNull() ?: false,
-        interfaceId = parts.getOrNull(6).orEmpty(),
-        parameterKinds = parts.getOrNull(7).orEmpty().split(',').filter(String::isNotBlank),
-        returnKind = parts.getOrNull(8).orEmpty().ifBlank { "UNIT" },
-        parameterTypeNames = parts.getOrNull(9).orEmpty().split(',').filter(String::isNotBlank),
-    )
-}
-
-fun writeEventProjectionRegistryClass(
-    entries: List<KotlinWinRtEventProjectionEntry>,
-    outputDirectory: Path,
-) {
-    if (entries.isEmpty()) {
-        return
-    }
-    val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
-    classWriter.visit(
-        Opcodes.V17,
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL or Opcodes.ACC_SUPER,
-        EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME,
-        null,
-        "java/lang/Object",
-        null,
-    )
-    classWriter.visitSource("event-sources.tsv", null)
-    classWriter.addDefaultConstructor()
-    val chunks = entries.chunked(EVENT_PROJECTION_REGISTRY_CHUNK_SIZE)
-    val register = classWriter.visitMethod(
-        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
-        "register",
-        "()V",
-        null,
-        null,
-    )
-    register.visitCode()
-    chunks.indices.forEach { index ->
-        register.visitMethodInsn(
-            Opcodes.INVOKESTATIC,
-            EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME,
-            eventProjectionRegistryChunkName(index),
-            "()V",
-            false,
-        )
-    }
-    register.visitInsn(Opcodes.RETURN)
-    register.visitMaxs(0, 0)
-    register.visitEnd()
-    chunks.forEachIndexed { index, chunk ->
-        classWriter.addEventProjectionRegistryChunk(eventProjectionRegistryChunkName(index), chunk)
-    }
-    classWriter.visitEnd()
-
-    val target = outputDirectory.resolve("$EVENT_PROJECTION_REGISTRY_CLASS_INTERNAL_NAME.class")
-    Files.createDirectories(target.parent)
-    Files.write(target, classWriter.toByteArray())
-}
-
-private fun eventProjectionRegistryChunkName(index: Int): String =
-    "registerChunk${index.toString().padStart(3, '0')}"
-
-private fun ClassWriter.addEventProjectionRegistryChunk(
-    name: String,
-    entries: List<KotlinWinRtEventProjectionEntry>,
-) {
-    val method = visitMethod(
-        Opcodes.ACC_PRIVATE or Opcodes.ACC_STATIC,
-        name,
-        "()V",
-        null,
-        null,
-    )
-    method.visitCode()
-    entries.forEach { entry ->
-        method.visitFieldInsn(
-            Opcodes.GETSTATIC,
-            "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
-            "INSTANCE",
-            "Lio/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations;",
-        )
-        method.visitLdcInsn(entry.eventType)
-        method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
-            "io/github/composefluent/winrt/projections/support/WinRTGenericTypeInstantiations",
-            "initializeBySourceType",
-            "(Ljava/lang/String;)V",
-            false,
-        )
-        method.addEventSourceDescriptor(entry, withFactory = false)
-        method.visitVarInsn(Opcodes.ASTORE, 0)
-        method.visitFieldInsn(
-            Opcodes.GETSTATIC,
-            "io/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime",
-            "INSTANCE",
-            "Lio/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime;",
-        )
-        method.visitVarInsn(Opcodes.ALOAD, 0)
-        method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
-            "io/github/composefluent/winrt/runtime/WinRtGeneratedEventSourceRuntime",
-            "createEventSourceFactory",
-            "(Lio/github/composefluent/winrt/runtime/WinRtEventSourceDescriptor;)Lkotlin/jvm/functions/Function2;",
-            false,
-        )
-        method.visitVarInsn(Opcodes.ASTORE, 1)
-        method.addEventSourceDescriptor(entry, withFactory = true)
-        method.visitFieldInsn(
-            Opcodes.GETSTATIC,
-            "io/github/composefluent/winrt/runtime/WinRtEventSourceRuntime",
-            "INSTANCE",
-            "Lio/github/composefluent/winrt/runtime/WinRtEventSourceRuntime;",
-        )
-        method.visitInsn(Opcodes.SWAP)
-        method.visitMethodInsn(
-            Opcodes.INVOKEVIRTUAL,
-            "io/github/composefluent/winrt/runtime/WinRtEventSourceRuntime",
-            "registerEventSource",
-            "(Lio/github/composefluent/winrt/runtime/WinRtEventSourceDescriptor;)V",
-            false,
-        )
-    }
-    method.visitInsn(Opcodes.RETURN)
-    method.visitMaxs(0, 0)
-    method.visitEnd()
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addEventSourceDescriptor(
-    entry: KotlinWinRtEventProjectionEntry,
-    withFactory: Boolean,
-) {
-    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/runtime/WinRtEventSourceDescriptor")
-    visitInsn(Opcodes.DUP)
-    visitLdcInsn(entry.eventType)
-    visitLdcInsn(entry.ownerType)
-    visitLdcInsn(entry.sourceClass)
-    visitLdcInsn(entry.abiEventType)
-    addStringList(entry.genericArguments)
-    visitInsn(if (entry.usesSharedEventHandlerSource) Opcodes.ICONST_1 else Opcodes.ICONST_0)
-    addNullableGuid(entry.interfaceId)
-    addWinRtDelegateValueKindList(entry.parameterKinds)
-    addWinRtDelegateValueKind(entry.returnKind)
-    addStringList(entry.parameterTypeNames)
-    if (withFactory) {
-        visitVarInsn(Opcodes.ALOAD, 1)
-    } else {
-        visitInsn(Opcodes.ACONST_NULL)
-    }
-    visitMethodInsn(
-        Opcodes.INVOKESPECIAL,
-        "io/github/composefluent/winrt/runtime/WinRtEventSourceDescriptor",
-        "<init>",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ZLio/github/composefluent/winrt/runtime/Guid;Ljava/util/List;Lio/github/composefluent/winrt/runtime/WinRtDelegateValueKind;Ljava/util/List;Lkotlin/jvm/functions/Function2;)V",
-        false,
-    )
-}
-
 data class KotlinWinRtGenericTypeInstantiationEntry(
     val className: String,
     val sourceType: String,
@@ -4483,44 +4271,6 @@ private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addWinRtTypeHandle(
         "io/github/composefluent/winrt/runtime/WinRtTypeHandle",
         "<init>",
         "(Ljava/lang/String;Lio/github/composefluent/winrt/runtime/Guid;)V",
-        false,
-    )
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addNullableGuid(value: String) {
-    if (value.isBlank()) {
-        visitInsn(Opcodes.ACONST_NULL)
-        return
-    }
-    visitTypeInsn(Opcodes.NEW, "io/github/composefluent/winrt/runtime/Guid")
-    visitInsn(Opcodes.DUP)
-    visitLdcInsn(value)
-    visitMethodInsn(Opcodes.INVOKESPECIAL, "io/github/composefluent/winrt/runtime/Guid", "<init>", "(Ljava/lang/String;)V", false)
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addWinRtDelegateValueKind(value: String) {
-    visitFieldInsn(
-        Opcodes.GETSTATIC,
-        "io/github/composefluent/winrt/runtime/WinRtDelegateValueKind",
-        value.ifBlank { "UNIT" },
-        "Lio/github/composefluent/winrt/runtime/WinRtDelegateValueKind;",
-    )
-}
-
-private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addWinRtDelegateValueKindList(values: List<String>) {
-    pushInt(values.size)
-    visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Object")
-    values.forEachIndexed { index, value ->
-        visitInsn(Opcodes.DUP)
-        pushInt(index)
-        addWinRtDelegateValueKind(value)
-        visitInsn(Opcodes.AASTORE)
-    }
-    visitMethodInsn(
-        Opcodes.INVOKESTATIC,
-        "kotlin/collections/CollectionsKt",
-        "listOf",
-        "([Ljava/lang/Object;)Ljava/util/List;",
         false,
     )
 }
