@@ -17,6 +17,7 @@ import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDirection
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -39,7 +40,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableInterfaceDefinition")
     private val winRtInspectableMethodDefinitionType =
         ClassName("io.github.composefluent.winrt.runtime", "WinRtInspectableMethodDefinition")
+    private val winRtIterableProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtIterableProjection")
+    private val winRtListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtListProjection")
     private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
+    private val winRtReadOnlyListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyListProjection")
+    private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
 
     fun renderTo(
         candidates: List<KotlinWinRtAuthoredTypeCandidate>,
@@ -426,6 +431,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 valueExpression,
             )
             else -> {
+                renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName)?.let {
+                    return it
+                }
                 val returnType = typesByName[method.returnTypeName]
                 when (returnType?.kind) {
                     WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression)
@@ -461,6 +469,57 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 }
             }
         }
+
+    private fun renderCollectionReturnProjection(
+        returnTypeName: String,
+        outExpression: String,
+        valueExpression: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val returnType = WinRtTypeRef.fromDisplayName(returnTypeName).normalized()
+        val collectionTypeName = returnType.qualifiedName ?: return null
+        val elementType = returnType.typeArguments.singleOrNull()?.normalized() ?: return null
+        val elementAdapter = renderCollectionElementAdapter(elementType, typesByName) ?: return null
+        val projectionType = when (collectionTypeName) {
+            "Windows.Foundation.Collections.IIterable" -> winRtIterableProjectionType
+            "Windows.Foundation.Collections.IVectorView" -> winRtReadOnlyListProjectionType
+            "Windows.Foundation.Collections.IVector" -> winRtListProjectionType
+            else -> return null
+        }
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.fromManaged(%L, %L))",
+            platformAbiType,
+            outExpression,
+            projectionType,
+            valueExpression,
+            elementAdapter,
+        )
+    }
+
+    private fun renderCollectionElementAdapter(
+        elementType: WinRtTypeRef,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock? {
+        val elementTypeName = elementType.qualifiedName ?: return null
+        return when (elementTypeName) {
+            "String" -> CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
+            "System.Object", "Object" -> CodeBlock.of("%T.object_", winRtReferenceValueAdaptersType)
+            else -> {
+                val elementDefinition = typesByName[elementTypeName] ?: return null
+                when (elementDefinition.kind) {
+                    WinRtTypeKind.RuntimeClass -> CodeBlock.of(
+                        "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
+                        winRtReferenceValueAdaptersType,
+                        projectionClassName(elementTypeName),
+                        elementTypeName,
+                        projectionClassName(elementTypeName),
+                        projectionClassName(elementTypeName),
+                    )
+                    else -> null
+                }
+            }
+        }
+    }
 
     private fun renderEnumReturnProjection(
         typeName: String,

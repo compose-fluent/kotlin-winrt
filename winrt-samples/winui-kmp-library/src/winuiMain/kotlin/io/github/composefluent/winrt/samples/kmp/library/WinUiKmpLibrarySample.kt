@@ -18,6 +18,7 @@ import microsoft.ui.xaml.automation.AutomationProperties
 import microsoft.ui.xaml.automation.peers.AccessibilityView
 import microsoft.ui.xaml.automation.peers.AutomationNavigationDirection
 import microsoft.ui.xaml.automation.peers.AutomationPeer
+import microsoft.ui.xaml.automation.peers.AutomationPeerAnnotation
 import microsoft.ui.xaml.automation.peers.FrameworkElementAutomationPeer
 import microsoft.ui.xaml.automation.peers.PatternInterface
 import microsoft.ui.xaml.controls.Button
@@ -398,4 +399,16 @@ internal class WinUiKmpLocalAutomationPeer : AutomationPeer() {
     override fun getElementFromPointCore(pointInWindowCoordinates: Point): Any? = null
 
     override fun getFocusedElementCore(): Any? = null
+
+    override fun getChildrenCore(): MutableList<AutomationPeer> = mutableListOf()
+
+    override fun getControlledPeersCore(): List<AutomationPeer> = emptyList()
+
+    override fun getAnnotationsCore(): MutableList<AutomationPeerAnnotation> = mutableListOf()
+
+    override fun getDescribedByCore(): Iterable<AutomationPeer> = emptyList()
+
+    override fun getFlowsToCore(): Iterable<AutomationPeer> = emptyList()
+
+    override fun getFlowsFromCore(): Iterable<AutomationPeer> = emptyList()
 }
