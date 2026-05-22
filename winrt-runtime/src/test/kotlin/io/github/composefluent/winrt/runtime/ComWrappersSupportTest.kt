@@ -222,6 +222,52 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun composable_ccw_resolves_requested_base_interface_from_inner_after_factory_returns() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val overrideInterfaceId = Guid("31313131-3131-3131-3131-313131313131")
+        val baseDefaultInterfaceId = Guid("32323232-3232-3232-3232-323232323232")
+        ComWrappersSupport.registerCcwFactory(TestManagedType::class) {
+            WinRtCcwDefinition(
+                interfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(
+                        interfaceId = overrideInterfaceId,
+                        methods = emptyList(),
+                    ),
+                ),
+                defaultInterfaceId = overrideInterfaceId,
+                runtimeClassName = "test.ComposableDerived",
+            )
+        }
+        val innerHost = WinRtInspectableComObject(
+            interfaceDefinitions = listOf(
+                WinRtInspectableInterfaceDefinition(
+                    interfaceId = baseDefaultInterfaceId,
+                    methods = emptyList(),
+                ),
+            ),
+            defaultInterfaceId = baseDefaultInterfaceId,
+            runtimeClassName = "test.ComposableBase",
+        )
+        val managed = TestManagedType("derived")
+
+        ComWrappersSupport.createComposableCCWForObject(
+            value = managed,
+            outerInterfaceId = baseDefaultInterfaceId,
+        ) { baseInterface, innerOut, instanceOut ->
+            IInspectableReference(baseInterface.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { base ->
+                assertEquals("test.ComposableDerived", base.getRuntimeClassName())
+            }
+            PlatformAbi.writePointer(innerOut, innerHost.detachReference(IID.IInspectable))
+            PlatformAbi.writePointer(instanceOut, innerHost.detachReference(baseDefaultInterfaceId))
+            KnownHResults.S_OK.value
+        }.use { composed ->
+            assertEquals(baseDefaultInterfaceId, composed.outer.interfaceId)
+            assertTrue(composed.outer.sameIdentity(composed.inner ?: error("Expected aggregated inner reference.")))
+            assertSame(managed, ComWrappersSupport.findObject(composed.outer.pointer, TestManagedType::class))
+        }
+    }
+
+    @Test
     fun ccw_augmentation_preserves_existing_hidden_interfaces_and_appends_reference_tracker_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
         val publicInterfaceId = Guid("67676767-6767-6767-6767-676767676767")

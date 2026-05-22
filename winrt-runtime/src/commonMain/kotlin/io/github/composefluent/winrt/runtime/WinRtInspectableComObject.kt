@@ -59,7 +59,7 @@ internal class WinRtInspectableComObject(
 
     override fun createReference(interfaceId: Guid): ComObjectReference {
         addReference()
-        return ComObjectReference(interfacePointer(interfaceId).asRawComPtr(), interfaceId)
+        return ComObjectReference(interfacePointerOrFallback(interfaceId).asRawComPtr(), interfaceId)
     }
 
     fun createPrimaryReference(): ComObjectReference = createReference(primaryInterfaceId)
@@ -87,15 +87,26 @@ internal class WinRtInspectableComObject(
     }
 
     private fun interfacePointer(interfaceId: Guid): RawAddress =
+        interfacePointerOrNull(interfaceId) ?: throw WinRtUnsupportedOperationException(
+            "Managed COM object does not implement interface '$interfaceId'.",
+            KnownHResults.E_NOINTERFACE,
+        )
+
+    private fun interfacePointerOrFallback(interfaceId: Guid): RawAddress =
+        interfacePointerOrNull(interfaceId)
+            ?: queryInterfaceFallback?.invoke(interfaceId)?.takeUnless(PlatformAbi::isNull)?.also(::registerExternalPointerAlias)
+            ?: throw WinRtUnsupportedOperationException(
+                "Managed COM object does not implement interface '$interfaceId'.",
+                KnownHResults.E_NOINTERFACE,
+            )
+
+    private fun interfacePointerOrNull(interfaceId: Guid): RawAddress? =
         when (interfaceId) {
             IID.IUnknown -> interfaceEntries.getValue(primaryInterfaceId).objectMemory
             IID.IInspectable -> interfaceEntries[IID.IInspectable]?.objectMemory
                 ?: primaryInspectableInterfaceId?.let { interfaceEntries.getValue(it).objectMemory }
             else -> interfaceEntries[interfaceId]?.objectMemory
-        } ?: throw WinRtUnsupportedOperationException(
-            "Managed COM object does not implement interface '$interfaceId'.",
-            KnownHResults.E_NOINTERFACE,
-        )
+        }
 
     private fun createInterfaceEntry(
         definition: WinRtInspectableInterfaceDefinition,
