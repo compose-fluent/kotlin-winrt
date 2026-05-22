@@ -3219,6 +3219,86 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_marshals_nullable_delegate_setters_without_runtime_proxy_fallback() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IAsyncAction",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555585"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IAsyncInfo"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetResults",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 8,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Completed",
+                                    typeName = "Sample.Foundation.AsyncActionCompletedHandler?",
+                                    getterMethodName = "get_Completed",
+                                    setterMethodName = "put_Completed",
+                                    getterMethodRowId = 6,
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IAsyncInfo",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555587"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Id",
+                                    typeName = "UInt",
+                                    getterMethodName = "get_Id",
+                                    getterMethodRowId = 9,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "AsyncActionCompletedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555586"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("asyncInfo", "Sample.Foundation.IAsyncAction"),
+                                        WinRtParameterDefinition("asyncStatus", "Int"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
+            .single { it.relativePath.endsWith("IAsyncAction.kt") }
+            .contents
+
+        assertTrue(contents, contents.contains("private class NativeProjection("))
+        assertTrue(contents, contents.contains("WinRtDelegateBridge.createDelegateArgument("))
+        assertTrue(contents, contents.contains("callback = __valueCallback"))
+        assertTrue(contents, contents.contains("value?.let { value ->"))
+        assertFalse(contents, contents.contains("WinRtGeneratedInterfaceProjectionRuntime.create"))
+        assertFalse(contents, contents.contains("IAsyncAction::class.java"))
+    }
+
+    @Test
     fun generator_emits_metadata_for_empty_exclusive_interfaces_with_native_projection() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

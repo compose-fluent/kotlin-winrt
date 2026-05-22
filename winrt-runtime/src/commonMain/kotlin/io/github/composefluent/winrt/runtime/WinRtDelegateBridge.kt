@@ -43,4 +43,40 @@ object WinRtDelegateBridge {
             releaseAction = comObject::releaseManagedReference,
         )
     }
+
+    fun createDelegateArgument(
+        iid: Guid,
+        parameterKinds: List<WinRtDelegateValueKind>,
+        returnKind: WinRtDelegateValueKind,
+        parameterStructAdapters: List<NativeStructAdapter<*>?> = emptyList(),
+        returnStructAdapter: NativeStructAdapter<*>? = null,
+        runtimeClassName: String? = null,
+        callback: ((List<Any?>) -> Any?)?,
+    ): WinRtDelegateArgumentMarshaler {
+        val handle = callback?.let {
+            createDelegate(
+                iid = iid,
+                parameterKinds = parameterKinds,
+                returnKind = returnKind,
+                parameterStructAdapters = parameterStructAdapters,
+                returnStructAdapter = returnStructAdapter,
+                runtimeClassName = runtimeClassName,
+                callback = it,
+            )
+        }
+        return WinRtDelegateArgumentMarshaler(handle, handle?.createReference())
+    }
+}
+
+class WinRtDelegateArgumentMarshaler internal constructor(
+    private val handle: WinRtDelegateHandle?,
+    private val reference: WinRtDelegateReference?,
+) : AutoCloseable {
+    val abi: RawAddress =
+        reference?.pointer?.asRawAddress() ?: PlatformAbi.nullPointer
+
+    override fun close() {
+        reference?.close()
+        handle?.close()
+    }
 }
