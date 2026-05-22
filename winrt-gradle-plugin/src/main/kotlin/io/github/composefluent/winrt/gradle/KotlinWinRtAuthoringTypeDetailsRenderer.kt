@@ -11,6 +11,7 @@ import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDirection
@@ -289,20 +290,40 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
             return CodeBlock.of("%L as %T", rawArg, rawAddressType)
         }
-        return if (typesByName[parameter.typeName]?.kind == WinRtTypeKind.Struct) {
-            CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName), rawArg, rawAddressType)
-        } else {
-            CodeBlock.of(
-                "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
+        val type = typesByName[parameter.typeName]
+        return when (type?.kind) {
+            WinRtTypeKind.Enum -> CodeBlock.of(
+                "%T.Metadata.fromAbi(%L)",
                 projectionClassName(parameter.typeName),
-                iInspectableReferenceType,
-                platformAbiType,
-                rawArg,
-                rawAddressType,
-                iidType,
+                renderEnumRawArgument(rawArg, type),
             )
+            WinRtTypeKind.Struct -> CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName), rawArg, rawAddressType)
+            else -> {
+                CodeBlock.of(
+                    "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
+                    projectionClassName(parameter.typeName),
+                    iInspectableReferenceType,
+                    platformAbiType,
+                    rawArg,
+                    rawAddressType,
+                    iidType,
+                )
+            }
         }
     }
+
+    private fun renderEnumRawArgument(rawArg: CodeBlock, type: WinRtTypeDefinition): CodeBlock =
+        when (type.enumUnderlyingType) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
+            WinRtIntegralType.UInt8 -> CodeBlock.of("(%L as %T).toUByte()", rawArg, Byte::class.asClassName())
+            WinRtIntegralType.Int16 -> CodeBlock.of("%L as %T", rawArg, Short::class.asClassName())
+            WinRtIntegralType.UInt16 -> CodeBlock.of("(%L as %T).toUShort()", rawArg, Short::class.asClassName())
+            WinRtIntegralType.Int64 -> CodeBlock.of("%L as %T", rawArg, Long::class.asClassName())
+            WinRtIntegralType.UInt64 -> CodeBlock.of("(%L as %T).toULong()", rawArg, Long::class.asClassName())
+            WinRtIntegralType.Int32,
+            WinRtIntegralType.UInt32,
+            null -> CodeBlock.of("%L as %T", rawArg, Int::class.asClassName())
+        }
 
     private fun renderSignature(
         method: WinRtMethodDefinition,
@@ -347,14 +368,29 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Int64", "UInt64" -> "Int64"
             "Single", "Float" -> "Float"
             "Double" -> "Double"
-            else -> if (typesByName[parameter.typeName]?.kind == WinRtTypeKind.Struct &&
-                parameter.direction != WinRtParameterDirection.Out &&
-                !parameter.typeIsByRef
-            ) {
-                "Struct:${parameter.typeName}"
-            } else {
-                "Pointer"
+            else -> {
+                val type = typesByName[parameter.typeName]
+                when {
+                    type?.kind == WinRtTypeKind.Enum -> enumAbiKindName(type)
+                    type?.kind == WinRtTypeKind.Struct &&
+                        parameter.direction != WinRtParameterDirection.Out &&
+                        !parameter.typeIsByRef -> "Struct:${parameter.typeName}"
+                    else -> "Pointer"
+                }
             }
+        }
+
+    private fun enumAbiKindName(type: WinRtTypeDefinition): String =
+        when (type.enumUnderlyingType) {
+            WinRtIntegralType.Int8,
+            WinRtIntegralType.UInt8 -> "Int8"
+            WinRtIntegralType.Int16,
+            WinRtIntegralType.UInt16 -> "Int16"
+            WinRtIntegralType.Int64,
+            WinRtIntegralType.UInt64 -> "Int64"
+            WinRtIntegralType.Int32,
+            WinRtIntegralType.UInt32,
+            null -> "Int32"
         }
 
     private fun renderReturnProjection(
@@ -383,45 +419,68 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Double" -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
             "String" -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
             "System.Object", "Object" -> CodeBlock.of(
-                "%T.createMarshaler(%L).use { __returnMarshaler -> %T.writePointer(%L, __returnMarshaler.abi) }",
-                winRtObjectMarshallerType,
-                valueExpression,
+                "%T.writePointer(%L, %T.fromManaged(%L))",
                 platformAbiType,
                 outExpression,
+                winRtObjectMarshallerType,
+                valueExpression,
             )
-            else -> if (typesByName[method.returnTypeName]?.kind == WinRtTypeKind.Struct) {
-                CodeBlock.of(
-                    "%T.Metadata.copyTo(%L as %T, %L)",
-                    projectionClassName(method.returnTypeName),
-                    valueExpression,
-                    projectionClassName(method.returnTypeName),
-                    outExpression,
-                )
-            } else {
-                CodeBlock.builder()
-                    .addStatement(
-                        "val __returnReference = %T.createCCWForObject(%L, %T.IInspectable)",
-                        comWrappersSupportType,
+            else -> {
+                val returnType = typesByName[method.returnTypeName]
+                when (returnType?.kind) {
+                    WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression)
+                    WinRtTypeKind.Struct -> CodeBlock.of(
+                        "%T.Metadata.copyTo(%L as %T, %L)",
+                        projectionClassName(method.returnTypeName),
                         valueExpression,
-                        iidType,
-                    )
-                    .add("try {\n")
-                    .indent()
-                    .addStatement(
-                        "%T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer()))",
-                        platformAbiType,
+                        projectionClassName(method.returnTypeName),
                         outExpression,
-                        platformAbiType,
                     )
-                    .unindent()
-                    .add("} finally {\n")
-                    .indent()
-                    .addStatement("__returnReference.close()")
-                    .unindent()
-                    .add("}")
-                    .build()
+                    else -> CodeBlock.builder()
+                        .addStatement(
+                            "val __returnReference = %T.createCCWForObject(%L, %T.IInspectable)",
+                            comWrappersSupportType,
+                            valueExpression,
+                            iidType,
+                        )
+                        .add("try {\n")
+                        .indent()
+                        .addStatement(
+                            "%T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer()))",
+                            platformAbiType,
+                            outExpression,
+                            platformAbiType,
+                        )
+                        .unindent()
+                        .add("} finally {\n")
+                        .indent()
+                        .addStatement("__returnReference.close()")
+                        .unindent()
+                        .add("}")
+                        .build()
+                }
             }
         }
+
+    private fun renderEnumReturnProjection(
+        typeName: String,
+        type: WinRtTypeDefinition,
+        outExpression: String,
+        valueExpression: String,
+    ): CodeBlock {
+        val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L as %T)", projectionClassName(typeName), valueExpression, projectionClassName(typeName))
+        return when (type.enumUnderlyingType) {
+            WinRtIntegralType.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L)", platformAbiType, outExpression, abiValue)
+            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", platformAbiType, outExpression, abiValue)
+            WinRtIntegralType.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L)", platformAbiType, outExpression, abiValue)
+            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", platformAbiType, outExpression, abiValue)
+            WinRtIntegralType.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L)", platformAbiType, outExpression, abiValue)
+            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", platformAbiType, outExpression, abiValue)
+            WinRtIntegralType.Int32,
+            WinRtIntegralType.UInt32,
+            null -> CodeBlock.of("%T.writeInt32(%L, %L)", platformAbiType, outExpression, abiValue)
+        }
+    }
 
     private fun isVoidReturn(method: WinRtMethodDefinition): Boolean =
         method.returnTypeName == "Void" || method.returnTypeName == "System.Void" || method.returnTypeName == "Unit"

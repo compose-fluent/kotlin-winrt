@@ -16,8 +16,10 @@ import microsoft.ui.xaml.ResourceDictionary
 import microsoft.ui.xaml.Window
 import microsoft.ui.xaml.automation.AutomationProperties
 import microsoft.ui.xaml.automation.peers.AccessibilityView
+import microsoft.ui.xaml.automation.peers.AutomationNavigationDirection
 import microsoft.ui.xaml.automation.peers.AutomationPeer
 import microsoft.ui.xaml.automation.peers.FrameworkElementAutomationPeer
+import microsoft.ui.xaml.automation.peers.PatternInterface
 import microsoft.ui.xaml.controls.Button
 import microsoft.ui.xaml.controls.Canvas
 import microsoft.ui.xaml.controls.ContentControl
@@ -25,6 +27,7 @@ import microsoft.ui.xaml.controls.Panel
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
+import windows.foundation.Point
 import kotlin.time.Duration.Companion.milliseconds
 import windows.foundation.TypedEventHandler
 
@@ -385,4 +388,14 @@ internal class WinUiKmpLocalPanel : Panel() {
         var createAutomationPeerCalls: Int = 0
             private set
     }
+}
+
+internal class WinUiKmpLocalAutomationPeer : AutomationPeer() {
+    override fun getPatternCore(patternInterface: PatternInterface): Any? = null
+
+    override fun navigateCore(direction: AutomationNavigationDirection): Any? = null
+
+    override fun getElementFromPointCore(pointInWindowCoordinates: Point): Any? = null
+
+    override fun getFocusedElementCore(): Any? = null
 }
