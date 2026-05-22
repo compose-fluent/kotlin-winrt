@@ -222,6 +222,74 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_authored_collection_returns_through_generic_collection_projection_helpers() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-collection-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalAutomationPeer",
+            sourceTypeName = "sample.LocalAutomationPeer",
+            winRtBaseClassName = "Microsoft.UI.Xaml.Automation.Peers.AutomationPeer",
+            winRtInterfaceNames = listOf("Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Automation.Peers",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Automation.Peers",
+                            name = "AutomationPeer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Microsoft.UI.Xaml.Automation.Peers.IAutomationPeer",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Automation.Peers",
+                            name = "IAutomationPeer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Automation.Peers",
+                            name = "IAutomationPeerOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("22222222-2222-2222-2222-222222222222"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetChildrenCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetControlledPeersCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVectorView<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetDescribedByCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IIterable<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalAutomationPeer_TypeDetails.kt").readText()
+        assertTrue(generated.contains("WinRtListProjection.fromManaged(__result"))
+        assertTrue(generated.contains("WinRtReadOnlyListProjection.fromManaged(__result"))
+        assertTrue(generated.contains("WinRtIterableProjection.fromManaged(__result"))
+        assertTrue(generated.contains("WinRtReferenceValueAdapters.runtimeClass(AutomationPeer::class"))
+        assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
+    }
+
+    @Test
     fun writes_authoring_host_manifest_for_scanned_authored_types() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-host-")
         val manifest = output.resolve("SampleComponent.host.json")
