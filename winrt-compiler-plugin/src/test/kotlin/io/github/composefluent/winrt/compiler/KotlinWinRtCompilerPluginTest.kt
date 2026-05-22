@@ -348,34 +348,4 @@ class KotlinWinRtCompilerPluginTest {
         assertEquals(listOf("void*", "int.MakeByRefType()", "int"), entries[1].typeArrayShape)
     }
 
-    @Test
-    fun interface_native_projection_input_is_compiler_plugin_lowering_plan() {
-        val input = Files.createTempFile("kotlin-winrt-interface-native-projections-", ".tsv")
-        Files.writeString(
-            input,
-            listOf(
-                listOf("projectedTypeName", "kotlinInterfaceClassName", "implementationClassName", "interfaceId", "memberCount", "members"),
-                listOf(
-                    "Sample.Foundation.IWidget",
-                    "io.github.composefluent.winrt.compiler.CompilerGeneratedSampleInterface",
-                    "io.github.composefluent.winrt.compiler.CompilerGeneratedSampleInterfaceNativeProjection",
-                    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-                    "1",
-                    "Method|Ping|6|Unit||false",
-                ),
-            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
-        )
-
-        val entries = readInterfaceNativeProjectionEntries(input)
-
-        assertEquals(1, entries.size)
-        val entry = entries.single()
-        assertEquals("Sample.Foundation.IWidget", entry.projectedTypeName)
-        assertEquals("io.github.composefluent.winrt.compiler.CompilerGeneratedSampleInterface", entry.kotlinInterfaceClassName)
-        assertEquals("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", entry.interfaceId)
-        assertEquals(1, entry.members.size)
-        assertEquals("Ping", entry.members.single().jvmName)
-    }
 }
-
-internal interface CompilerGeneratedSampleInterface

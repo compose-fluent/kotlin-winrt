@@ -97,18 +97,6 @@ object ComWrappersSupport {
                 KnownHResults.E_NOINTERFACE,
             )
 
-    fun wrapGeneratedInterfaceProjectionFromCompilerPlugin(
-        typeHandle: WinRtTypeHandle,
-        instance: IUnknownReference,
-        projectedTypeName: String,
-        interfaceClass: KClass<*>,
-    ): Any {
-        throw WinRtUnsupportedOperationException(
-            "Generated interface projection '$projectedTypeName' was not lowered by the kotlin-winrt compiler plugin.",
-            KnownHResults.E_NOTIMPL,
-        )
-    }
-
     fun registerAuthoringActivationFactory(
         runtimeClassName: String,
         factory: () -> ComObjectReference,
