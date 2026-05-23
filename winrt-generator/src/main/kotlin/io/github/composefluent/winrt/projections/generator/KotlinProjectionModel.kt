@@ -496,6 +496,7 @@ internal data class KotlinProjectionMappedType(
     val customObjectAbi: KotlinProjectionCustomObjectAbi? = null,
     val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
     val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
+    val runtimeOwnedProjection: Boolean = false,
     val descriptionName: String = abiQualifiedName.substringAfterLast('.'),
 ) {
     init {
@@ -534,7 +535,12 @@ internal data class KotlinProjectionIntegralAbiDescriptor(
  * repeating the same collection/async/custom-type tables across unrelated helpers.
  */
 internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
-    KotlinProjectionMappedType("System.Object", { ANY.copy(nullable = true) }, descriptionName = "Object"),
+    KotlinProjectionMappedType(
+        "System.Object",
+        { ANY.copy(nullable = true) },
+        runtimeOwnedProjection = true,
+        descriptionName = "Object",
+    ),
     KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
     KotlinProjectionMappedType(
         "Windows.Foundation.DateTime",
@@ -584,6 +590,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "Windows.Foundation.EventRegistrationToken",
         { EVENT_REGISTRATION_TOKEN_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
+        runtimeOwnedProjection = true,
         descriptionName = "EventRegistrationToken",
     ),
     KotlinProjectionMappedType(
@@ -598,6 +605,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             toAbiFunctionName = "hResultToAbi",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         ),
+        runtimeOwnedProjection = true,
         descriptionName = "HResult",
     ),
     KotlinProjectionMappedType(
@@ -613,7 +621,12 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         ),
         descriptionName = "TypeName",
     ),
-    KotlinProjectionMappedType("Windows.Foundation.IClosable", { AUTO_CLOSEABLE_CLASS_NAME }, descriptionName = "IClosable"),
+    KotlinProjectionMappedType(
+        "Windows.Foundation.IClosable",
+        { AUTO_CLOSEABLE_CLASS_NAME },
+        runtimeOwnedProjection = true,
+        descriptionName = "IClosable",
+    ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IReference",
         { arguments -> arguments.single().copy(nullable = true) },
@@ -732,7 +745,12 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         descriptionName = "IBindableVector",
     ),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("530155E1-28A5-5693-87CE-30724D95A06D"), "io.github.composefluent.winrt.runtime.WinRtCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
-    KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction", { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME }, descriptionName = "NotifyCollectionChangedAction"),
+    KotlinProjectionMappedType(
+        "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
+        { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
+        runtimeOwnedProjection = true,
+        descriptionName = "NotifyCollectionChangedAction",
+    ),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("DA049FF2-D2E0-5FE8-8C7B-F87F26060B6F"), "io.github.composefluent.winrt.runtime.WinRtNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
     KotlinProjectionMappedType("Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
     KotlinProjectionMappedType("Windows.UI.Xaml.IXamlServiceProvider", { WINRT_SERVICE_PROVIDER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("68B3A2DF-8173-539F-B524-C8A2348F5AFB"), "io.github.composefluent.winrt.runtime.WinRtServiceProvider"), descriptionName = "IXamlServiceProvider"),
@@ -765,7 +783,12 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         descriptionName = "IBindableVector",
     ),
     KotlinProjectionMappedType("Windows.UI.Xaml.Interop.INotifyCollectionChanged", { WINRT_COLLECTION_CHANGED_NOTIFIER_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedInterface, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("28B167D5-1A31-465B-9B25-D5C3AE686C40"), "io.github.composefluent.winrt.runtime.WinRtCollectionChangedNotifier"), descriptionName = "INotifyCollectionChanged"),
-    KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedAction", { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME }, descriptionName = "NotifyCollectionChangedAction"),
+    KotlinProjectionMappedType(
+        "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
+        { WINRT_NOTIFY_COLLECTION_CHANGED_ACTION_CLASS_NAME },
+        runtimeOwnedProjection = true,
+        descriptionName = "NotifyCollectionChangedAction",
+    ),
     KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs", { WINRT_NOTIFY_COLLECTION_CHANGED_EVENT_ARGS_CLASS_NAME }, abiValueKind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass, customObjectAbi = KotlinProjectionCustomObjectAbi(Guid("4CF68D33-E3F2-4964-B85E-945B4F7E2F21"), "io.github.composefluent.winrt.runtime.WinRtNotifyCollectionChangedEventArgs"), descriptionName = "NotifyCollectionChangedEventArgs"),
     KotlinProjectionMappedType("Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler", { WINRT_COLLECTION_CHANGED_HANDLER_CLASS_NAME }, descriptionName = "NotifyCollectionChangedEventHandler"),
 )
@@ -793,14 +816,7 @@ internal val MAPPED_TYPES_BY_ABI_KIND: Map<KotlinProjectionAbiValueKind, KotlinP
 internal fun KotlinProjectionMappedType.isRuntimeOwnedProjection(): Boolean =
     customStructAbi != null ||
         customObjectAbi != null ||
-        abiQualifiedName in setOf(
-            "System.Object",
-            "Windows.Foundation.EventRegistrationToken",
-            "Windows.Foundation.HResult",
-            "Windows.Foundation.IClosable",
-            "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
-            "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
-        )
+        runtimeOwnedProjection
 
 internal fun isRuntimeOwnedMappedTypeName(typeName: String): Boolean {
     val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
