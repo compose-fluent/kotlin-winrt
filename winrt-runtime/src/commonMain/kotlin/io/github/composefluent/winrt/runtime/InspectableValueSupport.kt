@@ -39,12 +39,15 @@ internal fun createSyntheticInspectableCcwDefinition(value: Any): WinRtCcwDefini
 
 internal fun defaultInspectableRuntimeClassNameFor(value: Any): String? {
     WinRtValueBoxing.boxedRuntimeClassNameForType(value::class)?.let { return it }
+    if (value is AutoCloseable) {
+        return TypeNameSupport.getNameForType(AutoCloseable::class).takeIf(String::isNotBlank)
+    }
     val lookupName =
         TypeNameSupport.getNameForType(
             value::class,
             setOf(TypeNameGenerationFlag.ForGetRuntimeClassName),
         )
-    return lookupName.takeIf(String::isNotBlank) ?: value::class.qualifiedName ?: value::class.toString()
+    return lookupName.takeIf(String::isNotBlank)
 }
 
 private fun createClosableInspectableInterfaceDefinition(value: AutoCloseable): WinRtInspectableInterfaceDefinition =
