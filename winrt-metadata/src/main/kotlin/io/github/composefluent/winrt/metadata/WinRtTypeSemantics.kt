@@ -82,6 +82,14 @@ val WinRtFundamentalType.blittableAbiSizeBytes: Int?
 val WinRtFundamentalType.blittableAbiAlignmentBytes: Int?
     get() = blittableAbiSizeBytes
 
+fun WinRtFundamentalType.toGenericAbiDelegateTypeName(defaultTypeName: String): String =
+    when (this) {
+        WinRtFundamentalType.String -> "IntPtr"
+        WinRtFundamentalType.Boolean -> "byte"
+        WinRtFundamentalType.Char -> "ushort"
+        else -> defaultTypeName
+    }
+
 sealed interface WinRtTypeSemantics {
     data class Fundamental(val type: WinRtFundamentalType) : WinRtTypeSemantics
     data object Object : WinRtTypeSemantics

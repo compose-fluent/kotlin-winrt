@@ -2585,7 +2585,8 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 WinRtTypeRefKind.Named -> {
                     val descriptor = typeClassifier.classify(normalized, "")
                     when (descriptor.projectionCategory) {
-                        WinRtProjectionCategory.Fundamental -> descriptor.typeName != "String"
+                        WinRtProjectionCategory.Fundamental ->
+                            winRtFundamentalTypeForName(descriptor.typeName)?.isWinRtValueType == true
                         WinRtProjectionCategory.Guid,
                         WinRtProjectionCategory.Enum,
                         WinRtProjectionCategory.Struct,
@@ -2608,12 +2609,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             return when (descriptor.projectionCategory) {
                 WinRtProjectionCategory.Fundamental,
                 WinRtProjectionCategory.String,
-                -> when (descriptor.typeName) {
-                    "String" -> "IntPtr"
-                    "Boolean" -> "byte"
-                    "Char16" -> "ushort"
-                    else -> descriptor.typeName
-                }
+                -> winRtFundamentalTypeForName(descriptor.typeName)
+                    ?.toGenericAbiDelegateTypeName(descriptor.typeName)
+                    ?: descriptor.typeName
                 WinRtProjectionCategory.Guid,
                 WinRtProjectionCategory.Enum,
                 WinRtProjectionCategory.Struct,
