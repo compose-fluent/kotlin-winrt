@@ -549,6 +549,12 @@ class WinRtMetadataModelTest {
             WinRtProjectionCategory.Fundamental,
             classifier.classify(WinRtTypeRef.fromDisplayName("Int"), "Sample.Foundation").projectionCategory,
         )
+        listOf("System.Int32", "Int8", "Single").forEach { fundamentalTypeName ->
+            assertEquals(
+                WinRtProjectionCategory.Fundamental,
+                classifier.classify(WinRtTypeRef.fromDisplayName(fundamentalTypeName), "Sample.Foundation").projectionCategory,
+            )
+        }
         assertTrue(isWinRtVoidTypeName("System.Void"))
         listOf("Unit", "Void", "System.Void").forEach { voidTypeName ->
             assertEquals(
@@ -1112,6 +1118,14 @@ class WinRtMetadataModelTest {
         assertEquals(
             WinRtTypeSemantics.Fundamental(WinRtFundamentalType.String),
             resolver.resolve(WinRtTypeRef.named("System.String"), "Sample.Foundation"),
+        )
+        assertEquals(
+            WinRtTypeSemantics.Fundamental(WinRtFundamentalType.Int8),
+            resolver.resolve(WinRtTypeRef.named("Int8"), "Sample.Foundation"),
+        )
+        assertEquals(
+            WinRtTypeSemantics.Fundamental(WinRtFundamentalType.UInt8),
+            resolver.resolve(WinRtTypeRef.named("System.Byte"), "Sample.Foundation"),
         )
         assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("System.Object"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("Object"), "Sample.Foundation"))
@@ -2237,7 +2251,10 @@ class WinRtMetadataModelTest {
             namespace = "Sample.Foundation",
             name = "Point",
             kind = WinRtTypeKind.Struct,
-            fields = listOf(WinRtFieldDefinition("X", "Single")),
+            fields = listOf(
+                WinRtFieldDefinition("X", "Single"),
+                WinRtFieldDefinition("Y", "System.Int32"),
+            ),
         )
         val eventHandler = WinRtTypeDefinition(
             namespace = "Windows.Foundation",
@@ -2466,7 +2483,7 @@ class WinRtMetadataModelTest {
         assertEquals("{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}", guid.signatureFragment)
         assertEquals(16, guid.guidBytes.size)
         assertEquals("delegate({cccccccc-cccc-cccc-cccc-cccccccccccc})", helpers.guidSignatureDescriptor(eventHandler).signatureFragment)
-        assertEquals("struct(Sample.Foundation.Point;f4)", helpers.guidSignatureDescriptor(point).signatureFragment)
+        assertEquals("struct(Sample.Foundation.Point;f4;i4)", helpers.guidSignatureDescriptor(point).signatureFragment)
         assertEquals("rc(Sample.Foundation.Widget;{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb})", helpers.guidSignatureDescriptor(widget).signatureFragment)
 
         val vtable = helpers.vtableWriterDescriptor(iWidget)

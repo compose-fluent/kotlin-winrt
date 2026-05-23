@@ -192,7 +192,7 @@ private fun projectionCategoryFor(
 ): WinRtProjectionCategory =
     when {
         isWinRtVoidTypeName(rawTypeName) -> WinRtProjectionCategory.Unit
-        rawTypeName in FUNDAMENTAL_TYPE_NAMES -> WinRtProjectionCategory.Fundamental
+        isWinRtFundamentalTypeName(rawTypeName) -> WinRtProjectionCategory.Fundamental
         rawTypeName == "String" -> WinRtProjectionCategory.String
         isWinRtObjectTypeName(rawTypeName) -> WinRtProjectionCategory.Object
         isWinRtGuidTypeName(rawTypeName) -> WinRtProjectionCategory.Guid
@@ -232,21 +232,6 @@ private fun mapped(
         hasCustomMembersOutput = hasCustomMembersOutput,
     )
 }
-
-private val FUNDAMENTAL_TYPE_NAMES = setOf(
-    "Boolean",
-    "Char",
-    "Byte",
-    "UByte",
-    "Short",
-    "UShort",
-    "Int",
-    "UInt",
-    "Long",
-    "ULong",
-    "Float",
-    "Double",
-)
 
 private val MAPPED_TYPES: Map<String, WinRtMappedTypeDescriptor> = listOf(
     mapped("Microsoft.UI.Xaml.CornerRadiusHelper"),

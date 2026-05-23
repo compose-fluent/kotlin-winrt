@@ -2329,25 +2329,13 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     private fun guidSignatureFragmentForGuid(guid: io.github.composefluent.winrt.runtime.Guid): String =
         "{${guid.toString().lowercase()}}"
 
-    private fun fundamentalGuidSignatureFragment(typeName: String): String? =
+    private fun fundamentalGuidSignatureFragment(typeName: String): String? {
         if (isWinRtObjectTypeName(typeName)) {
-            "cinterface(IInspectable)"
-        } else when (typeName.substringBefore('<').removeSuffix("?")) {
-            "Boolean", "Bool" -> "b1"
-            "Char", "Char16" -> "c2"
-            "Byte", "Int8", "SByte" -> "i1"
-            "UByte", "UInt8" -> "u1"
-            "Short", "Int16" -> "i2"
-            "UShort", "UInt16" -> "u2"
-            "Int", "Int32" -> "i4"
-            "UInt", "UInt32" -> "u4"
-            "Long", "Int64" -> "i8"
-            "ULong", "UInt64" -> "u8"
-            "Float", "Single" -> "f4"
-            "Double" -> "f8"
-            "String" -> "string"
-            else -> if (isWinRtGuidTypeName(typeName)) "g16" else null
+            return "cinterface(IInspectable)"
         }
+        winRtFundamentalTypeForName(typeName)?.let { type -> return type.guidSignatureFragment() }
+        return if (isWinRtGuidTypeName(typeName)) "g16" else null
+    }
 
     private fun escapeIdentifier(value: String): String =
         if (value in KOTLIN_KEYWORDS || value in CSWINRT_KEYWORDS) "`$value`" else value

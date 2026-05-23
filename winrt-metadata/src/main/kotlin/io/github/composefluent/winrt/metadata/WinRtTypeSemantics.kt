@@ -16,6 +16,44 @@ enum class WinRtFundamentalType {
     String,
 }
 
+fun winRtFundamentalTypeForName(typeName: String): WinRtFundamentalType? =
+    when (typeName.trim().substringBefore('<').removeSuffix("?")) {
+        "Boolean", "Bool", "System.Boolean" -> WinRtFundamentalType.Boolean
+        "Char", "Char16", "System.Char" -> WinRtFundamentalType.Char
+        "Byte", "SByte", "Int8", "System.SByte" -> WinRtFundamentalType.Int8
+        "UByte", "UInt8", "System.Byte" -> WinRtFundamentalType.UInt8
+        "Short", "Int16", "System.Int16" -> WinRtFundamentalType.Int16
+        "UShort", "UInt16", "System.UInt16" -> WinRtFundamentalType.UInt16
+        "Int", "Int32", "System.Int32" -> WinRtFundamentalType.Int32
+        "UInt", "UInt32", "System.UInt32" -> WinRtFundamentalType.UInt32
+        "Long", "Int64", "System.Int64" -> WinRtFundamentalType.Int64
+        "ULong", "UInt64", "System.UInt64" -> WinRtFundamentalType.UInt64
+        "Float", "Single", "System.Single" -> WinRtFundamentalType.Float
+        "Double", "System.Double" -> WinRtFundamentalType.Double
+        "String", "System.String" -> WinRtFundamentalType.String
+        else -> null
+    }
+
+fun isWinRtFundamentalTypeName(typeName: String): Boolean =
+    winRtFundamentalTypeForName(typeName) != null
+
+fun WinRtFundamentalType.guidSignatureFragment(): String =
+    when (this) {
+        WinRtFundamentalType.Boolean -> "b1"
+        WinRtFundamentalType.Char -> "c2"
+        WinRtFundamentalType.Int8 -> "i1"
+        WinRtFundamentalType.UInt8 -> "u1"
+        WinRtFundamentalType.Int16 -> "i2"
+        WinRtFundamentalType.UInt16 -> "u2"
+        WinRtFundamentalType.Int32 -> "i4"
+        WinRtFundamentalType.UInt32 -> "u4"
+        WinRtFundamentalType.Int64 -> "i8"
+        WinRtFundamentalType.UInt64 -> "u8"
+        WinRtFundamentalType.Float -> "f4"
+        WinRtFundamentalType.Double -> "f8"
+        WinRtFundamentalType.String -> "string"
+    }
+
 sealed interface WinRtTypeSemantics {
     data class Fundamental(val type: WinRtFundamentalType) : WinRtTypeSemantics
     data object Object : WinRtTypeSemantics
@@ -75,7 +113,7 @@ class WinRtTypeSemanticsResolver(private val model: WinRtMetadataModel) {
         currentNamespace: String?,
         genericParameters: List<WinRtGenericParameterDefinition>,
     ): WinRtTypeSemantics {
-        fundamentalType(type.typeName)?.let { return WinRtTypeSemantics.Fundamental(it) }
+        winRtFundamentalTypeForName(type.typeName)?.let { return WinRtTypeSemantics.Fundamental(it) }
         if (isWinRtObjectTypeName(type.typeName)) {
             return WinRtTypeSemantics.Object
         }
@@ -113,22 +151,6 @@ class WinRtTypeSemanticsResolver(private val model: WinRtMetadataModel) {
         return typesByQualifiedName[localName]
     }
 
-    private fun fundamentalType(name: String): WinRtFundamentalType? = when (name) {
-        "Boolean", "System.Boolean" -> WinRtFundamentalType.Boolean
-        "Char", "System.Char" -> WinRtFundamentalType.Char
-        "Byte", "System.SByte" -> WinRtFundamentalType.Int8
-        "UByte", "System.Byte" -> WinRtFundamentalType.UInt8
-        "Short", "System.Int16" -> WinRtFundamentalType.Int16
-        "UShort", "System.UInt16" -> WinRtFundamentalType.UInt16
-        "Int", "System.Int32" -> WinRtFundamentalType.Int32
-        "UInt", "System.UInt32" -> WinRtFundamentalType.UInt32
-        "Long", "System.Int64" -> WinRtFundamentalType.Int64
-        "ULong", "System.UInt64" -> WinRtFundamentalType.UInt64
-        "Float", "System.Single" -> WinRtFundamentalType.Float
-        "Double", "System.Double" -> WinRtFundamentalType.Double
-        "String", "System.String" -> WinRtFundamentalType.String
-        else -> null
-    }
 }
 
 fun WinRtMetadataModel.typeSemanticsResolver(): WinRtTypeSemanticsResolver =
