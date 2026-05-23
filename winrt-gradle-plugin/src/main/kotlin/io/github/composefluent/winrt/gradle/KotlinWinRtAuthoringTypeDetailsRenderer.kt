@@ -19,9 +19,9 @@ import io.github.composefluent.winrt.metadata.WinRtParameterDirection
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
-import io.github.composefluent.winrt.metadata.isWinRtFundamentalTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -227,7 +227,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                         "%L\n",
                         renderReturnProjection(
                             method,
-                            "rawArgs[${method.parameters.size}] as RawAddress",
+                            CodeBlock.of("rawArgs[%L] as %T", method.parameters.size, rawAddressType),
                             "__result",
                             typesByName,
                         ),
@@ -251,20 +251,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (isWinRtStringTypeName(parameter.typeName)) {
             return CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
         }
-        return when (parameter.typeName) {
-            "Boolean" -> CodeBlock.of("(%L as %T).toInt() != 0", rawArg, Byte::class.asClassName())
-            "Int8", "SByte" -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
-            "UInt8", "Byte" -> CodeBlock.of("(%L as %T).toUByte()", rawArg, Byte::class.asClassName())
-            "Int16" -> CodeBlock.of("%L as %T", rawArg, Short::class.asClassName())
-            "UInt16" -> CodeBlock.of("(%L as %T).toUShort()", rawArg, Short::class.asClassName())
-            "Int32" -> CodeBlock.of("%L as %T", rawArg, Int::class.asClassName())
-            "UInt32" -> CodeBlock.of("(%L as %T).toUInt()", rawArg, Int::class.asClassName())
-            "Int64" -> CodeBlock.of("%L as %T", rawArg, Long::class.asClassName())
-            "UInt64" -> CodeBlock.of("(%L as %T).toULong()", rawArg, Long::class.asClassName())
-            "Single", "Float" -> CodeBlock.of("%L as %T", rawArg, Float::class.asClassName())
-            "Double" -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
-            else -> renderComplexParameterProjection(rawArg, parameter, typesByName)
+        fundamentalType(parameter.typeName)?.let { type ->
+            renderFundamentalParameterProjection(rawArg, type)?.let { projection ->
+                return projection
+            }
         }
+        return renderComplexParameterProjection(rawArg, parameter, typesByName)
     }
 
     private fun renderParameterProjectionStatement(
@@ -338,6 +330,26 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             null -> CodeBlock.of("%L as %T", rawArg, Int::class.asClassName())
         }
 
+    private fun renderFundamentalParameterProjection(
+        rawArg: CodeBlock,
+        type: WinRtFundamentalType,
+    ): CodeBlock? =
+        when (type) {
+            WinRtFundamentalType.Boolean -> CodeBlock.of("(%L as %T).toInt() != 0", rawArg, Byte::class.asClassName())
+            WinRtFundamentalType.Char -> CodeBlock.of("(%L as %T).toInt().toChar()", rawArg, Short::class.asClassName())
+            WinRtFundamentalType.Int8 -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
+            WinRtFundamentalType.UInt8 -> CodeBlock.of("(%L as %T).toUByte()", rawArg, Byte::class.asClassName())
+            WinRtFundamentalType.Int16 -> CodeBlock.of("%L as %T", rawArg, Short::class.asClassName())
+            WinRtFundamentalType.UInt16 -> CodeBlock.of("(%L as %T).toUShort()", rawArg, Short::class.asClassName())
+            WinRtFundamentalType.Int32 -> CodeBlock.of("%L as %T", rawArg, Int::class.asClassName())
+            WinRtFundamentalType.UInt32 -> CodeBlock.of("(%L as %T).toUInt()", rawArg, Int::class.asClassName())
+            WinRtFundamentalType.Int64 -> CodeBlock.of("%L as %T", rawArg, Long::class.asClassName())
+            WinRtFundamentalType.UInt64 -> CodeBlock.of("(%L as %T).toULong()", rawArg, Long::class.asClassName())
+            WinRtFundamentalType.Float -> CodeBlock.of("%L as %T", rawArg, Float::class.asClassName())
+            WinRtFundamentalType.Double -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
+            WinRtFundamentalType.String -> null
+        }
+
     private fun renderSignature(
         method: WinRtMethodDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
@@ -373,24 +385,35 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun abiKindName(
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
-    ): String =
-        when (parameter.typeName) {
-            "Int8", "SByte", "UInt8", "Byte", "Boolean" -> "Int8"
-            "Int16", "UInt16" -> "Int16"
-            "Int32", "UInt32" -> "Int32"
-            "Int64", "UInt64" -> "Int64"
-            "Single", "Float" -> "Float"
-            "Double" -> "Double"
-            else -> {
-                val type = typesByName[parameter.typeName]
-                when {
-                    type?.kind == WinRtTypeKind.Enum -> enumAbiKindName(type)
-                    type?.kind == WinRtTypeKind.Struct &&
-                        parameter.direction != WinRtParameterDirection.Out &&
-                        !parameter.typeIsByRef -> "Struct:${parameter.typeName}"
-                    else -> "Pointer"
-                }
-            }
+    ): String {
+        fundamentalType(parameter.typeName)?.let { type ->
+            return fundamentalAbiKindName(type)
+        }
+        val type = typesByName[parameter.typeName]
+        return when {
+            type?.kind == WinRtTypeKind.Enum -> enumAbiKindName(type)
+            type?.kind == WinRtTypeKind.Struct &&
+                parameter.direction != WinRtParameterDirection.Out &&
+                !parameter.typeIsByRef -> "Struct:${parameter.typeName}"
+            else -> "Pointer"
+        }
+    }
+
+    private fun fundamentalAbiKindName(type: WinRtFundamentalType): String =
+        when (type) {
+            WinRtFundamentalType.Boolean,
+            WinRtFundamentalType.Int8,
+            WinRtFundamentalType.UInt8 -> "Int8"
+            WinRtFundamentalType.Char,
+            WinRtFundamentalType.Int16,
+            WinRtFundamentalType.UInt16 -> "Int16"
+            WinRtFundamentalType.Int32,
+            WinRtFundamentalType.UInt32 -> "Int32"
+            WinRtFundamentalType.Int64,
+            WinRtFundamentalType.UInt64 -> "Int64"
+            WinRtFundamentalType.Float -> "Float"
+            WinRtFundamentalType.Double -> "Double"
+            WinRtFundamentalType.String -> "Pointer"
         }
 
     private fun enumAbiKindName(type: WinRtTypeDefinition): String =
@@ -408,63 +431,81 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun renderReturnProjection(
         method: WinRtMethodDefinition,
-        outExpression: String,
+        outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
-    ): CodeBlock =
+    ): CodeBlock {
         if (isWinRtObjectTypeName(method.returnTypeName)) {
-            CodeBlock.of(
+            return CodeBlock.of(
                 "%T.writePointer(%L, %T.fromManaged(%L))",
                 platformAbiType,
                 outExpression,
                 winRtObjectMarshallerType,
                 valueExpression,
             )
-        } else if (isWinRtStringTypeName(method.returnTypeName)) {
-            CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
-        } else when (method.returnTypeName) {
-            "Boolean" -> CodeBlock.of(
+        }
+        fundamentalType(method.returnTypeName)?.let { type ->
+            return renderFundamentalReturnProjection(type, outExpression, valueExpression)
+        }
+        renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName)?.let {
+            return it
+        }
+        val returnType = typesByName[method.returnTypeName]
+        return when (returnType?.kind) {
+            WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression)
+            WinRtTypeKind.Struct -> CodeBlock.of(
+                "%T.Metadata.copyTo(%L as %T, %L)",
+                projectionClassName(method.returnTypeName),
+                valueExpression,
+                projectionClassName(method.returnTypeName),
+                outExpression,
+            )
+            else -> renderObjectReturnProjection(returnType, outExpression, valueExpression, typesByName)
+        }
+    }
+
+    private fun renderFundamentalReturnProjection(
+        type: WinRtFundamentalType,
+        outExpression: CodeBlock,
+        valueExpression: String,
+    ): CodeBlock =
+        when (type) {
+            WinRtFundamentalType.Boolean -> CodeBlock.of(
                 "%T.writeInt8(%L, if (%L as %T) 1.toByte() else 0.toByte())",
                 platformAbiType,
                 outExpression,
                 valueExpression,
                 Boolean::class.asClassName(),
             )
-            "Int8", "SByte" -> CodeBlock.of("%T.writeInt8(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Byte::class.asClassName())
-            "UInt8", "Byte" -> CodeBlock.of("%T.writeInt8(%L, (%L as %T).toByte())", platformAbiType, outExpression, valueExpression, UByte::class.asClassName())
-            "Int16" -> CodeBlock.of("%T.writeInt16(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Short::class.asClassName())
-            "UInt16" -> CodeBlock.of("%T.writeInt16(%L, (%L as %T).toShort())", platformAbiType, outExpression, valueExpression, UShort::class.asClassName())
-            "Int32" -> CodeBlock.of("%T.writeInt32(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Int::class.asClassName())
-            "UInt32" -> CodeBlock.of("%T.writeInt32(%L, (%L as %T).toInt())", platformAbiType, outExpression, valueExpression, UInt::class.asClassName())
-            "Int64" -> CodeBlock.of("%T.writeInt64(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Long::class.asClassName())
-            "UInt64" -> CodeBlock.of("%T.writeInt64(%L, (%L as %T).toLong())", platformAbiType, outExpression, valueExpression, ULong::class.asClassName())
-            "Single", "Float" -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
-            "Double" -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
-            else -> {
-                renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName)?.let {
-                    return it
-                }
-                val returnType = typesByName[method.returnTypeName]
-                when (returnType?.kind) {
-                    WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression)
-                    WinRtTypeKind.Struct -> CodeBlock.of(
-                        "%T.Metadata.copyTo(%L as %T, %L)",
-                        projectionClassName(method.returnTypeName),
-                        valueExpression,
-                        projectionClassName(method.returnTypeName),
-                        outExpression,
-                    )
-                    else -> renderObjectReturnProjection(returnType, outExpression, valueExpression, typesByName)
-                }
-            }
+            WinRtFundamentalType.Char -> CodeBlock.of(
+                "%T.writeInt16(%L, (%L as %T).code.toShort())",
+                platformAbiType,
+                outExpression,
+                valueExpression,
+                Char::class.asClassName(),
+            )
+            WinRtFundamentalType.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Byte::class.asClassName())
+            WinRtFundamentalType.UInt8 -> CodeBlock.of("%T.writeInt8(%L, (%L as %T).toByte())", platformAbiType, outExpression, valueExpression, UByte::class.asClassName())
+            WinRtFundamentalType.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Short::class.asClassName())
+            WinRtFundamentalType.UInt16 -> CodeBlock.of("%T.writeInt16(%L, (%L as %T).toShort())", platformAbiType, outExpression, valueExpression, UShort::class.asClassName())
+            WinRtFundamentalType.Int32 -> CodeBlock.of("%T.writeInt32(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Int::class.asClassName())
+            WinRtFundamentalType.UInt32 -> CodeBlock.of("%T.writeInt32(%L, (%L as %T).toInt())", platformAbiType, outExpression, valueExpression, UInt::class.asClassName())
+            WinRtFundamentalType.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Long::class.asClassName())
+            WinRtFundamentalType.UInt64 -> CodeBlock.of("%T.writeInt64(%L, (%L as %T).toLong())", platformAbiType, outExpression, valueExpression, ULong::class.asClassName())
+            WinRtFundamentalType.Float -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
+            WinRtFundamentalType.Double -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
+            WinRtFundamentalType.String -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
         }
 
     private fun isWinRtStringTypeName(typeName: String): Boolean =
-        isWinRtFundamentalTypeName(typeName, WinRtFundamentalType.String)
+        fundamentalType(typeName) == WinRtFundamentalType.String
+
+    private fun fundamentalType(typeName: String): WinRtFundamentalType? =
+        winRtFundamentalTypeForName(typeName)
 
     private fun renderCollectionReturnProjection(
         returnTypeName: String,
-        outExpression: String,
+        outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock? {
@@ -519,7 +560,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun renderObjectReturnProjection(
         returnType: WinRtTypeDefinition?,
-        outExpression: String,
+        outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
@@ -547,7 +588,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderEnumReturnProjection(
         typeName: String,
         type: WinRtTypeDefinition,
-        outExpression: String,
+        outExpression: CodeBlock,
         valueExpression: String,
     ): CodeBlock {
         val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L as %T)", projectionClassName(typeName), valueExpression, projectionClassName(typeName))
