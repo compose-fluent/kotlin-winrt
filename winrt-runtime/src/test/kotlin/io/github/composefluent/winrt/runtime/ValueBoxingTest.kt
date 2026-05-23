@@ -100,6 +100,99 @@ class ValueBoxingTest {
     }
 
     @Test
+    fun boxed_ccw_inspectable_get_iids_matches_cswinrt_order() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val scalarPointer = ComWrappersSupport.createCCWForObject(123, IID.IInspectable).useAndGetRef()
+        try {
+            // Mirrors .cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs GetInterfaceTableEntries:
+            // IPropertyValue, IReference<T>, then the standard CCW suffix.
+            assertInspectableGetIids(
+                pointer = scalarPointer,
+                interfaceId = IID.IInspectable,
+                expected = listOf(
+                    IID.IPropertyValue,
+                    IID.NullableInt,
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IUnknown,
+                ),
+            )
+        } finally {
+            IUnknownReference(scalarPointer.asRawComPtr(), IID.IInspectable).close()
+        }
+
+        val arrayPointer = ComWrappersSupport.createCCWForObject(arrayOf("one", "two"), IID.IInspectable).useAndGetRef()
+        try {
+            // Mirrors the same cswinrt array path: IPropertyValue, IReferenceArray<T>, then the suffix.
+            assertInspectableGetIids(
+                pointer = arrayPointer,
+                interfaceId = IID.IInspectable,
+                expected = listOf(
+                    IID.IPropertyValue,
+                    IID.IReferenceArrayOfString,
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IUnknown,
+                ),
+            )
+        } finally {
+            IUnknownReference(arrayPointer.asRawComPtr(), IID.IInspectable).close()
+        }
+    }
+
+    @Test
+    fun value_reference_projection_hosts_get_iids_matches_cswinrt_order() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        val referencePointer = WinRtReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
+        try {
+            assertInspectableGetIids(
+                pointer = referencePointer,
+                interfaceId = IID.NullableString,
+                expected = listOf(
+                    IID.IPropertyValue,
+                    IID.NullableString,
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IUnknown,
+                ),
+            )
+        } finally {
+            IUnknownReference(referencePointer.asRawComPtr(), IID.NullableString).close()
+        }
+
+        val arrayPointer = WinRtReferenceArrayProjection.fromManaged(arrayOf("one", "two"), IID.IReferenceArrayOfString)
+        try {
+            assertInspectableGetIids(
+                pointer = arrayPointer,
+                interfaceId = IID.IReferenceArrayOfString,
+                expected = listOf(
+                    IID.IPropertyValue,
+                    IID.IReferenceArrayOfString,
+                    IID.IStringable,
+                    IID.IWeakReferenceSource,
+                    IID.IMarshal,
+                    IID.IAgileObject,
+                    IID.IInspectable,
+                    IID.IUnknown,
+                ),
+            )
+        } finally {
+            IUnknownReference(arrayPointer.asRawComPtr(), IID.IReferenceArrayOfString).close()
+        }
+    }
+
+    @Test
     fun reference_projection_hosts_expose_cswinrt_ccw_suffix_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
 
@@ -271,6 +364,42 @@ class ValueBoxingTest {
             assertRoundTrip(value, marshaler.fromAbi(abi) as T)
         } finally {
             marshaler.disposeAbi(abi)
+        }
+    }
+
+    private fun assertInspectableGetIids(
+        pointer: RawAddress,
+        interfaceId: Guid,
+        expected: List<Guid>,
+    ) {
+        IInspectableReference(pointer.asRawComPtr(), interfaceId, preventReleaseOnDispose = true).use { inspectable ->
+            PlatformAbi.confinedScope().use { scope ->
+                val countOut = PlatformAbi.allocateInt32Slot(scope)
+                val idsOut = PlatformAbi.allocatePointerSlot(scope)
+                val hr = ComVtableInvoker.invokeArgs(
+                    instance = inspectable.pointer,
+                    slot = IInspectableVftblSlots.GetIids,
+                    arg0 = countOut,
+                    arg1 = idsOut,
+                )
+                HResult(hr).requireSuccess()
+                val ids = PlatformAbi.readPointer(idsOut)
+                try {
+                    val count = PlatformAbi.readInt32(countOut)
+                    val actual = (0 until count).map { index ->
+                        PlatformAbi.readGuid(
+                            PlatformAbi.slice(
+                                ids,
+                                index.toLong() * Guid.BYTE_SIZE,
+                                Guid.BYTE_SIZE.toLong(),
+                            ),
+                        )
+                    }
+                    assertEquals(expected, actual)
+                } finally {
+                    WinRtPlatformApi.coTaskMemFreeRaw(ids)
+                }
+            }
         }
     }
 
