@@ -9943,8 +9943,8 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("firstIndex", "Int"),
                                         WinRtParameterDefinition("length", "UInt"),
-                                        WinRtParameterDefinition("baseInterface", "System.Object"),
-                                        WinRtParameterDefinition("innerInterface", "System.Object"),
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
                                     ),
                                     methodRowId = 26,
                                 ),

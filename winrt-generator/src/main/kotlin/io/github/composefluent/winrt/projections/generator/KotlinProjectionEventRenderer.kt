@@ -37,6 +37,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
@@ -1432,7 +1433,7 @@ private fun composableUserParameters(method: WinRtMethodDefinition): Pair<WinRtM
         return null
     }
     val trailing = method.parameters.takeLast(2)
-    if (trailing.any { parameter -> parameter.type.typeName != "System.Object" }) {
+    if (trailing.any { parameter -> !isWinRtObjectTypeName(parameter.type.typeName) }) {
         return null
     }
     return method to method.parameters.dropLast(2)
