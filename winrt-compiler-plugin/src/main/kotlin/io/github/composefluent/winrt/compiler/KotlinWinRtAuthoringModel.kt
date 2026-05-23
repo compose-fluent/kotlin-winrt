@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -87,7 +88,7 @@ internal fun inheritedOverridableInterfaceNames(
         names += current.overridableInterfaces
         val baseTypeName = current.baseTypeName
             .takeIf(String::isNotBlank)
-            ?.takeUnless { it == "System.Object" || it == "Any" }
+            ?.takeUnless(::isWinRtObjectTypeName)
             ?: break
         current = winRtTypes[baseTypeName]
     }

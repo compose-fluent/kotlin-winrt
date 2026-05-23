@@ -131,11 +131,13 @@ class KotlinWinRtAuthoringScannerCliTest {
             Microsoft.UI.Xaml.Controls.Grid	RuntimeClass		Microsoft.UI.Xaml.Controls.Panel
             Microsoft.UI.Xaml.Controls.Panel	RuntimeClass		Microsoft.UI.Xaml.FrameworkElement
             Microsoft.UI.Xaml.FrameworkElement	RuntimeClass	Microsoft.UI.Xaml.IFrameworkElementOverrides	Microsoft.UI.Xaml.UIElement
-            Microsoft.UI.Xaml.UIElement	RuntimeClass	Microsoft.UI.Xaml.IUIElementOverrides	System.Object
-            Microsoft.UI.Xaml.Automation.Peers.AutomationPeer	RuntimeClass	Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides	System.Object
+            Microsoft.UI.Xaml.UIElement	RuntimeClass	Microsoft.UI.Xaml.IUIElementOverrides	Object
+            Microsoft.UI.Xaml.Automation.Peers.AutomationPeer	RuntimeClass	Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides	Object
+            Object	RuntimeClass	Sample.IObjectOverrides
             Microsoft.UI.Xaml.IFrameworkElementOverrides	Interface
             Microsoft.UI.Xaml.IUIElementOverrides	Interface
             Microsoft.UI.Xaml.Automation.Peers.IAutomationPeerOverrides	Interface
+            Sample.IObjectOverrides	Interface
             """.trimIndent(),
         )
 
