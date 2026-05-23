@@ -84,8 +84,7 @@ open class WinRtAsyncActionReference internal constructor(
         ) { args ->
             callback(this, WinRtAsyncStatus.fromAbi(args[1] as Int))
         }
-        registerCompletedHandler(handle)
-        return handle
+        return handle.registerOrClose(::registerCompletedHandler)
     }
 
     protected open fun registerCompletedHandler(handle: WinRtDelegateHandle) {
@@ -152,8 +151,7 @@ open class WinRtAsyncOperationReference<T> internal constructor(
         ) { args ->
             callback(this, WinRtAsyncStatus.fromAbi(args[1] as Int))
         }
-        registerCompletedHandler(handle)
-        return handle
+        return handle.registerOrClose(::registerCompletedHandler)
     }
 
     protected open fun registerCompletedHandler(handle: WinRtDelegateHandle) {
@@ -240,8 +238,9 @@ open class WinRtAsyncActionWithProgressReference<TProgress> internal constructor
         ) { args ->
             callback(this, WinRtAsyncStatus.fromAbi(args[1] as Int))
         }
-        handle.createReference().use(::setCompletedHandler)
-        return handle
+        return handle.registerOrClose { registeredHandle ->
+            registeredHandle.createReference().use(::setCompletedHandler)
+        }
     }
 
     companion object {
@@ -327,6 +326,17 @@ object WinRtAsyncProjectionInterop {
             completedHandlerInterfaceId = WinRtAsyncActionWithProgressReference.completedHandlerInterfaceId(progressSignature),
         )
 }
+
+private inline fun WinRtDelegateHandle.registerOrClose(
+    register: (WinRtDelegateHandle) -> Unit,
+): WinRtDelegateHandle =
+    try {
+        register(this)
+        this
+    } catch (error: Throwable) {
+        close()
+        throw error
+    }
 
 private class WinRtAsyncAwaitState<T>(
     private val continuation: CancellableContinuation<T>,
@@ -434,8 +444,9 @@ open class WinRtAsyncOperationWithProgressReference<T, TProgress> internal const
         ) { args ->
             callback(this, WinRtAsyncStatus.fromAbi(args[1] as Int))
         }
-        handle.createReference().use(::setCompletedHandler)
-        return handle
+        return handle.registerOrClose { registeredHandle ->
+            registeredHandle.createReference().use(::setCompletedHandler)
+        }
     }
 
     companion object {

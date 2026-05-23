@@ -73,6 +73,31 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun async_action_when_completed_closes_delegate_when_registration_fails() {
+        Arena.ofConfined().use { arena ->
+            val failure = WinRtIllegalStateException(
+                "completed handler already assigned",
+                KnownHResults.E_ILLEGAL_DELEGATE_ASSIGNMENT,
+            )
+            val action = FakeAsyncActionReference(
+                arena = arena,
+                statusState = WinRtAsyncStatus.Started,
+                registrationFailure = failure,
+            )
+
+            try {
+                action.whenCompleted { _, _ -> }
+            } catch (error: WinRtIllegalStateException) {
+                assertEquals(failure, error)
+                assertTrue(action.completedHandlerClosed())
+                return
+            }
+
+            throw AssertionError("Expected completed-handler registration failure.")
+        }
+    }
+
+    @Test
     fun async_action_await_faults_and_closes_completed_handler_when_get_results_fails() {
         Arena.ofConfined().use { arena ->
             val failure = WinRtIllegalStateException("get results failed", KnownHResults.E_FAIL)
@@ -468,6 +493,7 @@ class WinRtAsyncInteropTest {
         private var statusState: WinRtAsyncStatus,
         private val errorCode: HResult = KnownHResults.S_OK,
         private val resultsFailure: Throwable? = null,
+        private val registrationFailure: Throwable? = null,
     ) : WinRtAsyncActionReference(arena.allocate(8).asNativePointer()) {
         var resultsCalled = false
         var cancelCalled = false
@@ -489,6 +515,7 @@ class WinRtAsyncInteropTest {
 
         override fun registerCompletedHandler(handle: WinRtDelegateHandle) {
             completedHandle = handle
+            registrationFailure?.let { throw it }
         }
 
         fun completedHandlerClosed(): Boolean =
