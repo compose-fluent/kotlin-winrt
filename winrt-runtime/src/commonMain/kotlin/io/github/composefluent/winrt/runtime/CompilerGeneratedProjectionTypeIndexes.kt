@@ -54,5 +54,5 @@ internal fun registerCompilerGeneratedProjectionTypeIndex(
 }
 
 private fun String.isMeaningfulProjectionBaseTypeName(): Boolean =
-    isNotBlank() && this != "System.Object" && this != "Any"
+    isNotBlank() && !WinRtTypeClassifier.isObjectRuntimeName(this)
 
