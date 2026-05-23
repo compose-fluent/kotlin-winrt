@@ -141,7 +141,7 @@ class WinRtMetadataTypeClassifier private constructor(
 fun WinRtMetadataModel.typeClassifier(): WinRtMetadataTypeClassifier =
     WinRtMetadataTypeClassifier.create(this)
 
-internal fun isWinRtObjectTypeName(typeName: String): Boolean =
+fun isWinRtObjectTypeName(typeName: String): Boolean =
     when (typeName.trim().substringBefore('<').removeSuffix("?")) {
         "Any", "Object", "System.Object" -> true
         else -> false

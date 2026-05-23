@@ -18,6 +18,7 @@ import io.github.composefluent.winrt.metadata.WinRtParameterDirection
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -241,6 +242,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
         val rawArg = CodeBlock.of("rawArgs[%L]", index)
+        if (isWinRtObjectTypeName(parameter.typeName)) {
+            return CodeBlock.of("%T.fromAbi(%L as %T)", winRtObjectMarshallerType, rawArg, rawAddressType)
+        }
         return when (parameter.typeName) {
             "Boolean" -> CodeBlock.of("(%L as %T).toInt() != 0", rawArg, Byte::class.asClassName())
             "Int8", "SByte" -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
@@ -254,7 +258,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Single", "Float" -> CodeBlock.of("%L as %T", rawArg, Float::class.asClassName())
             "Double" -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
             "String" -> CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
-            "System.Object", "Object" -> CodeBlock.of("%T.fromAbi(%L as %T)", winRtObjectMarshallerType, rawArg, rawAddressType)
             else -> renderComplexParameterProjection(rawArg, parameter, typesByName)
         }
     }
@@ -404,7 +407,15 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock =
-        when (method.returnTypeName) {
+        if (isWinRtObjectTypeName(method.returnTypeName)) {
+            CodeBlock.of(
+                "%T.writePointer(%L, %T.fromManaged(%L))",
+                platformAbiType,
+                outExpression,
+                winRtObjectMarshallerType,
+                valueExpression,
+            )
+        } else when (method.returnTypeName) {
             "Boolean" -> CodeBlock.of(
                 "%T.writeInt8(%L, if (%L as %T) 1.toByte() else 0.toByte())",
                 platformAbiType,
@@ -423,13 +434,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "Single", "Float" -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
             "Double" -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
             "String" -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
-            "System.Object", "Object" -> CodeBlock.of(
-                "%T.writePointer(%L, %T.fromManaged(%L))",
-                platformAbiType,
-                outExpression,
-                winRtObjectMarshallerType,
-                valueExpression,
-            )
             else -> {
                 renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName)?.let {
                     return it
@@ -480,9 +484,11 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock? {
         val elementTypeName = elementType.qualifiedName ?: return null
+        if (isWinRtObjectTypeName(elementTypeName)) {
+            return CodeBlock.of("%T.object_", winRtReferenceValueAdaptersType)
+        }
         return when (elementTypeName) {
             "String" -> CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
-            "System.Object", "Object" -> CodeBlock.of("%T.object_", winRtReferenceValueAdaptersType)
             else -> {
                 val elementDefinition = typesByName[elementTypeName] ?: return null
                 when (elementDefinition.kind) {
