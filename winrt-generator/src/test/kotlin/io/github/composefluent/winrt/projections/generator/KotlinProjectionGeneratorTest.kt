@@ -6857,6 +6857,15 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun type_resolver_uses_metadata_object_aliases() {
+        val renderer = KotlinProjectionRenderer()
+
+        listOf("Any", "Object", "System.Object").forEach { objectTypeName ->
+            assertEquals(Any::class.asClassName().copy(nullable = true), renderer.resolveTypeName(objectTypeName))
+        }
+    }
+
+    @Test
     fun native_struct_helpers_use_metadata_fundamental_aliases() {
         val renderer = KotlinProjectionRenderer()
 

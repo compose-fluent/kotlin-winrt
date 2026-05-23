@@ -9,6 +9,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
@@ -144,10 +145,11 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     winRtFundamentalTypeForName(effectiveTypeName)?.let { fundamentalType ->
         return fundamentalType.toProjectionTypeName().withOuterNullability(nullable)
     }
+    if (isWinRtObjectTypeName(effectiveTypeName)) {
+        return ANY.copy(nullable = true)
+    }
 
     return when (effectiveTypeName) {
-        "Any",
-        "System.Object" -> ANY.copy(nullable = true)
         IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
         "io.github.composefluent.winrt.runtime.IUnknownReference" -> IUNKNOWN_REFERENCE_CLASS_NAME
         IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
