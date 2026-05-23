@@ -12,6 +12,7 @@ import org.gradle.api.file.CopySpec
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.SourceSetContainer
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.io.File
@@ -720,11 +721,10 @@ private fun addGeneratedSourcesToKotlinMain(
     project: Project,
     generatedSources: org.gradle.api.provider.Provider<org.gradle.api.file.Directory>,
 ) {
-    val kotlinExtension = project.extensions.findByName("kotlin") ?: return
-    val sourceSets = kotlinExtension.callNoArg("getSourceSets") as? org.gradle.api.NamedDomainObjectContainer<*> ?: return
-    val mainSourceSet = sourceSets.getByName("main")
-    val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return
-    kotlinSourceDirectorySet.callOneArg("srcDir", generatedSources)
+    val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return
+    kotlinExtension.sourceSets.named("main").configure { sourceSet ->
+        sourceSet.kotlin.srcDir(generatedSources)
+    }
 }
 
 private fun configureWinRtIdentityProjectDependencies(
@@ -760,8 +760,8 @@ private fun configureWinRtIdentityProjectDependencies(
         buildList {
             add(sourceSet.apiConfigurationName)
             add(sourceSet.implementationConfigurationName)
-            (sourceSet.callNoArg("getApiMetadataConfigurationName") as? String)?.let(::add)
-            (sourceSet.callNoArg("getImplementationMetadataConfigurationName") as? String)?.let(::add)
+            add("${sourceSet.apiConfigurationName}Metadata")
+            add("${sourceSet.implementationConfigurationName}Metadata")
         }
 
     observeConfiguration("api")
@@ -850,25 +850,9 @@ private fun kotlinMainSourceDirs(project: Project): List<File> {
     project.extensions.findByType(KotlinMultiplatformExtension::class.java)?.let { kotlinExtension ->
         return kotlinExtension.sourceSets.flatMap { sourceSet -> sourceSet.kotlin.srcDirs }
     }
-    val kotlinExtension = project.extensions.findByName("kotlin") ?: return emptyList()
-    val sourceSets = kotlinExtension.callNoArg("getSourceSets") as? org.gradle.api.NamedDomainObjectContainer<*> ?: return emptyList()
-    val mainSourceSet = sourceSets.findByName("main") ?: return emptyList()
-    val kotlinSourceDirectorySet = mainSourceSet.callNoArg("getKotlin") ?: return emptyList()
-    return (kotlinSourceDirectorySet.callNoArg("getSrcDirs") as? Set<File>).orEmpty().toList()
+    val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return emptyList()
+    return kotlinExtension.sourceSets.findByName("main")?.kotlin?.srcDirs.orEmpty().toList()
 }
-
-private fun Any.callNoArg(name: String): Any? =
-    javaClass.methods.firstOrNull { method ->
-        method.name == name && method.parameterCount == 0
-    }?.invoke(this)
-
-private fun Any.callOneArg(name: String, argument: Any): Any? =
-    javaClass.methods
-        .filter { method -> method.name == name && method.parameterCount == 1 }
-        .sortedBy { method -> if (method.parameterTypes[0].isInstance(argument)) 0 else 1 }
-        .firstNotNullOfOrNull { method ->
-            runCatching { method.invoke(this, argument) }.getOrNull()
-        }
 
 private fun Project.hasKotlinWinRtIdentityMetadata(): Boolean =
     configurations.findByName(KOTLIN_WINRT_IDENTITY_ELEMENTS_CONFIGURATION)?.isCanBeConsumed == true
