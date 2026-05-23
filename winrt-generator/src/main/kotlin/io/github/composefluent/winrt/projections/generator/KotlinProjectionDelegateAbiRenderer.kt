@@ -33,8 +33,10 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRtEventHandlerKind
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.winRtEventHandlerKindForTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -212,26 +214,43 @@ internal fun KotlinProjectionRenderer.outboundDelegateInvokeShape(
     typeBinding: KotlinProjectionAbiTypeBinding,
 ): KotlinProjectionDelegateInvokeShape? {
     val invokeShape = typeBinding.delegateInvokeShape ?: return null
-    if (typeBinding.resolvedTypeName == "Windows.Foundation.EventHandler" && typeBinding.typeArguments.size == 1) {
-        return invokeShape.copy(
-            parameterBindings = listOf(
-                KotlinProjectionAbiParameterBinding(
-                    "sender",
-                    KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
-                ),
-                KotlinProjectionAbiParameterBinding("args", typeBinding.typeArguments[0]),
-            ),
-        )
+    return when (winRtEventHandlerKindForTypeName(typeBinding.resolvedTypeName)) {
+        WinRtEventHandlerKind.EventHandler ->
+            if (typeBinding.typeArguments.size == 1) {
+                invokeShape.copy(
+                    parameterBindings = listOf(
+                        KotlinProjectionAbiParameterBinding(
+                            "sender",
+                            KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Object, "Any", "System.Object"),
+                        ),
+                        KotlinProjectionAbiParameterBinding("args", typeBinding.typeArguments[0]),
+                    ),
+                )
+            } else {
+                invokeShape
+            }
+
+        WinRtEventHandlerKind.TypedEventHandler ->
+            if (typeBinding.typeArguments.size == 2) {
+                invokeShape.copy(
+                    parameterBindings = listOf(
+                        KotlinProjectionAbiParameterBinding("sender", typeBinding.typeArguments[0]),
+                        KotlinProjectionAbiParameterBinding("args", typeBinding.typeArguments[1]),
+                    ),
+                )
+            } else {
+                invokeShape
+            }
+
+        WinRtEventHandlerKind.VectorChangedEventHandler,
+        WinRtEventHandlerKind.MapChangedEventHandler,
+        WinRtEventHandlerKind.AsyncActionProgressHandler,
+        WinRtEventHandlerKind.AsyncOperationProgressHandler,
+        WinRtEventHandlerKind.PropertyChangedEventHandler,
+        WinRtEventHandlerKind.NotifyCollectionChangedEventHandler,
+        null,
+        -> invokeShape
     }
-    if (typeBinding.resolvedTypeName == "Windows.Foundation.TypedEventHandler" && typeBinding.typeArguments.size == 2) {
-        return invokeShape.copy(
-            parameterBindings = listOf(
-                KotlinProjectionAbiParameterBinding("sender", typeBinding.typeArguments[0]),
-                KotlinProjectionAbiParameterBinding("args", typeBinding.typeArguments[1]),
-            ),
-        )
-    }
-    return invokeShape
 }
 
 internal fun KotlinProjectionRenderer.delegateInterfaceIdCode(
