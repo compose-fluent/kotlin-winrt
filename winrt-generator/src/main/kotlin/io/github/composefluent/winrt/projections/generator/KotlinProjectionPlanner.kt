@@ -40,6 +40,7 @@ import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1148,7 +1149,7 @@ class KotlinProjectionPlanner(
                 normalizedType.kind == WinRtTypeRefKind.GenericTypeParameter ||
                     normalizedType.kind == WinRtTypeRefKind.MethodTypeParameter -> KotlinProjectionAbiValueKind.GenericParameter
                 normalizedType.kind == WinRtTypeRefKind.Array -> KotlinProjectionAbiValueKind.Array
-                rawTypeName == "Any" || rawTypeName == "System.Object" -> KotlinProjectionAbiValueKind.Object
+                isWinRtObjectTypeName(rawTypeName) -> KotlinProjectionAbiValueKind.Object
                 isProjectedKeyValuePair -> KotlinProjectionAbiValueKind.MappedKeyValuePair
                 mappedType?.abiValueKind != null -> mappedType.abiValueKind
                 resolvedType != null -> when (resolvedType.kind) {
