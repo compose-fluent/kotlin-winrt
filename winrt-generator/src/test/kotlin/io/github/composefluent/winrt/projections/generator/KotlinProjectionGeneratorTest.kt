@@ -908,6 +908,7 @@ class KotlinProjectionGeneratorTest {
                             namespace = "Sample.Foundation",
                             name = "Widget",
                             kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Object",
                             defaultInterfaceName = "Sample.Foundation.IWidget",
                             implementedInterfaces = listOf(
                                 WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
