@@ -4,6 +4,7 @@ import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.ClassName
@@ -57,7 +58,7 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.declarationKind != KotlinProjectionDeclarationKind.Class ||
             plan.type.kind != WinRtTypeKind.RuntimeClass ||
             plan.type.genericParameterCount != 0 ||
-            plan.type.baseTypeName?.let { it != "System.Object" && it != "Any" } == true ||
+            plan.type.baseTypeName?.let { !isWinRtObjectTypeName(it) } == true ||
             plan.type.methods.any(WinRtMethodDefinition::isStatic) ||
             plan.type.properties.any(WinRtPropertyDefinition::isStatic) ||
             plan.type.properties.any { it.getterMethodName == null } ||
