@@ -93,6 +93,23 @@ fun WinRtFundamentalType.toGenericAbiDelegateTypeName(defaultTypeName: String): 
         else -> defaultTypeName
     }
 
+fun WinRtFundamentalType.toKotlinProjectionTypeName(): String =
+    when (this) {
+        WinRtFundamentalType.Boolean -> "Boolean"
+        WinRtFundamentalType.Char -> "Char"
+        WinRtFundamentalType.Int8 -> "Byte"
+        WinRtFundamentalType.UInt8 -> "UByte"
+        WinRtFundamentalType.Int16 -> "Short"
+        WinRtFundamentalType.UInt16 -> "UShort"
+        WinRtFundamentalType.Int32 -> "Int"
+        WinRtFundamentalType.UInt32 -> "UInt"
+        WinRtFundamentalType.Int64 -> "Long"
+        WinRtFundamentalType.UInt64 -> "ULong"
+        WinRtFundamentalType.Float -> "Float"
+        WinRtFundamentalType.Double -> "Double"
+        WinRtFundamentalType.String -> "String"
+    }
+
 fun winRtTypeKindForSystemBaseTypeName(typeName: String?): WinRtTypeKind? =
     when (typeName?.trim()) {
         "System.Enum" -> WinRtTypeKind.Enum
