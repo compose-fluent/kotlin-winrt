@@ -1711,6 +1711,38 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun semantic_helpers_render_generic_abi_delegate_fundamental_aliases_like_cswinrt_abi_types() {
+        val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
+        val inventory = helpers.collectGenericAbiInventory(
+            WinRtTypeDefinition(
+                namespace = "Sample.Foundation",
+                name = "IUsesFundamentalVectors",
+                kind = WinRtTypeKind.Interface,
+                methods = listOf(
+                    WinRtMethodDefinition("Flags", "Windows.Foundation.Collections.IVector<System.Boolean>"),
+                    WinRtMethodDefinition("Codes", "Windows.Foundation.Collections.IVector<Char16>"),
+                    WinRtMethodDefinition("Names", "Windows.Foundation.Collections.IVector<System.String>"),
+                ),
+            ),
+        )
+
+        val booleanGetAt = inventory.genericAbiDelegates.single {
+            it.sourceGenericType.typeName == "Windows.Foundation.Collections.IVector<System.Boolean>" &&
+                it.operationName == "get_at"
+        }
+        val charGetAt = inventory.genericAbiDelegates.single {
+            it.sourceGenericType.typeName == "Windows.Foundation.Collections.IVector<Char16>" &&
+                it.operationName == "get_at"
+        }
+
+        assertEquals(listOf("void*", "uint", "out byte", "int"), booleanGetAt.abiParameterTypeNames)
+        assertEquals(listOf("void*", "uint", "out ushort", "int"), charGetAt.abiParameterTypeNames)
+        assertTrue(inventory.genericAbiDelegates.none {
+            it.sourceGenericType.typeName == "Windows.Foundation.Collections.IVector<System.String>"
+        })
+    }
+
+    @Test
     fun semantic_helpers_expose_raw_table_boundaries_and_cswinrt_audit_entries() {
         val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
         val boundaries = helpers.auxiliaryTableSemanticBoundaries(
