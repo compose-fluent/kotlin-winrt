@@ -40,6 +40,7 @@ import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRtTypeTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
@@ -2550,8 +2551,7 @@ class KotlinProjectionRenderer(
             "Short", "Int16", "UShort", "UInt16",
             "Int", "Int32", "UInt", "UInt32",
             "Long", "Int64", "ULong", "UInt64" -> Long::class.asClassName()
-            "System.Type" -> KCLASS_STAR_TYPE_NAME
-            else -> Long::class.asClassName()
+            else -> if (isWinRtTypeTypeName(trimmed)) KCLASS_STAR_TYPE_NAME else Long::class.asClassName()
         }
     }
 
@@ -2566,8 +2566,7 @@ class KotlinProjectionRenderer(
             "String", "System.String" -> CodeBlock.of("%S", "")
             "Float", "Single", "System.Single" -> CodeBlock.of("0.0f")
             "Double", "System.Double" -> CodeBlock.of("0.0")
-            "System.Type" -> CodeBlock.of("Any::class")
-            else -> CodeBlock.of("0L")
+            else -> if (isWinRtTypeTypeName(trimmed)) CodeBlock.of("Any::class") else CodeBlock.of("0L")
         }
     }
 

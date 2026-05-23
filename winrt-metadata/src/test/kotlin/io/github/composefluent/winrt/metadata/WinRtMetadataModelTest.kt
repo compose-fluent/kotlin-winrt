@@ -563,6 +563,13 @@ class WinRtMetadataModelTest {
                 classifier.classify(WinRtTypeRef.fromDisplayName(guidTypeName), "Sample.Foundation").projectionCategory,
             )
         }
+        assertTrue(isWinRtTypeTypeName("System.Type"))
+        listOf("Type", "System.Type").forEach { typeTypeName ->
+            assertEquals(
+                WinRtProjectionCategory.Type,
+                classifier.classify(WinRtTypeRef.fromDisplayName(typeTypeName), "Sample.Foundation").projectionCategory,
+            )
+        }
         assertTrue(isWinRtObjectTypeName("Any"))
         assertEquals(
             WinRtProjectionCategory.Object,
@@ -1087,11 +1094,16 @@ class WinRtMetadataModelTest {
             name = "Widget",
             kind = WinRtTypeKind.RuntimeClass,
         )
+        val localType = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "Type",
+            kind = WinRtTypeKind.RuntimeClass,
+        )
         val model = WinRtMetadataModel(
             listOf(
                 WinRtNamespace(
                     name = "Sample.Foundation",
-                    types = listOf(iBox, widget),
+                    types = listOf(iBox, widget, localType),
                 ),
             ),
         )
@@ -1105,6 +1117,8 @@ class WinRtMetadataModelTest {
         assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("Object"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Guid, resolver.resolve(WinRtTypeRef.named("Guid"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Guid, resolver.resolve(WinRtTypeRef.named("System.Guid"), "Sample.Foundation"))
+        assertEquals(WinRtTypeSemantics.TypeDefinition(localType), resolver.resolve(WinRtTypeRef.named("Type"), "Sample.Foundation"))
+        assertEquals(WinRtTypeSemantics.Type, resolver.resolve(WinRtTypeRef.named("Type"), "Other.Namespace"))
         assertEquals(WinRtTypeSemantics.Type, resolver.resolve(WinRtTypeRef.named("System.Type"), "Sample.Foundation"))
         assertEquals(
             WinRtTypeSemantics.TypeDefinition(widget),
