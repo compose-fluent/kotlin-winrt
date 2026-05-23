@@ -42,12 +42,6 @@ object TypeNameSupport {
             registeredProjectionTypes[runtimeClassName] = type
             WinRtTypeRegistry.registerAlias(type, runtimeClassName)
         }
-        val typeName = type.typeDisplayName()
-        registeredProjectionTypes[typeName] = type
-        WinRtTypeRegistry.registerAlias(type, typeName)
-        typeCanonicalName(type)?.let { alias ->
-            WinRtTypeRegistry.registerAlias(type, alias)
-        }
     }
 
     fun registerProjectionTypes(

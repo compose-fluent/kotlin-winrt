@@ -4,7 +4,7 @@ import kotlin.reflect.KClass
 
 data class WinRtTypeId<T : Any>(
     val kClass: KClass<T>,
-    val projectedTypeName: String = kClass.qualifiedName ?: kClass.simpleName ?: "<anonymous>",
+    val projectedTypeName: String,
     val guid: Guid? = null,
     val iid: Guid? = null,
     val signature: String? = null,
@@ -33,7 +33,6 @@ object WinRtTypeRegistry {
         index(typeId.projectedTypeName, typeId)
         index(typeId.runtimeClassName, typeId)
         index(typeId.boxedName, typeId)
-        index(typeId.kClass.qualifiedName, typeId)
         typeId.aliases.forEach { alias ->
             index(alias, typeId)
         }

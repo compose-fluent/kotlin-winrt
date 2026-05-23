@@ -55,8 +55,6 @@ internal fun isAssignableFrom(targetType: KClass<*>, candidateType: KClass<*>): 
 internal fun isPrimitiveWinRtType(type: KClass<*>): Boolean =
     type.registeredWinRtType()?.let { it.isWindowsRuntimeType && !it.isRuntimeClass && it.guid == null } == true
 
-internal fun typeCanonicalName(type: KClass<*>): String? = type.qualifiedName
-
 internal fun typeName(type: KClass<*>): String =
     type.qualifiedName ?: type.simpleName ?: "<anonymous>"
 

@@ -8,6 +8,7 @@ class WinRtTypeIdTest {
     @Test
     fun registry_registers_and_resolves_by_kclass_and_name() {
         WinRtTypeRegistry.clearForTests()
+        TypeNameSupport.clearRegistriesForTests()
 
         val registered =
             WinRtTypeRegistry.register<SampleRuntimeClass>(
@@ -21,6 +22,7 @@ class WinRtTypeIdTest {
         assertEquals(registered, WinRtTypeRegistry.find<SampleRuntimeClass>())
         assertEquals(registered, WinRtTypeRegistry.findByProjectedName("Contoso.SampleRuntimeClass"))
         assertNull(WinRtTypeRegistry.findByName("SampleRuntimeClass"))
+        assertNull(WinRtTypeRegistry.findByName(SampleRuntimeClass::class.qualifiedName ?: ""))
     }
 
     @Test
@@ -36,6 +38,25 @@ class WinRtTypeIdTest {
         assertEquals(SampleRuntimeClass::class, TypeNameSupport.findKClassByNameCached("Contoso.SampleRuntimeClass"))
         assertEquals(SampleRuntimeClass::class, TypeNameSupport.findKClassByNameCached("Contoso.SampleAlias"))
         assertNull(TypeNameSupport.findKClassByNameCached("SampleRuntimeClass"))
+        assertNull(TypeNameSupport.findKClassByNameCached(SampleRuntimeClass::class.qualifiedName ?: ""))
+    }
+
+    @Test
+    fun projection_registration_does_not_add_kotlin_qualified_name_alias() {
+        ComWrappersSupport.clearRegistriesForTests()
+        WinRtTypeRegistry.clearForTests()
+
+        WinRtTypeRegistry.register<SampleRuntimeClass>(
+            projectedTypeName = "Contoso.SampleRuntimeClass",
+            runtimeClassName = "Contoso.SampleRuntimeClass",
+        )
+        TypeNameSupport.registerProjectionType(
+            type = SampleRuntimeClass::class,
+            runtimeClassName = "Contoso.SampleRuntimeClass",
+        )
+
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findKClassByNameCached("Contoso.SampleRuntimeClass"))
+        assertNull(TypeNameSupport.findKClassByNameCached(SampleRuntimeClass::class.qualifiedName ?: ""))
     }
 
     private class SampleRuntimeClass
