@@ -8,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
+import io.github.composefluent.winrt.metadata.WinRtFundamentalType
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
 import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
@@ -35,6 +36,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.guidSignatureFragment
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
@@ -2920,30 +2922,10 @@ class KotlinProjectionRenderer(
         if (isWinRtGuidTypeName(typeName)) {
             return "g16"
         }
+        winRtFundamentalTypeForName(typeName)?.let { fundamentalType ->
+            return fundamentalType.guidSignatureFragment()
+        }
         return when (typeName) {
-            "Boolean" -> "b1"
-            "Byte",
-            "Int8",
-            "SByte" -> "i1"
-            "UByte",
-            "UInt8" -> "u1"
-            "Short",
-            "Int16" -> "i2"
-            "UShort",
-            "UInt16" -> "u2"
-            "Int",
-            "Int32" -> "i4"
-            "UInt",
-            "UInt32" -> "u4"
-            "Long",
-            "Int64" -> "i8"
-            "ULong",
-            "UInt64" -> "u8"
-            "Float",
-            "Single" -> "f4"
-            "Double" -> "f8"
-            "Char" -> "c2"
-            "String" -> "string"
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> "cinterface(IInspectable)"
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
@@ -3007,8 +2989,10 @@ class KotlinProjectionRenderer(
         if (isWinRtObjectTypeName(rawTypeName)) {
             return NativeStructReferenceFieldKind.InspectableReference
         }
+        if (winRtFundamentalTypeForName(rawTypeName) == WinRtFundamentalType.String) {
+            return NativeStructReferenceFieldKind.String
+        }
         return when (rawTypeName) {
-            "String" -> NativeStructReferenceFieldKind.String
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> NativeStructReferenceFieldKind.InspectableReference
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
@@ -3032,31 +3016,7 @@ class KotlinProjectionRenderer(
         if (isWinRtGuidTypeName(typeName)) {
             return "GUID"
         }
-        return when (typeName) {
-            "Boolean" -> "INT8"
-            "Byte",
-            "SByte",
-            "Int8",
-            "UByte",
-            "UInt8" -> "INT8"
-            "Short",
-            "Int16",
-            "UShort",
-            "UInt16" -> "INT16"
-            "Int",
-            "Int32",
-            "UInt",
-            "UInt32" -> "INT32"
-            "Long",
-            "Int64",
-            "ULong",
-            "UInt64" -> "INT64"
-            "Float",
-            "Single" -> "FLOAT32"
-            "Double" -> "DOUBLE"
-            "Char" -> "CHAR16"
-            else -> null
-        }
+        return winRtFundamentalTypeForName(typeName)?.toNativeStructScalarKindName()
     }
 
     internal fun nativeNestedStructFieldTypeName(
@@ -3088,33 +3048,12 @@ class KotlinProjectionRenderer(
         if (isWinRtGuidTypeName(field.typeName)) {
             return CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
         }
-        return when (field.typeName) {
-            "Boolean" -> CodeBlock.of("%T.readInt8(%L).toInt() != 0", PLATFORM_ABI_CLASS_NAME, slice)
-            "Byte",
-            "Int8" -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "SByte" -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "UByte",
-            "UInt8" -> CodeBlock.of("%T.readInt8(%L).toUByte()", PLATFORM_ABI_CLASS_NAME, slice)
-            "Short",
-            "Int16" -> CodeBlock.of("%T.readInt16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "UShort",
-            "UInt16" -> CodeBlock.of("%T.readInt16(%L).toUShort()", PLATFORM_ABI_CLASS_NAME, slice)
-            "Int",
-            "Int32" -> CodeBlock.of("%T.readInt32(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "UInt",
-            "UInt32" -> CodeBlock.of("%T.readInt32(%L).toUInt()", PLATFORM_ABI_CLASS_NAME, slice)
-            "Long",
-            "Int64" -> CodeBlock.of("%T.readInt64(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "ULong",
-            "UInt64" -> CodeBlock.of("%T.readInt64(%L).toULong()", PLATFORM_ABI_CLASS_NAME, slice)
-            "Float",
-            "Single" -> CodeBlock.of("%T.readFloat(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "Double" -> CodeBlock.of("%T.readDouble(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "Char" -> CodeBlock.of("%T.readChar16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            else -> nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName)
-                ?: nativeStructEnumFieldReadCode(field, slice, currentNamespace, typesByQualifiedName)
-                ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
+        winRtFundamentalTypeForName(field.typeName)?.toNativeStructFieldReadCode(slice)?.let { readCode ->
+            return readCode
         }
+        return nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName)
+            ?: nativeStructEnumFieldReadCode(field, slice, currentNamespace, typesByQualifiedName)
+            ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
     }
 
     internal fun nativeStructFieldWriteCode(
@@ -3130,33 +3069,12 @@ class KotlinProjectionRenderer(
         if (isWinRtGuidTypeName(field.typeName)) {
             return CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
         }
-        return when (field.typeName) {
-            "Boolean" -> CodeBlock.of("%T.writeInt8(%L, if (%L) 1 else 0)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Byte",
-            "Int8",
-            "SByte" -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "UByte",
-            "UInt8" -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Short",
-            "Int16" -> CodeBlock.of("%T.writeInt16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "UShort",
-            "UInt16" -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Int",
-            "Int32" -> CodeBlock.of("%T.writeInt32(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "UInt",
-            "UInt32" -> CodeBlock.of("%T.writeInt32(%L, %L.toInt())", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Long",
-            "Int64" -> CodeBlock.of("%T.writeInt64(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "ULong",
-            "UInt64" -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Float",
-            "Single" -> CodeBlock.of("%T.writeFloat(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Double" -> CodeBlock.of("%T.writeDouble(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Char" -> CodeBlock.of("%T.writeChar16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            else -> nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName)
-                ?: nativeStructEnumFieldWriteCode(field, value, slice, currentNamespace, typesByQualifiedName)
-                ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
+        winRtFundamentalTypeForName(field.typeName)?.toNativeStructFieldWriteCode(slice, value)?.let { writeCode ->
+            return writeCode
         }
+        return nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName)
+            ?: nativeStructEnumFieldWriteCode(field, value, slice, currentNamespace, typesByQualifiedName)
+            ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)
     }
 
     private fun nativeStructEnumFieldReadCode(

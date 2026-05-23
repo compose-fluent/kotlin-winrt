@@ -6850,6 +6850,74 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun native_struct_helpers_use_metadata_fundamental_aliases() {
+        val renderer = KotlinProjectionRenderer()
+
+        data class NativeStructAliasCase(
+            val typeName: String,
+            val scalarKind: String?,
+            val readSnippet: String,
+            val writeSnippet: String,
+        )
+
+        listOf(
+            NativeStructAliasCase("System.Int32", "INT32", "readInt32(layout.slice(source, \"value\"))", "writeInt32(layout.slice(destination, \"value\"), value.value)"),
+            NativeStructAliasCase("System.Byte", "INT8", "readInt8(layout.slice(source, \"value\")).toUByte()", "writeInt8(layout.slice(destination, \"value\"), value.value.toByte())"),
+            NativeStructAliasCase("Char16", "CHAR16", "readChar16(layout.slice(source, \"value\"))", "writeChar16(layout.slice(destination, \"value\"), value.value)"),
+            NativeStructAliasCase("System.Single", "FLOAT32", "readFloat(layout.slice(source, \"value\"))", "writeFloat(layout.slice(destination, \"value\"), value.value)"),
+            NativeStructAliasCase("System.String", null, "fromHandle", "HString.create(value.value).handle"),
+        ).forEach { (typeName, scalarKind, readSnippet, writeSnippet) ->
+            val field = WinRtFieldDefinition("Value", typeName)
+            val fieldSpec = renderer.nativeStructFieldSpec(field, "Sample.Foundation", emptyMap()).toString()
+            val readCode = renderer.nativeStructFieldReadCode(field, "source", "Sample.Foundation", emptyMap()).toString()
+            val writeCode = renderer.nativeStructFieldWriteCode(field, "value", "destination", "Sample.Foundation", emptyMap()).toString()
+
+            assertEquals(scalarKind, renderer.nativeStructScalarKind(typeName))
+            if (scalarKind == null) {
+                assertTrue(fieldSpec, fieldSpec.contains("NativeStructScalarKind.ADDRESS"))
+            } else {
+                assertTrue(fieldSpec, fieldSpec.contains("NativeStructScalarKind.$scalarKind"))
+            }
+            assertTrue(readCode, readCode.contains(readSnippet))
+            assertTrue(writeCode, writeCode.contains(writeSnippet))
+        }
+
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "FundamentalAliases",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("Id", "System.Int32"),
+                                WinRtFieldDefinition("Flags", "System.Byte"),
+                                WinRtFieldDefinition("Code", "Char16"),
+                                WinRtFieldDefinition("Weight", "System.Single"),
+                                WinRtFieldDefinition("Name", "System.String"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .single { it.relativePath.endsWith("FundamentalAliases.kt") }
+            .contents
+
+        assertTrue(contents, contents.contains("\"struct(Sample.Foundation.FundamentalAliases;c2;u1;i4;string;f4)\""))
+        assertTrue(contents, contents.contains("val flags: UByte"))
+        assertTrue(contents, contents.contains("NativeScalarFieldSpec(\"name\","))
+        assertTrue(contents, contents.contains("NativeStructScalarKind.ADDRESS)"))
+        assertTrue(contents, contents.contains("HString.fromHandle("))
+        assertTrue(contents, contents.contains("HString.create(value.name).handle"))
+    }
+
+    @Test
     fun generator_classifies_activation_factory_delegate_parameters_from_projection_model() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
