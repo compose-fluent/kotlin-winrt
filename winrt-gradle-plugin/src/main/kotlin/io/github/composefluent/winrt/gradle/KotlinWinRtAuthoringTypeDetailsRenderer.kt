@@ -11,6 +11,7 @@ import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.WinRtFundamentalType
 import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
@@ -18,6 +19,7 @@ import io.github.composefluent.winrt.metadata.WinRtParameterDirection
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.isWinRtFundamentalTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import java.nio.file.Path
@@ -246,6 +248,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (isWinRtObjectTypeName(parameter.typeName)) {
             return CodeBlock.of("%T.fromAbi(%L as %T)", winRtObjectMarshallerType, rawArg, rawAddressType)
         }
+        if (isWinRtStringTypeName(parameter.typeName)) {
+            return CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
+        }
         return when (parameter.typeName) {
             "Boolean" -> CodeBlock.of("(%L as %T).toInt() != 0", rawArg, Byte::class.asClassName())
             "Int8", "SByte" -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
@@ -258,7 +263,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "UInt64" -> CodeBlock.of("(%L as %T).toULong()", rawArg, Long::class.asClassName())
             "Single", "Float" -> CodeBlock.of("%L as %T", rawArg, Float::class.asClassName())
             "Double" -> CodeBlock.of("%L as %T", rawArg, Double::class.asClassName())
-            "String" -> CodeBlock.of("%T.fromHandle(%L as %T, owner = false).use { it.toKString() }", hStringType, rawArg, rawAddressType)
             else -> renderComplexParameterProjection(rawArg, parameter, typesByName)
         }
     }
@@ -268,7 +272,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock =
-        if (parameter.typeName == "String") {
+        if (isWinRtStringTypeName(parameter.typeName)) {
             CodeBlock.builder()
                 .addStatement(
                     "val __hString%L = %T.fromHandle(rawArgs[%L] as %T, owner = false)",
@@ -416,6 +420,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 winRtObjectMarshallerType,
                 valueExpression,
             )
+        } else if (isWinRtStringTypeName(method.returnTypeName)) {
+            CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
         } else when (method.returnTypeName) {
             "Boolean" -> CodeBlock.of(
                 "%T.writeInt8(%L, if (%L as %T) 1.toByte() else 0.toByte())",
@@ -434,7 +440,6 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             "UInt64" -> CodeBlock.of("%T.writeInt64(%L, (%L as %T).toLong())", platformAbiType, outExpression, valueExpression, ULong::class.asClassName())
             "Single", "Float" -> CodeBlock.of("%T.writeFloat(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Float::class.asClassName())
             "Double" -> CodeBlock.of("%T.writeDouble(%L, %L as %T)", platformAbiType, outExpression, valueExpression, Double::class.asClassName())
-            "String" -> CodeBlock.of("%T.writePointer(%L, %T.create(%L as %T).handle)", platformAbiType, outExpression, hStringType, valueExpression, String::class.asClassName())
             else -> {
                 renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName)?.let {
                     return it
@@ -453,6 +458,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 }
             }
         }
+
+    private fun isWinRtStringTypeName(typeName: String): Boolean =
+        isWinRtFundamentalTypeName(typeName, WinRtFundamentalType.String)
 
     private fun renderCollectionReturnProjection(
         returnTypeName: String,
