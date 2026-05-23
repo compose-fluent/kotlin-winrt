@@ -10,6 +10,7 @@ import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
 import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
@@ -140,30 +141,13 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     if (isWinRtGuidTypeName(effectiveTypeName)) {
         return GUID_CLASS_NAME
     }
+    winRtFundamentalTypeForName(effectiveTypeName)?.let { fundamentalType ->
+        return fundamentalType.toProjectionTypeName().withOuterNullability(nullable)
+    }
 
     return when (effectiveTypeName) {
         "Any",
         "System.Object" -> ANY.copy(nullable = true)
-        "String" -> String::class.asClassName()
-        "Int" -> Int::class.asClassName()
-        "UInt" -> KOTLIN_UINT_CLASS_NAME
-        "Boolean" -> Boolean::class.asClassName()
-        "Byte" -> Byte::class.asClassName()
-        "SByte",
-        "Int8" -> Byte::class.asClassName()
-        "UByte",
-        "UInt8" -> KOTLIN_UBYTE_CLASS_NAME
-        "Short" -> Short::class.asClassName()
-        "Int16" -> Short::class.asClassName()
-        "UShort" -> KOTLIN_USHORT_CLASS_NAME
-        "UInt16" -> KOTLIN_USHORT_CLASS_NAME
-        "Long" -> Long::class.asClassName()
-        "Int64" -> Long::class.asClassName()
-        "ULong",
-        "UInt64" -> KOTLIN_ULONG_CLASS_NAME
-        "Float" -> Float::class.asClassName()
-        "Double" -> Double::class.asClassName()
-        "Char" -> Char::class.asClassName()
         IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
         "io.github.composefluent.winrt.runtime.IUnknownReference" -> IUNKNOWN_REFERENCE_CLASS_NAME
         IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
