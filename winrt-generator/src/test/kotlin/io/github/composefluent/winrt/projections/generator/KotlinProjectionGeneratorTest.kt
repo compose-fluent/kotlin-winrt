@@ -12858,6 +12858,16 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "RootWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            baseTypeName = "Object",
+                            defaultInterfaceName = "Sample.Foundation.IBaseWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBaseWidget", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "DerivedWidget",
                             kind = WinRtTypeKind.RuntimeClass,
                             baseTypeName = "Sample.Foundation.BaseWidget",
@@ -12877,6 +12887,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(files.getValue("BaseWidget.kt").contents.contains("private val _defaultInterface"))
         assertTrue(files.getValue("DerivedWidget.kt").contents.contains("private val _defaultInterface"))
+        assertFalse(files.getValue("RootWidget.kt").contents.contains(": Object("))
     }
 
     @Test
