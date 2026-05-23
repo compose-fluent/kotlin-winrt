@@ -2525,18 +2525,10 @@ class KotlinProjectionRenderer(
             val elementType = attributeParameterTypeName(trimmed.substringAfter('<').substringBeforeLast('>')) ?: return null
             return Array::class.asClassName().parameterizedBy(elementType)
         }
-        return when (trimmed) {
-            "Boolean", "System.Boolean" -> Boolean::class.asClassName()
-            "Char", "System.Char" -> Char::class.asClassName()
-            "String", "System.String" -> String::class.asClassName()
-            "Float", "Single", "System.Single" -> Float::class.asClassName()
-            "Double", "System.Double" -> Double::class.asClassName()
-            "Byte", "SByte", "Int8", "UInt8",
-            "Short", "Int16", "UShort", "UInt16",
-            "Int", "Int32", "UInt", "UInt32",
-            "Long", "Int64", "ULong", "UInt64" -> Long::class.asClassName()
-            else -> if (isWinRtTypeTypeName(trimmed)) KCLASS_STAR_TYPE_NAME else Long::class.asClassName()
+        winRtFundamentalTypeForName(trimmed)?.let { fundamentalType ->
+            return fundamentalType.toAttributeParameterTypeName()
         }
+        return if (isWinRtTypeTypeName(trimmed)) KCLASS_STAR_TYPE_NAME else Long::class.asClassName()
     }
 
     private fun attributeParameterDefaultValue(typeName: String): CodeBlock? {
@@ -2544,14 +2536,10 @@ class KotlinProjectionRenderer(
         if (trimmed.startsWith("Array<") && trimmed.endsWith(">")) {
             return CodeBlock.of("[]")
         }
-        return when (trimmed) {
-            "Boolean", "System.Boolean" -> CodeBlock.of("false")
-            "Char", "System.Char" -> CodeBlock.of("'\\u0000'")
-            "String", "System.String" -> CodeBlock.of("%S", "")
-            "Float", "Single", "System.Single" -> CodeBlock.of("0.0f")
-            "Double", "System.Double" -> CodeBlock.of("0.0")
-            else -> if (isWinRtTypeTypeName(trimmed)) CodeBlock.of("Any::class") else CodeBlock.of("0L")
+        winRtFundamentalTypeForName(trimmed)?.let { fundamentalType ->
+            return fundamentalType.toAttributeParameterDefaultValue()
         }
+        return if (isWinRtTypeTypeName(trimmed)) CodeBlock.of("Any::class") else CodeBlock.of("0L")
     }
 
     internal fun renderStaticClassShell(plan: KotlinTypeProjectionPlan): TypeSpec =

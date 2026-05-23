@@ -39,6 +39,40 @@ internal fun WinRtFundamentalType.toProjectionTypeName(): TypeName =
         WinRtFundamentalType.String -> String::class.asClassName()
     }
 
+internal fun WinRtFundamentalType.toAttributeParameterTypeName(): TypeName =
+    when (this) {
+        WinRtFundamentalType.Boolean -> Boolean::class.asClassName()
+        WinRtFundamentalType.Char -> Char::class.asClassName()
+        WinRtFundamentalType.String -> String::class.asClassName()
+        WinRtFundamentalType.Float -> Float::class.asClassName()
+        WinRtFundamentalType.Double -> Double::class.asClassName()
+        WinRtFundamentalType.Int8,
+        WinRtFundamentalType.UInt8,
+        WinRtFundamentalType.Int16,
+        WinRtFundamentalType.UInt16,
+        WinRtFundamentalType.Int32,
+        WinRtFundamentalType.UInt32,
+        WinRtFundamentalType.Int64,
+        WinRtFundamentalType.UInt64 -> Long::class.asClassName()
+    }
+
+internal fun WinRtFundamentalType.toAttributeParameterDefaultValue(): CodeBlock =
+    when (this) {
+        WinRtFundamentalType.Boolean -> CodeBlock.of("false")
+        WinRtFundamentalType.Char -> CodeBlock.of("'\\u0000'")
+        WinRtFundamentalType.String -> CodeBlock.of("%S", "")
+        WinRtFundamentalType.Float -> CodeBlock.of("0.0f")
+        WinRtFundamentalType.Double -> CodeBlock.of("0.0")
+        WinRtFundamentalType.Int8,
+        WinRtFundamentalType.UInt8,
+        WinRtFundamentalType.Int16,
+        WinRtFundamentalType.UInt16,
+        WinRtFundamentalType.Int32,
+        WinRtFundamentalType.UInt32,
+        WinRtFundamentalType.Int64,
+        WinRtFundamentalType.UInt64 -> CodeBlock.of("0L")
+    }
+
 internal fun WinRtFundamentalType.toNativeStructScalarKindName(): String? =
     when (this) {
         WinRtFundamentalType.Boolean,
