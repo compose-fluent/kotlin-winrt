@@ -280,7 +280,11 @@ class ProjectionRegistryTest {
             "Windows.Foundation.IReference`1<Int32>",
             TypeNameSupport.getNameForType(Int::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)),
         )
-        assertEquals("kotlin.Array", TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)))
+        assertEquals(
+            "Windows.Foundation.IReferenceArray`1<Int32>",
+            TypeNameSupport.getNameForType(IntArray::class),
+        )
+        assertEquals("", TypeNameSupport.getNameForType(Array<String>::class, setOf(TypeNameGenerationFlag.GenerateBoxedName)))
     }
 
     @Test

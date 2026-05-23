@@ -129,6 +129,12 @@ object TypeNameSupport {
         if (type == null) {
             return ""
         }
+        ensureProjectionMappingsRegistered()
+
+        referenceArrayRuntimeClassName(type)?.let { return it }
+        if (type.isUnsupportedErasedArrayType()) {
+            return ""
+        }
 
         if (flags.contains(TypeNameGenerationFlag.GenerateBoxedName)) {
             boxedRuntimeClassName(type)?.let { return it }
@@ -200,4 +206,16 @@ object TypeNameSupport {
     ): KClass<*>? =
         WinRtTypeClassifier.primitiveArrayTypeForElementType(elementType)
             ?: registeredReferenceArrayTypes[elementType]
+
+    private fun referenceArrayRuntimeClassName(type: KClass<*>): String? {
+        if (WinRtTypeClassifier.primitiveArrayElementType(type) == null && registeredArrayElementTypes[type] == null) {
+            return null
+        }
+        return WinRtValueBoxing.boxedRuntimeClassNameForType(type)
+    }
+
+    // Kotlin common KClass does not preserve Array<T>'s element type. Match CsWinRT's
+    // fail-closed array path by returning an empty type name instead of a Kotlin name.
+    private fun KClass<*>.isUnsupportedErasedArrayType(): Boolean =
+        qualifiedName == "kotlin.Array"
 }
