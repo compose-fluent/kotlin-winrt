@@ -43,6 +43,7 @@ import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1117,33 +1118,14 @@ class KotlinProjectionPlanner(
         val resolvedType = typesByQualifiedName[resolvedTypeName]
         val mappedType = mappedTypeByAbiName(rawTypeName)
         val isProjectedKeyValuePair = rawTypeName == "Map.Entry" || rawTypeName == "kotlin.collections.Map.Entry"
+        val fundamentalType = winRtFundamentalTypeForName(rawTypeName)
         val kind = if (isWinRtVoidTypeName(rawTypeName)) {
             KotlinProjectionAbiValueKind.Unit
+        } else if (fundamentalType != null) {
+            fundamentalType.toProjectionAbiValueKind()
         } else if (isWinRtGuidTypeName(rawTypeName)) {
             KotlinProjectionAbiValueKind.GuidValue
         } else when (trimmedTypeName) {
-            "String" -> KotlinProjectionAbiValueKind.String
-            "Boolean" -> KotlinProjectionAbiValueKind.Boolean
-            "Byte",
-            "SByte",
-            "Int8" -> KotlinProjectionAbiValueKind.Int8
-            "UByte",
-            "UInt8" -> KotlinProjectionAbiValueKind.UInt8
-            "Short",
-            "Int16" -> KotlinProjectionAbiValueKind.Int16
-            "UShort",
-            "UInt16" -> KotlinProjectionAbiValueKind.UInt16
-            "Int" -> KotlinProjectionAbiValueKind.Int32
-            "UInt" -> KotlinProjectionAbiValueKind.UInt32
-            "Long",
-            "Int64" -> KotlinProjectionAbiValueKind.Int64
-            "ULong",
-            "UInt64" -> KotlinProjectionAbiValueKind.UInt64
-            "Float",
-            "Single" -> KotlinProjectionAbiValueKind.Float
-            "Double" -> KotlinProjectionAbiValueKind.Double
-            "Char",
-            "Char16" -> KotlinProjectionAbiValueKind.Char16
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.UnknownReference
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.InspectableReference
             "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference

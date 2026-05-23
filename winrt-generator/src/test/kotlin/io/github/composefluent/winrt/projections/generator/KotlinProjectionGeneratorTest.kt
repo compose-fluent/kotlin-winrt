@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.projections.generator
 
 import com.squareup.kotlinpoet.CodeBlock
+import com.squareup.kotlinpoet.asClassName
 import io.github.composefluent.winrt.metadata.WinRtActivationShape
 import io.github.composefluent.winrt.metadata.WinRtAvailabilityMetadata
 import io.github.composefluent.winrt.metadata.WinRtContractVersionMetadata
@@ -6821,6 +6822,30 @@ class KotlinProjectionGeneratorTest {
             assertEquals(KotlinProjectionAbiValueKind.GuidValue, renderedBinding.kind)
             assertEquals(GUID_CLASS_NAME, renderer.resolveTypeName(guidTypeName))
             assertEquals("GUID", renderer.nativeStructScalarKind(guidTypeName))
+        }
+    }
+
+    @Test
+    fun planner_renderer_and_type_resolver_use_metadata_fundamental_aliases() {
+        val planner = KotlinProjectionPlanner()
+        val renderer = KotlinProjectionRenderer()
+
+        listOf(
+            Triple("System.Int32", KotlinProjectionAbiValueKind.Int32, Int::class.asClassName()),
+            Triple("Int8", KotlinProjectionAbiValueKind.Int8, Byte::class.asClassName()),
+            Triple("Single", KotlinProjectionAbiValueKind.Float, Float::class.asClassName()),
+            Triple("System.Byte", KotlinProjectionAbiValueKind.UInt8, KOTLIN_UBYTE_CLASS_NAME),
+        ).forEach { (typeName, expectedKind, expectedTypeName) ->
+            val plannedBinding = planner.classifyAbiTypeBinding(
+                typeName = typeName,
+                currentNamespace = "Sample.Foundation",
+                typesByQualifiedName = emptyMap(),
+            )
+            val renderedBinding = renderer.renderAbiTypeBinding(typeName)
+
+            assertEquals(expectedKind, plannedBinding.kind)
+            assertEquals(expectedKind, renderedBinding.kind)
+            assertEquals(expectedTypeName, renderer.resolveTypeName(typeName))
         }
     }
 
