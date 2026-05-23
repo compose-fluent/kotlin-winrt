@@ -745,6 +745,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         val classification = typeClassifier.classify(type, currentNamespace)
         val resolvedType = classification.definitionType
         val isGenericInstance = classification.type.typeArguments.isNotEmpty()
+        val fundamentalType = winRtFundamentalTypeForName(classification.typeName)
         val isValueType = when {
             isGenericInstance -> false
             classification.projectionCategory == WinRtProjectionCategory.Object -> false
@@ -759,7 +760,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     resolvedType?.fields.orEmpty().all { field -> isValueType(field.type, resolvedType?.namespace ?: currentNamespace) }
                 }
             }
-            classification.projectionCategory == WinRtProjectionCategory.Fundamental -> classification.typeName != "String"
+            classification.projectionCategory == WinRtProjectionCategory.Fundamental -> fundamentalType?.isWinRtValueType == true
             classification.projectionCategory == WinRtProjectionCategory.Guid ||
                 classification.projectionCategory == WinRtProjectionCategory.Type -> true
             else -> false
@@ -778,8 +779,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     resolvedType?.fields.orEmpty().all { field -> isTypeBlittable(field.type, resolvedType?.namespace ?: currentNamespace) }
                 }
             }
-            classification.projectionCategory == WinRtProjectionCategory.Fundamental ->
-                classification.typeName != "String" && classification.typeName != "Char" && classification.typeName != "Boolean"
+            classification.projectionCategory == WinRtProjectionCategory.Fundamental -> fundamentalType?.isWinRtBlittable == true
             classification.projectionCategory == WinRtProjectionCategory.Guid ||
                 classification.projectionCategory == WinRtProjectionCategory.Type -> true
             else -> false

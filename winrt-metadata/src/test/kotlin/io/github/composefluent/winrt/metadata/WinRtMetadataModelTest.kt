@@ -1551,7 +1551,15 @@ class WinRtMetadataModelTest {
         assertEquals(false, holderDescriptor.requiresAbiCompanionShape)
         assertEquals(false, helpers.isTypeBlittable(holder))
         assertEquals(false, helpers.isValueType(WinRtTypeRef.fromDisplayName("String"), "Sample.Foundation"))
+        assertEquals(false, helpers.isValueType(WinRtTypeRef.fromDisplayName("System.String"), "Sample.Foundation"))
+        assertEquals(true, helpers.isValueType(WinRtTypeRef.fromDisplayName("System.Int32"), "Sample.Foundation"))
+        assertEquals(true, helpers.isValueType(WinRtTypeRef.fromDisplayName("Char16"), "Sample.Foundation"))
         assertEquals(false, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("Boolean"), "Sample.Foundation"))
+        assertEquals(false, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("System.Boolean"), "Sample.Foundation"))
+        assertEquals(false, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("Char16"), "Sample.Foundation"))
+        assertEquals(true, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("System.Int32"), "Sample.Foundation"))
+        assertEquals(true, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("System.Byte"), "Sample.Foundation"))
+        assertEquals(true, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("Single"), "Sample.Foundation"))
         assertEquals(false, helpers.isTypeBlittable(WinRtTypeRef.fromDisplayName("Sample.Foundation.Mode"), "Sample.Foundation", forArray = true))
     }
 
