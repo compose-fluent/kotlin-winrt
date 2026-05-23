@@ -2354,6 +2354,32 @@ class KotlinWinRtPluginTest {
             .normalize()
             .toString()
             .replace("\\", "/")
+        val metadataJar = Path.of("../winrt-metadata/build/libs/winrt-metadata.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        val generatorJar = Path.of("../winrt-generator/build/libs/winrt-generator.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        val generatorWorkerSetup = """
+            configurations.create("kotlinWinRtGeneratorWorker") {
+                isCanBeConsumed = false
+                isCanBeResolved = true
+            }
+
+            dependencies {
+                add("kotlinWinRtGeneratorWorker", files("$runtimeJar", "$metadataJar", "$generatorJar"))
+                add("kotlinWinRtGeneratorWorker", "com.squareup:kotlinpoet:1.18.1")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
+            }
+
+            apply(plugin = "io.github.composefluent.winrt")
+        """.trimIndent()
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
@@ -2389,8 +2415,9 @@ class KotlinWinRtPluginTest {
             """
             plugins {
                 id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
             }
+
+            $generatorWorkerSetup
 
             kotlin {
                 jvm("winuiJvm")
@@ -2403,8 +2430,8 @@ class KotlinWinRtPluginTest {
                 }
             }
 
-            winRt {
-                type("Windows.Foundation.IStringable")
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                type("Windows.Foundation.IClosable")
             }
             """.trimIndent(),
         )
@@ -2413,8 +2440,9 @@ class KotlinWinRtPluginTest {
             """
             plugins {
                 id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
             }
+
+            $generatorWorkerSetup
 
             kotlin {
                 jvm("winuiJvm")
@@ -2422,14 +2450,14 @@ class KotlinWinRtPluginTest {
                     commonMain {
                         dependencies {
                             implementation(files("$runtimeJar"))
-                            implementation(project(":winrt-base-library"))
+                            api(project(":winrt-base-library"))
                         }
                     }
                 }
             }
 
-            winRt {
-                type("Windows.Foundation.IStringable")
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
+                type("Windows.Foundation.Uri")
             }
             """.trimIndent(),
         )
@@ -2438,8 +2466,9 @@ class KotlinWinRtPluginTest {
             """
             plugins {
                 id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
             }
+
+            $generatorWorkerSetup
 
             kotlin {
                 jvm("winuiJvm")
@@ -2453,15 +2482,108 @@ class KotlinWinRtPluginTest {
                 }
             }
 
-            winRt {
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
                 application {}
-                type("Windows.Foundation.IStringable")
+                type("Windows.Foundation.IAsyncAction")
+            }
+
+            val writeTransitiveSupportProbe = tasks.register("writeTransitiveSupportProbe") {
+                dependsOn("generateWinRtProjections")
+                val outputFile = layout.buildDirectory.file("generated/kotlin-winrt/src/main/kotlin/app/TransitiveSupportProbe.kt")
+                outputs.file(outputFile)
+                doLast {
+                    outputFile.get().asFile.apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            ${"\"\"\""}
+                            package app
+
+                            import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
+
+                            object TransitiveSupportProbe {
+                                fun support() {
+                                    WinRtProjectionSupportIntrinsic.ensureInitialized()
+                                }
+                            }
+                            ${"\"\"\""}.trimIndent()
+                        )
+                    }
+                }
+            }
+
+            tasks.named("compileKotlinWinuiJvm") {
+                dependsOn(writeTransitiveSupportProbe)
             }
 
             tasks.register("printApplicationIdentity") {
                 dependsOn("generateWinRtApplicationIdentity")
                 doLast {
                     println(layout.buildDirectory.file("generated/kotlin-winrt/identity/kotlin-winrt-application.json").get().asFile.readText())
+                }
+            }
+
+            tasks.register("verifyTransitiveCompilerSupport") {
+                dependsOn("compileKotlinWinuiJvm")
+                doLast {
+                    val mergedProjectionRegistrar = layout.buildDirectory.file(
+                        "generated/kotlin-winrt/compiler-support/merged/projection-registrar.tsv",
+                    ).get().asFile.readText()
+                    listOf(
+                        "Windows.Foundation.IClosable",
+                        "Windows.Foundation.IUriRuntimeClass",
+                        "Windows.Foundation.IAsyncAction",
+                    ).forEach { typeName ->
+                        check(mergedProjectionRegistrar.contains(typeName)) {
+                            "Merged app compiler support is missing " + typeName
+                        }
+                    }
+
+                    val classRoot = layout.buildDirectory.dir("classes/kotlin/winuiJvm/main").get().asFile
+                    val classContents = classRoot.walkTopDown()
+                        .filter { it.isFile && it.extension == "class" }
+                        .associateWith { compiledClass ->
+                            compiledClass.readBytes().toString(Charsets.ISO_8859_1)
+                        }
+                    val probe = classRoot.resolve("app/TransitiveSupportProbe.class")
+                    val probeContents = classContents.getValue(probe)
+                    check(!probeContents.contains("WinRtProjectionSupportIntrinsic")) {
+                        "Transitive app probe still contains WinRtProjectionSupportIntrinsic fallback"
+                    }
+                    check(probeContents.contains("kotlinWinRtProjectionSupportInitialize_")) {
+                        "Transitive app probe did not call the compiler-generated support initializer"
+                    }
+                    check(classContents.values.none { it.contains("WinRtProjectionSupportIntrinsic") }) {
+                        "Transitive app bytecode still contains WinRtProjectionSupportIntrinsic fallback"
+                    }
+
+                    val generatedInitializer = classContents.values.singleOrNull { contents ->
+                        contents.contains("kotlinWinRtProjectionSupportInitialize_") &&
+                            contents.contains("registerGeneratedProjectionTypeIndex")
+                    } ?: error("Expected one compiler-generated projection support initializer method")
+                    listOf(
+                        "Windows.Foundation.IClosable",
+                        "Windows.Foundation.IUriRuntimeClass",
+                        "Windows.Foundation.IAsyncAction",
+                    ).forEach { typeName ->
+                        check(generatedInitializer.contains(typeName)) {
+                            "Compiler-generated initializer did not include " + typeName
+                        }
+                    }
+
+                    val supportRoot = classRoot.resolve("io/github/composefluent/winrt/projections/support")
+                    val projectionSupportArtifacts = supportRoot.walkTopDown()
+                        .filter { it.isFile && it.name.startsWith("WinRTProjectionSupport_") && it.extension == "class" }
+                        .toList()
+                    check(projectionSupportArtifacts.size == 1) {
+                        "Expected exactly one content-addressed projection support artifact, found " +
+                            projectionSupportArtifacts.size
+                    }
+                    check(!supportRoot.resolve("WinRTProjectionSupport.class").exists()) {
+                        "Fixed projection support artifact must not be generated"
+                    }
+                    check(!supportRoot.resolve("WinRTInterfaceProjectionRegistry.class").exists()) {
+                        "Legacy interface projection registry must not be generated"
+                    }
                 }
             }
             """.trimIndent(),
@@ -2472,7 +2594,7 @@ class KotlinWinRtPluginTest {
             .withArguments(
                 ":winrt-base-library:compileKotlinWinuiJvm",
                 ":winrt-library:compileKotlinWinuiJvm",
-                ":winrt-app:compileKotlinWinuiJvm",
+                ":winrt-app:verifyTransitiveCompilerSupport",
                 ":winrt-app:printApplicationIdentity",
                 "--stacktrace",
             )
@@ -2496,17 +2618,32 @@ class KotlinWinRtPluginTest {
         assertTrue(
             Files.isRegularFile(
                 projectDir.resolve(
-                    "winrt-base-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IStringable.kt",
+                    "winrt-base-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IClosable.kt",
+                ),
+            ),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve(
+                    "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IUriRuntimeClass.kt",
+                ),
+            ),
+        )
+        assertTrue(
+            Files.isRegularFile(
+                projectDir.resolve(
+                    "winrt-app/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IAsyncAction.kt",
                 ),
             ),
         )
         assertFalse(
             Files.exists(
                 projectDir.resolve(
-                    "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IStringable.kt",
+                    "winrt-library/build/generated/kotlin-winrt/src/main/kotlin/windows/foundation/IClosable.kt",
                 ),
             ),
         )
+        assertEquals(TaskOutcome.SUCCESS, result.task(":winrt-app:verifyTransitiveCompilerSupport")?.outcome)
     }
 
     @Test
