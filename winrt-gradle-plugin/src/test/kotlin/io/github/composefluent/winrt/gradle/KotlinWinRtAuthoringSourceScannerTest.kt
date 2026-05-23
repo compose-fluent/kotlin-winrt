@@ -220,6 +220,105 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_system_fundamental_override_parameters_and_returns_through_scalar_abi_shapes() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-fundamental-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalFundamentals",
+            sourceTypeName = "sample.LocalFundamentals",
+            winRtBaseClassName = "Sample.FundamentalBase",
+            winRtInterfaceNames = listOf("Sample.IFundamentalOverrides"),
+            overridableInterfaceNames = listOf("Sample.IFundamentalOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "FundamentalBase",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.IFundamentalOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IFundamentalOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("99999999-1111-2222-3333-444444444444"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetEnabled",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("value", "System.Boolean")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetSymbol",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("value", "System.Char")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetAmount",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("value", "System.Byte")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "SetRatio",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("value", "System.Single")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetEnabled",
+                                    returnTypeName = "System.Boolean",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetSymbol",
+                                    returnTypeName = "System.Char",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetAmount",
+                                    returnTypeName = "System.UInt32",
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetRatio",
+                                    returnTypeName = "System.Single",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalFundamentals_TypeDetails.kt").readText()
+        assertTrue(generated.contains("ComMethodSignature.of(ComAbiValueKind.Int8)"))
+        assertTrue(generated.contains("ComMethodSignature.of(ComAbiValueKind.Int16)"))
+        assertTrue(generated.contains("ComMethodSignature.of(ComAbiValueKind.Float)"))
+        assertTrue(generated.contains("val __arg0 = (rawArgs[0] as Byte).toInt() != 0"))
+        assertTrue(generated.contains("val __arg0 = (rawArgs[0] as Short).toInt().toChar()"))
+        assertTrue(generated.contains("val __arg0 = (rawArgs[0] as Byte).toUByte()"))
+        assertTrue(generated.contains("val __arg0 = rawArgs[0] as Float"))
+        assertTrue(generated.contains("PlatformAbi.writeInt8("))
+        assertTrue(generated.contains("if (__result as Boolean)"))
+        assertTrue(generated.contains("PlatformAbi.writeInt16("))
+        assertTrue(generated.contains("Char).code.toShort()"))
+        assertTrue(generated.contains("(__result as UInt).toInt()"))
+        assertTrue(generated.contains("PlatformAbi.writeFloat("))
+    }
+
+    @Test
     fun renders_inherited_override_dispatch_against_declaring_winrt_base_class() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-inherited-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
