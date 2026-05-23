@@ -55,6 +55,26 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
+        val runtimeOwned = listOf(
+            "System.Object?",
+            "Windows.Foundation.EventRegistrationToken",
+            "Windows.Foundation.HResult",
+            "Windows.Foundation.IClosable",
+            "Windows.Foundation.Uri",
+            "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
+            "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
+        )
+        val notRuntimeOwned = listOf(
+            "WinRT.Interop.HWND",
+            "Windows.Foundation.IReference<Int32>",
+        )
+
+        assertEquals(emptyList<String>(), runtimeOwned.filterNot(::isRuntimeOwnedMappedTypeName))
+        assertEquals(emptyList<String>(), notRuntimeOwned.filter(::isRuntimeOwnedMappedTypeName))
+    }
+
+    @Test
     fun generator_emits_projection_registrar_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
