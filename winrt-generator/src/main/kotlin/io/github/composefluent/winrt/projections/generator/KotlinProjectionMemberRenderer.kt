@@ -39,6 +39,7 @@ import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -466,7 +467,7 @@ internal fun closableMethodShape(
         slotInterfaceType.qualifiedName == "Windows.Foundation.IClosable" &&
         method.name == "Close" &&
         method.parameters.isEmpty() &&
-        method.returnTypeName == "Unit"
+        isWinRtVoidTypeName(method.returnTypeName)
     ) {
         RuntimeObjectMethodShape(
             kind = RuntimeObjectMethodKind.Close,

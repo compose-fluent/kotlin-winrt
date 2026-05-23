@@ -1587,7 +1587,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             eventName = event.name,
             delegateTypeName = event.delegateType.normalized().typeName,
             invokeMethodName = invoke?.name,
-            returnTypeName = invoke?.returnType?.normalized()?.typeName ?: "Void",
+            returnTypeName = invoke?.returnType?.normalized()?.typeName
+                ?.let { returnTypeName -> if (isWinRtVoidTypeName(returnTypeName)) "Unit" else returnTypeName }
+                ?: "Unit",
             parameters = invokeSignature?.parameters.orEmpty(),
             outDefaultAssignments = invoke?.parameters.orEmpty()
                 .filter { parameter -> parameterCategory(parameter) == WinRtMetadataParameterCategory.Out }
@@ -1603,7 +1605,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         isGenericInstantiationClass: Boolean = false,
     ): WinRtAbiMarshalerPlanDescriptor {
         val slots = mutableListOf<WinRtAbiMarshalerSlotDescriptor>()
-        if (method.returnType.normalized().typeName != "Void") {
+        if (!isWinRtVoidTypeName(method.returnType.normalized().typeName)) {
             slots += abiMarshalerSlot("__return_value__", method.returnType, WinRtMetadataParameterCategory.Out, isReturn = true)
         }
         method.parameters.forEach { parameter ->

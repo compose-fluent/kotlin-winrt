@@ -19,6 +19,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -554,7 +555,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     }
 
     private fun isVoidReturn(method: WinRtMethodDefinition): Boolean =
-        method.returnTypeName == "Void" || method.returnTypeName == "System.Void" || method.returnTypeName == "Unit"
+        isWinRtVoidTypeName(method.returnTypeName)
 
     private fun authoringInvokeBridgeName(method: WinRtMethodDefinition): String =
         "__winrtAuthoringInvoke${method.name}"

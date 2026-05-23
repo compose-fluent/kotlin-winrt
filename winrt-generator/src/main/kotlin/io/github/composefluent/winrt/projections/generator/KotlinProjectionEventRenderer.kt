@@ -37,6 +37,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1427,7 +1428,7 @@ private fun CodeBlock.Builder.addComposableFactoryInnerCleanup() {
 }
 
 private fun composableUserParameters(method: WinRtMethodDefinition): Pair<WinRtMethodDefinition, List<WinRtParameterDefinition>>? {
-    if (method.returnType.typeName == "Void" || method.parameters.size < 2) {
+    if (isWinRtVoidTypeName(method.returnType.typeName) || method.parameters.size < 2) {
         return null
     }
     val trailing = method.parameters.takeLast(2)

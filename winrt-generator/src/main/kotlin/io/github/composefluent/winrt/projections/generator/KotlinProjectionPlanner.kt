@@ -41,6 +41,7 @@ import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1115,8 +1116,9 @@ class KotlinProjectionPlanner(
         val resolvedType = typesByQualifiedName[resolvedTypeName]
         val mappedType = mappedTypeByAbiName(rawTypeName)
         val isProjectedKeyValuePair = rawTypeName == "Map.Entry" || rawTypeName == "kotlin.collections.Map.Entry"
-        val kind = when (trimmedTypeName) {
-            "Unit" -> KotlinProjectionAbiValueKind.Unit
+        val kind = if (isWinRtVoidTypeName(rawTypeName)) {
+            KotlinProjectionAbiValueKind.Unit
+        } else when (trimmedTypeName) {
             "String" -> KotlinProjectionAbiValueKind.String
             "Boolean" -> KotlinProjectionAbiValueKind.Boolean
             "Byte",
