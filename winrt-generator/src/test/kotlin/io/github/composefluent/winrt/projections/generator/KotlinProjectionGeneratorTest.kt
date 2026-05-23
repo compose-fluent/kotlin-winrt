@@ -75,6 +75,33 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun mapped_type_simple_name_lookup_is_declared_on_mapped_type_entries() {
+        val simpleLookup = listOf(
+            "Object",
+            "HWND",
+            "DateTime",
+            "TimeSpan",
+            "Uri",
+            "EventHandler",
+            "EventRegistrationToken",
+            "HResult",
+            "TypeName",
+            "IClosable",
+            "IReference",
+            "IReferenceArray",
+        )
+        val notSimpleLookup = listOf(
+            "IBindableVector",
+            "IXamlServiceProvider",
+            "NotifyCollectionChangedAction",
+            "ICommand",
+        )
+
+        assertEquals(emptyList<String>(), simpleLookup.filter { mappedTypeByAbiName(it) == null })
+        assertEquals(emptyList<String>(), notSimpleLookup.filter { mappedTypeByAbiName(it) != null })
+    }
+
+    @Test
     fun generator_emits_projection_registrar_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

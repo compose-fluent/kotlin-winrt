@@ -497,6 +497,7 @@ internal data class KotlinProjectionMappedType(
     val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
     val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
     val runtimeOwnedProjection: Boolean = false,
+    val simpleAbiLookup: Boolean = false,
     val descriptionName: String = abiQualifiedName.substringAfterLast('.'),
 ) {
     init {
@@ -539,9 +540,10 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         "System.Object",
         { ANY.copy(nullable = true) },
         runtimeOwnedProjection = true,
+        simpleAbiLookup = true,
         descriptionName = "Object",
     ),
-    KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, descriptionName = "HWND"),
+    KotlinProjectionMappedType("WinRT.Interop.HWND", { Long::class.asClassName() }, simpleAbiLookup = true, descriptionName = "HWND"),
     KotlinProjectionMappedType(
         "Windows.Foundation.DateTime",
         { KOTLIN_INSTANT_CLASS_NAME },
@@ -554,6 +556,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             toAbiFunctionName = "dateTimeToAbi",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
         ),
+        simpleAbiLookup = true,
         descriptionName = "DateTime",
     ),
     KotlinProjectionMappedType(
@@ -568,6 +571,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             toAbiFunctionName = "timeSpanToAbi",
             abiArgumentKind = KotlinProjectionComArgumentKind.Int64,
         ),
+        simpleAbiLookup = true,
         descriptionName = "TimeSpan",
     ),
     KotlinProjectionMappedType(
@@ -579,11 +583,13 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             typeHandleName = "io.github.composefluent.winrt.runtime.WinRtUri",
             fromAbiFunctionName = "uriFromAbi",
         ),
+        simpleAbiLookup = true,
         descriptionName = "Uri",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.EventHandler",
         { arguments -> EVENT_HANDLER_CALLBACK_CLASS_NAME.parameterizedBy(arguments.singleOrNull() ?: ANY.copy(nullable = true)) },
+        simpleAbiLookup = true,
         descriptionName = "EventHandler",
     ),
     KotlinProjectionMappedType(
@@ -591,6 +597,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
         { EVENT_REGISTRATION_TOKEN_CLASS_NAME },
         abiValueKind = KotlinProjectionAbiValueKind.Struct,
         runtimeOwnedProjection = true,
+        simpleAbiLookup = true,
         descriptionName = "EventRegistrationToken",
     ),
     KotlinProjectionMappedType(
@@ -606,6 +613,7 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             abiArgumentKind = KotlinProjectionComArgumentKind.Int32,
         ),
         runtimeOwnedProjection = true,
+        simpleAbiLookup = true,
         descriptionName = "HResult",
     ),
     KotlinProjectionMappedType(
@@ -619,24 +627,28 @@ internal val MAPPED_TYPES: List<KotlinProjectionMappedType> = listOf(
             "copyTypeNameTo",
             "disposeTypeNameAbi",
         ),
+        simpleAbiLookup = true,
         descriptionName = "TypeName",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IClosable",
         { AUTO_CLOSEABLE_CLASS_NAME },
         runtimeOwnedProjection = true,
+        simpleAbiLookup = true,
         descriptionName = "IClosable",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IReference",
         { arguments -> arguments.single().copy(nullable = true) },
         abiValueKind = KotlinProjectionAbiValueKind.Reference,
+        simpleAbiLookup = true,
         descriptionName = "IReference",
     ),
     KotlinProjectionMappedType(
         "Windows.Foundation.IReferenceArray",
         { arguments -> Array::class.asClassName().parameterizedBy(arguments.single().copy(nullable = true)) },
         abiValueKind = KotlinProjectionAbiValueKind.ReferenceArray,
+        simpleAbiLookup = true,
         descriptionName = "IReferenceArray",
     ),
     KotlinProjectionMappedType(
@@ -798,12 +810,7 @@ internal val MAPPED_TYPES_BY_ABI_NAME: Map<String, KotlinProjectionMappedType> =
 
 internal val MAPPED_TYPES_BY_SIMPLE_ABI_NAME: Map<String, KotlinProjectionMappedType> =
     MAPPED_TYPES.filter { mappedType ->
-        mappedType.abiValueKind in setOf(
-            KotlinProjectionAbiValueKind.Struct,
-            KotlinProjectionAbiValueKind.Reference,
-            KotlinProjectionAbiValueKind.ReferenceArray,
-        ) ||
-            mappedType.descriptionName in setOf("Object", "HWND", "DateTime", "TimeSpan", "Uri", "EventHandler", "HResult", "IClosable")
+        mappedType.simpleAbiLookup
     }.groupBy { it.abiQualifiedName.substringAfterLast('.') }
         .filterValues { it.size == 1 }
         .mapValues { (_, mappedTypes) -> mappedTypes.single() }
