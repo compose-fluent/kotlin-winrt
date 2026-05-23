@@ -2745,21 +2745,11 @@ private class CustomAttributeBlobReader(
         return decoded.first
     }
 
-    private fun WinRtTypeRef.toCustomAttributeElementType(): CustomAttributeElementType =
-        when (typeName) {
-            "Boolean", "System.Boolean" -> CustomAttributeElementType.Boolean
-            "Char", "System.Char" -> CustomAttributeElementType.Char
-            "Byte", "System.SByte" -> CustomAttributeElementType.Int8
-            "UByte", "System.Byte" -> CustomAttributeElementType.UInt8
-            "Short", "System.Int16" -> CustomAttributeElementType.Int16
-            "UShort", "System.UInt16" -> CustomAttributeElementType.UInt16
-            "Int", "System.Int32" -> CustomAttributeElementType.Int32
-            "UInt", "System.UInt32" -> CustomAttributeElementType.UInt32
-            "Long", "System.Int64" -> CustomAttributeElementType.Int64
-            "ULong", "System.UInt64" -> CustomAttributeElementType.UInt64
-            "Float", "System.Single" -> CustomAttributeElementType.Float32
-            "Double", "System.Double" -> CustomAttributeElementType.Float64
-            "String", "System.String" -> CustomAttributeElementType.String
+    private fun WinRtTypeRef.toCustomAttributeElementType(): CustomAttributeElementType {
+        winRtFundamentalTypeForName(typeName)?.let { fundamentalType ->
+            return fundamentalType.toCustomAttributeElementType()
+        }
+        return when (typeName) {
             "System.Type" -> CustomAttributeElementType.Type
             else -> when (kind) {
                 WinRtTypeRefKind.Array -> CustomAttributeElementType.Array(
@@ -2769,6 +2759,24 @@ private class CustomAttributeBlobReader(
                 WinRtTypeRefKind.Named -> CustomAttributeElementType.Enum(typeName)
                 else -> CustomAttributeElementType.Unknown
             }
+        }
+    }
+
+    private fun WinRtFundamentalType.toCustomAttributeElementType(): CustomAttributeElementType =
+        when (this) {
+            WinRtFundamentalType.Boolean -> CustomAttributeElementType.Boolean
+            WinRtFundamentalType.Char -> CustomAttributeElementType.Char
+            WinRtFundamentalType.Int8 -> CustomAttributeElementType.Int8
+            WinRtFundamentalType.UInt8 -> CustomAttributeElementType.UInt8
+            WinRtFundamentalType.Int16 -> CustomAttributeElementType.Int16
+            WinRtFundamentalType.UInt16 -> CustomAttributeElementType.UInt16
+            WinRtFundamentalType.Int32 -> CustomAttributeElementType.Int32
+            WinRtFundamentalType.UInt32 -> CustomAttributeElementType.UInt32
+            WinRtFundamentalType.Int64 -> CustomAttributeElementType.Int64
+            WinRtFundamentalType.UInt64 -> CustomAttributeElementType.UInt64
+            WinRtFundamentalType.Float -> CustomAttributeElementType.Float32
+            WinRtFundamentalType.Double -> CustomAttributeElementType.Float64
+            WinRtFundamentalType.String -> CustomAttributeElementType.String
         }
 
     private sealed interface CustomAttributeElementType {
