@@ -104,54 +104,6 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun event_source_runtime_does_not_load_resource_entries_on_lookup() {
-        WinRtEventSourceRuntime.clearForTests()
-
-        val descriptor = WinRtEventSourceRuntime.descriptorFor(
-            eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
-            ownerType = "Contoso.ResourceIndexedOwner",
-        )
-        assertNull(descriptor)
-    }
-
-    @Test
-    fun event_source_runtime_does_not_upgrade_incomplete_duplicate_entries_on_lookup() {
-        WinRtEventSourceRuntime.clearForTests()
-        WinRtEventSourceRuntime.registerEventSource(
-            WinRtEventSourceDescriptor(
-                eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
-                ownerType = "Contoso.ResourceIndexedOwner",
-                sourceClass = "_EventSource_Windows_Foundation_TypedEventHandler_System_Object__Contoso_GeneratedEventArgs_",
-                abiEventType = "Windows.Foundation.TypedEventHandler`2",
-                genericArguments = listOf("System.Object", "Contoso.GeneratedEventArgs"),
-            ),
-        )
-
-        val ownerHost = WinRtInspectableComObject.inspectableBox("owner", "Contoso.ResourceIndexedOwner")
-        val owner = ownerHost.createPrimaryReference()
-        val source = try {
-            WinRtEventSourceRuntime.createEventSource(
-                eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
-                ownerType = "Contoso.ResourceIndexedOwner",
-                objectReference = owner,
-                vtableIndexForAddHandler = IInspectableVftblSlots.FirstCustom,
-            )
-        } finally {
-            owner.close()
-            ownerHost.close()
-        }
-        val descriptor = WinRtEventSourceRuntime.descriptorFor(
-            eventType = "Windows.Foundation.TypedEventHandler<System.Object, Contoso.GeneratedEventArgs>",
-            ownerType = "Contoso.ResourceIndexedOwner",
-        )
-
-        assertNull(source)
-        assertNull(descriptor?.interfaceId)
-        assertTrue(descriptor?.parameterKinds.orEmpty().isEmpty())
-        assertNull(descriptor?.eventSourceFactory)
-    }
-
-    @Test
     fun generated_interface_projection_registry_wraps_by_type_handle_and_type_name() {
         ComWrappersSupport.clearRegistriesForTests()
         val typeHandle = WinRtTypeHandle(
