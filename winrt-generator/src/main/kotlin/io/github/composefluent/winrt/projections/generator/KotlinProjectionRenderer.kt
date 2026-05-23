@@ -38,6 +38,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1126,9 +1127,8 @@ class KotlinProjectionRenderer(
             "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
-            "Any",
-            "System.Object" -> KotlinProjectionAbiValueKind.Object
             else -> when {
+                isWinRtObjectTypeName(rawTypeName) -> KotlinProjectionAbiValueKind.Object
                 normalizedType.kind == WinRtTypeRefKind.GenericTypeParameter ||
                     normalizedType.kind == WinRtTypeRefKind.MethodTypeParameter -> KotlinProjectionAbiValueKind.GenericParameter
                 normalizedType.kind == WinRtTypeRefKind.Array -> KotlinProjectionAbiValueKind.Array
@@ -2929,8 +2929,11 @@ class KotlinProjectionRenderer(
         currentNamespace: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
         visiting: Set<String>,
-    ): String? =
-        when (typeName) {
+    ): String? {
+        if (isWinRtObjectTypeName(typeName)) {
+            return "cinterface(IInspectable)"
+        }
+        return when (typeName) {
             "Boolean" -> "b1"
             "Byte",
             "Int8",
@@ -2956,8 +2959,6 @@ class KotlinProjectionRenderer(
             "Guid",
             "System.Guid" -> "g16"
             "String" -> "string"
-            "Any",
-            "System.Object",
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> "cinterface(IInspectable)"
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
@@ -2965,6 +2966,7 @@ class KotlinProjectionRenderer(
             else -> nativeStructGuidSignature(typeName, currentNamespace, typesByQualifiedName, visiting)
                 ?: nativeStructReferenceFieldGuidSignature(typeName, currentNamespace, typesByQualifiedName)
         }
+    }
 
     internal fun nativeStructFieldSpec(
         field: WinRtFieldDefinition,
@@ -3017,10 +3019,11 @@ class KotlinProjectionRenderer(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): NativeStructReferenceFieldKind? {
         val rawTypeName = typeName.substringBefore('<').removeSuffix("?")
+        if (isWinRtObjectTypeName(rawTypeName)) {
+            return NativeStructReferenceFieldKind.InspectableReference
+        }
         return when (rawTypeName) {
             "String" -> NativeStructReferenceFieldKind.String
-            "Any",
-            "System.Object",
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> NativeStructReferenceFieldKind.InspectableReference
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,

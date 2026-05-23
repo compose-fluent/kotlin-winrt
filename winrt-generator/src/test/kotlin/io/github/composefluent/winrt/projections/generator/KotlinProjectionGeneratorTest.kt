@@ -2781,6 +2781,11 @@ class KotlinProjectionGeneratorTest {
                                     returnTypeName = "System.Object",
                                     parameters = listOf(WinRtParameterDefinition("input", "System.Object")),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "EchoObjectAlias",
+                                    returnTypeName = "Object",
+                                    parameters = listOf(WinRtParameterDefinition("input", "Object")),
+                                ),
                             ),
                         ),
                     ),
@@ -2791,8 +2796,10 @@ class KotlinProjectionGeneratorTest {
         val contents = KotlinProjectionGenerator().generate(model).single().contents
 
         assertTrue(contents, contents.contains("fun getObject(input: Any?): Any?"))
+        assertTrue(contents, contents.contains("fun echoObjectAlias(input: Any?): Any?"))
         assertTrue(contents, contents.contains("winRtObjectMarshaler(input).use"))
         assertFalse(contents, contents.contains("fun getObject(input: IInspectableReference): IInspectableReference"))
+        assertFalse(contents, contents.contains("fun echoObjectAlias(input: IInspectableReference): IInspectableReference"))
     }
 
     @Test
