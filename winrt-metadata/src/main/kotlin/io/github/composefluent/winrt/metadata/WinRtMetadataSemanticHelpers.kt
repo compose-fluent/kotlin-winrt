@@ -1272,7 +1272,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     }
 
     fun customQueryInterfaceDescriptor(type: WinRtTypeDefinition): WinRtCustomQueryInterfaceDescriptor {
-        val hasBaseClass = type.baseTypeName?.let { it != "System.Object" && it != "Any" } ?: false
+        val hasBaseClass = type.baseTypeName?.let { !isWinRtObjectTypeName(it) } ?: false
         val overridableInterfaces = type.implementedInterfaces
             .filter(WinRtInterfaceImplementationDefinition::isOverridable)
             .map { implemented -> resolveTypeReference(implemented.interfaceType, type.namespace, typesByQualifiedName).displayName }
@@ -2328,7 +2328,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         "{${guid.toString().lowercase()}}"
 
     private fun fundamentalGuidSignatureFragment(typeName: String): String? =
-        when (typeName.substringBefore('<').removeSuffix("?")) {
+        if (isWinRtObjectTypeName(typeName)) {
+            "cinterface(IInspectable)"
+        } else when (typeName.substringBefore('<').removeSuffix("?")) {
             "Boolean", "Bool" -> "b1"
             "Char", "Char16" -> "c2"
             "Byte", "Int8", "SByte" -> "i1"
@@ -2343,7 +2345,6 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             "Double" -> "f8"
             "String" -> "string"
             "Guid", "System.Guid" -> "g16"
-            "Any", "Object", "System.Object" -> "cinterface(IInspectable)"
             else -> null
         }
 

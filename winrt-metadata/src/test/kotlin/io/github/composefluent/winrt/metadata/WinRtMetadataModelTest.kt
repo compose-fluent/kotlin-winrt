@@ -549,6 +549,11 @@ class WinRtMetadataModelTest {
             WinRtProjectionCategory.Fundamental,
             classifier.classify(WinRtTypeRef.fromDisplayName("Int"), "Sample.Foundation").projectionCategory,
         )
+        assertTrue(isWinRtObjectTypeName("Any"))
+        assertEquals(
+            WinRtProjectionCategory.Object,
+            classifier.classify(WinRtTypeRef.fromDisplayName("Object"), "Sample.Foundation").projectionCategory,
+        )
         assertEquals(
             WinRtProjectionCategory.Enum,
             classifier.classify(WinRtTypeRef.fromDisplayName("Priority"), "Sample.Foundation").projectionCategory,
@@ -1082,6 +1087,7 @@ class WinRtMetadataModelTest {
             resolver.resolve(WinRtTypeRef.named("System.String"), "Sample.Foundation"),
         )
         assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("System.Object"), "Sample.Foundation"))
+        assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("Object"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Guid, resolver.resolve(WinRtTypeRef.named("System.Guid"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Type, resolver.resolve(WinRtTypeRef.named("System.Type"), "Sample.Foundation"))
         assertEquals(

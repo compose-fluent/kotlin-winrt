@@ -284,7 +284,7 @@ class WinRtMetadataProjectionInventoryBuilder private constructor(
     ) {
         val baseType = type.baseType ?: return
         val baseName = baseType.typeName
-        if (baseName == "System.Object" || baseName == "Any") return
+        if (isWinRtObjectTypeName(baseName)) return
         mappings[type.qualifiedName] = WinRtBaseTypeMapping(type.qualifiedName, baseName)
     }
 

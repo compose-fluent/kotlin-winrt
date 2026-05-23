@@ -76,8 +76,10 @@ class WinRtTypeSemanticsResolver(private val model: WinRtMetadataModel) {
         genericParameters: List<WinRtGenericParameterDefinition>,
     ): WinRtTypeSemantics {
         fundamentalType(type.typeName)?.let { return WinRtTypeSemantics.Fundamental(it) }
+        if (isWinRtObjectTypeName(type.typeName)) {
+            return WinRtTypeSemantics.Object
+        }
         return when (type.typeName) {
-            "System.Object" -> WinRtTypeSemantics.Object
             "System.Guid" -> WinRtTypeSemantics.Guid
             "System.Type" -> WinRtTypeSemantics.Type
             else -> {

@@ -923,7 +923,7 @@ private class MetadataTables private constructor(
                 "Short", "UShort" -> ComputedAbiLayout(size = 2, alignment = 2, isBlittable = true)
                 "Int", "UInt", "Float" -> ComputedAbiLayout(size = 4, alignment = 4, isBlittable = true)
                 "Long", "ULong", "Double" -> ComputedAbiLayout(size = 8, alignment = 8, isBlittable = true)
-                "Boolean", "Char", "String", "Any", "System.Object" -> ComputedAbiLayout(isBlittable = false)
+                "Boolean", "Char", "String" -> ComputedAbiLayout(isBlittable = false)
                 else -> ComputedAbiLayout(isBlittable = false)
             }
 
@@ -1778,7 +1778,7 @@ private class MetadataTables private constructor(
     private fun isObjectEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature): Boolean =
         rawMethod.name == "Equals" &&
         signature.parameters.size == 1 &&
-            signature.parameters.single().typeName in setOf("Any", "System.Object") &&
+            isWinRtObjectTypeName(signature.parameters.single().typeName) &&
             signature.returnType.typeName == "Boolean"
 
     private fun isClassEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature, qualifiedTypeName: String): Boolean =

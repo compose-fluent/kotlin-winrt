@@ -32,7 +32,7 @@ private fun WinRtTypeRef.isNullableWinRtPropertyReference(
         return false
     }
     val rawTypeName = normalized.qualifiedName ?: normalized.typeName
-    if (rawTypeName == "Any" || rawTypeName == "System.Object") {
+    if (isWinRtObjectTypeName(rawTypeName)) {
         return true
     }
     val resolvedType = resolveTypeReference(normalized, currentNamespace, typesByQualifiedName).definitionType
