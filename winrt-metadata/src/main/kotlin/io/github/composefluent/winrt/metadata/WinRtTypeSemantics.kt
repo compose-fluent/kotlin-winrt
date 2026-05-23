@@ -37,6 +37,9 @@ fun winRtFundamentalTypeForName(typeName: String): WinRtFundamentalType? =
 fun isWinRtFundamentalTypeName(typeName: String): Boolean =
     winRtFundamentalTypeForName(typeName) != null
 
+fun isWinRtFundamentalTypeName(typeName: String, expectedType: WinRtFundamentalType): Boolean =
+    winRtFundamentalTypeForName(typeName) == expectedType
+
 fun WinRtFundamentalType.guidSignatureFragment(): String =
     when (this) {
         WinRtFundamentalType.Boolean -> "b1"
