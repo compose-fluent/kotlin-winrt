@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.gradle
 
+import io.github.composefluent.winrt.compiler.KotlinWinRtCommandLineProcessor
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
 import org.gradle.api.Action
 import org.gradle.api.Plugin
@@ -695,9 +696,7 @@ private fun kotlinWinRtCompilerPluginDependency(project: Project): Any {
 }
 
 private fun kotlinWinRtCompilerPluginClasspathJar(project: Project): Any? {
-    val compilerPluginClass = runCatching {
-        Class.forName("io.github.composefluent.winrt.compiler.KotlinWinRtCommandLineProcessor")
-    }.getOrNull() ?: return null
+    val compilerPluginClass = KotlinWinRtCommandLineProcessor::class.java
     val location = compilerPluginClass.protectionDomain?.codeSource?.location ?: return null
     return runCatching {
         project.files(File(location.toURI()))
