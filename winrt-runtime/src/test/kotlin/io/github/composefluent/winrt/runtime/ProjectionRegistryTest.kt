@@ -51,6 +51,31 @@ class ProjectionRegistryTest {
     }
 
     @Test
+    fun helper_and_default_interface_registration_do_not_synthesize_kotlin_type_names() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        assertTrue(
+            Projections.registerCustomHelperTypeMapping(
+                publicType = PlainManagedType::class,
+                helperType = SampleMappedTypeHelper::class,
+            ),
+        )
+        assertTrue(
+            Projections.registerDefaultInterfaceType(
+                runtimeClass = PlainManagedType::class,
+                defaultInterface = SampleDefaultInterface::class,
+            ),
+        )
+
+        assertEquals(SampleMappedTypeHelper::class, Projections.findCustomHelperTypeMapping(PlainManagedType::class))
+        assertEquals(SampleDefaultInterface::class, Projections.tryGetDefaultInterfaceTypeForRuntimeClassType(PlainManagedType::class))
+        assertNull(WinRtTypeRegistry.findByClass(PlainManagedType::class))
+        assertNull(WinRtTypeRegistry.findByName(PlainManagedType::class.qualifiedName ?: ""))
+        assertNull(TypeNameSupport.findKClassByNameCached(PlainManagedType::class.qualifiedName ?: ""))
+        assertFalse(Projections.isTypeWindowsRuntimeType(PlainManagedType::class))
+    }
+
+    @Test
     fun type_name_support_resolves_registered_projection_types_and_base_type_fallbacks() {
         ComWrappersSupport.clearRegistriesForTests()
         registerTestTypeDescriptors()
