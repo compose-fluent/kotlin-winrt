@@ -362,6 +362,7 @@ class KotlinWinRtIrGenerationExtension(
         private val winRtObjectMarshallerFromAbi: IrSimpleFunctionSymbol,
         private val iUnknownReferenceConstructor: IrConstructorSymbol,
         private val comObjectReferenceAsInspectable: IrSimpleFunctionSymbol,
+        private val comObjectReferenceClose: IrSimpleFunctionSymbol,
         private val function1Invoke: IrSimpleFunctionSymbol,
         private val kotlinError: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
@@ -576,6 +577,7 @@ class KotlinWinRtIrGenerationExtension(
                                 slot = slot,
                                 argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
                                 values = abiValues + builder.irGet(resultOut),
+                                abiShape = UnitCallAbiShape.appendToken(shape, "Object"),
                             )
                             val resultPointer = irTemporary(
                                 value = builder.irCall(platformAbiReadPointer).apply {
@@ -597,6 +599,7 @@ class KotlinWinRtIrGenerationExtension(
                                 },
                                 elsePart = wrapProjectedObjectResult(
                                     builder = builder,
+                                    pluginContext = pluginContext,
                                     callType = call.type,
                                     resultPointer = builder.irGet(resultPointer),
                                     wrap = wrap,
@@ -749,6 +752,7 @@ class KotlinWinRtIrGenerationExtension(
                                 slot = slot,
                                 argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
                                 values = abiValues + builder.irGet(resultOut),
+                                abiShape = UnitCallAbiShape.appendToken(shape, "Object"),
                             )
                             val resultPointer = irTemporary(
                                 value = builder.irCall(platformAbiReadPointer).apply {
@@ -880,6 +884,7 @@ class KotlinWinRtIrGenerationExtension(
                                     },
                                     elsePart = wrapProjectedObjectResult(
                                         builder = builder,
+                                        pluginContext = pluginContext,
                                         callType = call.type,
                                         resultPointer = builder.irGet(resultPointer),
                                         wrap = wrap,
@@ -1068,6 +1073,7 @@ class KotlinWinRtIrGenerationExtension(
                             elsePart = builder.irBlock(resultType = call.type) {
                                 +wrapProjectedObjectResult(
                                     builder = builder,
+                                    pluginContext = pluginContext,
                                     callType = call.type,
                                     resultPointer = builder.irGet(resultPointer),
                                     wrap = wrap,
@@ -1088,6 +1094,7 @@ class KotlinWinRtIrGenerationExtension(
 
         private fun wrapProjectedObjectResult(
             builder: DeclarationIrBuilder,
+            pluginContext: IrPluginContext,
             callType: org.jetbrains.kotlin.ir.types.IrType,
             resultPointer: IrExpression,
             wrap: IrExpression,
@@ -1106,15 +1113,35 @@ class KotlinWinRtIrGenerationExtension(
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 +builder.irAs(
-                    builder.irCall(function1Invoke).apply {
-                        arguments[0] = wrap
-                        arguments[1] = when (kind) {
-                            ProjectedObjectGetterKind.RuntimeClass ->
-                                builder.irCall(comObjectReferenceAsInspectable).apply {
+                    when (kind) {
+                        ProjectedObjectGetterKind.RuntimeClass -> {
+                            val resultInspectable = irTemporary(
+                                value = builder.irCall(comObjectReferenceAsInspectable).apply {
                                     arguments[0] = builder.irGet(resultReference)
-                                }
-                            ProjectedObjectGetterKind.Interface -> builder.irGet(resultReference)
+                                },
+                                nameHint = "resultInspectable",
+                                isMutable = false,
+                                origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
+                            )
+                            builder.irTry(
+                                type = callType,
+                                tryResult = builder.irCall(function1Invoke).apply {
+                                    arguments[0] = wrap
+                                    arguments[1] = builder.irGet(resultInspectable)
+                                },
+                                catches = emptyList(),
+                                finallyExpression = builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
+                                    +builder.irCall(comObjectReferenceClose).apply {
+                                        arguments[0] = builder.irGet(resultReference)
+                                    }
+                                },
+                            )
                         }
+                        ProjectedObjectGetterKind.Interface ->
+                            builder.irCall(function1Invoke).apply {
+                                arguments[0] = wrap
+                                arguments[1] = builder.irGet(resultReference)
+                            }
                     },
                     callType,
                 )
@@ -1556,6 +1583,7 @@ class KotlinWinRtIrGenerationExtension(
                                     slot = slot,
                                     argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
                                     values = abiValues + builder.irGet(resultOut),
+                                    abiShape = UnitCallAbiShape.appendToken(shape, "Object"),
                                 )
                                 +builder.irAs(
                                     builder.irCall(nativeStructAdapterRead).apply {
@@ -1807,6 +1835,7 @@ class KotlinWinRtIrGenerationExtension(
                     slot = slot,
                     values = values,
                     argumentKinds = argumentKinds,
+                    abiShape = shape,
                 )
             }
         }
@@ -1862,7 +1891,7 @@ class KotlinWinRtIrGenerationExtension(
             }
             val shape = call.arguments.getOrNull(abiShapeIndex)?.stringConstantValue() ?: return null
             val argumentKinds = UnitCallAbiShape.parse(shape) ?: return null
-            if (UnitCallAbiArgumentKind.Struct in argumentKinds || !symbols.canLower(argumentKinds)) {
+            if (argumentKinds.any { it == UnitCallAbiArgumentKind.Struct } || !symbols.canLower(argumentKinds)) {
                 return null
             }
             val values = call.varargValues(argumentKinds.size, varargIndex = varargIndex) ?: return null
@@ -1930,6 +1959,7 @@ class KotlinWinRtIrGenerationExtension(
                             slot = slot,
                             argumentKinds = argumentKinds + UnitCallAbiArgumentKind.Object,
                             values = abiValues + builder.irGet(resultOut),
+                            abiShape = UnitCallAbiShape.appendToken(shape, "Object"),
                         )
                         val readResult = readGetterResult(builder, pluginContext, returnKind, builder.irGet(resultOut))
                         if (stringAbis.isEmpty()) {
@@ -1972,6 +2002,7 @@ class KotlinWinRtIrGenerationExtension(
             slot: IrExpression,
             values: List<IrExpression>,
             argumentKinds: List<UnitCallAbiArgumentKind>,
+            abiShape: String? = null,
         ): IrExpression? {
             val scope = builderScope ?: return null
             if (!symbols.canLower(argumentKinds)) {
@@ -1979,7 +2010,7 @@ class KotlinWinRtIrGenerationExtension(
             }
             val builder = DeclarationIrBuilder(pluginContext, scope, call.startOffset, call.endOffset)
             return builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
-                val hasStructArguments = UnitCallAbiArgumentKind.Struct in argumentKinds
+                val hasStructArguments = argumentKinds.any { it == UnitCallAbiArgumentKind.Struct }
                 val nativeScope = if (hasStructArguments) {
                     irTemporary(
                         value = builder.irCall(platformAbiConfinedScope).apply {
@@ -2069,6 +2100,7 @@ class KotlinWinRtIrGenerationExtension(
                             slot = slot,
                             argumentKinds = argumentKinds,
                             values = abiValues,
+                            abiShape = abiShape,
                         )
                         if (stringAbis.isEmpty() && structAbis.isEmpty()) {
                             +callBlock
@@ -2213,6 +2245,7 @@ class KotlinWinRtIrGenerationExtension(
             slot: IrExpression,
             argumentKinds: List<UnitCallAbiArgumentKind>,
             values: List<IrExpression>,
+            abiShape: String? = null,
         ): IrExpression =
             builder.irBlock(resultType = pluginContext.irBuiltIns.unitType) {
                 val hResultValue = irTemporary(
@@ -2224,6 +2257,7 @@ class KotlinWinRtIrGenerationExtension(
                         slot = slot,
                         argumentKinds = argumentKinds,
                         values = values,
+                        abiShape = abiShape,
                     ),
                     nameHint = "hr",
                     isMutable = false,
@@ -2246,6 +2280,7 @@ class KotlinWinRtIrGenerationExtension(
             slot: IrExpression,
             argumentKinds: List<UnitCallAbiArgumentKind>,
             values: List<IrExpression>,
+            abiShape: String? = null,
         ): IrExpression =
             builder.irBlock(resultType = pluginContext.irBuiltIns.intType) {
                 val instanceSegment = irTemporary(
@@ -2261,7 +2296,11 @@ class KotlinWinRtIrGenerationExtension(
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
                 )
                 val handle = irTemporary(
-                    value = symbols.downcallHandle(builder, argumentKinds),
+                    value = if (abiShape == null) {
+                        symbols.downcallHandle(builder, argumentKinds)
+                    } else {
+                        symbols.downcallHandle(builder, abiShape)
+                    },
                     nameHint = "handle",
                     isMutable = false,
                     origin = IrDeclarationOrigin.IR_TEMPORARY_VARIABLE,
@@ -2353,7 +2392,7 @@ class KotlinWinRtIrGenerationExtension(
                         "String" -> UnitCallAbiArgumentKind.String
                         "Struct" -> UnitCallAbiArgumentKind.Struct
                         "Object" -> UnitCallAbiArgumentKind.Object
-                        else -> return null
+                        else -> if (STRUCT_LAYOUT_TOKEN.matches(token)) UnitCallAbiArgumentKind.Struct else return null
                     }
                 }
             }
@@ -2365,6 +2404,11 @@ class KotlinWinRtIrGenerationExtension(
                         else -> 1
                     }
                 }
+
+            fun appendToken(shape: String, token: String): String =
+                if (shape.isBlank()) token else "$shape,$token"
+
+            private val STRUCT_LAYOUT_TOKEN = Regex("""Struct\d+_\d+""")
         }
 
         private fun projectedObjectAbi(
@@ -2456,6 +2500,7 @@ class KotlinWinRtIrGenerationExtension(
                 val iUnknownReferenceConstructor =
                     iUnknownReference.constructorWithRegularParameterCount(5) ?: return null
                 val comObjectReferenceAsInspectable = comObjectReference.functionNamed("asInspectable") ?: return null
+                val comObjectReferenceClose = comObjectReference.functionNamed("close") ?: return null
                 val function1 = pluginContext.referenceClass(KOTLIN_FUNCTION1_CLASS_ID)
                     ?: return null
                 val function1Invoke = function1.functionNamed("invoke") ?: return null
@@ -2521,6 +2566,7 @@ class KotlinWinRtIrGenerationExtension(
                     winRtObjectMarshallerFromAbi = winRtObjectMarshallerFromAbi,
                     iUnknownReferenceConstructor = iUnknownReferenceConstructor,
                     comObjectReferenceAsInspectable = comObjectReferenceAsInspectable,
+                    comObjectReferenceClose = comObjectReferenceClose,
                     function1Invoke = function1Invoke,
                     kotlinError = kotlinError,
                     hResultConstructor = hResultConstructor,
@@ -2599,9 +2645,15 @@ class KotlinWinRtIrGenerationExtension(
                 builder: DeclarationIrBuilder,
                 argumentKinds: List<UnitCallAbiArgumentKind>,
             ): IrExpression =
+                downcallHandle(builder, argumentKinds.jvmFfmAbiShape())
+
+            fun downcallHandle(
+                builder: DeclarationIrBuilder,
+                abiShape: String,
+            ): IrExpression =
                 builder.irCall(winRtJvmFfmDowncallHandlesHResult).apply {
                     arguments[0] = builder.irGetObject(winRtJvmFfmDowncallHandles)
-                    arguments[1] = builder.irString(argumentKinds.jvmFfmAbiShape())
+                    arguments[1] = builder.irString(abiShape)
                 }
 
             fun canLower(argumentKinds: List<UnitCallAbiArgumentKind>): Boolean =

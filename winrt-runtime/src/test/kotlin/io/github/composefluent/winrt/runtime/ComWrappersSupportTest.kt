@@ -102,6 +102,46 @@ class ComWrappersSupportTest {
     }
 
     @Test
+    fun detach_ccw_for_object_returns_owned_abi_pointer() {
+        val managed = TestManagedType("detached")
+
+        val pointer = ComWrappersSupport.detachCCWForObject(managed, IID.IInspectable)
+        assertFalse(PlatformAbi.isNull(pointer))
+
+        IUnknownReference(pointer.asRawComPtr(), IID.IInspectable).close()
+    }
+
+    @Test
+    fun detach_ccw_for_object_returns_null_pointer_for_null_value() {
+        assertTrue(PlatformAbi.isNull(ComWrappersSupport.detachCCWForObject(null, IID.IInspectable)))
+    }
+
+    @Test
+    fun projection_marshaler_creates_ccw_for_non_unwrappable_winrt_object() {
+        ComWrappersSupport.clearRegistriesForTests()
+        val interfaceId = Guid("48484848-4848-4848-4848-484848484848")
+        ComWrappersSupport.registerAuthoringTypeDetailsFactory(NonUnwrappableProjectionWrapper::class) {
+            WinRtCcwDefinition(
+                interfaceDefinitions = listOf(
+                    WinRtInspectableInterfaceDefinition(interfaceId, methods = emptyList()),
+                ),
+                defaultInterfaceId = interfaceId,
+                runtimeClassName = "test.AuthoredProjectionWrapper",
+            )
+        }
+        val nativeHost = WinRtInspectableComObject.inspectableBox(
+            value = "native",
+            runtimeClassName = "test.Native",
+        )
+        val value = NonUnwrappableProjectionWrapper(nativeHost.detachReference(IID.IInspectable))
+
+        winRtProjectionMarshaler(value, "test.AuthoredProjectionWrapper", interfaceId).use { marshaler ->
+            assertFalse(PlatformAbi.isNull(marshaler.abi))
+        }
+        value.nativeObject.close()
+    }
+
+    @Test
     fun aggregated_reference_query_interface_releases_temporary_qi_reference_and_wraps_borrowed_pointer() {
         val defaultInterfaceId = Guid("26262626-2626-2626-2626-262626262626")
         val secondaryInterfaceId = Guid("27272727-2727-2727-2727-272727272727")
@@ -226,7 +266,7 @@ class ComWrappersSupportTest {
         ComWrappersSupport.clearRegistriesForTests()
         val overrideInterfaceId = Guid("31313131-3131-3131-3131-313131313131")
         val baseDefaultInterfaceId = Guid("32323232-3232-3232-3232-323232323232")
-        ComWrappersSupport.registerCcwFactory(TestManagedType::class) {
+        ComWrappersSupport.registerCcwFactory(TestComposableManagedType::class) {
             WinRtCcwDefinition(
                 interfaceDefinitions = listOf(
                     WinRtInspectableInterfaceDefinition(
@@ -248,7 +288,7 @@ class ComWrappersSupportTest {
             defaultInterfaceId = baseDefaultInterfaceId,
             runtimeClassName = "test.ComposableBase",
         )
-        val managed = TestManagedType("derived")
+        val managed = TestComposableManagedType("derived")
 
         ComWrappersSupport.createComposableCCWForObject(
             value = managed,
@@ -261,9 +301,12 @@ class ComWrappersSupportTest {
             PlatformAbi.writePointer(instanceOut, innerHost.detachReference(baseDefaultInterfaceId))
             KnownHResults.S_OK.value
         }.use { composed ->
-            assertEquals(baseDefaultInterfaceId, composed.outer.interfaceId)
-            assertTrue(composed.outer.sameIdentity(composed.inner ?: error("Expected aggregated inner reference.")))
-            assertSame(managed, ComWrappersSupport.findObject(composed.outer.pointer, TestManagedType::class))
+            managed.composableReference = composed
+            assertEquals(overrideInterfaceId, composed.outer.interfaceId)
+            assertSame(managed, ComWrappersSupport.findObject(composed.outer.pointer, TestComposableManagedType::class))
+            ComWrappersSupport.createCCWForObject(managed, baseDefaultInterfaceId).use { marshaled ->
+                assertTrue(marshaled.sameIdentity(composed.inner ?: error("Expected aggregated inner reference.")))
+            }
         }
     }
 
@@ -338,10 +381,24 @@ class ComWrappersSupportTest {
 
     private data class TestManagedType(val name: String)
 
+    private class TestComposableManagedType(val name: String) : WinRtComposableObject {
+        var composableReference: WinRtComposableObjectReference? = null
+
+        override val winRtComposableObjectReference: WinRtComposableObjectReference?
+            get() = composableReference
+    }
+
     private class ProjectedInspectableObject(
         pointer: NativePointer,
     ) : IWinRTObject {
         override val nativeObject: ComObjectReference = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+    }
+
+    private class NonUnwrappableProjectionWrapper(
+        pointer: NativePointer,
+    ) : IWinRTObject {
+        override val nativeObject: ComObjectReference = IInspectableReference(pointer.asRawComPtr(), IID.IInspectable)
+        override val hasUnwrappableNativeObject: Boolean = false
     }
 
     private class TestRuntimeClassWrapper(

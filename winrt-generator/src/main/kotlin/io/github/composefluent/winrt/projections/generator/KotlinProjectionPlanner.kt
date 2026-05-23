@@ -1209,6 +1209,8 @@ class KotlinProjectionPlanner(
             typeName = if (isNullableDisplayName) trimmedTypeName.withNullableSuffix() else trimmedTypeName,
             resolvedTypeName = if (isNullableDisplayName) resolvedTypeName.withNullableSuffix() else resolvedTypeName,
             sourceTypeKind = resolvedType?.kind,
+            abiSize = resolvedType?.abiSize,
+            abiAlignment = resolvedType?.abiAlignment,
             interfaceId = interfaceId,
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             delegateInvokeShape = delegateInvokeShape,

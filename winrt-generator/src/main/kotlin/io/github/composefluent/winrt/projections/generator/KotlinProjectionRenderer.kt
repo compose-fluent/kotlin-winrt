@@ -84,6 +84,7 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRtEvent
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ANY
+import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -1178,6 +1179,8 @@ class KotlinProjectionRenderer(
             typeName = trimmed,
             resolvedTypeName = rawTypeName,
             sourceTypeKind = resolvedType?.kind,
+            abiSize = resolvedType?.abiSize,
+            abiAlignment = resolvedType?.abiAlignment,
             interfaceId = interfaceId,
             enumUnderlyingType = resolvedType?.enumUnderlyingType,
             delegateInvokeShape = delegateInvokeShape,
@@ -1226,6 +1229,9 @@ class KotlinProjectionRenderer(
             .addParameter("_inner", IINSPECTABLE_REFERENCE_CLASS_NAME)
             .addParameter("__winrtWrapper", UNIT)
         val supportsDerivedComposableConstruction = plan.supportsDerivedComposableConstruction()
+        if (supportsDerivedComposableConstruction) {
+            builder.addSuperinterface(WINRT_COMPOSABLE_OBJECT_CLASS_NAME)
+        }
         plan.runtimeClassBaseTypeName?.let { baseTypeName ->
             builder.superclass(resolveTypeName(baseTypeName))
             if (!supportsDerivedComposableConstruction) {
@@ -1246,6 +1252,16 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .mutable(true)
                     .initializer("null")
+                    .build(),
+            )
+            builder.addProperty(
+                PropertySpec.builder("winRtComposableObjectReference", WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME.copy(nullable = true))
+                    .addModifiers(KModifier.OVERRIDE)
+                    .getter(
+                        FunSpec.getterBuilder()
+                            .addStatement("return _composableReference")
+                            .build(),
+                    )
                     .build(),
             )
             builder.addProperty(
@@ -1300,6 +1316,22 @@ class KotlinProjectionRenderer(
                 .getter(
                     FunSpec.getterBuilder()
                         .addCode("return _inner\n")
+                        .build(),
+                )
+                .build(),
+        )
+        builder.addProperty(
+            PropertySpec.builder("hasUnwrappableNativeObject", BOOLEAN)
+                .addModifiers(KModifier.OVERRIDE)
+                .getter(
+                    FunSpec.getterBuilder()
+                        .apply {
+                            if (KotlinProjectionModifier.Sealed in plan.modifiers) {
+                                addStatement("return true")
+                            } else {
+                                addStatement("return this::class == %T::class", resolveTypeName(plan.type.qualifiedName))
+                            }
+                        }
                         .build(),
                 )
                 .build(),

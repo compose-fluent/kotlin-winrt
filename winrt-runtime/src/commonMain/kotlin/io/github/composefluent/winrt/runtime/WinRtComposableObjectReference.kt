@@ -30,3 +30,7 @@ class WinRtComposableObjectReference internal constructor(
         }
     }
 }
+
+interface WinRtComposableObject {
+    val winRtComposableObjectReference: WinRtComposableObjectReference?
+}

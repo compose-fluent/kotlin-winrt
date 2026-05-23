@@ -39,6 +39,32 @@ object WinRtJvmFfmDowncallHandles {
             "String",
             "Struct",
             "Object" -> ValueLayout.ADDRESS
+            else -> structLayoutForToken(token)
+                ?: scalarLayoutForToken(token)
+                ?: error("Unsupported WinRT JVM FFM ABI shape token: $token")
+        }
+
+    private fun structLayoutForToken(token: String): MemoryLayout? {
+        val match = STRUCT_LAYOUT_TOKEN.matchEntire(token) ?: return null
+        val size = match.groupValues[1].toLong()
+        val alignment = match.groupValues[2].toLong()
+        if (size <= 0 || alignment <= 0) {
+            return null
+        }
+        val chunk = when {
+            alignment >= Long.SIZE_BYTES.toLong() && size % Long.SIZE_BYTES == 0L -> ValueLayout.JAVA_LONG
+            alignment >= Int.SIZE_BYTES.toLong() && size % Int.SIZE_BYTES == 0L -> ValueLayout.JAVA_INT
+            alignment >= Short.SIZE_BYTES.toLong() && size % Short.SIZE_BYTES == 0L -> ValueLayout.JAVA_SHORT
+            alignment == Byte.SIZE_BYTES.toLong() -> ValueLayout.JAVA_BYTE
+            else -> return null
+        }
+        return MemoryLayout.structLayout(*Array((size / chunk.byteSize()).toInt()) { chunk })
+    }
+
+    private val STRUCT_LAYOUT_TOKEN = Regex("""Struct(\d+)_(\d+)""")
+
+    private fun scalarLayoutForToken(token: String): MemoryLayout? =
+        when (token) {
             "Byte",
             "Boolean" -> ValueLayout.JAVA_BYTE
             "Int32",
@@ -47,6 +73,6 @@ object WinRtJvmFfmDowncallHandles {
             "UInt64" -> ValueLayout.JAVA_LONG
             "Float" -> ValueLayout.JAVA_FLOAT
             "Double" -> ValueLayout.JAVA_DOUBLE
-            else -> error("Unsupported WinRT JVM FFM ABI shape token: $token")
+            else -> null
         }
 }

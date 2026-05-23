@@ -444,28 +444,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                         projectionClassName(method.returnTypeName),
                         outExpression,
                     )
-                    else -> CodeBlock.builder()
-                        .addStatement(
-                            "val __returnReference = %T.createCCWForObject(%L, %T.IInspectable)",
-                            comWrappersSupportType,
-                            valueExpression,
-                            iidType,
-                        )
-                        .add("try {\n")
-                        .indent()
-                        .addStatement(
-                            "%T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer()))",
-                            platformAbiType,
-                            outExpression,
-                            platformAbiType,
-                        )
-                        .unindent()
-                        .add("} finally {\n")
-                        .indent()
-                        .addStatement("__returnReference.close()")
-                        .unindent()
-                        .add("}")
-                        .build()
+                    else -> renderObjectReturnProjection(returnType, outExpression, valueExpression, typesByName)
                 }
             }
         }
@@ -519,6 +498,33 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 }
             }
         }
+    }
+
+    private fun renderObjectReturnProjection(
+        returnType: WinRtTypeDefinition?,
+        outExpression: String,
+        valueExpression: String,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): CodeBlock {
+        val interfaceId = when (returnType?.kind) {
+            WinRtTypeKind.RuntimeClass -> returnType.defaultInterfaceName
+                ?.let { defaultInterfaceName ->
+                    typesByName[defaultInterfaceName]
+                        ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                }
+                ?.iid
+                ?.let { CodeBlock.of("%T(%S)", guidType, it.toString().lowercase()) }
+            WinRtTypeKind.Interface -> returnType.iid?.let { CodeBlock.of("%T(%S)", guidType, it.toString().lowercase()) }
+            else -> null
+        } ?: CodeBlock.of("%T.IInspectable", iidType)
+        return CodeBlock.of(
+            "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
+            platformAbiType,
+            outExpression,
+            comWrappersSupportType,
+            valueExpression,
+            interfaceId,
+        )
     }
 
     private fun renderEnumReturnProjection(

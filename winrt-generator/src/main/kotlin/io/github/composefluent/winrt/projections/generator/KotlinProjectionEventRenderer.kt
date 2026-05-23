@@ -1025,8 +1025,6 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                 .addParameters(userParameters.map { parameter -> ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build() })
             if (plan.supportsDerivedComposableConstruction()) {
                 val projectedClassName = ClassName(plan.packageName, plan.type.name)
-                val overridableInterface = plan.type.implementedInterfaces.firstOrNull { it.isOverridable }?.interfaceName
-                val overridableInterfaceType = overridableInterface?.let(::projectionClassName)
                 run {
                     val arguments = userParameters.joinToString(", ") { parameter -> parameter.name }
                     constructor.callThisConstructor(CodeBlock.of("%T.Instance", DERIVED_COMPOSED_CLASS_NAME))
@@ -1041,7 +1039,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
                     constructor.addStatement(
                         "    _composableReference = ComposableFactory.%LForSubclass(this, %L%L)",
                         factoryCreateFunctionName(method),
-                        overridableInterfaceType?.let { CodeBlock.of("%T.Metadata.IID", it) } ?: CodeBlock.of("Metadata.DEFAULT_INTERFACE_IID"),
+                        CodeBlock.of("Metadata.DEFAULT_INTERFACE_IID"),
                         if (arguments.isBlank()) "" else ", $arguments",
                     )
                     constructor.addStatement("    _innerStorage = requireNotNull(_composableReference).instance")
@@ -1567,7 +1565,18 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
             FunSpec.builder("wrap")
                 .addParameter("instance", IINSPECTABLE_REFERENCE_CLASS_NAME)
                 .returns(projectedClassName)
-                .addCode("return %T(instance, kotlin.Unit)\n", projectedClassName)
+                .addCode(
+                    "val __managed = %T.findObject(%T.fromRawComPtr(instance.pointer), %T::class)\n" +
+                        "if (__managed != null) {\n" +
+                        "  instance.close()\n" +
+                        "  return __managed\n" +
+                        "}\n" +
+                        "return %T(instance, kotlin.Unit)\n",
+                    COM_WRAPPERS_SUPPORT_CLASS_NAME,
+                    PLATFORM_ABI_CLASS_NAME,
+                    projectedClassName,
+                    projectedClassName,
+                )
                 .build(),
         )
         builder.addFunction(
