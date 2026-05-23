@@ -6689,6 +6689,7 @@ class KotlinProjectionGeneratorTest {
                             ),
                             properties = listOf(
                                 WinRtPropertyDefinition("SourceType", "System.Type"),
+                                WinRtPropertyDefinition("AliasType", "Type"),
                             ),
                         ),
                     ),
@@ -6704,6 +6705,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents.contains("val Category: String = \"\""))
         assertTrue(file.contents.contains("val Enabled: Boolean = false"))
         assertTrue(file.contents.contains("val SourceType: KClass<*> = Any::class"))
+        assertTrue(file.contents.contains("val AliasType: KClass<*> = Any::class"))
         assertTrue(file.contents.contains("attribute WinRT class shell"))
     }
 

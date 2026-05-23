@@ -82,23 +82,23 @@ class WinRtTypeSemanticsResolver(private val model: WinRtMetadataModel) {
         if (isWinRtGuidTypeName(type.typeName)) {
             return WinRtTypeSemantics.Guid
         }
-        return when (type.typeName) {
-            "System.Type" -> WinRtTypeSemantics.Type
-            else -> {
-                val definition = resolveDefinition(type, currentNamespace)
-                    ?: throw IllegalArgumentException("Could not resolve type semantics for '${type.typeName}'")
-                if (type.typeArguments.isEmpty()) {
-                    WinRtTypeSemantics.TypeDefinition(definition)
-                } else {
-                    WinRtTypeSemantics.GenericTypeInstance(
-                        genericType = definition,
-                        genericArguments = type.typeArguments.map { argument ->
-                            resolve(argument, currentNamespace, genericParameters)
-                        },
-                    )
-                }
+        val definition = resolveDefinition(type, currentNamespace)
+        if (definition != null) {
+            return if (type.typeArguments.isEmpty()) {
+                WinRtTypeSemantics.TypeDefinition(definition)
+            } else {
+                WinRtTypeSemantics.GenericTypeInstance(
+                    genericType = definition,
+                    genericArguments = type.typeArguments.map { argument ->
+                        resolve(argument, currentNamespace, genericParameters)
+                    },
+                )
             }
         }
+        if (isWinRtTypeTypeName(type.typeName)) {
+            return WinRtTypeSemantics.Type
+        }
+        throw IllegalArgumentException("Could not resolve type semantics for '${type.typeName}'")
     }
 
     private fun resolveDefinition(type: WinRtTypeRef, currentNamespace: String?): WinRtTypeDefinition? {
