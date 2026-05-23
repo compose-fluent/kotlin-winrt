@@ -6785,6 +6785,24 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun planner_and_renderer_classify_void_type_aliases_as_unit_abi() {
+        val planner = KotlinProjectionPlanner()
+        val renderer = KotlinProjectionRenderer()
+
+        listOf("Unit", "Void", "System.Void").forEach { voidTypeName ->
+            val plannedBinding = planner.classifyAbiTypeBinding(
+                typeName = voidTypeName,
+                currentNamespace = "Sample.Foundation",
+                typesByQualifiedName = emptyMap(),
+            )
+            val renderedBinding = renderer.renderAbiTypeBinding(voidTypeName)
+
+            assertEquals(KotlinProjectionAbiValueKind.Unit, plannedBinding.kind)
+            assertEquals(KotlinProjectionAbiValueKind.Unit, renderedBinding.kind)
+        }
+    }
+
+    @Test
     fun generator_classifies_activation_factory_delegate_parameters_from_projection_model() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -12735,7 +12753,7 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
                             methods = listOf(
-                                WinRtMethodDefinition(name = "Close", returnTypeName = "Unit", methodRowId = 6),
+                                WinRtMethodDefinition(name = "Close", returnTypeName = "System.Void", methodRowId = 6),
                             ),
                         ),
                     ),

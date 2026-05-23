@@ -549,6 +549,13 @@ class WinRtMetadataModelTest {
             WinRtProjectionCategory.Fundamental,
             classifier.classify(WinRtTypeRef.fromDisplayName("Int"), "Sample.Foundation").projectionCategory,
         )
+        assertTrue(isWinRtVoidTypeName("System.Void"))
+        listOf("Unit", "Void", "System.Void").forEach { voidTypeName ->
+            assertEquals(
+                WinRtProjectionCategory.Unit,
+                classifier.classify(WinRtTypeRef.fromDisplayName(voidTypeName), "Sample.Foundation").projectionCategory,
+            )
+        }
         assertTrue(isWinRtObjectTypeName("Any"))
         assertEquals(
             WinRtProjectionCategory.Object,
@@ -2404,6 +2411,10 @@ class WinRtMetadataModelTest {
         assertEquals("GetValue", marshaler.methodName)
         assertEquals(true, marshaler.requiresDispose)
         assertEquals(listOf("__return_value__", "`class`"), marshaler.marshalers.map { it.name })
+        listOf("Unit", "Void", "System.Void").forEach { voidTypeName ->
+            val voidMarshaler = helpers.abiMarshalerPlanDescriptor(WinRtMethodDefinition("Close", voidTypeName))
+            assertEquals(emptyList<String>(), voidMarshaler.marshalers.map { it.name })
+        }
 
         val factory = helpers.factorySurfaceDescriptor(widget)
         assertEquals("Sample.Foundation.IWidget", factory.defaultInterfaceName)

@@ -39,6 +39,7 @@ import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -1097,8 +1098,9 @@ class KotlinProjectionRenderer(
         }
         val mappedType = mappedTypeByAbiName(rawTypeName)
         val resolvedType = typesByQualifiedName[rawTypeName]
-        val kind = when (trimmed) {
-            "Unit" -> KotlinProjectionAbiValueKind.Unit
+        val kind = if (isWinRtVoidTypeName(rawTypeName)) {
+            KotlinProjectionAbiValueKind.Unit
+        } else when (trimmed) {
             "String" -> KotlinProjectionAbiValueKind.String
             "Boolean" -> KotlinProjectionAbiValueKind.Boolean
             "Byte",
@@ -1614,7 +1616,7 @@ class KotlinProjectionRenderer(
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
         val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
-        val returns = if (method.returnTypeName == "Void" || method.returnTypeName == "System.Void") {
+        val returns = if (isWinRtVoidTypeName(method.returnTypeName)) {
             UNIT
         } else {
             resolveTypeName(method.returnTypeName)

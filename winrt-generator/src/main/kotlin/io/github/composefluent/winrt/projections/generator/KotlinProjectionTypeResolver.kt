@@ -8,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
 import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
@@ -132,8 +133,11 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         return TypeVariableName(effectiveTypeName).withOuterNullability(nullable)
     }
 
+    if (isWinRtVoidTypeName(effectiveTypeName)) {
+        return UNIT
+    }
+
     return when (effectiveTypeName) {
-        "Unit" -> UNIT
         "Any",
         "System.Object" -> ANY.copy(nullable = true)
         "String" -> String::class.asClassName()
