@@ -334,6 +334,10 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     name = "GetRawChildrenCore",
                                     returnTypeName = "Windows.Foundation.Collections.IVector<Object>",
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetNamesCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<System.String>",
+                                ),
                             ),
                         ),
                     ),
@@ -353,6 +357,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtIterableProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.runtimeClass(AutomationPeer::class"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
+        assertTrue(generated.contains("WinRtReferenceValueAdapters.string"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
     }
 

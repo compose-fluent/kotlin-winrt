@@ -496,8 +496,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         if (isWinRtObjectTypeName(elementTypeName)) {
             return CodeBlock.of("%T.object_", winRtReferenceValueAdaptersType)
         }
+        if (isWinRtStringTypeName(elementTypeName)) {
+            return CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
+        }
         return when (elementTypeName) {
-            "String" -> CodeBlock.of("%T.string", winRtReferenceValueAdaptersType)
             else -> {
                 val elementDefinition = typesByName[elementTypeName] ?: return null
                 when (elementDefinition.kind) {
