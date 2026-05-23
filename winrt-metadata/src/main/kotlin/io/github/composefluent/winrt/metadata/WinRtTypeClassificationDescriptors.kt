@@ -141,6 +141,12 @@ class WinRtMetadataTypeClassifier private constructor(
 fun WinRtMetadataModel.typeClassifier(): WinRtMetadataTypeClassifier =
     WinRtMetadataTypeClassifier.create(this)
 
+internal fun isWinRtObjectTypeName(typeName: String): Boolean =
+    when (typeName.trim().substringBefore('<').removeSuffix("?")) {
+        "Any", "Object", "System.Object" -> true
+        else -> false
+    }
+
 internal fun WinRtProjectionCategory.toAbiCategory(): WinRtAbiTypeCategory =
     when (this) {
         WinRtProjectionCategory.Unit -> WinRtAbiTypeCategory.Unit
@@ -170,7 +176,7 @@ private fun projectionCategoryFor(
         rawTypeName == "Unit" -> WinRtProjectionCategory.Unit
         rawTypeName in FUNDAMENTAL_TYPE_NAMES -> WinRtProjectionCategory.Fundamental
         rawTypeName == "String" -> WinRtProjectionCategory.String
-        rawTypeName == "Any" || rawTypeName == "System.Object" -> WinRtProjectionCategory.Object
+        isWinRtObjectTypeName(rawTypeName) -> WinRtProjectionCategory.Object
         rawTypeName == "Guid" || rawTypeName == "System.Guid" -> WinRtProjectionCategory.Guid
         rawTypeName == "Type" || rawTypeName == "System.Type" -> WinRtProjectionCategory.Type
         rawTypeName == "System.Enum" -> WinRtProjectionCategory.Enum
