@@ -88,7 +88,6 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.STAR
@@ -546,7 +545,6 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val entryClass = ClassName(SUPPORT_PACKAGE, "GenericTypeInstantiationEntry")
-        val bindingClass = ClassName(SUPPORT_PACKAGE, "GenericTypeInstantiationRuntimeBinding")
         val fileSpec = supportFileSpec("WinRTGenericTypeInstantiations")
             .addType(
                 dataClass(
@@ -564,24 +562,10 @@ class KotlinProjectionSupportRenderer {
                     ),
                 ),
             )
-            .addType(genericTypeInstantiationRuntimeBindingType(entryClass))
             .addType(
                 TypeSpec.objectBuilder("WinRTGenericTypeInstantiations")
                     .addModifiers(KModifier.INTERNAL)
-                    .addProperty(
-                        PropertySpec.builder("INITIALIZED_CLASS_NAMES", MUTABLE_SET_CLASS_NAME.parameterizedBy(stringTypeName()))
-                            .addModifiers(KModifier.PRIVATE)
-                            .initializer("linkedSetOf()")
-                            .build(),
-                    )
-                    .addProperty(
-                        PropertySpec.builder("runtimeBinding", bindingClass)
-                            .addModifiers(KModifier.PRIVATE)
-                            .mutable()
-                            .initializer(defaultGenericTypeRuntimeBindingCode(bindingClass))
-                            .build(),
-                    )
-                    .addFunctions(genericTypeInstantiationFunctions(entryClass, bindingClass))
+                    .addFunctions(genericTypeInstantiationFunctions(entryClass))
                     .build(),
             )
             .build()
@@ -2623,122 +2607,8 @@ class KotlinProjectionSupportRenderer {
             .initializer(stringListCode(values))
             .build()
 
-    private fun genericTypeInstantiationRuntimeBindingType(entryClass: ClassName): TypeSpec {
-        val entryStringListFunction = Function2::class.asClassName().parameterizedBy(entryClass, stringListTypeName(), UNIT)
-        val entryFunction = Function1::class.asClassName().parameterizedBy(entryClass, UNIT)
-        val constructor = FunSpec.constructorBuilder()
-            .addParameter(
-                ParameterSpec.builder("initRcwHelpers", entryStringListFunction)
-                    .defaultValue("{ _, _ -> }")
-                    .build(),
-            )
-            .addParameter(
-                ParameterSpec.builder("initVtableFunctions", entryStringListFunction)
-                    .defaultValue("{ _, _ -> }")
-                    .build(),
-            )
-            .addParameter(
-                ParameterSpec.builder("initPropertyAccessors", entryStringListFunction)
-                    .defaultValue("{ _, _ -> }")
-                    .build(),
-            )
-            .addParameter(
-                ParameterSpec.builder("initDelegateCcwInvoke", entryFunction)
-                    .defaultValue("{}")
-                    .build(),
-            )
-            .addParameter(
-                ParameterSpec.builder("initGenericReturnOnlyRcwHelpers", entryStringListFunction)
-                    .defaultValue("{ _, _ -> }")
-                    .build(),
-            )
-            .addParameter(
-                ParameterSpec.builder("initProjectedGenericFallbacks", entryStringListFunction)
-                    .defaultValue("{ _, _ -> }")
-                    .build(),
-            )
-        return TypeSpec.classBuilder("GenericTypeInstantiationRuntimeBinding")
-            .addModifiers(KModifier.INTERNAL, KModifier.DATA)
-            .primaryConstructor(constructor.build())
-            .addProperty(PropertySpec.builder("initRcwHelpers", entryStringListFunction).initializer("initRcwHelpers").build())
-            .addProperty(PropertySpec.builder("initVtableFunctions", entryStringListFunction).initializer("initVtableFunctions").build())
-            .addProperty(PropertySpec.builder("initPropertyAccessors", entryStringListFunction).initializer("initPropertyAccessors").build())
-            .addProperty(PropertySpec.builder("initDelegateCcwInvoke", entryFunction).initializer("initDelegateCcwInvoke").build())
-            .addProperty(PropertySpec.builder("initGenericReturnOnlyRcwHelpers", entryStringListFunction).initializer("initGenericReturnOnlyRcwHelpers").build())
-            .addProperty(PropertySpec.builder("initProjectedGenericFallbacks", entryStringListFunction).initializer("initProjectedGenericFallbacks").build())
-            .build()
-    }
-
-    private fun defaultGenericTypeRuntimeBindingCode(bindingClass: ClassName): CodeBlock =
-        CodeBlock.of(
-            """
-            %T(
-                initRcwHelpers = { entry, functions ->
-                    io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindRcwHelpers(
-                        className = entry.className,
-                        sourceType = entry.sourceType,
-                        isDelegate = entry.isDelegate,
-                        functions = functions,
-                    )
-                },
-                initVtableFunctions = { entry, functions ->
-                    io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindVtableFunctions(
-                        className = entry.className,
-                        sourceType = entry.sourceType,
-                        isDelegate = entry.isDelegate,
-                        functions = functions,
-                    )
-                },
-                initPropertyAccessors = { entry, accessors ->
-                    io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindPropertyAccessors(
-                        className = entry.className,
-                        sourceType = entry.sourceType,
-                        isDelegate = entry.isDelegate,
-                        functions = accessors,
-                    )
-                },
-                initDelegateCcwInvoke = { entry ->
-                    io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindDelegateCcwInvoke(
-                        className = entry.className,
-                        sourceType = entry.sourceType,
-                        isDelegate = entry.isDelegate,
-                    )
-                },
-                initGenericReturnOnlyRcwHelpers = { entry, functions ->
-                    io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindGenericReturnOnlyRcwHelpers(
-                        className = entry.className,
-                        sourceType = entry.sourceType,
-                        isDelegate = entry.isDelegate,
-                        functions = functions,
-                    )
-                },
-                initProjectedGenericFallbacks = { entry, functions ->
-                    io.github.composefluent.winrt.runtime.WinRtGenericTypeInstantiationRuntime.bindProjectedGenericFallbacks(
-                        className = entry.className,
-                        sourceType = entry.sourceType,
-                        isDelegate = entry.isDelegate,
-                        functions = functions,
-                    )
-                },
-            )
-            """.trimIndent(),
-            bindingClass,
-        )
-
-    private fun genericTypeInstantiationFunctions(
-        entryClass: ClassName,
-        bindingClass: ClassName,
-    ): List<FunSpec> =
+    private fun genericTypeInstantiationFunctions(entryClass: ClassName): List<FunSpec> =
         listOf(
-            FunSpec.builder("installRuntimeBinding")
-                .addParameter("binding", bindingClass)
-                .addStatement("runtimeBinding = binding")
-                .build(),
-            FunSpec.builder("isInitialized")
-                .addParameter("entry", entryClass)
-                .returns(Boolean::class)
-                .addStatement("return entry.className in INITIALIZED_CLASS_NAMES")
-                .build(),
             FunSpec.builder("initializeAll")
                 .addCode("%T.initializeAll()\n", WINRT_GENERIC_TYPE_INSTANTIATION_SUPPORT_INTRINSIC_CLASS_NAME)
                 .build(),
@@ -2748,43 +2618,7 @@ class KotlinProjectionSupportRenderer {
                 .build(),
             FunSpec.builder("initializeEntry")
                 .addParameter("entry", entryClass)
-                .addCode("entry.dependencies.forEach(::initializeBySourceType)\nregisterGenericInstantiation(entry)\n")
-                .build(),
-            FunSpec.builder("initializeDependencies")
-                .addParameter("entry", entryClass)
-                .addParameter("initialize", Function1::class.asClassName().parameterizedBy(entryClass, UNIT))
                 .addCode("entry.dependencies.forEach(::initializeBySourceType)\n")
-                .build(),
-            FunSpec.builder("initializeDependencies")
-                .addParameter("entry", entryClass)
-                .addCode("entry.dependencies.forEach(::initializeBySourceType)\n")
-                .build(),
-            FunSpec.builder("registerGenericInstantiation")
-                .addModifiers(KModifier.PRIVATE)
-                .addParameter("entry", entryClass)
-                .addCode(
-                    """
-                    if (!INITIALIZED_CLASS_NAMES.add(entry.className)) return
-                    if (entry.rcwFunctions.isNotEmpty() || !entry.isDelegate) {
-                        runtimeBinding.initRcwHelpers(entry, entry.rcwFunctions)
-                    }
-                    if (entry.vtableFunctions.isNotEmpty()) {
-                        runtimeBinding.initVtableFunctions(entry, entry.vtableFunctions)
-                    }
-                    if (entry.propertyAccessors.isNotEmpty()) {
-                        runtimeBinding.initPropertyAccessors(entry, entry.propertyAccessors)
-                    }
-                    if (entry.genericReturnOnlyRcwFunctions.isNotEmpty()) {
-                        runtimeBinding.initGenericReturnOnlyRcwHelpers(entry, entry.genericReturnOnlyRcwFunctions)
-                    }
-                    if (entry.projectedGenericFallbacks.isNotEmpty()) {
-                        runtimeBinding.initProjectedGenericFallbacks(entry, entry.projectedGenericFallbacks)
-                    }
-                    if (entry.isDelegate) {
-                        runtimeBinding.initDelegateCcwInvoke(entry)
-                    }
-                    """.trimIndent() + "\n",
-                )
                 .build(),
         )
 
