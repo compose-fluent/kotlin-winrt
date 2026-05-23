@@ -1777,17 +1777,18 @@ private class MetadataTables private constructor(
         rawMethod.name == "Equals" &&
         signature.parameters.size == 1 &&
             isWinRtObjectTypeName(signature.parameters.single().typeName) &&
-            signature.returnType.typeName == "Boolean"
+            isWinRtFundamentalTypeName(signature.returnType.typeName, WinRtFundamentalType.Boolean)
 
     private fun isClassEquals(rawMethod: RawMethodDef, signature: ParsedMethodSignature, qualifiedTypeName: String): Boolean =
         rawMethod.name == "Equals" &&
         signature.parameters.size == 1 &&
             signature.parameters.single().typeName == qualifiedTypeName &&
-            signature.returnType.typeName == "Boolean"
+            isWinRtFundamentalTypeName(signature.returnType.typeName, WinRtFundamentalType.Boolean)
 
     private fun isObjectGetHashCode(rawMethod: RawMethodDef, signature: ParsedMethodSignature): Boolean =
         rawMethod.name == "GetHashCode" &&
-        signature.parameters.isEmpty() && signature.returnType.typeName == "Int"
+        signature.parameters.isEmpty() &&
+            isWinRtFundamentalTypeName(signature.returnType.typeName, WinRtFundamentalType.Int32)
 
     private fun readStringAt(indexOffset: Int): String =
         buffer.readHeapString(stringsHeap.offset, readIndex(indexOffset, stringIndexSize))

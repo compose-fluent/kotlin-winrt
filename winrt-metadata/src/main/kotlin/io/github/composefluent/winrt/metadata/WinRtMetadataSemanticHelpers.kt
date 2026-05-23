@@ -1000,10 +1000,11 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         val hasExpectedNameAndParams = method.name == "Equals" &&
             method.parameters.size == 1 &&
             typeClassifier.classify(method.parameters.single().type, "").projectionCategory == WinRtProjectionCategory.Object
+        val returnTypeMatches = method.returnType.matchesFundamentalType(WinRtFundamentalType.Boolean)
         return WinRtObjectMethodMatchDescriptor(
             methodName = method.name,
-            matches = hasExpectedNameAndParams && method.returnType.normalized().typeName == "Boolean",
-            returnTypeMatches = method.returnType.normalized().typeName == "Boolean",
+            matches = hasExpectedNameAndParams && returnTypeMatches,
+            returnTypeMatches = returnTypeMatches,
         )
     }
 
@@ -1013,19 +1014,21 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     ): WinRtObjectMethodMatchDescriptor {
         val parameterType = method.parameters.singleOrNull()?.type?.normalized()?.typeName
         val hasExpectedNameAndParams = method.name == "Equals" && parameterType == classType.qualifiedName
+        val returnTypeMatches = method.returnType.matchesFundamentalType(WinRtFundamentalType.Boolean)
         return WinRtObjectMethodMatchDescriptor(
             methodName = method.name,
-            matches = hasExpectedNameAndParams && method.returnType.normalized().typeName == "Boolean",
-            returnTypeMatches = method.returnType.normalized().typeName == "Boolean",
+            matches = hasExpectedNameAndParams && returnTypeMatches,
+            returnTypeMatches = returnTypeMatches,
         )
     }
 
     fun isObjectHashCodeMethod(method: WinRtMethodDefinition): WinRtObjectMethodMatchDescriptor {
         val hasExpectedNameAndParams = method.name == "GetHashCode" && method.parameters.isEmpty()
+        val returnTypeMatches = method.returnType.matchesFundamentalType(WinRtFundamentalType.Int32)
         return WinRtObjectMethodMatchDescriptor(
             methodName = method.name,
-            matches = hasExpectedNameAndParams && method.returnType.normalized().typeName == "Int",
-            returnTypeMatches = method.returnType.normalized().typeName == "Int",
+            matches = hasExpectedNameAndParams && returnTypeMatches,
+            returnTypeMatches = returnTypeMatches,
         )
     }
 
@@ -2722,3 +2725,6 @@ internal fun metadataParameterCategoryFor(parameter: WinRtParameterDefinition): 
 
 private fun escapeTypeNameForIdentifier(typeName: String): String =
     typeName.replace(Regex("""[\s:<>,.]"""), "_")
+
+private fun WinRtTypeRef.matchesFundamentalType(expectedType: WinRtFundamentalType): Boolean =
+    isWinRtFundamentalTypeName(normalized().typeName, expectedType)

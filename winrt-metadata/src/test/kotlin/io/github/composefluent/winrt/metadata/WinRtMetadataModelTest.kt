@@ -2380,9 +2380,9 @@ class WinRtMetadataModelTest {
                 ),
             ),
             methods = listOf(
-                WinRtMethodDefinition("Equals", "Boolean", parameters = listOf(WinRtParameterDefinition("obj", "System.Object"))),
-                WinRtMethodDefinition("Equals", "Boolean", parameters = listOf(WinRtParameterDefinition("obj", "Sample.Foundation.Widget"))),
-                WinRtMethodDefinition("GetHashCode", "Int"),
+                WinRtMethodDefinition("Equals", "System.Boolean", parameters = listOf(WinRtParameterDefinition("obj", "System.Object"))),
+                WinRtMethodDefinition("Equals", "Bool", parameters = listOf(WinRtParameterDefinition("obj", "Sample.Foundation.Widget"))),
+                WinRtMethodDefinition("GetHashCode", "System.Int32"),
             ),
             events = listOf(WinRtEventDefinition("Changed", "Windows.Foundation.EventHandler<Sample.Foundation.Point>")),
         )
