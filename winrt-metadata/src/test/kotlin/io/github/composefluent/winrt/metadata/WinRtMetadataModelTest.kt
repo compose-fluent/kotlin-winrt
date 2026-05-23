@@ -1173,6 +1173,29 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun fundamental_type_projection_names_are_owned_by_type_semantics() {
+        val aliases = mapOf(
+            "System.Boolean" to "Boolean",
+            "System.Char" to "Char",
+            "System.SByte" to "Byte",
+            "System.Byte" to "UByte",
+            "System.Int16" to "Short",
+            "System.UInt16" to "UShort",
+            "System.Int32" to "Int",
+            "System.UInt32" to "UInt",
+            "System.Int64" to "Long",
+            "System.UInt64" to "ULong",
+            "System.Single" to "Float",
+            "System.Double" to "Double",
+            "System.String" to "String",
+        )
+
+        aliases.forEach { (alias, projectionTypeName) ->
+            assertEquals(projectionTypeName, winRtFundamentalTypeForName(alias)?.toKotlinProjectionTypeName())
+        }
+    }
+
+    @Test
     fun semantic_helpers_mirror_cswinrt_method_type_and_accessor_helpers() {
         val defaultInterface = WinRtTypeDefinition(
             namespace = "Sample.Foundation",

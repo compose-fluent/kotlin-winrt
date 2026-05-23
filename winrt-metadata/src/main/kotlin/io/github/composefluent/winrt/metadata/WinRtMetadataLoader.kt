@@ -2822,25 +2822,13 @@ private class CustomAttributeBlobReader(
     }
 }
 
-private fun normalizeSignatureTypeName(typeName: String?): String = when (typeName) {
-    null -> "Any"
-    "System.Void" -> "Unit"
-    "System.Boolean" -> "Boolean"
-    "System.Char" -> "Char"
-    "System.SByte" -> "Byte"
-    "System.Byte" -> "UByte"
-    "System.Int16" -> "Short"
-    "System.UInt16" -> "UShort"
-    "System.Int32" -> "Int"
-    "System.UInt32" -> "UInt"
-    "System.Int64" -> "Long"
-    "System.UInt64" -> "ULong"
-    "System.Single" -> "Float"
-    "System.Double" -> "Double"
-    "System.String" -> "String"
-    "System.Object" -> "System.Object"
-    else -> typeName
-}
+private fun normalizeSignatureTypeName(typeName: String?): String =
+    when (typeName) {
+        null -> "Any"
+        "System.Void" -> "Unit"
+        "System.Object" -> "System.Object"
+        else -> winRtFundamentalTypeForName(typeName)?.toKotlinProjectionTypeName() ?: typeName
+    }
 
 private fun normalizeSignatureTypeReferenceName(typeName: String?): String {
     val normalized = normalizeSignatureTypeName(typeName)
