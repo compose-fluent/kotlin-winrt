@@ -1768,18 +1768,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         if (mapping.mappedQualifiedName == null) {
             return "mapped-helper-only"
         }
-        if (
-            mapping.mappedNamespace == "System.Collections.Generic" ||
-            mapping.abiQualifiedName in setOf(
-                "Windows.Foundation.Collections.IIterable",
-                "Windows.Foundation.Collections.IIterator",
-                "Windows.Foundation.Collections.IVectorView",
-                "Windows.Foundation.Collections.IVector",
-                "Windows.Foundation.Collections.IMapView",
-                "Windows.Foundation.Collections.IMap",
-                "Windows.Foundation.Collections.IKeyValuePair",
-            )
-        ) {
+        if (mapping.mappedNamespace == "System.Collections.Generic") {
             return null
         }
         return when (mapping.mappedNamespace) {

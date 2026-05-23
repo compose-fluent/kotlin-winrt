@@ -2607,6 +2607,12 @@ class WinRtMetadataModelTest {
             name = "IBindableVector",
             kind = WinRtTypeKind.Interface,
         )
+        val vector = WinRtTypeDefinition(
+            namespace = "Windows.Foundation.Collections",
+            name = "IVector",
+            kind = WinRtTypeKind.Interface,
+            genericParameterCount = 1,
+        )
         val widget = WinRtTypeDefinition(
             namespace = "Sample.Xaml",
             name = "Widget",
@@ -2616,6 +2622,7 @@ class WinRtMetadataModelTest {
                 WinRtInterfaceImplementationDefinition("Sample.Xaml.IWidget", isDefault = true),
                 WinRtInterfaceImplementationDefinition("Microsoft.UI.Xaml.Data.INotifyPropertyChanged"),
                 WinRtInterfaceImplementationDefinition("Windows.UI.Xaml.Interop.IBindableVector"),
+                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<String>"),
             ),
         )
         val helpers = WinRtMetadataModel(
@@ -2632,14 +2639,21 @@ class WinRtMetadataModelTest {
                     name = "Windows.UI.Xaml.Interop",
                     types = listOf(bindableVector),
                 ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(vector),
+                ),
             ),
         ).semanticHelpers()
 
         val descriptor = helpers.objectReferenceSurfaceDescriptor(widget)
 
-        assertEquals(listOf("Sample_Xaml_IWidgetCache"), descriptor.objectReferenceNames)
         assertEquals(
-            listOf("Sample.Xaml.Widget", "Sample.Xaml.IWidget"),
+            listOf("Sample_Xaml_IWidgetCache", "Windows_Foundation_Collections_IVector_String_Cache"),
+            descriptor.objectReferenceNames,
+        )
+        assertEquals(
+            listOf("Sample.Xaml.Widget", "Sample.Xaml.IWidget", "Windows.Foundation.Collections.IVector<String>"),
             descriptor.exposedTypeMetadataNames,
         )
         assertEquals(
@@ -2649,6 +2663,10 @@ class WinRtMetadataModelTest {
         assertEquals(
             "runtime-owned-mapped",
             descriptor.objectReferencePlans.single { it.interfaceName == "Windows.UI.Xaml.Interop.IBindableVector" }.skippedReason,
+        )
+        assertEquals(
+            null,
+            descriptor.objectReferencePlans.single { it.interfaceName == "Windows.Foundation.Collections.IVector<String>" }.skippedReason,
         )
     }
 
