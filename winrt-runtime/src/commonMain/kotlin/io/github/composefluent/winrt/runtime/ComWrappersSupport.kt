@@ -75,18 +75,6 @@ object ComWrappersSupport {
             )
 
     fun wrapGeneratedInterfaceProjection(
-        typeHandle: WinRtTypeHandle,
-        instance: IUnknownReference,
-        compilerGeneratedRegistryClassName: String,
-    ): Any =
-        resolveInterfaceProjectionFactory(typeHandle, typeHandle.projectedTypeName)
-            ?.invoke(instance)
-            ?: throw WinRtUnsupportedOperationException(
-                "Generated interface projection factory for '${typeHandle.projectedTypeName}' is not registered.",
-                KnownHResults.E_NOINTERFACE,
-            )
-
-    fun wrapGeneratedInterfaceProjection(
         projectedTypeName: String,
         instance: IUnknownReference,
     ): Any =
