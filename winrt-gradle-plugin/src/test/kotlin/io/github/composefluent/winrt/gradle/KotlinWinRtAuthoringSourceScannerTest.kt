@@ -105,7 +105,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
-    fun renders_system_object_override_parameters_through_object_marshaller() {
+    fun renders_object_alias_override_parameters_through_object_marshaller() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-object-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
             packageName = "sample",
@@ -132,7 +132,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     returnTypeName = "Void",
                                     parameters = listOf(
                                         WinRtParameterDefinition("oldContent", "System.Object"),
-                                        WinRtParameterDefinition("newContent", "System.Object"),
+                                        WinRtParameterDefinition("newContent", "Any"),
                                     ),
                                 ),
                             ),
@@ -268,6 +268,10 @@ class KotlinWinRtAuthoringSourceScannerTest {
                                     name = "GetDescribedByCore",
                                     returnTypeName = "Windows.Foundation.Collections.IIterable<Microsoft.UI.Xaml.Automation.Peers.AutomationPeer>",
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetRawChildrenCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Object>",
+                                ),
                             ),
                         ),
                     ),
@@ -286,6 +290,7 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("WinRtReadOnlyListProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtIterableProjection.fromManaged(__result"))
         assertTrue(generated.contains("WinRtReferenceValueAdapters.runtimeClass(AutomationPeer::class"))
+        assertTrue(generated.contains("WinRtReferenceValueAdapters.object_"))
         assertTrue(generated, !generated.contains("createCCWForObject(__result, IID.IInspectable)"))
     }
 
