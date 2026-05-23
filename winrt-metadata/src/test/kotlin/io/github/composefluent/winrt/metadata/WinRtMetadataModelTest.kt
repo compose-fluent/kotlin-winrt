@@ -1754,6 +1754,22 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun semantic_helpers_render_signature_writer_string_aliases_like_cswinrt_abi_types() {
+        val descriptor = WinRtMetadataModel(emptyList()).semanticHelpers().signatureWriterDescriptor(
+            WinRtMethodDefinition(
+                name = "Format",
+                returnTypeName = "System.String",
+                parameters = listOf(WinRtParameterDefinition("value", "System.String")),
+            ),
+        )
+
+        assertEquals("System.String", descriptor.projectionReturnTypeName)
+        assertEquals("IntPtr", descriptor.abiReturnTypeName)
+        assertEquals("System.String", descriptor.parameters.single().projectionTypeName)
+        assertEquals("IntPtr", descriptor.parameters.single().abiTypeName)
+    }
+
+    @Test
     fun semantic_helpers_expose_raw_table_boundaries_and_cswinrt_audit_entries() {
         val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
         val boundaries = helpers.auxiliaryTableSemanticBoundaries(

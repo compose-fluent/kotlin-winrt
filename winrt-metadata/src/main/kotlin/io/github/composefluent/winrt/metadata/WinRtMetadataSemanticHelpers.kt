@@ -2192,8 +2192,14 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     private fun stripGenericArity(name: String): String = name.substringBefore('`')
 
-    private fun renderAbiTypeName(type: WinRtTypeRef): String =
-        type.normalized().typeName.replace("String", "IntPtr")
+    private fun renderAbiTypeName(type: WinRtTypeRef): String {
+        val normalizedTypeName = type.normalized().typeName
+        return if (winRtFundamentalTypeForName(normalizedTypeName) == WinRtFundamentalType.String) {
+            "IntPtr"
+        } else {
+            normalizedTypeName
+        }
+    }
 
     private fun signatureParameterWriterDescriptor(
         parameter: WinRtParameterDefinition,
