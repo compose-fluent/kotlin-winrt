@@ -760,6 +760,7 @@ private fun configureWinRtIdentityProjectDependencies(
         buildList {
             add(sourceSet.apiConfigurationName)
             add(sourceSet.implementationConfigurationName)
+            (sourceSet.callNoArg("getApiMetadataConfigurationName") as? String)?.let(::add)
             (sourceSet.callNoArg("getImplementationMetadataConfigurationName") as? String)?.let(::add)
         }
 
