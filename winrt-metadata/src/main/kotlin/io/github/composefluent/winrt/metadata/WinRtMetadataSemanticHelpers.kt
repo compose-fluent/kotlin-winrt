@@ -1503,9 +1503,11 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     fun eventHelperSubclassDescriptors(type: WinRtTypeDefinition): List<WinRtEventHelperSubclassDescriptor> =
         type.events.map { event ->
             val eventType = event.delegateType.normalized()
+            val eventHandlerDescriptor =
+                typeClassifier.classify(eventType, type.namespace).specialType as? WinRtEventHandlerTypeDescriptor
             val usesSharedEventHandlerSource =
-                eventType.qualifiedName in setOf("Windows.Foundation.EventHandler", "System.EventHandler") &&
-                    eventType.typeArguments.size == 1
+                eventHandlerDescriptor?.kind == WinRtEventHandlerKind.EventHandler &&
+                    eventHandlerDescriptor.typeArguments.size == 1
             WinRtEventHelperSubclassDescriptor(
                 eventTypeName = eventType.typeName,
                 projectedEventTypeName = eventType.typeName,
