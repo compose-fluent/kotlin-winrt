@@ -132,7 +132,7 @@ internal object WinRtBuiltInProjectionMappings {
         )
         CommonWinRtBuiltInProjectionMappings.registerMetadata(
             type = IUriRuntimeClassProjection::class,
-            projectedTypeName = IUriRuntimeClassProjection::class.typeDisplayName(),
+            projectedTypeName = "Windows.Foundation.IUriRuntimeClass",
             guid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
             iid = Guid("9E365E57-48B2-4160-956F-C7385120BBFC"),
             isWindowsRuntimeType = true,

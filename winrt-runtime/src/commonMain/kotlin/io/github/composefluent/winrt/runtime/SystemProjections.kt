@@ -228,11 +228,13 @@ internal object CommonWinRtBuiltInProjectionMappings {
             type = AutoCloseable::class,
             projectedTypeName = "Windows.Foundation.IClosable",
             helperType = IClosableProjection::class,
+            guid = IID.IDisposable,
+            iid = IID.IDisposable,
             isWindowsRuntimeType = true,
         )
         registerMetadata(
             type = IClosableProjection::class,
-            projectedTypeName = IClosableProjection::class.typeDisplayName(),
+            projectedTypeName = "Windows.Foundation.IClosable",
             guid = IID.IDisposable,
             iid = IID.IDisposable,
             isWindowsRuntimeType = true,

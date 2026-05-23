@@ -17,7 +17,7 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer(),
-                    WinRtTypeHandle(WinRtCommand::class.typeDisplayName(), IID.ICommand),
+                    WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtCommand::class), IID.ICommand),
                 ) as WinRtCommand
 
             assertTrue(projected.canExecute("go"))
@@ -48,7 +48,7 @@ class XamlSystemProjectionRuntimeTest {
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer(),
                     WinRtTypeHandle(
-                        WinRtPropertyChangedNotifier::class.typeDisplayName(),
+                        TypeNameSupport.getNameForType(WinRtPropertyChangedNotifier::class),
                         IID.MUX_INotifyPropertyChanged,
                     ),
                 ) as WinRtPropertyChangedNotifier
@@ -109,7 +109,7 @@ class XamlSystemProjectionRuntimeTest {
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer(),
                     WinRtTypeHandle(
-                        WinRtCustomPropertyProvider::class.typeDisplayName(),
+                        TypeNameSupport.getNameForType(WinRtCustomPropertyProvider::class),
                         IID.ICustomPropertyProvider,
                     ),
                 ) as WinRtCustomPropertyProvider
@@ -128,7 +128,7 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer(),
-                    WinRtTypeHandle(WinRtServiceProvider::class.typeDisplayName(), IID.IServiceProvider),
+                    WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtServiceProvider::class), IID.IServiceProvider),
                 ) as WinRtServiceProvider
 
             assertEquals("string-service", projected.getService(String::class))
@@ -143,7 +143,7 @@ class XamlSystemProjectionRuntimeTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     reference.getRefPointer(),
-                    WinRtTypeHandle(WinRtStringable::class.typeDisplayName(), IID.IStringable),
+                    WinRtTypeHandle(TypeNameSupport.getNameForType(WinRtStringable::class), IID.IStringable),
                 ) as WinRtStringable
 
             assertEquals("42", projected.stringRepresentation())
