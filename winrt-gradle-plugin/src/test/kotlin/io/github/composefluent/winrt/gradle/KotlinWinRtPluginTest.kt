@@ -2183,6 +2183,16 @@ class KotlinWinRtPluginTest {
             .normalize()
             .toString()
             .replace("\\", "/")
+        val metadataJar = Path.of("../winrt-metadata/build/libs/winrt-metadata.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
+        val generatorJar = Path.of("../winrt-generator/build/libs/winrt-generator.jar")
+            .toAbsolutePath()
+            .normalize()
+            .toString()
+            .replace("\\", "/")
         writeGradleFile(
             projectDir.resolve("settings.gradle.kts"),
             """
@@ -2215,8 +2225,22 @@ class KotlinWinRtPluginTest {
             """
             plugins {
                 id("org.jetbrains.kotlin.multiplatform") version "2.3.20"
-                id("io.github.composefluent.winrt")
             }
+
+            configurations.create("kotlinWinRtGeneratorWorker") {
+                isCanBeConsumed = false
+                isCanBeResolved = true
+            }
+
+            dependencies {
+                add("kotlinWinRtGeneratorWorker", files("$runtimeJar", "$metadataJar", "$generatorJar"))
+                add("kotlinWinRtGeneratorWorker", "com.squareup:kotlinpoet:1.18.1")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+                add("kotlinWinRtGeneratorWorker", "org.jetbrains.kotlinx:kotlinx-io-core:0.9.0")
+            }
+
+            apply(plugin = "io.github.composefluent.winrt")
 
             kotlin {
                 jvm("winuiJvm")
@@ -2229,7 +2253,7 @@ class KotlinWinRtPluginTest {
                 }
             }
 
-            winRt {
+            extensions.configure<io.github.composefluent.winrt.gradle.WinRtExtension>("winRt") {
                 type("Windows.Foundation.IStringable")
             }
 
@@ -2247,10 +2271,15 @@ class KotlinWinRtPluginTest {
                             import io.github.composefluent.winrt.runtime.ComObjectReference
                             import io.github.composefluent.winrt.runtime.RawAddress
                             import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
+                            import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
 
                             object IntrinsicProbe {
                                 fun call(reference: ComObjectReference, value: RawAddress) {
                                     WinRtProjectionIntrinsic.callUnit(reference, 7, "RawAddress", value)
+                                }
+
+                                fun support() {
+                                    WinRtProjectionSupportIntrinsic.ensureInitialized()
                                 }
                             }
                             ${"\"\"\""}.trimIndent()
@@ -2266,10 +2295,17 @@ class KotlinWinRtPluginTest {
             tasks.register("verifyLoweredIntrinsic") {
                 dependsOn("compileKotlinWinuiJvm")
                 doLast {
-                    val classFile = layout.buildDirectory.file("classes/kotlin/winuiJvm/main/sample/IntrinsicProbe.class").get().asFile
+                    val classRoot = layout.buildDirectory.dir("classes/kotlin/winuiJvm/main").get().asFile
+                    val classFile = classRoot.resolve("sample/IntrinsicProbe.class")
                     val contents = classFile.readBytes().toString(Charsets.ISO_8859_1)
                     check(!contents.contains("WinRtProjectionIntrinsic")) {
                         "KMP JVM class still contains WinRtProjectionIntrinsic fallback"
+                    }
+                    check(!contents.contains("WinRtProjectionSupportIntrinsic")) {
+                        "KMP JVM class still contains WinRtProjectionSupportIntrinsic fallback"
+                    }
+                    check(contents.contains("kotlinWinRtProjectionSupportInitialize_")) {
+                        "KMP JVM class did not lower projection support marker to compiler-generated initializer"
                     }
                     check(contents.contains("WinRtJvmFfmDowncallHandles")) {
                         "KMP JVM class did not lower projection intrinsic to JVM FFM"
@@ -2283,6 +2319,16 @@ class KotlinWinRtPluginTest {
                         ),
                     ) {
                         "KMP JVM class did not lower MethodHandle.invoke with expanded FFM carrier parameters"
+                    }
+                    check(
+                        classRoot.walkTopDown()
+                            .filter { it.isFile && it.extension == "class" }
+                            .none { compiledClass ->
+                                compiledClass.readBytes().toString(Charsets.ISO_8859_1)
+                                    .contains("WinRtProjectionSupportIntrinsic")
+                            },
+                    ) {
+                        "Compiled KMP JVM output still contains WinRtProjectionSupportIntrinsic fallback"
                     }
                 }
             }
