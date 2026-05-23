@@ -302,6 +302,7 @@ class KotlinWinRtPluginTest {
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
             event-source-mapping	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	EventSourceMappings.kt	1
+            future-support	io.github.composefluent.winrt.projections.support.FutureSupport	future-support.tsv	1
             """.trimIndent(),
         )
         Files.writeString(
@@ -312,6 +313,13 @@ class KotlinWinRtPluginTest {
             """.trimIndent(),
         )
         Files.writeString(localRoot.resolve("EventSourceMappings.kt"), "object EventSourceMappings")
+        Files.writeString(
+            localRoot.resolve("future-support.tsv"),
+            """
+            key	value
+            alpha	beta
+            """.trimIndent(),
+        )
         Files.writeString(
             dependencyRoot.resolve("compiler-support.tsv"),
             """
@@ -357,15 +365,19 @@ class KotlinWinRtPluginTest {
         val manifest = Files.readString(outputRoot.resolve("compiler-support.tsv"))
         val projectionSupport = Files.readString(outputRoot.resolve("projection-registrar.tsv"))
         val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
+        val futureSupport = Files.readString(outputRoot.resolve("future-support.tsv"))
         assertTrue(manifest.contains("projection-registrar"))
         assertFalse(manifest.contains("event-source"))
+        assertTrue(manifest.contains("future-support\tio.github.composefluent.winrt.projections.support.FutureSupport"))
         assertTrue(manifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
         assertFalse(manifest.contains("WinRTGenericTypeInstantiationRegistry"))
         assertFalse(manifest.contains("event-source-mapping"))
         assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
         assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
         assertFalse(Files.exists(outputRoot.resolve("event-sources.tsv")))
+        assertFalse(Files.exists(outputRoot.resolve("EventSourceMappings.kt")))
         assertTrue(genericSupport.contains("Windows.Foundation.IReference`1<String>"))
+        assertTrue(futureSupport.contains("alpha\tbeta"))
     }
 
     @Test

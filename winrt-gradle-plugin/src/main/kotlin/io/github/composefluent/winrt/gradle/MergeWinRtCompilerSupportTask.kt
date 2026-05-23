@@ -46,7 +46,7 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
         manifests.forEach { manifest ->
             val manifestRoot = manifest.toPath().parent ?: return@forEach
             readCompilerSupportRows(manifest).forEach { row ->
-                if (row.kind !in MERGED_COMPILER_SUPPORT_KINDS) {
+                if (row.kind in REMOVED_REFLECTION_COMPILER_SUPPORT_KINDS) {
                     return@forEach
                 }
                 val source = manifestRoot.resolve(row.sourceFile)
@@ -102,10 +102,12 @@ private data class CompilerSupportSourceKey(
     val sourceFile: String,
 )
 
-private val MERGED_COMPILER_SUPPORT_KINDS = setOf(
-    "projection-registrar",
-    "generic-type-instantiation",
-    "generic-abi-registry",
+private val REMOVED_REFLECTION_COMPILER_SUPPORT_KINDS = setOf(
+    "event-source",
+    "event-source-mapping",
+    "interface-native",
+    "interface-native-projection",
+    "interface-native-projections",
 )
 
 private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifestRow> =
