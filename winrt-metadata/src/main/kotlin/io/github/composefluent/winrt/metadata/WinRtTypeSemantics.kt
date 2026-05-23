@@ -85,12 +85,21 @@ val WinRtFundamentalType.blittableAbiSizeBytes: Int?
 val WinRtFundamentalType.blittableAbiAlignmentBytes: Int?
     get() = blittableAbiSizeBytes
 
-fun WinRtFundamentalType.toGenericAbiDelegateTypeName(defaultTypeName: String): String =
+fun WinRtFundamentalType.toCsWinRtAbiTypeName(): String =
     when (this) {
         WinRtFundamentalType.String -> "IntPtr"
         WinRtFundamentalType.Boolean -> "byte"
         WinRtFundamentalType.Char -> "ushort"
-        else -> defaultTypeName
+        WinRtFundamentalType.Int8 -> "sbyte"
+        WinRtFundamentalType.UInt8 -> "byte"
+        WinRtFundamentalType.Int16 -> "short"
+        WinRtFundamentalType.UInt16 -> "ushort"
+        WinRtFundamentalType.Int32 -> "int"
+        WinRtFundamentalType.UInt32 -> "uint"
+        WinRtFundamentalType.Int64 -> "long"
+        WinRtFundamentalType.UInt64 -> "ulong"
+        WinRtFundamentalType.Float -> "float"
+        WinRtFundamentalType.Double -> "double"
     }
 
 fun WinRtFundamentalType.toKotlinProjectionTypeName(): String =

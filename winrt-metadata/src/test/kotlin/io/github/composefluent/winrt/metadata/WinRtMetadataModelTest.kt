@@ -1777,19 +1777,38 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_render_signature_writer_string_aliases_like_cswinrt_abi_types() {
-        val descriptor = WinRtMetadataModel(emptyList()).semanticHelpers().signatureWriterDescriptor(
-            WinRtMethodDefinition(
-                name = "Format",
-                returnTypeName = "System.String",
-                parameters = listOf(WinRtParameterDefinition("value", "System.String")),
-            ),
+    fun semantic_helpers_render_signature_writer_fundamentals_like_cswinrt_abi_types() {
+        val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
+        val cases = mapOf(
+            "System.String" to "IntPtr",
+            "System.Boolean" to "byte",
+            "System.Char" to "ushort",
+            "System.SByte" to "sbyte",
+            "System.Byte" to "byte",
+            "System.Int16" to "short",
+            "System.UInt16" to "ushort",
+            "System.Int32" to "int",
+            "System.UInt32" to "uint",
+            "System.Int64" to "long",
+            "System.UInt64" to "ulong",
+            "System.Single" to "float",
+            "System.Double" to "double",
         )
 
-        assertEquals("System.String", descriptor.projectionReturnTypeName)
-        assertEquals("IntPtr", descriptor.abiReturnTypeName)
-        assertEquals("System.String", descriptor.parameters.single().projectionTypeName)
-        assertEquals("IntPtr", descriptor.parameters.single().abiTypeName)
+        cases.forEach { (projectionTypeName, abiTypeName) ->
+            val descriptor = helpers.signatureWriterDescriptor(
+                WinRtMethodDefinition(
+                    name = "Format",
+                    returnTypeName = projectionTypeName,
+                    parameters = listOf(WinRtParameterDefinition("value", projectionTypeName)),
+                ),
+            )
+
+            assertEquals(projectionTypeName, descriptor.projectionReturnTypeName)
+            assertEquals(abiTypeName, descriptor.abiReturnTypeName)
+            assertEquals(projectionTypeName, descriptor.parameters.single().projectionTypeName)
+            assertEquals(abiTypeName, descriptor.parameters.single().abiTypeName)
+        }
     }
 
     @Test
