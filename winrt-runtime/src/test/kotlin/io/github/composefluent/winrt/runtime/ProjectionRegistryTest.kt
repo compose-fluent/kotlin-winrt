@@ -242,6 +242,8 @@ class ProjectionRegistryTest {
         assertEquals(UByte::class, TypeNameSupport.findKClassByNameCached("UInt8"))
         assertEquals(Byte::class, TypeNameSupport.findKClassByNameCached("Int8"))
         assertEquals(Any::class, TypeNameSupport.findKClassByNameCached("Object"))
+        assertEquals(Any::class, TypeNameSupport.findKClassByNameCached("System.Object"))
+        assertEquals(Any::class, TypeNameSupport.findKClassByNameCached("Any"))
         assertTrue(Projections.isTypeWindowsRuntimeType(Char::class))
         assertEquals("i1", GuidGenerator.getSignature(Byte::class))
         assertEquals("u1", GuidGenerator.getSignature(UByte::class))

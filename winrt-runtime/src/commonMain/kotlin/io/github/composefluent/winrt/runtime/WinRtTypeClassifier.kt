@@ -140,6 +140,7 @@ internal object WinRtTypeClassifier {
                 canonicalRuntimeName = "Object",
                 signature = WinRtTypeSignature.object_(),
                 typeAliases = setOf(Any::class),
+                runtimeNameAliases = setOf("Object", "System.Object", "Any"),
             ),
         )
 
@@ -179,6 +180,9 @@ internal object WinRtTypeClassifier {
 
     fun primitiveArrayTypeForElementType(elementType: KClass<*>): KClass<*>? =
         classify(elementType)?.primitiveArrayType
+
+    fun isObjectRuntimeName(runtimeName: String): Boolean =
+        resolve(runtimeName)?.representativeType == Any::class
 
     fun boxPrimitiveArray(value: Any): Array<*>? =
         knownTypesByPrimitiveArrayType[value::class]?.boxPrimitiveArray?.invoke(value)
