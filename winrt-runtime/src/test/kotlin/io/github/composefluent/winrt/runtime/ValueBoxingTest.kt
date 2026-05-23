@@ -252,7 +252,7 @@ class ValueBoxingTest {
         val uriPointer = ComWrappersSupport.createCCWForObject(uri, IID.IInspectable).useAndGetRef()
         try {
             assertEquals(uri, ComWrappersSupport.createRcwForComObject(uriPointer))
-            IInspectableReference(uriPointer.asRawComPtr(), IID.IInspectable).use { inspectable ->
+            IInspectableReference(uriPointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->
                 assertEquals("Windows.Foundation.Uri", inspectable.getRuntimeClassName())
             }
         } finally {
@@ -262,6 +262,9 @@ class ValueBoxingTest {
         val closeable = TestCloseable()
         val closeablePointer = ComWrappersSupport.createCCWForObject(closeable, IID.IInspectable).useAndGetRef()
         try {
+            IInspectableReference(closeablePointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).use { inspectable ->
+                assertEquals("Windows.Foundation.IClosable", inspectable.getRuntimeClassName())
+            }
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     closeablePointer,
