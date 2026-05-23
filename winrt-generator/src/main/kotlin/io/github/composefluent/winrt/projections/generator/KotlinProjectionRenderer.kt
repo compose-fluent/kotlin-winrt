@@ -3165,12 +3165,15 @@ class KotlinProjectionRenderer(
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
         val pointer = CodeBlock.of("%T.readPointer(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-        return when {
-            field.typeName.substringBefore('<').removeSuffix("?") == "String" ->
+        return when (nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName)) {
+            NativeStructReferenceFieldKind.String ->
                 CodeBlock.of("%T.fromHandle(%L, owner = true).close()", HSTRING_CLASS_NAME, pointer)
-            nativeStructReferenceFieldKind(field.typeName, currentNamespace, typesByQualifiedName) != null ->
+            NativeStructReferenceFieldKind.UnknownReference,
+            NativeStructReferenceFieldKind.InspectableReference,
+            NativeStructReferenceFieldKind.ProjectedInterface,
+            NativeStructReferenceFieldKind.ProjectedRuntimeClass ->
                 CodeBlock.of("if (%L != %T.nullPointer) %T(%T.toRawComPtr(%L)).close()", pointer, PLATFORM_ABI_CLASS_NAME, IUNKNOWN_REFERENCE_CLASS_NAME, PLATFORM_ABI_CLASS_NAME, pointer)
-            else -> null
+            null -> null
         }
     }
 
