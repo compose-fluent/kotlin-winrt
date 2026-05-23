@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.gradle
 
+import com.squareup.kotlinpoet.ClassName
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
@@ -444,16 +445,16 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
     }
 
     private fun logGeneratorRuntimeClasspath() {
-        val kotlinPoetClass = Class.forName("com.squareup.kotlinpoet.ClassName")
-        val kotlinSequencesClass = Class.forName("kotlin.sequences.SequencesKt")
+        val kotlinPoetClass = ClassName::class.java
+        val kotlinStdlibClass = Sequence::class.java
         logger.lifecycle(
             "kotlin-winrt generator worker runtime: KotlinPoet={}, Kotlin stdlib={}, classloader={}",
             codeSourceLocation(kotlinPoetClass.protectionDomain?.codeSource),
-            codeSourceLocation(kotlinSequencesClass.protectionDomain?.codeSource),
+            codeSourceLocation(kotlinStdlibClass.protectionDomain?.codeSource),
             GenerateWinRtProjectionsWorkAction::class.java.classLoader,
         )
         runCatching {
-            kotlinPoetClass.getConstructor(String::class.java, Array<String>::class.java)
+            ClassName("kotlin", "String")
         }.getOrElse { error ->
             throw IllegalStateException(
                 "kotlin-winrt generator worker loaded an incompatible KotlinPoet from " +
