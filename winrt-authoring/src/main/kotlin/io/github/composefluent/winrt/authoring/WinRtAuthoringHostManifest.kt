@@ -122,6 +122,12 @@ object WinRtAuthoringHostManifestLoader {
         if (!PlatformRuntime.isWindows) {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
+        // Bounded host-shim parity path: CsWinRT's
+        // `.cswinrt/src/Authoring/WinRT.Host.Shim/Module.cs` loads the target
+        // assembly and invokes its generated activation-factory entrypoint by
+        // reflection. Generated/native Kotlin hosts still enter the fixed
+        // `WinRTAuthoringHostExports` JNI path; do not expand this into a
+        // general projection-runtime discovery mechanism.
         val exportsClass = Class.forName(entry.hostExportsClass, true, entry.classLoader ?: defaultHostClassLoader())
         runCatching {
             exportsClass.getMethod("registerActivationFactories").invoke(exportsInstance(exportsClass))
