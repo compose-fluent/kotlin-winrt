@@ -317,7 +317,7 @@ class KotlinWinRtPluginTest {
             """
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
-            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiationRegistry	generic-instantiations.tsv	1
+            generic-type-instantiation	io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations	generic-instantiations.tsv	1
             """.trimIndent(),
         )
         Files.writeString(
@@ -359,7 +359,8 @@ class KotlinWinRtPluginTest {
         val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
         assertTrue(manifest.contains("projection-registrar"))
         assertFalse(manifest.contains("event-source"))
-        assertTrue(manifest.contains("generic-type-instantiation"))
+        assertTrue(manifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
+        assertFalse(manifest.contains("WinRTGenericTypeInstantiationRegistry"))
         assertFalse(manifest.contains("event-source-mapping"))
         assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
         assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
