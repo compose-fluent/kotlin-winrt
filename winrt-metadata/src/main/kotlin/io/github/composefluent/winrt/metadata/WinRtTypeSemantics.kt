@@ -54,6 +54,34 @@ fun WinRtFundamentalType.guidSignatureFragment(): String =
         WinRtFundamentalType.String -> "string"
     }
 
+val WinRtFundamentalType.isWinRtValueType: Boolean
+    get() = this != WinRtFundamentalType.String
+
+val WinRtFundamentalType.isWinRtBlittable: Boolean
+    get() = this != WinRtFundamentalType.String &&
+        this != WinRtFundamentalType.Char &&
+        this != WinRtFundamentalType.Boolean
+
+val WinRtFundamentalType.blittableAbiSizeBytes: Int?
+    get() = when (this) {
+        WinRtFundamentalType.Int8,
+        WinRtFundamentalType.UInt8 -> 1
+        WinRtFundamentalType.Int16,
+        WinRtFundamentalType.UInt16 -> 2
+        WinRtFundamentalType.Int32,
+        WinRtFundamentalType.UInt32,
+        WinRtFundamentalType.Float -> 4
+        WinRtFundamentalType.Int64,
+        WinRtFundamentalType.UInt64,
+        WinRtFundamentalType.Double -> 8
+        WinRtFundamentalType.Boolean,
+        WinRtFundamentalType.Char,
+        WinRtFundamentalType.String -> null
+    }
+
+val WinRtFundamentalType.blittableAbiAlignmentBytes: Int?
+    get() = blittableAbiSizeBytes
+
 sealed interface WinRtTypeSemantics {
     data class Fundamental(val type: WinRtFundamentalType) : WinRtTypeSemantics
     data object Object : WinRtTypeSemantics

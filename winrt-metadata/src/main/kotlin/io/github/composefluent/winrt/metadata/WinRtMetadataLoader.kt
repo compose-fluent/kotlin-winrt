@@ -918,14 +918,17 @@ private class MetadataTables private constructor(
     private fun computeFieldAbiLayout(type: WinRtTypeRef): ComputedAbiLayout {
         val normalized = type.normalized()
         return when (normalized.kind) {
-            WinRtTypeRefKind.Named -> when (normalized.typeName) {
-                "Byte", "UByte" -> ComputedAbiLayout(size = 1, alignment = 1, isBlittable = true)
-                "Short", "UShort" -> ComputedAbiLayout(size = 2, alignment = 2, isBlittable = true)
-                "Int", "UInt", "Float" -> ComputedAbiLayout(size = 4, alignment = 4, isBlittable = true)
-                "Long", "ULong", "Double" -> ComputedAbiLayout(size = 8, alignment = 8, isBlittable = true)
-                "Boolean", "Char", "String" -> ComputedAbiLayout(isBlittable = false)
-                else -> ComputedAbiLayout(isBlittable = false)
-            }
+            WinRtTypeRefKind.Named -> winRtFundamentalTypeForName(normalized.typeName)
+                ?.let { fundamentalType ->
+                    val size = fundamentalType.blittableAbiSizeBytes
+                    val alignment = fundamentalType.blittableAbiAlignmentBytes
+                    if (size != null && alignment != null && fundamentalType.isWinRtBlittable) {
+                        ComputedAbiLayout(size = size, alignment = alignment, isBlittable = true)
+                    } else {
+                        ComputedAbiLayout(isBlittable = false)
+                    }
+                }
+                ?: ComputedAbiLayout(isBlittable = false)
 
             WinRtTypeRefKind.Array,
             WinRtTypeRefKind.GenericTypeParameter,
