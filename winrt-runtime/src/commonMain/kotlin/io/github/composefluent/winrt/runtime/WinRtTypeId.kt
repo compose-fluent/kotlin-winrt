@@ -34,7 +34,6 @@ object WinRtTypeRegistry {
         index(typeId.runtimeClassName, typeId)
         index(typeId.boxedName, typeId)
         index(typeId.kClass.qualifiedName, typeId)
-        index(typeId.kClass.simpleName, typeId)
         typeId.aliases.forEach { alias ->
             index(alias, typeId)
         }

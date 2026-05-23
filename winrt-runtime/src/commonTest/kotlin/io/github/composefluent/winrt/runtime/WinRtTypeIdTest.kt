@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class WinRtTypeIdTest {
     @Test
@@ -19,6 +20,22 @@ class WinRtTypeIdTest {
 
         assertEquals(registered, WinRtTypeRegistry.find<SampleRuntimeClass>())
         assertEquals(registered, WinRtTypeRegistry.findByProjectedName("Contoso.SampleRuntimeClass"))
+        assertNull(WinRtTypeRegistry.findByName("SampleRuntimeClass"))
+    }
+
+    @Test
+    fun registry_does_not_resolve_projection_types_by_ambiguous_simple_name() {
+        ComWrappersSupport.clearRegistriesForTests()
+
+        WinRtTypeRegistry.register<SampleRuntimeClass>(
+            projectedTypeName = "Contoso.SampleRuntimeClass",
+            runtimeClassName = "Contoso.SampleRuntimeClass",
+            aliases = setOf("Contoso.SampleAlias"),
+        )
+
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findKClassByNameCached("Contoso.SampleRuntimeClass"))
+        assertEquals(SampleRuntimeClass::class, TypeNameSupport.findKClassByNameCached("Contoso.SampleAlias"))
+        assertNull(TypeNameSupport.findKClassByNameCached("SampleRuntimeClass"))
     }
 
     private class SampleRuntimeClass
