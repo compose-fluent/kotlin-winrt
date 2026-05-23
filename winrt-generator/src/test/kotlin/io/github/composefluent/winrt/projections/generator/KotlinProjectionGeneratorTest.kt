@@ -6681,12 +6681,15 @@ class KotlinProjectionGeneratorTest {
                                     parameters = listOf(
                                         WinRtParameterDefinition("name", "String"),
                                         WinRtParameterDefinition("version", "UInt32"),
+                                        WinRtParameterDefinition("aliasCode", "Char16"),
                                     ),
                                 ),
                             ),
                             fields = listOf(
                                 WinRtFieldDefinition("Category", "String"),
                                 WinRtFieldDefinition("Enabled", "Boolean"),
+                                WinRtFieldDefinition("Priority", "System.Int32"),
+                                WinRtFieldDefinition("Ratio", "System.Single"),
                             ),
                             properties = listOf(
                                 WinRtPropertyDefinition("SourceType", "System.Type"),
@@ -6703,8 +6706,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(file.contents.contains("public annotation class WidgetAttribute"))
         assertTrue(file.contents.contains("val name: String"))
         assertTrue(file.contents.contains("val version: Long"))
+        assertTrue(file.contents.contains("val aliasCode: Char"))
         assertTrue(file.contents.contains("val Category: String = \"\""))
         assertTrue(file.contents.contains("val Enabled: Boolean = false"))
+        assertTrue(file.contents.contains("val Priority: Long = 0L"))
+        assertTrue(file.contents.contains("val Ratio: Float = 0.0f"))
         assertTrue(file.contents.contains("val SourceType: KClass<*> = Any::class"))
         assertTrue(file.contents.contains("val AliasType: KClass<*> = Any::class"))
         assertTrue(file.contents.contains("attribute WinRT class shell"))
