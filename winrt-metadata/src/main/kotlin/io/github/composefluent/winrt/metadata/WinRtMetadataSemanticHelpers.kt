@@ -2194,11 +2194,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     private fun renderAbiTypeName(type: WinRtTypeRef): String {
         val normalizedTypeName = type.normalized().typeName
-        return if (winRtFundamentalTypeForName(normalizedTypeName) == WinRtFundamentalType.String) {
-            "IntPtr"
-        } else {
-            normalizedTypeName
-        }
+        return winRtFundamentalTypeForName(normalizedTypeName)?.toCsWinRtAbiTypeName() ?: normalizedTypeName
     }
 
     private fun signatureParameterWriterDescriptor(
@@ -2619,7 +2615,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 WinRtProjectionCategory.Fundamental,
                 WinRtProjectionCategory.String,
                 -> winRtFundamentalTypeForName(descriptor.typeName)
-                    ?.toGenericAbiDelegateTypeName(descriptor.typeName)
+                    ?.toCsWinRtAbiTypeName()
                     ?: descriptor.typeName
                 WinRtProjectionCategory.Guid,
                 WinRtProjectionCategory.Enum,
