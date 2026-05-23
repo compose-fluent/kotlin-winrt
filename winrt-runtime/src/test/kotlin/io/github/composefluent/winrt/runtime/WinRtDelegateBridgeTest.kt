@@ -307,14 +307,16 @@ class WinRtDelegateBridgeTest {
                                     ),
                                 )
                             }
+                            // Mirrors .cswinrt/src/WinRT.Runtime/ComWrappersSupport.cs GetInterfaceTableEntries:
+                            // delegate IID, IPropertyValue, IReference<TDelegate>, then the standard CCW suffix.
                             assertEquals(
                                 listOf(
                                     delegateIid,
+                                    IID.IPropertyValue,
                                     ParameterizedInterfaceId.createFromParameterizedInterface(
                                         IID.IReference,
                                         WinRtTypeSignature.delegate(delegateIid),
                                     ),
-                                    IID.IPropertyValue,
                                     IID.IStringable,
                                     IID.IWeakReferenceSource,
                                     IID.IMarshal,
