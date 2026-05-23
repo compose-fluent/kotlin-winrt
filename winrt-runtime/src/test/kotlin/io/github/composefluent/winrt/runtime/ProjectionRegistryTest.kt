@@ -256,6 +256,16 @@ class ProjectionRegistryTest {
         assertEquals(TimeSpanProjection::class, TypeExtensions.findHelperType(Duration::class))
         assertEquals(UriProjection::class, TypeExtensions.findHelperType(WinRtUri::class))
         assertEquals(IClosableProjection::class, TypeExtensions.findHelperType(AutoCloseable::class))
+        assertEquals(
+            "Windows.Foundation.IUriRuntimeClass",
+            WinRtTypeRegistry.findByClass(IUriRuntimeClassProjection::class)?.projectedTypeName,
+        )
+        assertNull(TypeNameSupport.findKClassByNameCached(IUriRuntimeClassProjection::class.typeDisplayName()))
+        assertEquals(
+            "Windows.Foundation.IClosable",
+            WinRtTypeRegistry.findByClass(IClosableProjection::class)?.projectedTypeName,
+        )
+        assertNull(TypeNameSupport.findKClassByNameCached(IClosableProjection::class.typeDisplayName()))
         assertTrue(Projections.isTypeWindowsRuntimeType(KClass::class))
         assertEquals(
             WinRtReferenceTypeNames.boxedReference("Windows.UI.Xaml.Interop.TypeName"),

@@ -49,6 +49,11 @@ class RuntimeConfigurationTest {
                 GuidGenerator.getIID(WinRtPropertyChangedNotifierProjection::class),
             )
             assertEquals(
+                "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
+                WinRtTypeRegistry.findByClass(WinRtPropertyChangedNotifierProjection::class)?.projectedTypeName,
+            )
+            assertNull(TypeNameSupport.findKClassByNameCached(WinRtPropertyChangedNotifierProjection::class.typeDisplayName()))
+            assertEquals(
                 "Microsoft.UI.Xaml.IXamlServiceProvider",
                 TypeNameSupport.getNameForType(WinRtServiceProvider::class),
             )
@@ -75,6 +80,11 @@ class RuntimeConfigurationTest {
                 Guid("CF75D69C-F2F4-486B-B302-BB4C09BAEBFA"),
                 GuidGenerator.getIID(WinRtPropertyChangedNotifierProjection::class),
             )
+            assertEquals(
+                "Windows.UI.Xaml.Data.INotifyPropertyChanged",
+                WinRtTypeRegistry.findByClass(WinRtPropertyChangedNotifierProjection::class)?.projectedTypeName,
+            )
+            assertNull(TypeNameSupport.findKClassByNameCached(WinRtPropertyChangedNotifierProjection::class.typeDisplayName()))
             assertNull(TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.IXamlServiceProvider"))
         }
     }

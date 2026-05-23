@@ -1,7 +1,7 @@
 package io.github.composefluent.winrt.runtime
 
-private val uriTypeHandle = WinRtTypeHandle(WinRtUri::class.typeDisplayName(), Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
-private val closableTypeHandle = WinRtTypeHandle(AutoCloseable::class.typeDisplayName(), IID.IDisposable)
+private val uriTypeHandle = WinRtTypeHandle("Windows.Foundation.Uri", Guid("9E365E57-48B2-4160-956F-C7385120BBFC"))
+private val closableTypeHandle = WinRtTypeHandle("Windows.Foundation.IClosable", IID.IDisposable)
 
 internal object WinRtBuiltInProjectionRuntimeHooks {
     fun ensureRegistered() {

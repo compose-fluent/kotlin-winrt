@@ -265,7 +265,7 @@ class ValueBoxingTest {
             val projected =
                 ComWrappersSupport.createRcwForComObject(
                     closeablePointer,
-                    WinRtTypeHandle(AutoCloseable::class.qualifiedName ?: "kotlin.AutoCloseable", IID.IDisposable),
+                    WinRtTypeHandle(TypeNameSupport.getNameForType(AutoCloseable::class), IID.IDisposable),
                 ) as AutoCloseable
             projected.close()
             assertTrue(closeable.closed)

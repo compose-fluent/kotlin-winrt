@@ -63,37 +63,37 @@ private fun notifyCollectionChangedEventArgsInterfaceId(): Guid =
     XamlProjectionConfiguration.select(IID.MUX_INotifyCollectionChangedEventArgs, IID.WUX_INotifyCollectionChangedEventArgs)
 
 private fun commandTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtCommand::class.typeDisplayName(), IID.ICommand)
+    WinRtTypeHandle(commandRuntimeTypeName(), IID.ICommand)
 
 private fun propertyChangedNotifierTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtPropertyChangedNotifier::class.typeDisplayName(), propertyChangedNotifierInterfaceId())
+    WinRtTypeHandle(propertyChangedNotifierTypeName(), propertyChangedNotifierInterfaceId())
 
 private fun collectionChangedNotifierTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtCollectionChangedNotifier::class.typeDisplayName(), collectionChangedNotifierInterfaceId())
+    WinRtTypeHandle(collectionChangedNotifierTypeName(), collectionChangedNotifierInterfaceId())
 
 private fun dataErrorInfoTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtDataErrorInfo::class.typeDisplayName(), IID.INotifyDataErrorInfo)
+    WinRtTypeHandle(muxDataErrorInfoTypeName, IID.INotifyDataErrorInfo)
 
 private fun serviceProviderTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtServiceProvider::class.typeDisplayName(), IID.IServiceProvider)
+    WinRtTypeHandle(muxServiceProviderTypeName, IID.IServiceProvider)
 
 private fun customPropertyTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtCustomProperty::class.typeDisplayName(), IID.ICustomProperty)
+    WinRtTypeHandle(customPropertyTypeName(), IID.ICustomProperty)
 
 private fun customPropertyProviderTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtCustomPropertyProvider::class.typeDisplayName(), IID.ICustomPropertyProvider)
+    WinRtTypeHandle(customPropertyProviderTypeName(), IID.ICustomPropertyProvider)
 
 private fun stringableTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtStringable::class.typeDisplayName(), IID.IStringable)
+    WinRtTypeHandle(stringableTypeName, IID.IStringable)
 
 private fun propertyChangedEventArgsTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtPropertyChangedEventArgs::class.typeDisplayName(), propertyChangedEventArgsInterfaceId())
+    WinRtTypeHandle(propertyChangedEventArgsTypeName(), propertyChangedEventArgsInterfaceId())
 
 private fun notifyCollectionChangedEventArgsTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtNotifyCollectionChangedEventArgs::class.typeDisplayName(), notifyCollectionChangedEventArgsInterfaceId())
+    WinRtTypeHandle(notifyCollectionChangedEventArgsTypeName(), notifyCollectionChangedEventArgsInterfaceId())
 
 private fun dataErrorsChangedEventArgsTypeHandle(): WinRtTypeHandle =
-    WinRtTypeHandle(WinRtDataErrorsChangedEventArgs::class.typeDisplayName(), dataErrorsChangedEventArgsInterfaceId)
+    WinRtTypeHandle(muxDataErrorsChangedEventArgsTypeName, dataErrorsChangedEventArgsInterfaceId)
 
 private val commandEventHandlerIid =
     ParameterizedInterfaceId.createFromParameterizedInterface(IID.EventHandler, WinRtTypeSignature.object_())
@@ -451,7 +451,7 @@ internal object XamlSystemProjectionMappings {
         )
         CommonWinRtBuiltInProjectionMappings.registerMetadata(
             type = helperKClass,
-            projectedTypeName = helperType.typeDisplayName(),
+            projectedTypeName = canonicalAbiTypeName,
             guid = iid,
             iid = iid,
             isWindowsRuntimeType = true,
@@ -491,7 +491,7 @@ internal object XamlSystemProjectionMappings {
         )
         CommonWinRtBuiltInProjectionMappings.registerMetadata(
             type = helperKClass,
-            projectedTypeName = helperType.typeDisplayName(),
+            projectedTypeName = runtimeClassName,
             guid = defaultInterfaceIid,
             iid = defaultInterfaceIid,
             isWindowsRuntimeType = true,
@@ -1706,6 +1706,7 @@ fun winRtPropertyChangedEventArgsFromAbi(argument: Any?): WinRtPropertyChangedEv
 private fun decodePropertyChangedEventArgsArgument(argument: Any?): WinRtPropertyChangedEventArgs? =
     when (argument) {
         null -> null
+        is WinRtPropertyChangedEventArgs -> argument
         is IUnknownReference ->
             argument.use { reference ->
                 reference.queryInterface(muxPropertyChangedEventArgsInterfaceId).getOrNull()?.use(::readPropertyChangedEventArgs)
@@ -1724,6 +1725,7 @@ private fun decodePropertyChangedEventArgsArgument(argument: Any?): WinRtPropert
 private fun decodeNotifyCollectionChangedEventArgsArgument(argument: Any?): WinRtNotifyCollectionChangedEventArgs? =
     when (argument) {
         null -> null
+        is WinRtNotifyCollectionChangedEventArgs -> argument
         is IUnknownReference ->
             argument.use { reference ->
                 reference.queryInterface(IID.MUX_INotifyCollectionChangedEventArgs).getOrNull()?.use(::readNotifyCollectionChangedEventArgs)
@@ -1742,6 +1744,7 @@ private fun decodeNotifyCollectionChangedEventArgsArgument(argument: Any?): WinR
 private fun decodeDataErrorsChangedEventArgsArgument(argument: Any?): WinRtDataErrorsChangedEventArgs? =
     when (argument) {
         null -> null
+        is WinRtDataErrorsChangedEventArgs -> argument
         is IUnknownReference ->
             argument.use { reference ->
                 reference.queryInterface(dataErrorsChangedEventArgsInterfaceId).getOrNull()?.use(::readDataErrorsChangedEventArgs)
