@@ -1030,6 +1030,7 @@ class WinRtMetadataModelTest {
         ) as WinRtEventHandlerTypeDescriptor
         assertEquals(WinRtEventHandlerKind.EventHandler, eventHandler.kind)
         assertEquals("String", eventHandler.eventArgsType?.displayName)
+        assertEquals(WinRtEventHandlerKind.EventHandler, winRtEventHandlerKindForTypeName("System.EventHandler<String>"))
 
         val typedEventHandler = resolver.resolveType(
             WinRtTypeRef.fromDisplayName("Windows.Foundation.TypedEventHandler<Sample.Foundation.Widget, String>"),

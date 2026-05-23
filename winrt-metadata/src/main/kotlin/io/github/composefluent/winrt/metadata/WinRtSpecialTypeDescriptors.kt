@@ -413,3 +413,6 @@ private val EVENT_HANDLER_TYPES = mapOf(
     "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedEventHandler" to WinRtEventHandlerKind.NotifyCollectionChangedEventHandler,
     "Windows.UI.Xaml.Interop.NotifyCollectionChangedEventHandler" to WinRtEventHandlerKind.NotifyCollectionChangedEventHandler,
 )
+
+fun winRtEventHandlerKindForTypeName(typeName: String): WinRtEventHandlerKind? =
+    EVENT_HANDLER_TYPES[typeName.trim().substringBefore('<').removeSuffix("?")]
