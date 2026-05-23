@@ -1356,12 +1356,7 @@ private class MetadataTables private constructor(
         }
 
         val extendsName = decodeTypeDefOrRefQualifiedName(extendsToken, typeDefNames, typeRefNames, typeSpecTypes)
-        return when (extendsName) {
-            "System.Enum" -> WinRtTypeKind.Enum
-            "System.ValueType" -> WinRtTypeKind.Struct
-            "System.MulticastDelegate" -> WinRtTypeKind.Delegate
-            else -> WinRtTypeKind.RuntimeClass
-        }
+        return winRtTypeKindForSystemBaseTypeName(extendsName) ?: WinRtTypeKind.RuntimeClass
     }
 
     private fun decodeTypeDefOrRefQualifiedName(

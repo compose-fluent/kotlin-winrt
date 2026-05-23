@@ -587,6 +587,17 @@ class WinRtMetadataModelTest {
             WinRtProjectionCategory.Object,
             classifier.classify(WinRtTypeRef.fromDisplayName("Object"), "Sample.Foundation").projectionCategory,
         )
+        mapOf(
+            "System.Enum" to Triple(WinRtTypeKind.Enum, WinRtProjectionCategory.Enum, WinRtAbiTypeCategory.Enum),
+            "System.ValueType" to Triple(WinRtTypeKind.Struct, WinRtProjectionCategory.Struct, WinRtAbiTypeCategory.Struct),
+            "System.MulticastDelegate" to Triple(WinRtTypeKind.Delegate, WinRtProjectionCategory.Delegate, WinRtAbiTypeCategory.Delegate),
+        ).forEach { (systemBaseTypeName, categories) ->
+            val (typeKind, projectionCategory, abiCategory) = categories
+            val descriptor = classifier.classify(WinRtTypeRef.fromDisplayName(systemBaseTypeName), "Sample.Foundation")
+            assertEquals(typeKind, winRtTypeKindForSystemBaseTypeName(systemBaseTypeName))
+            assertEquals(projectionCategory, descriptor.projectionCategory)
+            assertEquals(abiCategory, descriptor.abiCategory)
+        }
         assertEquals(
             WinRtProjectionCategory.Enum,
             classifier.classify(WinRtTypeRef.fromDisplayName("Priority"), "Sample.Foundation").projectionCategory,

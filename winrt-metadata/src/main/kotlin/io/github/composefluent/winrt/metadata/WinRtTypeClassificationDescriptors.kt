@@ -189,29 +189,32 @@ internal fun WinRtProjectionCategory.toAbiCategory(): WinRtAbiTypeCategory =
 private fun projectionCategoryFor(
     rawTypeName: String,
     resolvedType: WinRtTypeDefinition?,
-): WinRtProjectionCategory =
-    when {
+): WinRtProjectionCategory {
+    val systemBaseKind = winRtTypeKindForSystemBaseTypeName(rawTypeName)
+    return when {
         isWinRtVoidTypeName(rawTypeName) -> WinRtProjectionCategory.Unit
         winRtFundamentalTypeForName(rawTypeName) == WinRtFundamentalType.String -> WinRtProjectionCategory.String
         isWinRtFundamentalTypeName(rawTypeName) -> WinRtProjectionCategory.Fundamental
         isWinRtObjectTypeName(rawTypeName) -> WinRtProjectionCategory.Object
         isWinRtGuidTypeName(rawTypeName) -> WinRtProjectionCategory.Guid
         isWinRtTypeTypeName(rawTypeName) -> WinRtProjectionCategory.Type
-        rawTypeName == "System.Enum" -> WinRtProjectionCategory.Enum
-        rawTypeName == "System.ValueType" -> WinRtProjectionCategory.Struct
-        rawTypeName == "System.MulticastDelegate" -> WinRtProjectionCategory.Delegate
+        systemBaseKind != null -> systemBaseKind.projectionCategory()
         resolvedType?.isApiContract == true && resolvedType.kind == WinRtTypeKind.Struct -> WinRtProjectionCategory.ApiContract
         resolvedType?.isAttributeType == true && resolvedType.kind == WinRtTypeKind.RuntimeClass -> WinRtProjectionCategory.Attribute
-        resolvedType != null -> when (resolvedType.kind) {
-            WinRtTypeKind.Enum -> WinRtProjectionCategory.Enum
-            WinRtTypeKind.Struct -> WinRtProjectionCategory.Struct
-            WinRtTypeKind.Interface -> WinRtProjectionCategory.Interface
-            WinRtTypeKind.Delegate -> WinRtProjectionCategory.Delegate
-            WinRtTypeKind.RuntimeClass -> WinRtProjectionCategory.RuntimeClass
-            WinRtTypeKind.Unknown -> WinRtProjectionCategory.Unknown
-        }
+        resolvedType != null -> resolvedType.kind.projectionCategory()
 
         else -> WinRtProjectionCategory.Unknown
+    }
+}
+
+private fun WinRtTypeKind.projectionCategory(): WinRtProjectionCategory =
+    when (this) {
+        WinRtTypeKind.Enum -> WinRtProjectionCategory.Enum
+        WinRtTypeKind.Struct -> WinRtProjectionCategory.Struct
+        WinRtTypeKind.Interface -> WinRtProjectionCategory.Interface
+        WinRtTypeKind.Delegate -> WinRtProjectionCategory.Delegate
+        WinRtTypeKind.RuntimeClass -> WinRtProjectionCategory.RuntimeClass
+        WinRtTypeKind.Unknown -> WinRtProjectionCategory.Unknown
     }
 
 private fun mapped(

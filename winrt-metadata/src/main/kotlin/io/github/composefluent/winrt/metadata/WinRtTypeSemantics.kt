@@ -90,6 +90,14 @@ fun WinRtFundamentalType.toGenericAbiDelegateTypeName(defaultTypeName: String): 
         else -> defaultTypeName
     }
 
+fun winRtTypeKindForSystemBaseTypeName(typeName: String?): WinRtTypeKind? =
+    when (typeName?.trim()) {
+        "System.Enum" -> WinRtTypeKind.Enum
+        "System.ValueType" -> WinRtTypeKind.Struct
+        "System.MulticastDelegate" -> WinRtTypeKind.Delegate
+        else -> null
+    }
+
 sealed interface WinRtTypeSemantics {
     data class Fundamental(val type: WinRtFundamentalType) : WinRtTypeSemantics
     data object Object : WinRtTypeSemantics
