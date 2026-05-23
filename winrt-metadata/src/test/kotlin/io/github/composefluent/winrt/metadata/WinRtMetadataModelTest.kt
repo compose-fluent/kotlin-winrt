@@ -1898,7 +1898,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun projection_surface_filter_keeps_explicit_windows_include_inside_excluded_namespace() {
+    fun projection_surface_filter_excluded_namespace_wins_over_explicit_root_include() {
         val model = WinRtMetadataModel(
             listOf(
                 WinRtNamespace(
@@ -1918,11 +1918,12 @@ class WinRtMetadataModelTest {
 
         val filtered = model.filterProjectionSurface(
             namespaces = setOf("Windows.UI.Xaml.Interop"),
+            types = setOf("Windows.UI.Xaml.Interop.Type"),
             excludedNamespaces = setOf("Windows"),
         )
 
         assertEquals(
-            listOf("Windows.UI.Xaml.Interop.Type"),
+            emptyList<String>(),
             filtered.namespaces.flatMap { namespace -> namespace.types.map(WinRtTypeDefinition::qualifiedName) },
         )
     }

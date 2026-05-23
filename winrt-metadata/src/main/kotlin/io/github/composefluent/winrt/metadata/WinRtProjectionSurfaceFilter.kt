@@ -80,23 +80,15 @@ private fun WinRtTypeDefinition.isProjectionFilterRootIncluded(filter: WinRtProj
     val included = !hasIncludeFilter ||
         filter.namespaces.any { qualifiedName.isProjectionFilterMatch(it) } ||
         explicitlyIncludedType
-    val explicitlyExcludedType = filter.excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) }
-    val namespaceExcludeOverridden = filter.excludedNamespaces.any { excludedNamespace ->
-        filter.namespaces.any { includedNamespace ->
-            includedNamespace.startsWith("$excludedNamespace.") &&
-                qualifiedName.isProjectionFilterMatch(includedNamespace)
-        }
-    }
-    val excluded = explicitlyExcludedType ||
-        (
-            !explicitlyIncludedType &&
-                !namespaceExcludeOverridden &&
-                filter.excludedNamespaces.any { qualifiedName.isProjectionFilterMatch(it) }
-            )
+    val excluded = filter.excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) } ||
+        filter.excludedNamespaces.any { qualifiedName.isProjectionFilterMatch(it) }
     return included && !excluded
 }
 
 private fun WinRtProjectionSurfaceFilter.isProjectionDependencyExcluded(qualifiedName: String): Boolean =
+    // Dependency closure is a Kotlin generator compile-surface boundary, not a
+    // root projection selection rule. Keep referenced metadata available across
+    // namespace excludes unless a concrete type is explicitly excluded.
     excludedTypes.any { qualifiedName.isProjectionFilterMatch(it) }
 
 private fun WinRtTypeDefinition.referencedProjectionTypeNames(): Set<String> = buildSet {
