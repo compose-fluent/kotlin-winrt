@@ -96,7 +96,7 @@ class WinUiControlsApp : Application(), AutoCloseable {
         window.activate()
         println("winui-controls: window activated native")
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.autoExitWinUi")) {
-            Application.current.exit()
+            checkNotNull(Application.current) { "Expected current WinUI application before auto-exit." }.exit()
         }
 
         return WinUiControlsSampleResult(
@@ -108,11 +108,11 @@ class WinUiControlsApp : Application(), AutoCloseable {
 
     private fun installXamlResources() {
         println("winui-controls: install resources current")
-        val application = Application.current
+        val application = checkNotNull(Application.current) { "Expected current WinUI application while installing resources." }
         println("winui-controls: install resources dictionary")
-        val resources = application.resources
+        val resources = checkNotNull(application.resources) { "Expected WinUI application resources." }
         println("winui-controls: install resources merged dictionaries")
-        val mergedDictionaries = resources.mergedDictionaries
+        val mergedDictionaries = checkNotNull(resources.mergedDictionaries) { "Expected merged resource dictionaries." }
         println("winui-controls: install resources create controls resources")
         val controlsResources = loadXamlControlsResources()
         println("winui-controls: install resources add")
@@ -135,16 +135,17 @@ class WinUiControlsApp : Application(), AutoCloseable {
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.minimalWinUiSurface")) {
             return root
         }
+        val rootChildren = checkNotNull(root.children) { "Expected StackPanel children collection." }
 
         println("winui-controls: add label")
-        root.children.add(label("WinUI 3 controls"))
+        rootChildren.add(label("WinUI 3 controls"))
         println("winui-controls: add textbox")
-        root.children.add(TextBox().apply {
+        rootChildren.add(TextBox().apply {
             text = "Kotlin WinRT"
             width = 320.0
         })
         println("winui-controls: add toggle")
-        root.children.add(ToggleSwitch().apply {
+        rootChildren.add(ToggleSwitch().apply {
             isOn = true
         })
         println("winui-controls: add slider")
@@ -158,30 +159,32 @@ class WinUiControlsApp : Application(), AutoCloseable {
         println("winui-controls: slider width")
         slider.width = 320.0
         println("winui-controls: slider add child")
-        root.children.add(slider)
+        rootChildren.add(slider)
         println("winui-controls: add combobox")
-        root.children.add(ComboBox().apply {
+        rootChildren.add(ComboBox().apply {
             width = 320.0
             if (!skipObjectContent) {
-                items.add("Compact")
-                items.add("Comfortable")
-                items.add("Expanded")
+                val comboBoxItems = checkNotNull(items) { "Expected ComboBox items collection." }
+                comboBoxItems.add("Compact")
+                comboBoxItems.add("Comfortable")
+                comboBoxItems.add("Expanded")
             }
         })
         println("winui-controls: add listview")
-        root.children.add(ListView().apply {
+        rootChildren.add(ListView().apply {
             width = 320.0
             height = 140.0
             if (!skipObjectContent) {
-                items.add("TextBox")
-                items.add("ToggleSwitch")
-                items.add("Slider")
-                items.add("ComboBox")
-                items.add("ListView")
+                val listViewItems = checkNotNull(items) { "Expected ListView items collection." }
+                listViewItems.add("TextBox")
+                listViewItems.add("ToggleSwitch")
+                listViewItems.add("Slider")
+                listViewItems.add("ComboBox")
+                listViewItems.add("ListView")
             }
         })
         println("winui-controls: add button")
-        root.children.add(Button().apply {
+        rootChildren.add(Button().apply {
             if (!skipObjectContent) {
                 content = "Apply"
             }

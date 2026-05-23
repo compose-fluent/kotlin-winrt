@@ -113,7 +113,11 @@ private data class WinUiDesktopMainPage(
             pageContent.content = "Hello from WinUI Desktop!"
             page.content = pageContent
             println("winui: page content initialized")
-            page.addHandler(UIElement.tappedEvent, TappedEventHandler { sender, args -> pointerTapped(sender, args) }, true)
+            page.addHandler(
+                checkNotNull(UIElement.tappedEvent) { "Expected UIElement.Tapped routed event." },
+                TappedEventHandler { sender, args -> pointerTapped(sender, args) },
+                true,
+            )
             println("winui: page tapped handler registered")
             return WinUiDesktopMainPage(page, tappedHandlerRegistered = true)
         }
