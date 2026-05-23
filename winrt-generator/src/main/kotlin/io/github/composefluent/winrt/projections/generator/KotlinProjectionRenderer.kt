@@ -1861,7 +1861,7 @@ class KotlinProjectionRenderer(
 
     private val KotlinTypeProjectionPlan.runtimeClassBaseTypeName: String?
         get() = type.baseTypeName
-            ?.takeUnless { it == "System.Object" || it == "Any" }
+            ?.takeUnless(::isWinRtObjectTypeName)
 
     private fun KotlinTypeProjectionPlan.isPublicRuntimeClassInterface(interfaceName: String): Boolean {
         val rawName = interfaceName.substringBefore('<').removeSuffix("?")
