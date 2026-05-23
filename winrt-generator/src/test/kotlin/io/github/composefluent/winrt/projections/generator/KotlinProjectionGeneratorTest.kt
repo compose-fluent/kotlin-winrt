@@ -5360,7 +5360,7 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "ToString",
-                                    returnTypeName = "String",
+                                    returnTypeName = "System.String",
                                     methodRowId = 10,
                                 ),
                                 WinRtMethodDefinition(
@@ -5394,7 +5394,7 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "ToString",
-                                    returnTypeName = "String",
+                                    returnTypeName = "System.String",
                                     methodRowId = 10,
                                 ),
                                 WinRtMethodDefinition(

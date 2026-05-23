@@ -8,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
+import io.github.composefluent.winrt.metadata.WinRtFundamentalType
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
 import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDescriptor
@@ -40,6 +41,7 @@ import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -435,7 +437,9 @@ internal data class RuntimeObjectMethodShape(
 
 internal fun runtimeObjectMethodShape(method: WinRtMethodDefinition): RuntimeObjectMethodShape? =
     when {
-        method.name == "ToString" && method.parameters.isEmpty() && method.returnTypeName == "String" ->
+        method.name == "ToString" &&
+            method.parameters.isEmpty() &&
+            winRtFundamentalTypeForName(method.returnTypeName) == WinRtFundamentalType.String ->
             RuntimeObjectMethodShape(
                 kind = RuntimeObjectMethodKind.ToString,
                 name = "toString",
