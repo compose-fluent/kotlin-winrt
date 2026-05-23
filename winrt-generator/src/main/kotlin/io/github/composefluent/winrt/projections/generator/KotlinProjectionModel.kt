@@ -109,6 +109,7 @@ import io.github.composefluent.winrt.runtime.WinRtEvent
 import io.github.composefluent.winrt.runtime.WinRtObjectMarshaller
 import io.github.composefluent.winrt.runtime.WinRtProjectedDelegate
 import io.github.composefluent.winrt.runtime.WinRtClosableObject
+import io.github.composefluent.winrt.runtime.WinRtComposableObject
 import io.github.composefluent.winrt.runtime.WinRtComposableObjectReference
 import io.github.composefluent.winrt.runtime.WinRtAttributeUsage
 import io.github.composefluent.winrt.runtime.WinRtActivationFactory
@@ -229,6 +230,7 @@ internal val WINRT_EVENT_SOURCE_CLASS_NAME = EventSource::class.asClassName()
 internal val WINRT_EVENT_PROJECTION_HELPERS_CLASS_NAME =
     ClassName("io.github.composefluent.winrt.projections.support", "WinRTEventProjectionHelpers")
 internal val WINRT_CLOSABLE_OBJECT_CLASS_NAME = WinRtClosableObject::class.asClassName()
+internal val WINRT_COMPOSABLE_OBJECT_CLASS_NAME = WinRtComposableObject::class.asClassName()
 internal val WINRT_COMPOSABLE_OBJECT_REFERENCE_CLASS_NAME = WinRtComposableObjectReference::class.asClassName()
 internal val WINRT_ACTIVATION_FACTORY_CLASS_NAME = WinRtActivationFactory::class.asClassName()
 internal val ATTRIBUTE_CLASS_NAME = Annotation::class.asClassName()
@@ -859,6 +861,8 @@ data class KotlinProjectionAbiTypeBinding(
     val typeName: String,
     val resolvedTypeName: String = typeName,
     val sourceTypeKind: WinRtTypeKind? = null,
+    val abiSize: Int? = null,
+    val abiAlignment: Int? = null,
     val interfaceId: Guid? = null,
     val enumUnderlyingType: WinRtIntegralType? = null,
     val delegateInvokeShape: KotlinProjectionDelegateInvokeShape? = null,

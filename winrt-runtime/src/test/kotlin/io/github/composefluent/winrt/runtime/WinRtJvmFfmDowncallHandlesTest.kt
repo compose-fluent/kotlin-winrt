@@ -18,4 +18,14 @@ class WinRtJvmFfmDowncallHandlesTest {
         assertNotSame(first, different)
         assertTrue(WinRtJvmFfmDowncallHandles.cachedHResultHandleCount() >= before + 2)
     }
+
+    @Test
+    fun supports_by_value_struct_downcall_shapes_from_layout_tokens() {
+        val first = WinRtJvmFfmDowncallHandles.hResult("Struct8_4,RawAddress")
+        val second = WinRtJvmFfmDowncallHandles.hResult("Struct8_4,RawAddress")
+        val wider = WinRtJvmFfmDowncallHandles.hResult("Struct16_8,RawAddress")
+
+        assertSame(first, second)
+        assertNotSame(first, wider)
+    }
 }

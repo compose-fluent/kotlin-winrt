@@ -316,19 +316,109 @@ object ComWrappersSupport {
 
         platformTryCreateProjectedReference(value, interfaceId)?.let { return it }
 
+        tryCreateComposableCCWForObject(value, interfaceId)?.let { return it }
+
         val definition = createCcwDefinition(value)
+        val composableInnerReference = (value as? WinRtComposableObject)
+            ?.winRtComposableObjectReference
+            ?.inner
         val host = WinRtInspectableComObject(
             interfaceDefinitions = definition.interfaceDefinitions,
             hiddenInterfaceDefinitions = definition.hiddenInterfaceDefinitions,
             defaultInterfaceId = definition.defaultInterfaceId,
             runtimeClassName = definition.runtimeClassName,
             managedValue = value,
-            queryInterfaceFallback = definition.queryInterfaceFallback?.let { fallback ->
-                { requestedInterfaceId -> fallback(value, requestedInterfaceId) }
+            queryInterfaceFallback = if (definition.queryInterfaceFallback != null || composableInnerReference != null) {
+                { requestedInterfaceId ->
+                    definition.queryInterfaceFallback
+                        ?.invoke(value, requestedInterfaceId)
+                        ?.takeUnless(PlatformAbi::isNull)
+                        ?: composableInnerReference
+                            ?.let { queryInterfacePointerForAbi(it, requestedInterfaceId) }
+                }
+            } else {
+                null
             },
         )
         val requestedInterface = interfaceId ?: definition.defaultInterfaceId
         return ownedReference(host, requestedInterface)
+    }
+
+    private fun tryCreateComposableCCWForObject(
+        value: Any,
+        interfaceId: Guid?,
+    ): ComObjectReference? {
+        val composableReference = (value as? WinRtComposableObject)
+            ?.winRtComposableObjectReference
+            ?: return null
+        val outerReference = composableReference.outer
+        traceCcw(
+            "create composable CCW value=${value::class.qualifiedName} requested=$interfaceId " +
+                "outer=${outerReference.interfaceId} instance=${composableReference.instance.interfaceId}",
+        )
+        return if (interfaceId == null || interfaceId == outerReference.interfaceId) {
+            traceCcw("create composable CCW using outer")
+            cloneComReference(outerReference)
+        } else if (interfaceId == IID.IUnknown || interfaceId == IID.IInspectable) {
+            traceCcw("create composable CCW querying outer for $interfaceId")
+            outerReference.queryInterface(interfaceId).getOrThrow()
+        } else {
+            traceCcw("create composable CCW querying outer custom QI for $interfaceId")
+            outerReference.queryInterface(interfaceId).getOrThrow()
+        }
+    }
+
+    fun detachCCWForObject(
+        value: Any?,
+        interfaceId: Guid? = null,
+    ): RawAddress {
+        if (value == null) {
+            return PlatformAbi.nullPointer
+        }
+        val winRtObject = value as? IWinRTObject
+        if (winRtObject != null && winRtObject.hasUnwrappableNativeObject) {
+            val nativeObject = winRtObject.nativeObject
+            if (interfaceId == null || interfaceId == nativeObject.interfaceId) {
+                return PlatformAbi.fromRawComPtr(nativeObject.getRefPointer())
+            }
+            return nativeObject.queryInterface(interfaceId).getOrThrow().useAndGetRef()
+        }
+        detachComposableCCWForObject(value, interfaceId)?.let { return it }
+        val reference = createCCWForObject(value, interfaceId)
+        traceCcw(
+            "detach CCW value=${value::class.qualifiedName} requested=$interfaceId " +
+                "reference=${reference.interfaceId} aggregated=${reference.isAggregated}",
+        )
+        return try {
+            PlatformAbi.fromRawComPtr(reference.getRefPointer())
+        } finally {
+            reference.close()
+        }
+    }
+
+    private fun detachComposableCCWForObject(
+        value: Any,
+        interfaceId: Guid?,
+    ): RawAddress? {
+        val composableReference = (value as? WinRtComposableObject)
+            ?.winRtComposableObjectReference
+            ?: return null
+        val outerReference = composableReference.outer
+        val detachedPointer = if (interfaceId == null || interfaceId == outerReference.interfaceId) {
+            PlatformAbi.fromRawComPtr(outerReference.getRefPointer())
+        } else if (interfaceId == IID.IUnknown || interfaceId == IID.IInspectable) {
+            queryInterfacePointerForAbi(outerReference, interfaceId)
+        } else {
+            queryInterfacePointerForAbi(outerReference, interfaceId)
+        } ?: throw WinRtUnsupportedOperationException(
+            "Composable CCW does not implement interface '$interfaceId'.",
+            KnownHResults.E_NOINTERFACE,
+        )
+        traceCcw(
+            "detach composable CCW value=${value::class.qualifiedName} requested=$interfaceId " +
+                "pointer=${PlatformAbi.pointerKey(detachedPointer)}",
+        )
+        return detachedPointer
     }
 
     fun createComposableCCWForObject(
@@ -350,12 +440,10 @@ object ComWrappersSupport {
                     ?.invoke(value, requestedInterfaceId)
                     ?.takeUnless(PlatformAbi::isNull)
                     ?: innerReference
-                    ?.tryQueryInterface(requestedInterfaceId)
-                    ?.use { queried -> PlatformAbi.fromRawComPtr(queried.getRefPointer()) }
+                    ?.let { queryInterfacePointerForAbi(it, requestedInterfaceId) }
             },
         )
         val isAggregation = outerInterfaceId != null
-        val requestedInterface = outerInterfaceId ?: definition.defaultInterfaceId
         var outerReference: ComObjectReference? = null
         return try {
             PlatformAbi.confinedScope().use { scope ->
@@ -398,7 +486,7 @@ object ComWrappersSupport {
                         isAggregated = isAggregation,
                     )
                 }
-                outerReference = host.createReference(requestedInterface)
+                outerReference = host.createReference(definition.defaultInterfaceId)
                 val composedReference = IInspectableReference(
                     PlatformAbi.toRawComPtr(instancePointer),
                     IID.IInspectable,
@@ -553,6 +641,24 @@ object ComWrappersSupport {
         return true
     }
 
+    private fun queryInterfacePointerForAbi(
+        reference: ComObjectReference,
+        requestedInterfaceId: Guid,
+    ): RawAddress? {
+        // Mirrors CsWinRT IObjectReference.TryAs(Guid, out IntPtr) used from ICustomQueryInterface:
+        // the QI result is an ABI-owned pointer and must not take the aggregated As<T>() release path.
+        val result = WinRtPlatformApi.queryInterfaceRaw(
+            PlatformAbi.fromRawComPtr(reference.pointer),
+            requestedInterfaceId,
+        )
+        val queriedPointer = result.pointer
+        if (result.hResultValue == KnownHResults.E_NOINTERFACE.value || PlatformAbi.isNull(queriedPointer)) {
+            return null
+        }
+        WinRtPlatformApi.checkSucceededRaw(result.hResultValue)
+        return queriedPointer
+    }
+
     private fun rcwCacheKey(pointer: RawAddress): Long {
         val result = WinRtPlatformApi.queryInterfaceRaw(pointer, IID.IUnknown)
         val unknownPointer = result.pointer
@@ -647,6 +753,12 @@ object ComWrappersSupport {
             } finally {
                 cleanup()
             }
+        }
+    }
+
+    private fun traceCcw(message: String) {
+        if (FeatureSwitches.traceCcw) {
+            println("winrt-ccw: $message")
         }
     }
 }

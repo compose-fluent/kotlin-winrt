@@ -30,6 +30,7 @@ import org.gradle.workers.WorkParameters
 import org.gradle.workers.WorkerExecutor
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.CodeSource
 import javax.inject.Inject
 import kotlin.io.path.extension
 import kotlin.io.path.isDirectory
@@ -200,6 +201,7 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
     private val logger = Logging.getLogger(GenerateWinRtProjectionsWorkAction::class.java)
 
     override fun execute() {
+        logGeneratorRuntimeClasspath()
         val generatedRoot = parameters.outputDirectory.get().asFile.toPath().toAbsolutePath().normalize()
         val authoringTypeDetailsRoot = parameters.authoringTypeDetailsOutputDirectory.get().asFile.toPath()
             .toAbsolutePath()
@@ -440,6 +442,32 @@ internal abstract class GenerateWinRtProjectionsWorkAction : WorkAction<Generate
             stream.asSequence().any { path -> Files.isRegularFile(path) && path.extension == "kt" }
         }
     }
+
+    private fun logGeneratorRuntimeClasspath() {
+        val kotlinPoetClass = Class.forName("com.squareup.kotlinpoet.ClassName")
+        val kotlinSequencesClass = Class.forName("kotlin.sequences.SequencesKt")
+        logger.lifecycle(
+            "kotlin-winrt generator worker runtime: KotlinPoet={}, Kotlin stdlib={}, classloader={}",
+            codeSourceLocation(kotlinPoetClass.protectionDomain?.codeSource),
+            codeSourceLocation(kotlinSequencesClass.protectionDomain?.codeSource),
+            GenerateWinRtProjectionsWorkAction::class.java.classLoader,
+        )
+        runCatching {
+            kotlinPoetClass.getConstructor(String::class.java, Array<String>::class.java)
+        }.getOrElse { error ->
+            throw IllegalStateException(
+                "kotlin-winrt generator worker loaded an incompatible KotlinPoet from " +
+                    "${codeSourceLocation(kotlinPoetClass.protectionDomain?.codeSource)}. " +
+                    "The projection generator must run in the isolated worker classpath configured by " +
+                    KOTLIN_WINRT_GENERATOR_WORKER_CONFIGURATION +
+                    ", not a downstream Gradle/buildSrc parent classloader.",
+                error,
+            )
+        }
+    }
+
+    private fun codeSourceLocation(codeSource: CodeSource?): String =
+        codeSource?.location?.toString() ?: "<unknown>"
 
     private fun writeAuthoringMetadataIndex(
         model: io.github.composefluent.winrt.metadata.WinRtMetadataModel,

@@ -81,10 +81,7 @@ fun winRtProjectionMarshaler(
     }
     val typeHandle = WinRtTypeHandle(projectedTypeName, interfaceId)
     return borrowedProjectionMarshaler(value, typeHandle)
-        ?: throw WinRtUnsupportedOperationException(
-            "Object cannot be marshaled as '$projectedTypeName'.",
-            KnownHResults.E_NOINTERFACE,
-        )
+        ?: WinRtProjectionMarshaler.owned(ComWrappersSupport.createCCWForObject(value, interfaceId))
 }
 
 internal fun cloneComReference(reference: ComObjectReference): ComObjectReference =

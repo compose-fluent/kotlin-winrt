@@ -191,17 +191,23 @@ class WinUiKmpLibraryApp : Application(), AutoCloseable {
             "AutomationProperties.accessibilityViewProperty was not available."
         })
         println("winui-kmp-library: detached automation accessibility view cleared")
-        val localPanelPeer = FrameworkElementAutomationPeer.createPeerForElement(localPanel)
-        check(WinUiKmpLocalPanel.createAutomationPeerCalls == 1) {
-            "Local authored Panel OnCreateAutomationPeer was not dispatched; calls=${WinUiKmpLocalPanel.createAutomationPeerCalls}, peer=${localPanelPeer.javaClass.name}"
-        }
-        println("winui-kmp-library: local authored panel automation peer override dispatched")
         if (!java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipWindowContent")) {
             window.content = panel
             println("winui-kmp-library: window content set")
         } else {
             println("winui-kmp-library: window content skipped")
         }
+        val localPanelPeer = FrameworkElementAutomationPeer.createPeerForElement(localPanel)
+        check(WinUiKmpLocalPanel.createAutomationPeerCalls == 1) {
+            "Local authored Panel OnCreateAutomationPeer was not dispatched; calls=${WinUiKmpLocalPanel.createAutomationPeerCalls}, peer=${localPanelPeer.javaClass.name}"
+        }
+        println("winui-kmp-library: local authored panel automation peer override dispatched")
+        localPanelPeer.getPeerFromPoint(Point(24f, 24f))
+        val peerPoint = WinUiKmpLocalAutomationPeer.lastPeerFromPoint
+        check(peerPoint != null && peerPoint.x == 24f && peerPoint.y == 24f) {
+            "Authored AutomationPeer.GetPeerFromPointCore received $peerPoint"
+        }
+        println("winui-kmp-library: local authored automation peer point ABI round-tripped")
         activeWindow = window
         if (java.lang.Boolean.getBoolean("kotlin.winrt.samples.skipCallbackSmoke")) {
             println("winui-kmp-library: callbacks skipped")
@@ -382,7 +388,7 @@ internal class WinUiKmpLocalContentControl : ContentControl() {
 internal class WinUiKmpLocalPanel : Panel() {
     override fun onCreateAutomationPeer(): AutomationPeer {
         createAutomationPeerCalls += 1
-        return FrameworkElementAutomationPeer(this)
+        return WinUiKmpLocalAutomationPeer(exposeHitTestChild = true)
     }
 
     companion object {
@@ -391,7 +397,18 @@ internal class WinUiKmpLocalPanel : Panel() {
     }
 }
 
-internal class WinUiKmpLocalAutomationPeer : AutomationPeer() {
+internal class WinUiKmpLocalAutomationPeer(
+    private val exposeHitTestChild: Boolean = false,
+) : AutomationPeer() {
+    private val hitTestChild: AutomationPeer? =
+        if (exposeHitTestChild) WinUiKmpLocalAutomationPeer() else null
+
+    override fun getPeerFromPointCore(point: Point): AutomationPeer {
+        println("winui-kmp-library: local authored automation peer getPeerFromPointCore point=${point.x},${point.y}")
+        lastPeerFromPoint = point
+        return hitTestChild ?: this
+    }
+
     override fun getPatternCore(patternInterface: PatternInterface): Any? = null
 
     override fun navigateCore(direction: AutomationNavigationDirection): Any? = null
@@ -400,7 +417,8 @@ internal class WinUiKmpLocalAutomationPeer : AutomationPeer() {
 
     override fun getFocusedElementCore(): Any? = null
 
-    override fun getChildrenCore(): MutableList<AutomationPeer> = mutableListOf()
+    override fun getChildrenCore(): MutableList<AutomationPeer> =
+        hitTestChild?.let { mutableListOf(it) } ?: mutableListOf()
 
     override fun getControlledPeersCore(): List<AutomationPeer> = emptyList()
 
@@ -411,4 +429,8 @@ internal class WinUiKmpLocalAutomationPeer : AutomationPeer() {
     override fun getFlowsToCore(): Iterable<AutomationPeer> = emptyList()
 
     override fun getFlowsFromCore(): Iterable<AutomationPeer> = emptyList()
+
+    companion object {
+        var lastPeerFromPoint: Point? = null
+    }
 }

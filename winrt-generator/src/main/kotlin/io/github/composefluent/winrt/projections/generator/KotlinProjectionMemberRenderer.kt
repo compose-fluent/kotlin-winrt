@@ -857,7 +857,7 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
             shape = shape,
             expressions = listOf(CodeBlock.of("%L as %T", parameter.name, IWINRT_OBJECT_CLASS_NAME)),
         )
-        shape == "Struct" -> {
+        shape.startsWith("Struct") -> {
             val structType = nativeStructClassName(binding) ?: return null
             DescriptorIntrinsicArgument(
                 shape = shape,
@@ -953,10 +953,19 @@ internal fun KotlinProjectionRenderer.descriptorStructCapableArgumentShape(bindi
             if (binding.typeName.endsWith("?") || customStructAbi(binding) != null || nativeStructClassName(binding) == null) {
                 null
             } else {
-                "Struct"
+                descriptorByValueStructArgumentShape(binding)
             }
         else -> descriptorIntrinsicArgumentShape(binding)
     }
+
+private fun descriptorByValueStructArgumentShape(binding: KotlinProjectionAbiTypeBinding): String? =
+    binding.abiSize
+        ?.takeIf { it > 0 }
+        ?.let { size ->
+            binding.abiAlignment
+                ?.takeIf { it > 0 }
+                ?.let { alignment -> "Struct${size}_${alignment}" }
+        }
 
 private fun KotlinProjectionRenderer.renderProjectedObjectPropertyGetter(
     binding: KotlinProjectionInstanceMemberBinding,

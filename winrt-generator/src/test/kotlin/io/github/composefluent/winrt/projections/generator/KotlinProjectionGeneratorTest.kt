@@ -21,6 +21,8 @@ import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
+import io.github.composefluent.winrt.metadata.WinRtTypeLayout
+import io.github.composefluent.winrt.metadata.WinRtTypeLayoutKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtMetadataLoader
@@ -3082,7 +3084,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("TYPE_NAME"))
         assertTrue(widgetContents.contains("isRuntimeClass = true"))
         assertTrue(widgetContents.contains("Projections.registerDefaultInterfaceType(Widget::class, IWidget::class)"))
-        assertTrue(widgetContents.contains("fun wrap(instance: IInspectableReference): Widget = Widget(instance, kotlin.Unit)"))
+        assertTrue(widgetContents.contains("val __managed = ComWrappersSupport.findObject(PlatformAbi.fromRawComPtr(instance.pointer),"))
+        assertTrue(widgetContents.contains("Widget::class)"))
+        assertTrue(widgetContents.contains("if (__managed != null)"))
+        assertTrue(widgetContents.contains("return Widget(instance, kotlin.Unit)"))
         assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
         assertTrue(widgetContents.contains("const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
@@ -9500,6 +9505,72 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_preserves_by_value_struct_layout_tokens_for_projected_object_intrinsics() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float", rowId = 1, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRtFieldDefinition("Y", "Float", rowId = 2, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                            ),
+                            layout = WinRtTypeLayout(WinRtTypeLayoutKind.Sequential, packingSize = 4, classSize = 8),
+                            isBlittable = true,
+                            abiSize = 8,
+                            abiAlignment = 4,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IPeer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555557a"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetPeerFromPoint",
+                                    returnTypeName = "Sample.UI.Peer",
+                                    parameters = listOf(WinRtParameterDefinition("point", "Windows.Foundation.Point")),
+                                    methodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Peer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IPeer",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.UI.IPeer", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IPeer.kt")
+            .contents
+
+        assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
+        assertTrue(contents.contains("\"Struct8_4\""))
+        assertFalse(contents.contains("\"Struct\""))
+        assertTrue(contents.contains("Point.Metadata"))
+        assertTrue(contents.contains("Peer.Metadata::wrap"))
+    }
+
+    @Test
     fun generator_routes_raw_abi_object_returns_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -9777,6 +9848,8 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(publicConstructor.contains("WinRtAuthoringSupportIntrinsic.ensureInitialized()"))
         assertTrue(publicConstructor.indexOf("WinRtAuthoringSupportIntrinsic.ensureInitialized()") < publicConstructor.indexOf("ComposableFactory.createInstanceForSubclass"))
+        assertTrue(publicConstructor.contains("ComposableFactory.createInstanceForSubclass"))
+        assertTrue(publicConstructor.contains("Metadata.DEFAULT_INTERFACE_IID"))
         assertTrue(createInstanceForSubclass.contains("createComposableCCWForObject"))
         assertTrue(createInstanceForSubclass.contains("outerInterfaceId"))
         assertTrue(createInstanceForSubclass.contains("WinRtProjectionIntrinsic.callUnit("))
@@ -10614,6 +10687,13 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "EchoWidget",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("input", "Sample.Foundation.Widget"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
                                     name = "RoundTripPoint",
                                     returnTypeName = "Sample.Foundation.WidgetPoint",
                                     parameters = listOf(
@@ -11205,7 +11285,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("WidgetHandler.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("Authored delegate argument Sample.Foundation.WidgetHandler was null."))
         assertTrue(ccwFactories.contains("value.roundTripHandler(handler)"))
-        assertTrue(ccwFactories.contains("ComWrappersSupport.createCCWForObject(__result"))
+        assertTrue(ccwFactories.contains("ComWrappersSupport.detachCCWForObject(__result"))
+        assertTrue(ccwFactories.contains("Guid(\"11111111-2222-3333-4444-555555555555\")"))
         assertTrue(ccwFactories.contains("ComAbiValueKind.Int32"))
         assertTrue(ccwFactories.contains("val values = run {"))
         assertTrue(ccwFactories.contains("val __arrayLength = rawArgs[0] as Int"))

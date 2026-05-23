@@ -57,21 +57,20 @@ internal class WinRtObjectSupport<K : Any, TReference : AutoCloseable>(
             return nativeObject
         }
 
-        if (isInterfaceImplemented(
-                instance = instance,
-                primaryTypeHandle = primaryTypeHandle,
-                interfaceType = interfaceType,
-                nativeObject = nativeObject,
-                throwIfNotImplemented = true,
-                tryQueryInterface = tryQueryInterface,
-                missingInterfaceError = missingInterfaceError,
-            )
-        ) {
-            return queryInterfaceCache(instance)[interfaceType]
-                ?: error("Unreachable: interface presence check must populate the query-interface cache.")
+        val queryInterfaceCache = queryInterfaceCache(instance)
+        queryInterfaceCache[interfaceType]?.let { return it }
+
+        val queried = tryQueryInterface(interfaceType.interfaceId)
+        if (queried != null) {
+            val existing = queryInterfaceCache.putIfAbsent(interfaceType, queried)
+            if (existing != null) {
+                closeReference(queried)
+                return existing
+            }
+            return queried
         }
 
-        error("Unreachable: interface presence check must either succeed or throw.")
+        throw missingInterfaceError(interfaceType)
     }
 
     fun <T : Any> getOrAddAdditionalTypeData(

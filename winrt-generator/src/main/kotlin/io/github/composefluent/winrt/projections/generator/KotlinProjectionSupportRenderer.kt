@@ -1912,7 +1912,7 @@ class KotlinProjectionSupportRenderer {
             code.add("signature = %L,\n", authoringCcwMethodSignatureCode(binding))
             code.add("handler = { rawArgs ->\n")
             code.indent()
-            code.add("%L", authoringCcwMethodHandlerCode(interfacePlan.type, binding))
+            code.add("%L", authoringCcwMethodHandlerCode(interfacePlan, binding))
             code.unindent()
             code.add("},\n")
             code.unindent()
@@ -2006,9 +2006,10 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwMethodHandlerCode(
-        interfaceType: WinRtTypeDefinition,
+        interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
+        val interfaceType = interfacePlan.type
         val event = interfaceType.events.firstOrNull { event ->
             binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
                 binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
@@ -2016,7 +2017,7 @@ class KotlinProjectionSupportRenderer {
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
         } else if (authoringCcwBindingIsSupported(binding)) {
-            authoringCcwOrdinaryMemberHandlerCode(interfaceType, binding)
+            authoringCcwOrdinaryMemberHandlerCode(interfacePlan, binding)
         } else {
             authoringCcwUnsupportedMemberHandlerCode(binding)
         }
@@ -2067,9 +2068,10 @@ class KotlinProjectionSupportRenderer {
     }
 
     private fun authoringCcwOrdinaryMemberHandlerCode(
-        interfaceType: WinRtTypeDefinition,
+        interfacePlan: KotlinTypeProjectionPlan,
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
+        val interfaceType = interfacePlan.type
         val code = CodeBlock.builder()
         code.add("try {\n")
         code.indent()
@@ -2081,7 +2083,8 @@ class KotlinProjectionSupportRenderer {
             )
         }
         val invocation = authoringCcwInvocationCode(interfaceType, binding)
-        if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
+        val returnBinding = authoringCcwProjectedReturnBinding(interfacePlan, binding) ?: binding.returnBinding
+        if (returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             code.add("%L\n", invocation)
             binding.parameterBindings.forEachIndexed { index, parameter ->
                 authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
@@ -2095,18 +2098,18 @@ class KotlinProjectionSupportRenderer {
                     ?.let { postInvocation -> code.add("%L\n", postInvocation) }
             }
             val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
-            if (binding.returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
+            if (returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
                 code.add(
                     "%L\n",
                     authoringCcwWriteArrayReturnCode(
-                        binding.returnBinding,
+                        returnBinding,
                         "rawArgs[$returnRawIndex] as RawAddress",
                         "rawArgs[${returnRawIndex + 1}] as RawAddress",
                         "__result",
                     ),
                 )
             } else {
-                code.add("%L\n", authoringCcwWriteReturnCode(binding.returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
+                code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
             }
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
         }
@@ -2118,6 +2121,25 @@ class KotlinProjectionSupportRenderer {
         code.unindent()
         code.add("}\n")
         return code.build()
+    }
+
+    private fun authoringCcwProjectedReturnBinding(
+        interfacePlan: KotlinTypeProjectionPlan,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): KotlinProjectionAbiTypeBinding? {
+        val interfaceType = interfacePlan.type
+        interfaceType.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
+            ?.let { method ->
+                return planner.classifyAbiTypeBinding(method.returnTypeName, interfaceType.namespace, interfacePlan.typesByQualifiedName)
+            }
+        interfaceType.properties.firstOrNull { property ->
+            binding.bindingName == "${property.name.uppercase()}_GETTER_SLOT"
+        }?.let { property ->
+            return planner.classifyAbiTypeBinding(property.typeName, interfaceType.namespace, interfacePlan.typesByQualifiedName)
+        }
+        return null
     }
 
     private fun authoringCcwInvocationCode(
@@ -2490,13 +2512,12 @@ class KotlinProjectionSupportRenderer {
         val interfaceId = binding.interfaceId?.let { CodeBlock.of("%T(%S)", GUID_CLASS_NAME, it.toString()) }
             ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME)
         return CodeBlock.of(
-            "%T.createCCWForObject(%L, %L).use { __returnReference -> %T.writePointer(%L, %T.fromRawComPtr(__returnReference.getRefPointer())) }",
+            "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
+            PLATFORM_ABI_CLASS_NAME,
+            outExpression,
             COM_WRAPPERS_SUPPORT_CLASS_NAME,
             valueExpression,
             interfaceId,
-            PLATFORM_ABI_CLASS_NAME,
-            outExpression,
-            PLATFORM_ABI_CLASS_NAME,
         )
     }
 
