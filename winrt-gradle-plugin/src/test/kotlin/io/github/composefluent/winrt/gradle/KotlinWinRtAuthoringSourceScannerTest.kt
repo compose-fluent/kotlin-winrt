@@ -158,6 +158,68 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_system_string_override_parameters_and_returns_through_hstring() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-string-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalStringable",
+            sourceTypeName = "sample.LocalStringable",
+            winRtBaseClassName = "Sample.IStringableBase",
+            winRtInterfaceNames = listOf("Sample.IStringableOverrides"),
+            overridableInterfaceNames = listOf("Sample.IStringableOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IStringableBase",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.IStringableOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IStringableOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Transform",
+                                    returnTypeName = "System.String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "System.String")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalStringable_TypeDetails.kt").readText()
+        assertTrue(generated.contains("HString.fromHandle(rawArgs[0] as RawAddress, owner = false)"))
+        assertTrue(generated.contains("(value as IStringableBase).__winrtAuthoringInvokeTransform(__arg0)"))
+        assertTrue(generated.contains("PlatformAbi.writePointer("))
+        assertTrue(generated.contains("rawArgs[1] as RawAddress"))
+        assertTrue(generated.contains("HString.create("))
+        assertTrue(generated.contains("__result"))
+        assertTrue(generated.contains(".handle"))
+    }
+
+    @Test
     fun renders_inherited_override_dispatch_against_declaring_winrt_base_class() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-inherited-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
