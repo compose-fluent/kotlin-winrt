@@ -31,7 +31,5 @@ fun shouldRunWinUiSmoke(): Boolean =
     java.lang.Boolean.getBoolean("kotlin.winrt.samples.runWinUiSmoke")
 
 private fun runWinUiSample() {
-    val sampleClass = Class.forName("io.github.composefluent.winrt.samples.WinUiControlsSample")
-    val instance = sampleClass.getField("INSTANCE").get(null)
-    sampleClass.getMethod("start").invoke(instance)
+    WinUiSampleEntry.start()
 }

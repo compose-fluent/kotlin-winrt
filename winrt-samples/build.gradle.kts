@@ -15,6 +15,10 @@ kotlin {
         sourceSets.named("test") {
             kotlin.srcDir("src/winuiSampleTest/kotlin")
         }
+    } else {
+        sourceSets.named("main") {
+            kotlin.srcDir("src/noWinuiSample/kotlin")
+        }
     }
 }
 
