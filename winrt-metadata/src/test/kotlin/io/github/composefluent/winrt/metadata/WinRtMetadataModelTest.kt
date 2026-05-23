@@ -556,6 +556,13 @@ class WinRtMetadataModelTest {
                 classifier.classify(WinRtTypeRef.fromDisplayName(voidTypeName), "Sample.Foundation").projectionCategory,
             )
         }
+        assertTrue(isWinRtGuidTypeName("System.Guid"))
+        listOf("Guid", "System.Guid").forEach { guidTypeName ->
+            assertEquals(
+                WinRtProjectionCategory.Guid,
+                classifier.classify(WinRtTypeRef.fromDisplayName(guidTypeName), "Sample.Foundation").projectionCategory,
+            )
+        }
         assertTrue(isWinRtObjectTypeName("Any"))
         assertEquals(
             WinRtProjectionCategory.Object,
@@ -1096,6 +1103,7 @@ class WinRtMetadataModelTest {
         )
         assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("System.Object"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Object, resolver.resolve(WinRtTypeRef.named("Object"), "Sample.Foundation"))
+        assertEquals(WinRtTypeSemantics.Guid, resolver.resolve(WinRtTypeRef.named("Guid"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Guid, resolver.resolve(WinRtTypeRef.named("System.Guid"), "Sample.Foundation"))
         assertEquals(WinRtTypeSemantics.Type, resolver.resolve(WinRtTypeRef.named("System.Type"), "Sample.Foundation"))
         assertEquals(

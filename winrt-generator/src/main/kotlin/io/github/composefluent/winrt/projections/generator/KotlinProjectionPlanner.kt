@@ -40,6 +40,7 @@ import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
@@ -1118,6 +1119,8 @@ class KotlinProjectionPlanner(
         val isProjectedKeyValuePair = rawTypeName == "Map.Entry" || rawTypeName == "kotlin.collections.Map.Entry"
         val kind = if (isWinRtVoidTypeName(rawTypeName)) {
             KotlinProjectionAbiValueKind.Unit
+        } else if (isWinRtGuidTypeName(rawTypeName)) {
+            KotlinProjectionAbiValueKind.GuidValue
         } else when (trimmedTypeName) {
             "String" -> KotlinProjectionAbiValueKind.String
             "Boolean" -> KotlinProjectionAbiValueKind.Boolean
@@ -1141,8 +1144,6 @@ class KotlinProjectionPlanner(
             "Double" -> KotlinProjectionAbiValueKind.Double
             "Char",
             "Char16" -> KotlinProjectionAbiValueKind.Char16
-            "Guid",
-            "System.Guid" -> KotlinProjectionAbiValueKind.GuidValue
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.UnknownReference
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName -> KotlinProjectionAbiValueKind.InspectableReference
             "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference

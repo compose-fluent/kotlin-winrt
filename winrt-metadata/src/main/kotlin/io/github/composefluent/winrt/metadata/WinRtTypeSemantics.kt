@@ -79,8 +79,10 @@ class WinRtTypeSemanticsResolver(private val model: WinRtMetadataModel) {
         if (isWinRtObjectTypeName(type.typeName)) {
             return WinRtTypeSemantics.Object
         }
+        if (isWinRtGuidTypeName(type.typeName)) {
+            return WinRtTypeSemantics.Guid
+        }
         return when (type.typeName) {
-            "System.Guid" -> WinRtTypeSemantics.Guid
             "System.Type" -> WinRtTypeSemantics.Type
             else -> {
                 val definition = resolveDefinition(type, currentNamespace)
