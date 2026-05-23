@@ -8,6 +8,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
+import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiClassInitializationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtGenericAbiInventory
@@ -136,6 +137,9 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
     if (isWinRtVoidTypeName(effectiveTypeName)) {
         return UNIT
     }
+    if (isWinRtGuidTypeName(effectiveTypeName)) {
+        return GUID_CLASS_NAME
+    }
 
     return when (effectiveTypeName) {
         "Any",
@@ -160,8 +164,6 @@ internal fun KotlinProjectionRenderer.resolveTypeName(typeName: String): TypeNam
         "Float" -> Float::class.asClassName()
         "Double" -> Double::class.asClassName()
         "Char" -> Char::class.asClassName()
-        "Guid",
-        "System.Guid" -> GUID_CLASS_NAME
         IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
         "io.github.composefluent.winrt.runtime.IUnknownReference" -> IUNKNOWN_REFERENCE_CLASS_NAME
         IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,

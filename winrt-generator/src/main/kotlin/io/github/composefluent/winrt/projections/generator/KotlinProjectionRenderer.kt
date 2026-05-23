@@ -38,6 +38,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
@@ -1100,6 +1101,8 @@ class KotlinProjectionRenderer(
         val resolvedType = typesByQualifiedName[rawTypeName]
         val kind = if (isWinRtVoidTypeName(rawTypeName)) {
             KotlinProjectionAbiValueKind.Unit
+        } else if (isWinRtGuidTypeName(rawTypeName)) {
+            KotlinProjectionAbiValueKind.GuidValue
         } else when (trimmed) {
             "String" -> KotlinProjectionAbiValueKind.String
             "Boolean" -> KotlinProjectionAbiValueKind.Boolean
@@ -1123,8 +1126,6 @@ class KotlinProjectionRenderer(
             "Double" -> KotlinProjectionAbiValueKind.Double
             "Char",
             "Char16" -> KotlinProjectionAbiValueKind.Char16
-            "Guid",
-            "System.Guid" -> KotlinProjectionAbiValueKind.GuidValue
             IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
@@ -2935,6 +2936,9 @@ class KotlinProjectionRenderer(
         if (isWinRtObjectTypeName(typeName)) {
             return "cinterface(IInspectable)"
         }
+        if (isWinRtGuidTypeName(typeName)) {
+            return "g16"
+        }
         return when (typeName) {
             "Boolean" -> "b1"
             "Byte",
@@ -2958,8 +2962,6 @@ class KotlinProjectionRenderer(
             "Single" -> "f4"
             "Double" -> "f8"
             "Char" -> "c2"
-            "Guid",
-            "System.Guid" -> "g16"
             "String" -> "string"
             IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
             "io.github.composefluent.winrt.runtime.IInspectableReference" -> "cinterface(IInspectable)"
@@ -3045,8 +3047,12 @@ class KotlinProjectionRenderer(
         }
     }
 
-    internal fun nativeStructScalarKind(typeName: String): String? = when (typeName) {
-        "Boolean" -> "INT8"
+    internal fun nativeStructScalarKind(typeName: String): String? {
+        if (isWinRtGuidTypeName(typeName)) {
+            return "GUID"
+        }
+        return when (typeName) {
+            "Boolean" -> "INT8"
             "Byte",
             "SByte",
             "Int8",
@@ -3058,19 +3064,18 @@ class KotlinProjectionRenderer(
             "UInt16" -> "INT16"
             "Int",
             "Int32",
-        "UInt",
-        "UInt32" -> "INT32"
-        "Long",
-        "Int64",
-        "ULong",
-        "UInt64" -> "INT64"
-        "Float",
-        "Single" -> "FLOAT32"
-        "Double" -> "DOUBLE"
-        "Char" -> "CHAR16"
-        "Guid",
-        "System.Guid" -> "GUID"
-        else -> null
+            "UInt",
+            "UInt32" -> "INT32"
+            "Long",
+            "Int64",
+            "ULong",
+            "UInt64" -> "INT64"
+            "Float",
+            "Single" -> "FLOAT32"
+            "Double" -> "DOUBLE"
+            "Char" -> "CHAR16"
+            else -> null
+        }
     }
 
     internal fun nativeNestedStructFieldTypeName(
@@ -3099,6 +3104,9 @@ class KotlinProjectionRenderer(
     ): CodeBlock {
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val slice = CodeBlock.of("layout.slice(%L, %S)", sourceName, fieldName)
+        if (isWinRtGuidTypeName(field.typeName)) {
+            return CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
+        }
         return when (field.typeName) {
             "Boolean" -> CodeBlock.of("%T.readInt8(%L).toInt() != 0", PLATFORM_ABI_CLASS_NAME, slice)
             "Byte",
@@ -3122,8 +3130,6 @@ class KotlinProjectionRenderer(
             "Single" -> CodeBlock.of("%T.readFloat(%L)", PLATFORM_ABI_CLASS_NAME, slice)
             "Double" -> CodeBlock.of("%T.readDouble(%L)", PLATFORM_ABI_CLASS_NAME, slice)
             "Char" -> CodeBlock.of("%T.readChar16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-            "Guid",
-            "System.Guid" -> CodeBlock.of("%T.readGuid(%L)", PLATFORM_ABI_CLASS_NAME, slice)
             else -> nativeStructReferenceFieldReadCode(field, sourceName, currentNamespace, typesByQualifiedName)
                 ?: nativeStructEnumFieldReadCode(field, slice, currentNamespace, typesByQualifiedName)
                 ?: CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(field.typeName), slice)
@@ -3140,6 +3146,9 @@ class KotlinProjectionRenderer(
         val fieldName = field.name.replaceFirstChar(Char::lowercase)
         val value = CodeBlock.of("%L.%L", valueName, fieldName)
         val slice = CodeBlock.of("layout.slice(%L, %S)", destinationName, fieldName)
+        if (isWinRtGuidTypeName(field.typeName)) {
+            return CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
+        }
         return when (field.typeName) {
             "Boolean" -> CodeBlock.of("%T.writeInt8(%L, if (%L) 1 else 0)", PLATFORM_ABI_CLASS_NAME, slice, value)
             "Byte",
@@ -3163,8 +3172,6 @@ class KotlinProjectionRenderer(
             "Single" -> CodeBlock.of("%T.writeFloat(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
             "Double" -> CodeBlock.of("%T.writeDouble(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
             "Char" -> CodeBlock.of("%T.writeChar16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
-            "Guid",
-            "System.Guid" -> CodeBlock.of("%T.writeGuid(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, value)
             else -> nativeStructReferenceFieldWriteCode(field, valueName, destinationName, currentNamespace, typesByQualifiedName)
                 ?: nativeStructEnumFieldWriteCode(field, value, slice, currentNamespace, typesByQualifiedName)
                 ?: CodeBlock.of("%T.Metadata.copyTo(%L, %L)", resolveTypeName(field.typeName), value, slice)

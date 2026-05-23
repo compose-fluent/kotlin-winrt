@@ -2346,8 +2346,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             "Float", "Single" -> "f4"
             "Double" -> "f8"
             "String" -> "string"
-            "Guid", "System.Guid" -> "g16"
-            else -> null
+            else -> if (isWinRtGuidTypeName(typeName)) "g16" else null
         }
 
     private fun escapeIdentifier(value: String): String =

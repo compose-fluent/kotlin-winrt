@@ -153,6 +153,12 @@ fun isWinRtVoidTypeName(typeName: String): Boolean =
         else -> false
     }
 
+fun isWinRtGuidTypeName(typeName: String): Boolean =
+    when (typeName.trim().substringBefore('<').removeSuffix("?")) {
+        "Guid", "System.Guid" -> true
+        else -> false
+    }
+
 internal fun WinRtProjectionCategory.toAbiCategory(): WinRtAbiTypeCategory =
     when (this) {
         WinRtProjectionCategory.Unit -> WinRtAbiTypeCategory.Unit
@@ -183,7 +189,7 @@ private fun projectionCategoryFor(
         rawTypeName in FUNDAMENTAL_TYPE_NAMES -> WinRtProjectionCategory.Fundamental
         rawTypeName == "String" -> WinRtProjectionCategory.String
         isWinRtObjectTypeName(rawTypeName) -> WinRtProjectionCategory.Object
-        rawTypeName == "Guid" || rawTypeName == "System.Guid" -> WinRtProjectionCategory.Guid
+        isWinRtGuidTypeName(rawTypeName) -> WinRtProjectionCategory.Guid
         rawTypeName == "Type" || rawTypeName == "System.Type" -> WinRtProjectionCategory.Type
         rawTypeName == "System.Enum" -> WinRtProjectionCategory.Enum
         rawTypeName == "System.ValueType" -> WinRtProjectionCategory.Struct

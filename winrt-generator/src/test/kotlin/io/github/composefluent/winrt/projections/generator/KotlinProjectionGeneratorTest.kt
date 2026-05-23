@@ -6803,6 +6803,26 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun planner_renderer_and_native_struct_helpers_classify_guid_aliases_as_guid_abi() {
+        val planner = KotlinProjectionPlanner()
+        val renderer = KotlinProjectionRenderer()
+
+        listOf("Guid", "System.Guid").forEach { guidTypeName ->
+            val plannedBinding = planner.classifyAbiTypeBinding(
+                typeName = guidTypeName,
+                currentNamespace = "Sample.Foundation",
+                typesByQualifiedName = emptyMap(),
+            )
+            val renderedBinding = renderer.renderAbiTypeBinding(guidTypeName)
+
+            assertEquals(KotlinProjectionAbiValueKind.GuidValue, plannedBinding.kind)
+            assertEquals(KotlinProjectionAbiValueKind.GuidValue, renderedBinding.kind)
+            assertEquals(GUID_CLASS_NAME, renderer.resolveTypeName(guidTypeName))
+            assertEquals("GUID", renderer.nativeStructScalarKind(guidTypeName))
+        }
+    }
+
+    @Test
     fun generator_classifies_activation_factory_delegate_parameters_from_projection_model() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
