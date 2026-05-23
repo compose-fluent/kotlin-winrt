@@ -6921,6 +6921,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("NativeStructScalarKind.ADDRESS)"))
         assertTrue(contents, contents.contains("HString.fromHandle("))
         assertTrue(contents, contents.contains("HString.create(value.name).handle"))
+        assertTrue(contents, contents.containsIgnoringWhitespace("HString.fromHandle(PlatformAbi.readPointer(layout.slice(source, \"name\")), owner = true).close()"))
+        assertFalse(contents, contents.containsIgnoringWhitespace("IUnknownReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(layout.slice(source, \"name\")))).close()"))
     }
 
     @Test
