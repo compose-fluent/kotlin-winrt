@@ -555,6 +555,12 @@ class WinRtMetadataModelTest {
                 classifier.classify(WinRtTypeRef.fromDisplayName(fundamentalTypeName), "Sample.Foundation").projectionCategory,
             )
         }
+        listOf("String", "System.String").forEach { stringTypeName ->
+            assertEquals(
+                WinRtProjectionCategory.String,
+                classifier.classify(WinRtTypeRef.fromDisplayName(stringTypeName), "Sample.Foundation").projectionCategory,
+            )
+        }
         assertTrue(isWinRtVoidTypeName("System.Void"))
         listOf("Unit", "Void", "System.Void").forEach { voidTypeName ->
             assertEquals(

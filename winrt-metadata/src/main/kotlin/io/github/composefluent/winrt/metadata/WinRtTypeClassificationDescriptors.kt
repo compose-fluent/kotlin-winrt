@@ -192,8 +192,8 @@ private fun projectionCategoryFor(
 ): WinRtProjectionCategory =
     when {
         isWinRtVoidTypeName(rawTypeName) -> WinRtProjectionCategory.Unit
+        winRtFundamentalTypeForName(rawTypeName) == WinRtFundamentalType.String -> WinRtProjectionCategory.String
         isWinRtFundamentalTypeName(rawTypeName) -> WinRtProjectionCategory.Fundamental
-        rawTypeName == "String" -> WinRtProjectionCategory.String
         isWinRtObjectTypeName(rawTypeName) -> WinRtProjectionCategory.Object
         isWinRtGuidTypeName(rawTypeName) -> WinRtProjectionCategory.Guid
         isWinRtTypeTypeName(rawTypeName) -> WinRtProjectionCategory.Type

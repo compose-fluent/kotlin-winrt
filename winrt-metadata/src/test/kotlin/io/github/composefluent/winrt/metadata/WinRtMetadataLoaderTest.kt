@@ -133,8 +133,22 @@ class WinRtMetadataLoaderTest {
                 .map { (it as WinRtCustomAttributeValue.IntegralValue).value },
         )
         assertEquals(
+            listOf(4L, 5L),
+            ((probeAttribute.fixedArguments[4] as WinRtCustomAttributeValue.ArrayValue).values)
+                .map { (it as WinRtCustomAttributeValue.IntegralValue).value },
+        )
+        assertEquals(
             WinRtCustomAttributeValue.BooleanValue(true),
             probeAttribute.namedArguments.first { it.name == "Enabled" }.value,
+        )
+        assertEquals(
+            WinRtCustomAttributeValue.IntegralValue('Z'.code.toLong()),
+            probeAttribute.namedArguments.first { it.name == "Code" }.value,
+        )
+        assertEquals(
+            1.5,
+            (probeAttribute.namedArguments.first { it.name == "Weight" }.value as WinRtCustomAttributeValue.FloatingPointValue).value,
+            0.0001,
         )
         assertEquals(
             listOf("alpha", "beta"),
@@ -1207,8 +1221,10 @@ class WinRtMetadataLoaderTest {
                 [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = false)]
                 public sealed class AttributeProbeAttribute : System.Attribute
                 {
-                    public AttributeProbeAttribute(string name, System.Type targetType, AttributeMode mode, int[] values) {}
+                    public AttributeProbeAttribute(string name, System.Type targetType, AttributeMode mode, int[] values, byte[] codes) {}
                     public bool Enabled { get; set; }
+                    public char Code { get; set; }
+                    public float Weight { get; set; }
                     public string[] Tags { get; set; }
                 }
 
@@ -1224,7 +1240,7 @@ class WinRtMetadataLoaderTest {
                 [Windows.Foundation.Metadata.MarshalingBehavior(Windows.Foundation.Metadata.MarshalingType.Agile)]
                 [Windows.Foundation.Metadata.Muse]
                 [Windows.Foundation.Metadata.WebHostHidden]
-                [AttributeProbe("widget", typeof(IWidget), AttributeMode.Important, new int[] { 1, 2, 3 }, Enabled = true, Tags = new string[] { "alpha", "beta" })]
+                [AttributeProbe("widget", typeof(IWidget), AttributeMode.Important, new int[] { 1, 2, 3 }, new byte[] { 4, 5 }, Enabled = true, Code = 'Z', Weight = 1.5f, Tags = new string[] { "alpha", "beta" })]
                 public class Widget<T> : IWidget
                 {
                     public string Name => "widget";
