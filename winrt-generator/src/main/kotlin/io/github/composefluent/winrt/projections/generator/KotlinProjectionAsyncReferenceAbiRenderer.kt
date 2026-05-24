@@ -418,17 +418,7 @@ internal fun KotlinProjectionRenderer.abiResultAllocationForAsyncOperationResult
 internal fun KotlinProjectionRenderer.bindingAllocationForAsyncEnum(
     resultBinding: KotlinProjectionAbiTypeBinding,
     scopeName: String,
-): CodeBlock? = when (resultBinding.enumUnderlyingType) {
-    WinRtIntegralType.Int8,
-    WinRtIntegralType.UInt8 -> CodeBlock.of("%T.allocateInt8Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
-    WinRtIntegralType.Int16,
-    WinRtIntegralType.UInt16 -> CodeBlock.of("%T.allocateBytes(%L, 2)", PLATFORM_ABI_CLASS_NAME, scopeName)
-    WinRtIntegralType.Int32,
-    WinRtIntegralType.UInt32 -> CodeBlock.of("%T.allocateInt32Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
-    WinRtIntegralType.Int64,
-    WinRtIntegralType.UInt64 -> CodeBlock.of("%T.allocateInt64Slot(%L)", PLATFORM_ABI_CLASS_NAME, scopeName)
-    null -> null
-}
+): CodeBlock? = resultBinding.enumUnderlyingType?.let { integralResultSlotAllocation(it, scopeName) }
 
 internal fun KotlinProjectionRenderer.abiTypeSignatureForIntegralType(type: WinRtIntegralType): CodeBlock = when (type) {
     WinRtIntegralType.Int8 -> CodeBlock.of("%T.int8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
