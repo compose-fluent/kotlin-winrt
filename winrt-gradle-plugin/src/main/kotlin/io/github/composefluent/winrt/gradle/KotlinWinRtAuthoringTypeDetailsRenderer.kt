@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import com.squareup.kotlinpoet.ANY
+import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -133,6 +134,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     ): FileSpec {
         val typeDetailsName = detailsObjectName(candidate)
         return FileSpec.builder(candidate.packageName, typeDetailsName)
+            .addAnnotation(generatedAuthoringTypeDetailsSuppressAnnotation())
             .addImport("io.github.composefluent.winrt.runtime", "abiLayout")
             .addType(
                 TypeSpec.objectBuilder(typeDetailsName)
@@ -236,7 +238,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .indent()
             .apply {
                 type.methods.filterNot { method -> method.isStatic }.forEach { method ->
-                    add("%L,\n", renderMethod(method, typesByName, dispatchBaseClassName))
+                    add("%L,\n", renderMethod(method, typesByName, semanticHelpers, dispatchBaseClassName))
                 }
             }
             .unindent()
@@ -249,6 +251,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderMethod(
         method: WinRtMethodDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
         dispatchBaseClassName: String?,
     ): CodeBlock {
         val dispatchBase = dispatchBaseClassName
@@ -256,20 +259,20 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         val bridgeMethodName = authoringInvokeBridgeName(method)
         val bridgeArguments = method.parameters.indices.joinToString(", ") { index -> "__arg$index" }
         return CodeBlock.builder()
-            .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method, typesByName))
+            .add("%T(%L) { rawArgs ->\n", winRtInspectableMethodDefinitionType, renderSignature(method, typesByName, semanticHelpers))
             .indent()
             .apply {
                 method.parameters.forEachIndexed { index, parameter ->
-                    add("%L", renderParameterProjectionStatement(index, parameter, typesByName))
+                    add("%L", renderParameterProjectionStatement(index, parameter, typesByName, semanticHelpers))
                 }
             }
             .apply {
                 if (isVoidReturn(method)) {
-                    addStatement("(value as %T).%L(%L)", projectionClassName(dispatchBase), bridgeMethodName, bridgeArguments)
+                    addStatement("(value as %T).%L(%L)", projectionClassName(dispatchBase, semanticHelpers), bridgeMethodName, bridgeArguments)
                 } else {
                     addStatement(
                         "val __result = (value as %T).%L(%L)",
-                        projectionClassName(dispatchBase),
+                        projectionClassName(dispatchBase, semanticHelpers),
                         bridgeMethodName,
                         bridgeArguments,
                     )
@@ -280,6 +283,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                             CodeBlock.of("rawArgs[%L] as %T", method.parameters.size, rawAddressType),
                             "__result",
                             typesByName,
+                            semanticHelpers,
                         ),
                     )
                 }
@@ -293,6 +297,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         index: Int,
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         val rawArg = CodeBlock.of("rawArgs[%L]", index)
         if (isWinRtObjectTypeName(parameter.typeName)) {
@@ -306,13 +311,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 return projection
             }
         }
-        return renderComplexParameterProjection(rawArg, parameter, typesByName)
+        return renderComplexParameterProjection(rawArg, parameter, typesByName, semanticHelpers)
     }
 
     private fun renderParameterProjectionStatement(
         index: Int,
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock =
         if (isWinRtStringTypeName(parameter.typeName)) {
             CodeBlock.builder()
@@ -334,13 +340,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 .add("}\n")
                 .build()
         } else {
-            CodeBlock.of("val __arg%L = %L\n", index, renderParameterProjection(index, parameter, typesByName))
+            CodeBlock.of("val __arg%L = %L\n", index, renderParameterProjection(index, parameter, typesByName, semanticHelpers))
         }
 
     private fun renderComplexParameterProjection(
         rawArg: CodeBlock,
         parameter: WinRtParameterDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         if (parameter.direction == WinRtParameterDirection.Out || parameter.typeIsByRef) {
             return CodeBlock.of("%L as %T", rawArg, rawAddressType)
@@ -349,14 +356,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         return when (type?.kind) {
             WinRtTypeKind.Enum -> CodeBlock.of(
                 "%T.Metadata.fromAbi(%L)",
-                projectionClassName(parameter.typeName),
+                projectionClassName(parameter.typeName, semanticHelpers),
                 renderEnumRawArgument(rawArg, type),
             )
-            WinRtTypeKind.Struct -> CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName), rawArg, rawAddressType)
+            WinRtTypeKind.Struct -> CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName, semanticHelpers), rawArg, rawAddressType)
             else -> {
                 CodeBlock.of(
                     "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
-                    projectionClassName(parameter.typeName),
+                    projectionClassName(parameter.typeName, semanticHelpers),
                     iInspectableReferenceType,
                     platformAbiType,
                     rawArg,
@@ -400,6 +407,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderSignature(
         method: WinRtMethodDefinition,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         val kinds = method.parameters.map { parameter -> abiKindName(parameter, typesByName) } +
             listOfNotNull("Pointer".takeUnless { isVoidReturn(method) })
@@ -417,7 +425,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                             add(
                                 "%T.Struct(%T.Metadata.layout.abiLayout)",
                                 comAbiValueKindType,
-                                projectionClassName(kind.removePrefix("Struct:")),
+                                projectionClassName(kind.removePrefix("Struct:"), semanticHelpers),
                             )
                         } else {
                             add("%T.%L", comAbiValueKindType, kind)
@@ -471,6 +479,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         if (isWinRtObjectTypeName(method.returnTypeName)) {
             return CodeBlock.of(
@@ -484,17 +493,17 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         fundamentalType(method.returnTypeName)?.let { type ->
             return renderFundamentalReturnProjection(type, outExpression, valueExpression)
         }
-        renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName)?.let {
+        renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
             return it
         }
         val returnType = typesByName[method.returnTypeName]
         return when (returnType?.kind) {
-            WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression)
+            WinRtTypeKind.Enum -> renderEnumReturnProjection(method.returnTypeName, returnType, outExpression, valueExpression, semanticHelpers)
             WinRtTypeKind.Struct -> CodeBlock.of(
                 "%T.Metadata.copyTo(%L as %T, %L)",
-                projectionClassName(method.returnTypeName),
+                projectionClassName(method.returnTypeName, semanticHelpers),
                 valueExpression,
-                projectionClassName(method.returnTypeName),
+                projectionClassName(method.returnTypeName, semanticHelpers),
                 outExpression,
             )
             else -> renderObjectReturnProjection(returnType, outExpression, valueExpression, typesByName)
@@ -545,11 +554,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock? {
         val returnType = WinRtTypeRef.fromDisplayName(returnTypeName).normalized()
         val collectionTypeName = returnType.qualifiedName ?: return null
         val elementType = returnType.typeArguments.singleOrNull()?.normalized() ?: return null
-        val elementAdapter = renderCollectionElementAdapter(elementType, typesByName) ?: return null
+        val elementAdapter = renderCollectionElementAdapter(elementType, typesByName, semanticHelpers) ?: return null
         val projectionType = when (collectionTypeName) {
             "Windows.Foundation.Collections.IIterable" -> winRtIterableProjectionType
             "Windows.Foundation.Collections.IVectorView" -> winRtReadOnlyListProjectionType
@@ -569,6 +579,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun renderCollectionElementAdapter(
         elementType: WinRtTypeRef,
         typesByName: Map<String, WinRtTypeDefinition>,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock? {
         val elementTypeName = elementType.qualifiedName ?: return null
         if (isWinRtObjectTypeName(elementTypeName)) {
@@ -584,10 +595,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     WinRtTypeKind.RuntimeClass -> CodeBlock.of(
                         "%T.runtimeClass(%T::class, %S, %T.Metadata.DEFAULT_INTERFACE_IID) { %T.Metadata.wrap(it) }",
                         winRtReferenceValueAdaptersType,
-                        projectionClassName(elementTypeName),
+                        projectionClassName(elementTypeName, semanticHelpers),
                         elementTypeName,
-                        projectionClassName(elementTypeName),
-                        projectionClassName(elementTypeName),
+                        projectionClassName(elementTypeName, semanticHelpers),
+                        projectionClassName(elementTypeName, semanticHelpers),
                     )
                     else -> null
                 }
@@ -627,9 +638,10 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         type: WinRtTypeDefinition,
         outExpression: CodeBlock,
         valueExpression: String,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock {
         val descriptor = enumIntegralAbiDescriptor(type)
-        val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L as %T)", projectionClassName(typeName), valueExpression, projectionClassName(typeName))
+        val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L as %T)", projectionClassName(typeName, semanticHelpers), valueExpression, projectionClassName(typeName, semanticHelpers))
         val writeValue = if (descriptor.abiWriteConversionSuffix.isEmpty()) {
             abiValue
         } else {
@@ -647,6 +659,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"
 
+    private fun generatedAuthoringTypeDetailsSuppressAnnotation(): AnnotationSpec =
+        AnnotationSpec.builder(Suppress::class)
+            .addMember("%S", "USELESS_CAST")
+            .addMember("%S", "UNCHECKED_CAST")
+            .build()
+
     private fun enumIntegralAbiDescriptor(type: WinRtTypeDefinition): AuthoringEnumIntegralAbiDescriptor =
         enumIntegralAbiDescriptors.getValue(type.enumUnderlyingType ?: WinRtIntegralType.Int32)
 
@@ -663,7 +681,19 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         return ClassName(candidate.packageName, names.first(), *names.drop(1).toTypedArray())
     }
 
-    private fun projectionClassName(qualifiedName: String): ClassName {
+    private fun projectionClassName(
+        qualifiedName: String,
+        semanticHelpers: WinRtMetadataSemanticHelpers,
+    ): ClassName {
+        semanticHelpers.getMappedType(WinRtTypeRef.fromDisplayName(qualifiedName), "")
+            ?.mappedQualifiedName
+            ?.takeIf { mappedName -> mappedName.startsWith("io.github.composefluent.winrt.runtime.") }
+            ?.let(::classNameFromQualifiedName)
+            ?.let { return it }
+        return classNameFromWinRtName(qualifiedName)
+    }
+
+    private fun classNameFromWinRtName(qualifiedName: String): ClassName {
         val lastDot = qualifiedName.lastIndexOf('.')
         if (lastDot < 0) {
             return ClassName("", qualifiedName)
@@ -674,5 +704,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .filter(String::isNotBlank)
             .joinToString(".") { it.lowercase() }
         return ClassName(packageName, simpleName)
+    }
+
+    private fun classNameFromQualifiedName(qualifiedName: String): ClassName {
+        val lastDot = qualifiedName.lastIndexOf('.')
+        if (lastDot < 0) {
+            return ClassName("", qualifiedName)
+        }
+        return ClassName(qualifiedName.substring(0, lastDot), qualifiedName.substring(lastDot + 1))
     }
 }

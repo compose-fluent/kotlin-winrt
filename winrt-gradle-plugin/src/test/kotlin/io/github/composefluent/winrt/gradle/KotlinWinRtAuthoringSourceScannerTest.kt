@@ -160,6 +160,94 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_runtime_mapped_struct_overrides_through_runtime_projection_types() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-mapped-struct-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalShape",
+            sourceTypeName = "sample.LocalShape",
+            winRtBaseClassName = "Sample.Shape",
+            winRtInterfaceNames = listOf("Sample.IShapeOverrides"),
+            overridableInterfaceNames = listOf("Sample.IShapeOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Rect",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "Size",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Shape",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IShapeOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("2504174a-017e-5a2d-9c28-d97c66ae9940"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "MeasureOverride",
+                                    returnTypeName = "Windows.Foundation.Size",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("availableSize", "Windows.Foundation.Size"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetPeerFromPointCore",
+                                    returnTypeName = "Windows.Foundation.Rect",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("point", "Windows.Foundation.Point"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalShape_TypeDetails.kt").readText()
+        assertTrue(generated.contains("import io.github.composefluent.winrt.runtime.Point"))
+        assertTrue(generated.contains("import io.github.composefluent.winrt.runtime.Rect"))
+        assertTrue(generated.contains("import io.github.composefluent.winrt.runtime.Size"))
+        assertTrue(generated.contains("ComAbiValueKind.Struct(Size.Metadata.layout.abiLayout)"))
+        assertTrue(generated.contains("Size.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("Point.Metadata.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(generated.contains("Rect.Metadata.copyTo(__result as Rect"))
+        assertTrue(generated, !generated.contains("import windows.foundation.Point"))
+        assertTrue(generated, !generated.contains("import windows.foundation.Rect"))
+        assertTrue(generated, !generated.contains("import windows.foundation.Size"))
+    }
+
+    @Test
     fun renders_system_string_override_parameters_and_returns_through_hstring() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-string-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
