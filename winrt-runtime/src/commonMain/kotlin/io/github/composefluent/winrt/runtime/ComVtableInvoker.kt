@@ -193,6 +193,10 @@ expect object ComVtableInvoker {
         arg5: Int,
     ): Int
 
+    @Deprecated(
+        message = "Legacy no-support generator fallback. Support-file generation must use descriptor intrinsics or direct overloads.",
+        level = DeprecationLevel.ERROR,
+    )
     fun invokeGenericArgs(
         instance: RawComPtr,
         slot: Int,
