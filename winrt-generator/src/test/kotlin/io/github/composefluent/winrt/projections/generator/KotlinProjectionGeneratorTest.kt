@@ -522,6 +522,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun interface_native_projection_falls_back_for_invalid_property_accessors() {
+        val namespace = WinRtNamespace(
+            name = "Sample.Foundation",
+            types = listOf(
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "IWidget",
+                    kind = WinRtTypeKind.Interface,
+                    iid = Guid("11111111-2222-3333-4444-555555555555"),
+                    properties = listOf(
+                        WinRtPropertyDefinition(
+                            name = "Title",
+                            typeName = "String",
+                            getterMethodName = "get_Title",
+                            getterMethodRowId = 6,
+                            hasValidAccessors = false,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val typesByQualifiedName = namespace.types.associateBy { it.qualifiedName }
+        val interfaceIidsByName = namespace.types.associate { it.qualifiedName to it.iid }
+        val plan = KotlinProjectionPlanner()
+            .planNamespace(namespace, interfaceIidsByName, typesByQualifiedName)
+            .single { it.type.qualifiedName == "Sample.Foundation.IWidget" }
+        val renderer = KotlinProjectionRenderer()
+        val filesByPath = KotlinExpectActualProjectionRenderer(renderer)
+            .render(plan)
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        assertFalse(renderer.canRenderInterfaceProxy(plan))
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents.contains("public interface IWidget"))
+    }
+
+    @Test
     fun expect_actual_interface_slice_emits_jvm_projected_interface_abi_calls() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

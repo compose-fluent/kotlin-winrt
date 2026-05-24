@@ -98,7 +98,7 @@ internal class KotlinExpectActualProjectionRenderer(
             type.methods.all { it.genericParameterCount == 0 } &&
             type.methods.none(WinRtMethodDefinition::isStatic) &&
             type.properties.none(WinRtPropertyDefinition::isStatic) &&
-            type.properties.all { it.getterMethodName != null } &&
+            type.properties.all { it.hasNativeProjectionGetterAccessor() } &&
             type.events.none(WinRtEventDefinition::isStatic) &&
             type.events.all { event -> event.hasNativeProjectionAccessorPair() } &&
             type.methods
@@ -119,7 +119,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 } &&
             type.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
-                .filter { it.getterMethodName != null }
+                .filter { it.hasNativeProjectionGetterAccessor() }
                 .all { property ->
                     val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, plan.typesByQualifiedName)
                     canBuildJvmFfmCallPlan(
@@ -129,6 +129,7 @@ internal class KotlinExpectActualProjectionRenderer(
                         currentNamespace = type.namespace,
                     ) && (
                         property.isReadOnly ||
+                            property.hasNativeProjectionSetterAccessor() &&
                             canBuildJvmFfmCallPlan(
                                 returnTypeName = "Unit",
                                 parameters = listOf(
@@ -653,7 +654,7 @@ internal class KotlinExpectActualProjectionRenderer(
                     builder.addFunction(renderJvmInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName, abiShapes))
                 }
             }
-            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.getterMethodName != null }.forEach { property ->
+            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionGetterAccessor() }.forEach { property ->
                 val propertyName = property.name.replaceFirstChar(Char::lowercase)
                 if (emittedProperties.add(propertyName)) {
                     builder.addProperty(renderJvmInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName, abiShapes))
