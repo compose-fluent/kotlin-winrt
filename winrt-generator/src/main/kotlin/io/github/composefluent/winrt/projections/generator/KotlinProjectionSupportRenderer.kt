@@ -1306,17 +1306,29 @@ class KotlinProjectionSupportRenderer {
             return null
         }
         val hostBridgeClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostBridge")
+        val hostExportsInterface = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostExports")
+        val hostManifestLoaderClass = ClassName("io.github.composefluent.winrt.authoring", "WinRtAuthoringHostManifestLoader")
         val fileSpec = supportFileSpec("WinRTAuthoringHostExports")
             .addType(
                 TypeSpec.objectBuilder("WinRTAuthoringHostExports")
                     .addModifiers(KModifier.INTERNAL)
+                    .addSuperinterface(hostExportsInterface)
+                    .addInitializerBlock(
+                        CodeBlock.of(
+                            "%T.registerHostExports(%S, this)\n",
+                            hostManifestLoaderClass,
+                            "$SUPPORT_PACKAGE.WinRTAuthoringHostExports",
+                        ),
+                    )
                     .addFunction(
                         FunSpec.builder("registerActivationFactories")
+                            .addModifiers(KModifier.OVERRIDE)
                             .addStatement("%T.register()", ClassName(SUPPORT_PACKAGE, "WinRTAuthoringServerActivationFactories"))
                             .build(),
                     )
                     .addFunction(
                         FunSpec.builder("dllGetActivationFactory")
+                            .addModifiers(KModifier.OVERRIDE)
                             .addParameter("activatableClassId", RAW_ADDRESS_CLASS_NAME)
                             .addParameter("factoryOut", RAW_ADDRESS_CLASS_NAME)
                             .returns(Int::class)
