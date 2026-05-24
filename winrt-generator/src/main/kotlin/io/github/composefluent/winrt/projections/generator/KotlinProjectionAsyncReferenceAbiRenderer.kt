@@ -482,7 +482,7 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
         )
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of(
-            "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n__operationInspectable\n}",
+            "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = try {\n__operationResultRef.asInspectable()\n} finally {\n__operationResultRef.close()\n}\n__operationInspectable\n}",
             IUNKNOWN_REFERENCE_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
             PLATFORM_ABI_CLASS_NAME,
@@ -510,7 +510,7 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
         resolvedReturnClassName(resultBinding)?.let { resultType ->
             val nullReadback = asyncNullResultBranchExpression(resultBinding)
             CodeBlock.of(
-                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\nif (%T.isNull(__operationResultPointer)) %L else {\nval __operationResultRef = %T(%T.toRawComPtr(__operationResultPointer))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n%T.Metadata.wrap(__operationInspectable)\n}\n}",
+                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\nif (%T.isNull(__operationResultPointer)) %L else {\nval __operationResultRef = %T(%T.toRawComPtr(__operationResultPointer))\nval __operationInspectable = try {\n__operationResultRef.asInspectable()\n} finally {\n__operationResultRef.close()\n}\n%T.Metadata.wrap(__operationInspectable)\n}\n}",
                 PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 nullReadback,
