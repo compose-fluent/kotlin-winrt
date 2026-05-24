@@ -786,20 +786,37 @@ class KotlinProjectionRenderer(
                     .normalized()
                     .typeName
                 val implementedRawName = substitutedInterfaceName.substringBefore('<').removeSuffix("?")
-                val mappedType = mappedTypeByAbiName(implementedRawName)
+                val resolvedImplementedRawName = resolveImplementedInterfaceRawName(
+                    implementedRawName,
+                    interfaceType.namespace,
+                    plan.typesByQualifiedName,
+                )
+                val mappedType = mappedTypeByAbiName(resolvedImplementedRawName) ?: mappedTypeByAbiName(implementedRawName)
                 if (
-                    isRuntimeOwnedMappedTypeName(implementedRawName) ||
-                    isMappedCollectionInterfaceName(implementedRawName) ||
+                    isRuntimeOwnedMappedTypeName(resolvedImplementedRawName) ||
+                    isMappedCollectionInterfaceName(resolvedImplementedRawName) ||
                     mappedType?.descriptionName == "Iterator"
                 ) {
                     return@forEach
                 }
-                plan.typesByQualifiedName[implementedRawName]?.let { baseType ->
+                plan.typesByQualifiedName[resolvedImplementedRawName]?.let { baseType ->
                     addAll(collectInterfaceProxyTypes(baseType, plan, visited, genericArgumentTypeRefs(substitutedInterfaceName)))
                 }
             }
             add(interfaceType.substituteInterfaceProxyMembers(genericArguments))
         }
+    }
+
+    private fun resolveImplementedInterfaceRawName(
+        rawName: String,
+        currentNamespace: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): String {
+        if (rawName in typesByQualifiedName || '.' in rawName) {
+            return rawName
+        }
+        val qualifiedName = "$currentNamespace.$rawName"
+        return if (qualifiedName in typesByQualifiedName) qualifiedName else rawName
     }
 
     private fun WinRtTypeDefinition.substituteInterfaceProxyMembers(
