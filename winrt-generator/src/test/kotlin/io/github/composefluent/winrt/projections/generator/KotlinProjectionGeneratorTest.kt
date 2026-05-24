@@ -7956,6 +7956,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_closes_runtime_class_return_unknown_after_inspectable_query() {
+        val method = WinRtMethodDefinition(
+            name = "GetChild",
+            returnTypeName = "Sample.Foundation.WidgetChild",
+        )
+        val methodSource = KotlinProjectionRenderer().renderBoundMethod(
+            plan = KotlinTypeProjectionPlan(
+                type = WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "Widget",
+                    kind = WinRtTypeKind.RuntimeClass,
+                    methods = listOf(method),
+                ),
+                packageName = "sample.foundation",
+                relativePath = "sample/foundation/Widget.kt",
+                declarationKind = KotlinProjectionDeclarationKind.Class,
+                typeDeclarationDescriptor = WinRtTypeDeclarationDescriptor(
+                    typeName = "Sample.Foundation.Widget",
+                    declarationKind = WinRtTypeKind.RuntimeClass,
+                    writesProjectedDeclaration = true,
+                    writesAbiDeclaration = true,
+                    writesWrapperDeclaration = true,
+                    writesImplementationClass = false,
+                    writesHelperClass = true,
+                    netStandardBranch = false,
+                ),
+                instanceMemberBindings = listOf(
+                    KotlinProjectionInstanceMemberBinding(
+                        bindingName = "GETCHILD_SLOT",
+                        ownerInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        ownerCachePropertyName = "_defaultInterface",
+                        slotInterfaceQualifiedName = "Sample.Foundation.IWidget",
+                        slotConstantName = "GETCHILD_SLOT",
+                        returnBinding = KotlinProjectionAbiTypeBinding(
+                            kind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                            typeName = "Sample.Foundation.WidgetChild",
+                            resolvedTypeName = "Sample.Foundation.WidgetChild",
+                        ),
+                    ),
+                ),
+            ),
+            method = method,
+        ).toString()
+
+        assertTrue(methodSource, methodSource.contains("val __resultRef = "))
+        assertTrue(methodSource, methodSource.contains("PlatformAbi.toRawComPtr(__resultPointer)"))
+        assertTrue(methodSource, methodSource.contains("val __resultInspectable = try {"))
+        assertTrue(methodSource, methodSource.contains("__resultRef.asInspectable()"))
+        assertTrue(methodSource, methodSource.contains("__resultRef.close()"))
+        assertTrue(methodSource, methodSource.contains("WidgetChild.Metadata.wrap(__resultInspectable)"))
+    }
+
+    @Test
     fun generator_routes_scalar_property_getters_through_projection_intrinsics() {
         val property = KotlinProjectionRenderer(useProjectionIntrinsics = true).renderBoundProperty(
             plan = KotlinTypeProjectionPlan(
