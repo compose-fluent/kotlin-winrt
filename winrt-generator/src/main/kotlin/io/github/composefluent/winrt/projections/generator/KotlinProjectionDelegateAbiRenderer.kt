@@ -286,16 +286,7 @@ internal fun KotlinProjectionRenderer.abiIntegralArgumentConversionSuffix(type: 
     integralAbiDescriptor(type).argumentConversionSuffix
 
 internal fun KotlinProjectionRenderer.abiIntegralReadbackExpression(type: WinRtIntegralType): CodeBlock =
-    when (type) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%T.readInt8(__resultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.readInt8(__resultOut).toUByte()", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int16 -> CodeBlock.of("%T.readInt16(__resultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.readInt16(__resultOut).toUShort()", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int32 -> CodeBlock.of("%T.readInt32(__resultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.readInt32(__resultOut).toUInt()", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int64 -> CodeBlock.of("%T.readInt64(__resultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.readInt64(__resultOut).toULong()", PLATFORM_ABI_CLASS_NAME)
-    }
+    integralPlatformReadExpression(type, CodeBlock.of("__resultOut"))
 
 internal fun KotlinProjectionRenderer.delegateParameterKindsCode(
     parameterBindings: List<KotlinProjectionAbiParameterBinding>,

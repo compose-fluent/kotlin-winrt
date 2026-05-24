@@ -309,16 +309,7 @@ internal fun KotlinProjectionRenderer.nativeArrayEnumElementReadCode(
     slice: CodeBlock,
 ): CodeBlock? {
     val enumType = resolvedReturnClassName(elementBinding) ?: return null
-    val readback = when (elementBinding.enumUnderlyingType ?: return null) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%T.readInt8(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.readInt8(%L).toUByte()", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.Int16 -> CodeBlock.of("%T.readInt16(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.readInt16(%L).toUShort()", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.Int32 -> CodeBlock.of("%T.readInt32(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.readInt32(%L).toUInt()", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.Int64 -> CodeBlock.of("%T.readInt64(%L)", PLATFORM_ABI_CLASS_NAME, slice)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.readInt64(%L).toULong()", PLATFORM_ABI_CLASS_NAME, slice)
-    }
+    val readback = integralPlatformReadExpression(elementBinding.enumUnderlyingType ?: return null, slice)
     return CodeBlock.of("%T.Metadata.fromAbi(%L)", enumType, readback)
 }
 
@@ -359,16 +350,7 @@ internal fun KotlinProjectionRenderer.nativeArrayEnumElementWriteCode(
 ): CodeBlock? {
     val enumType = resolvedReturnClassName(elementBinding) ?: return null
     val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L)", enumType, valueExpression)
-    return when (elementBinding.enumUnderlyingType ?: return null) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.Int32 -> CodeBlock.of("%T.writeInt32(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.writeInt32(%L, %L.toInt())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L)", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", PLATFORM_ABI_CLASS_NAME, slice, abiValue)
-    }
+    return integralPlatformWriteCode(elementBinding.enumUnderlyingType ?: return null, slice, abiValue)
 }
 
 internal fun KotlinProjectionRenderer.nativeStructParameterMarshaler(
