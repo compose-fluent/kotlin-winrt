@@ -49,9 +49,12 @@ open class WinRtCollectionReferenceBase(
         )
 
     protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: ComObjectReference): IUnknownReference? =
+        invokeNullableObjectMethodWithObjectArg(slot, value.pointer.asRawAddress())
+
+    protected fun invokeNullableObjectMethodWithObjectArg(slot: Int, value: RawAddress): IUnknownReference? =
         RawObjectAbiSupport.nullableObjectResult(
             invoke = { resultOut ->
-                invokeSlot(slot, value.pointer.asRawAddress(), resultOut)
+                invokeSlot(slot, value, resultOut)
             },
             wrap = { pointer -> IUnknownReference(pointer.asRawComPtr()) },
         )
@@ -393,6 +396,9 @@ open class WinRtMapViewReference(
             )
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
+        lookupOrNull(key.pointer.asRawAddress())
+
+    open fun lookupOrNull(key: RawAddress): IUnknownReference? =
         invokeNullableObjectMethodWithObjectArg(WinRtCollectionSlots.MapViewLookup, key)?.let { reference ->
             createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
@@ -403,8 +409,11 @@ open class WinRtMapViewReference(
         }
 
     open fun hasKey(key: ComObjectReference): Boolean =
+        hasKey(key.pointer.asRawAddress())
+
+    open fun hasKey(key: RawAddress): Boolean =
         RawAbiResultSupport.booleanResult { resultOut ->
-            invokeSlot(WinRtCollectionSlots.MapViewHasKey, key.pointer.asRawAddress(), resultOut)
+            invokeSlot(WinRtCollectionSlots.MapViewHasKey, key, resultOut)
         }
 
     open fun split(mapViewInterfaceId: Guid): Pair<WinRtMapViewReference?, WinRtMapViewReference?> =
@@ -454,6 +463,9 @@ open class WinRtMapReference(
             )
 
     open fun lookupOrNull(key: ComObjectReference): IUnknownReference? =
+        lookupOrNull(key.pointer.asRawAddress())
+
+    open fun lookupOrNull(key: RawAddress): IUnknownReference? =
         invokeNullableObjectMethodWithObjectArg(WinRtCollectionSlots.MapLookup, key)?.let { reference ->
             createUnknownReference(reference.pointer.asRawAddress(), reference.interfaceId)
         }
@@ -464,8 +476,11 @@ open class WinRtMapReference(
         }
 
     open fun hasKey(key: ComObjectReference): Boolean =
+        hasKey(key.pointer.asRawAddress())
+
+    open fun hasKey(key: RawAddress): Boolean =
         RawAbiResultSupport.booleanResult { resultOut ->
-            invokeSlot(WinRtCollectionSlots.MapHasKey, key.pointer.asRawAddress(), resultOut)
+            invokeSlot(WinRtCollectionSlots.MapHasKey, key, resultOut)
         }
 
     open fun getView(mapViewInterfaceId: Guid): WinRtMapViewReference =
@@ -475,12 +490,19 @@ open class WinRtMapReference(
         )
 
     open fun insert(key: ComObjectReference, value: ComObjectReference): Boolean =
+        insert(key.pointer.asRawAddress(), value.pointer.asRawAddress())
+
+    open fun insert(key: RawAddress, value: RawAddress): Boolean =
         RawAbiResultSupport.booleanResult { resultOut ->
-            invokeSlot(WinRtCollectionSlots.MapInsert, key.pointer.asRawAddress(), value.pointer.asRawAddress(), resultOut)
+            invokeSlot(WinRtCollectionSlots.MapInsert, key, value, resultOut)
         }
 
     open fun remove(key: ComObjectReference) {
-        val hr = invokeSlot(WinRtCollectionSlots.MapRemove, key.pointer.asRawAddress())
+        remove(key.pointer.asRawAddress())
+    }
+
+    open fun remove(key: RawAddress) {
+        val hr = invokeSlot(WinRtCollectionSlots.MapRemove, key)
         WinRtPlatformApi.checkSucceededRaw(hr)
     }
 

@@ -193,8 +193,8 @@ class WinRtCollectionInteropTest {
             assertEquals(listOf(12), map.unitSlots)
             assertEquals(listOf(7), map.uintSlots)
 
-            assertEquals(listOf(6 to key), mapView.lookupSlots)
-            assertEquals(listOf(8 to key), mapView.hasKeySlots)
+            assertEquals(listOf(6 to key.pointer.asRawAddress()), mapView.lookupSlots)
+            assertEquals(listOf(8 to key.pointer.asRawAddress()), mapView.hasKeySlots)
             assertEquals(listOf(9), mapView.splitSlots)
             assertEquals(listOf(7), mapView.uintSlots)
         }
@@ -272,7 +272,11 @@ class WinRtCollectionInteropTest {
                 keyValuePairInterfaceId = Guid("00000000-0000-0000-0000-000000000779"),
                 keyProjector = { (it as FakeReference?)?.label ?: "<null>" },
                 valueProjector = { (it as FakeReference?)?.label ?: "<null>" },
-                keyMarshaller = { label -> FakeReference(arena, label) },
+                keyMarshaller = { label ->
+                    FakeReference(arena, label).let { reference ->
+                        WinRtObjectMarshaler(reference.pointer.asRawAddress(), reference::close)
+                    }
+                },
             ).use { projected ->
                 assertEquals(2, projected.size)
                 assertEquals("two", projected["one"])
@@ -468,12 +472,16 @@ class WinRtCollectionInteropTest {
         private val splitResult: Pair<WinRtMapViewReference?, WinRtMapViewReference?>,
         private val iterableResult: WinRtIterableReference? = null,
     ) : WinRtMapViewReference(arena.allocate(8).asNativePointer(), Guid("00000000-0000-0000-0000-000000000206")) {
-        val lookupSlots = mutableListOf<Pair<Int, ComObjectReference>>()
-        val hasKeySlots = mutableListOf<Pair<Int, ComObjectReference>>()
+        val lookupSlots = mutableListOf<Pair<Int, RawAddress>>()
+        val hasKeySlots = mutableListOf<Pair<Int, RawAddress>>()
         val uintSlots = mutableListOf<Int>()
         val splitSlots = mutableListOf<Int>()
 
         override fun lookupOrNull(key: ComObjectReference): IUnknownReference? {
+            return lookupOrNull(key.pointer.asRawAddress())
+        }
+
+        override fun lookupOrNull(key: RawAddress): IUnknownReference? {
             lookupSlots += 6 to key
             return lookupResult
         }
@@ -484,6 +492,10 @@ class WinRtCollectionInteropTest {
         }
 
         override fun hasKey(key: ComObjectReference): Boolean {
+            return hasKey(key.pointer.asRawAddress())
+        }
+
+        override fun hasKey(key: RawAddress): Boolean {
             hasKeySlots += 8 to key
             return hasKeyResult
         }
