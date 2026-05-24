@@ -713,6 +713,57 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun metadata_validator_rejects_events_without_add_remove_accessor_pair() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "EventHandlerCallback",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555569"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Object"),
+                                        WinRtParameterDefinition("args", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555570"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.EventHandlerCallback",
+                                    addMethodName = "add_Changed",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val report = model.validateForProjection()
+
+        assertTrue(report.hasErrors)
+        assertTrue(report.errors.any { diagnostic ->
+            diagnostic.code == WinRtMetadataDiagnosticCode.InvalidEventAccessors &&
+                diagnostic.typeName == "Sample.Foundation.IWidget" &&
+                diagnostic.memberName == "Changed"
+        })
+    }
+
+    @Test
     fun closure_resolver_materializes_default_precedence_and_generic_interface_closure() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
