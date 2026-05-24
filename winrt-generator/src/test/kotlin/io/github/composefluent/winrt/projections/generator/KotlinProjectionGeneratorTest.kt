@@ -3587,7 +3587,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_keeps_floating_point_interface_native_projection_on_ir_lowered_kotlin_fallback() {
+    fun generator_routes_floating_point_interface_members_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -3623,6 +3623,80 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.getDouble"))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.setDouble"))
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IRange"))
+    }
+
+    @Test
+    fun generator_allows_floating_point_members_in_interface_native_projection_artifacts() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IRange",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Scale",
+                                    returnTypeName = "Float",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("factor", "Float"),
+                                        WinRtParameterDefinition("offset", "Double"),
+                                    ),
+                                    methodRowId = 12,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Minimum",
+                                    typeName = "Double",
+                                    getterMethodName = "get_Minimum",
+                                    setterMethodName = "put_Minimum",
+                                    getterMethodRowId = 10,
+                                    setterMethodRowId = 11,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val plan = KotlinProjectionPlanner().plan(model).single()
+        val renderer = KotlinProjectionRenderer(useInterfaceProjectionArtifacts = true, useProjectionIntrinsics = true)
+        val descriptors = renderer.interfaceNativeProjectionMemberDescriptors(plan)
+
+        assertTrue(renderer.canRenderInterfaceNativeProjectionArtifact(plan))
+        assertEquals(
+            listOf(
+                KotlinInterfaceNativeProjectionMemberDescriptor(
+                    kind = "Method",
+                    jvmName = "scale",
+                    slot = 8,
+                    returnKind = "Float",
+                    parameterKinds = listOf("Float", "Double"),
+                    suppressHResultCheck = false,
+                ),
+                KotlinInterfaceNativeProjectionMemberDescriptor(
+                    kind = "PropertyGet",
+                    jvmName = "getMinimum",
+                    slot = 6,
+                    returnKind = "Double",
+                    parameterKinds = emptyList(),
+                    suppressHResultCheck = false,
+                ),
+                KotlinInterfaceNativeProjectionMemberDescriptor(
+                    kind = "PropertySet",
+                    jvmName = "setMinimum",
+                    slot = 7,
+                    returnKind = "Unit",
+                    parameterKinds = listOf("Double"),
+                    suppressHResultCheck = false,
+                ),
+            ),
+            descriptors,
+        )
     }
 
     @Test

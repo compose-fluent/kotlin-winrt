@@ -939,9 +939,6 @@ class KotlinProjectionRenderer(
         if (descriptors.groupingBy { it.jvmName to it.parameterKinds.size }.eachCount().any { it.value > 1 }) {
             return null
         }
-        if (descriptors.any(KotlinInterfaceNativeProjectionMemberDescriptor::usesFloatingPointAbi)) {
-            return null
-        }
         return descriptors
     }
 
@@ -3329,11 +3326,6 @@ internal data class KotlinInterfaceNativeProjectionMemberDescriptor(
     val eventTypeName: String = "",
     val ownerTypeName: String = "",
 )
-
-private fun KotlinInterfaceNativeProjectionMemberDescriptor.usesFloatingPointAbi(): Boolean =
-    returnKind == "Float" ||
-        returnKind == "Double" ||
-        parameterKinds.any { it == "Float" || it == "Double" }
 
 private fun interfaceNativeProjectionValueKind(binding: KotlinProjectionAbiTypeBinding): String =
     when (binding.kind) {
