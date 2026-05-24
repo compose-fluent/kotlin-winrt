@@ -1536,7 +1536,7 @@ internal fun KotlinProjectionRenderer.appendMetadataCompanionMembers(
                 )
                 .apply {
                     plan.defaultInterfaceName?.let { defaultInterfaceName ->
-                        val defaultInterfaceSignature = abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName))
+                        val defaultInterfaceSignature = abiTypeSignature(renderAbiTypeBinding(defaultInterfaceName, plan.typesByQualifiedName, plan.type.namespace))
                         if (defaultInterfaceSignature != null) {
                             addCode(
                                 "%T.registerDefaultInterfaceTypeName(TYPE_NAME, DEFAULT_INTERFACE, %L.render())\n",

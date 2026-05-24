@@ -2064,10 +2064,10 @@ class KotlinProjectionRenderer(
                     required.genericArguments.size == 1
             }
             ?.let { required ->
-                required.genericArguments.single()
+                    required.genericArguments.single()
                     .normalized()
                     .typeName
-                    .let { typeName -> renderAbiTypeBinding(typeName, plan.typesByQualifiedName) }
+                    .let { typeName -> renderAbiTypeBinding(typeName, plan.typesByQualifiedName, required.type.namespace) }
                     .takeIf(KotlinProjectionAbiTypeBinding::isSupportedReadOnlyCollectionElementBinding)
                     ?.let { elementBinding ->
                         RequiredIteratorBinding(
@@ -2991,7 +2991,7 @@ class KotlinProjectionRenderer(
         if (objectReferencePlan?.usesDefaultInterfaceObjRef == true && objectReferencePlan.defaultInterfaceObjRefVtableSlot != null) {
             body.addStatement("_inner.getDefaultInterfaceObjectReference(%L)", objectReferencePlan.defaultInterfaceObjRefVtableSlot)
         } else if (objectReferencePlan?.requiresGenericInstantiation == true) {
-            val signature = abiTypeSignature(renderAbiTypeBinding(objectReferencePlan.interfaceName, typesByQualifiedName))
+            val signature = abiTypeSignature(renderAbiTypeBinding(objectReferencePlan.interfaceName, typesByQualifiedName, objectReferencePlan.interfaceName.substringBeforeLast('.', "")))
             if (signature != null) {
                 body.addStatement(
                     "Metadata.acquireInterface(_inner, %T.createFromSignature(%L))",
