@@ -67,6 +67,7 @@ object WinRtJvmFfmDowncallHandles {
         when (token) {
             "Byte",
             "Boolean" -> ValueLayout.JAVA_BYTE
+            "Int16" -> ValueLayout.JAVA_SHORT
             "Int32",
             "UInt32" -> ValueLayout.JAVA_INT
             "Int64",

@@ -513,6 +513,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.RawAddress,
                                 UnitCallAbiArgumentKind.RawComPtr,
                                 UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int16,
                                 UnitCallAbiArgumentKind.Int32,
                                 UnitCallAbiArgumentKind.UInt32,
                                 UnitCallAbiArgumentKind.Int64,
@@ -688,6 +689,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.RawAddress,
                                 UnitCallAbiArgumentKind.RawComPtr,
                                 UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int16,
                                 UnitCallAbiArgumentKind.Int32,
                                 UnitCallAbiArgumentKind.UInt32,
                                 UnitCallAbiArgumentKind.Int64,
@@ -1517,6 +1519,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.RawAddress,
                                 UnitCallAbiArgumentKind.RawComPtr,
                                 UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int16,
                                 UnitCallAbiArgumentKind.Int32,
                                 UnitCallAbiArgumentKind.UInt32,
                                 UnitCallAbiArgumentKind.Int64,
@@ -1923,6 +1926,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.RawAddress,
                                 UnitCallAbiArgumentKind.RawComPtr,
                                 UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int16,
                                 UnitCallAbiArgumentKind.Int32,
                                 UnitCallAbiArgumentKind.UInt32,
                                 UnitCallAbiArgumentKind.Int64,
@@ -2036,6 +2040,7 @@ class KotlinWinRtIrGenerationExtension(
                                 UnitCallAbiArgumentKind.RawAddress,
                                 UnitCallAbiArgumentKind.RawComPtr,
                                 UnitCallAbiArgumentKind.Byte,
+                                UnitCallAbiArgumentKind.Int16,
                                 UnitCallAbiArgumentKind.Int32,
                                 UnitCallAbiArgumentKind.UInt32,
                                 UnitCallAbiArgumentKind.Int64,
@@ -2228,6 +2233,7 @@ class KotlinWinRtIrGenerationExtension(
                 WINRT_RAW_ADDRESS_FQ_NAME -> UnitCallAbiArgumentKind.RawAddress
                 WINRT_RAW_COM_PTR_FQ_NAME -> UnitCallAbiArgumentKind.RawComPtr
                 KOTLIN_BYTE_FQ_NAME -> UnitCallAbiArgumentKind.Byte
+                KOTLIN_SHORT_FQ_NAME -> UnitCallAbiArgumentKind.Int16
                 KOTLIN_INT_FQ_NAME -> UnitCallAbiArgumentKind.Int32
                 KOTLIN_UINT_FQ_NAME -> UnitCallAbiArgumentKind.UInt32
                 KOTLIN_LONG_FQ_NAME -> UnitCallAbiArgumentKind.Int64
@@ -2344,6 +2350,7 @@ class KotlinWinRtIrGenerationExtension(
             RawAddress,
             RawComPtr,
             Byte,
+            Int16,
             Int32,
             UInt32,
             Int64,
@@ -2382,6 +2389,7 @@ class KotlinWinRtIrGenerationExtension(
                         "RawAddress" -> UnitCallAbiArgumentKind.RawAddress
                         "RawComPtr" -> UnitCallAbiArgumentKind.RawComPtr
                         "Byte" -> UnitCallAbiArgumentKind.Byte
+                        "Int16" -> UnitCallAbiArgumentKind.Int16
                         "Int32" -> UnitCallAbiArgumentKind.Int32
                         "UInt32" -> UnitCallAbiArgumentKind.UInt32
                         "Int64" -> UnitCallAbiArgumentKind.Int64
@@ -2629,6 +2637,7 @@ class KotlinWinRtIrGenerationExtension(
                     UnitCallAbiArgumentKind.RawAddress -> "RawAddress"
                     UnitCallAbiArgumentKind.RawComPtr -> "RawComPtr"
                     UnitCallAbiArgumentKind.Byte -> "Byte"
+                    UnitCallAbiArgumentKind.Int16 -> "Int16"
                     UnitCallAbiArgumentKind.Int32 -> "Int32"
                     UnitCallAbiArgumentKind.UInt32 -> "UInt32"
                     UnitCallAbiArgumentKind.Int64 -> "Int64"
@@ -2698,6 +2707,7 @@ class KotlinWinRtIrGenerationExtension(
             ): IrExpression =
                 when (kind) {
                     UnitCallAbiArgumentKind.Byte,
+                    UnitCallAbiArgumentKind.Int16,
                     UnitCallAbiArgumentKind.Int32,
                     UnitCallAbiArgumentKind.Int64,
                     UnitCallAbiArgumentKind.Float,
@@ -3804,6 +3814,9 @@ private val KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME =
 
 private val KOTLIN_BYTE_FQ_NAME =
     FqName("kotlin.Byte")
+
+private val KOTLIN_SHORT_FQ_NAME =
+    FqName("kotlin.Short")
 
 private val KOTLIN_INT_FQ_NAME =
     FqName("kotlin.Int")

@@ -446,7 +446,7 @@ internal fun KotlinProjectionComArgumentKind.descriptorAbiToken(): String? =
         KotlinProjectionComArgumentKind.Int64 -> "Int64"
         KotlinProjectionComArgumentKind.Float -> "Float"
         KotlinProjectionComArgumentKind.Double -> "Double"
-        KotlinProjectionComArgumentKind.Int16 -> null
+        KotlinProjectionComArgumentKind.Int16 -> "Int16"
     }
 
 internal fun KotlinProjectionRenderer.renderComVtableInvocation(
