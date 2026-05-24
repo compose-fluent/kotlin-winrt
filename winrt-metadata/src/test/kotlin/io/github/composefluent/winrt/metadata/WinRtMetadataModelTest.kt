@@ -1505,8 +1505,14 @@ class WinRtMetadataModelTest {
         val serviceProvider = requireNotNull(helpers.getMappedType("Microsoft.UI.Xaml", "IXamlServiceProvider"))
         assertEquals("System.IServiceProvider", serviceProvider.mappedQualifiedName)
         assertEquals(true, serviceProvider.isXamlAlias)
-        assertEquals(null, helpers.getMappedType("Windows.Foundation", "Point"))
-        assertEquals(null, helpers.getMappedType("Windows.Foundation.Numerics", "Vector3"))
+        assertEquals(
+            "io.github.composefluent.winrt.runtime.Point",
+            helpers.getMappedType("Windows.Foundation", "Point")?.mappedQualifiedName,
+        )
+        assertEquals(
+            "io.github.composefluent.winrt.runtime.Vector3",
+            helpers.getMappedType("Windows.Foundation.Numerics", "Vector3")?.mappedQualifiedName,
+        )
         assertEquals(null, helpers.getMappedType("Windows.UI", "Color"))
         assertEquals(null, helpers.getMappedType("Microsoft.UI.Xaml", "CornerRadius"))
         assertEquals(null, helpers.getMappedType("Microsoft.UI.Xaml", "Duration"))
@@ -1582,7 +1588,8 @@ class WinRtMetadataModelTest {
         assertEquals(WinRtTypeLayoutKind.Sequential, pointDescriptor.layout.kind)
         assertEquals(listOf("X", "Y"), pointDescriptor.fields.map { it.field.name })
         assertEquals(listOf(0, 4), pointDescriptor.fields.map { it.offset })
-        assertEquals(null, pointDescriptor.mappedType)
+        assertEquals("Windows.Foundation.Point", pointDescriptor.mappedType?.abiQualifiedName)
+        assertEquals("io.github.composefluent.winrt.runtime.Point", pointDescriptor.mappedType?.mappedQualifiedName)
 
         val enumDescriptor = helpers.valueTypeDescriptor(mode)
         assertEquals(true, enumDescriptor.isValueType)
