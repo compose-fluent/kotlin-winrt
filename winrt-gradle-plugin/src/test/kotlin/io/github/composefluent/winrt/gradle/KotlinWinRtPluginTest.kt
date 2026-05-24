@@ -6,6 +6,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.testfixtures.ProjectBuilder
 import org.gradle.testkit.runner.GradleRunner
@@ -301,7 +302,6 @@ class KotlinWinRtPluginTest {
             """
             kind	className	sourceFile	entries
             projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
-            event-source-mapping	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	EventSourceMappings.kt	1
             future-support	io.github.composefluent.winrt.projections.support.FutureSupport	future-support.tsv	1
             """.trimIndent(),
         )
@@ -312,7 +312,6 @@ class KotlinWinRtPluginTest {
             windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
             """.trimIndent(),
         )
-        Files.writeString(localRoot.resolve("EventSourceMappings.kt"), "object EventSourceMappings")
         Files.writeString(
             localRoot.resolve("future-support.tsv"),
             """
@@ -367,17 +366,47 @@ class KotlinWinRtPluginTest {
         val genericSupport = Files.readString(outputRoot.resolve("generic-instantiations.tsv"))
         val futureSupport = Files.readString(outputRoot.resolve("future-support.tsv"))
         assertTrue(manifest.contains("projection-registrar"))
-        assertFalse(manifest.contains("event-source"))
         assertTrue(manifest.contains("future-support\tio.github.composefluent.winrt.projections.support.FutureSupport"))
         assertTrue(manifest.contains("generic-type-instantiation\tio.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations"))
         assertFalse(manifest.contains("WinRTGenericTypeInstantiationRegistry"))
-        assertFalse(manifest.contains("event-source-mapping"))
         assertTrue(projectionSupport.contains("Windows.Foundation.Uri"))
         assertTrue(projectionSupport.contains("Windows.System.Display.DisplayRequest"))
-        assertFalse(Files.exists(outputRoot.resolve("event-sources.tsv")))
-        assertFalse(Files.exists(outputRoot.resolve("EventSourceMappings.kt")))
         assertTrue(genericSupport.contains("Windows.Foundation.IReference`1<String>"))
         assertTrue(futureSupport.contains("alpha\tbeta"))
+    }
+
+    @Test
+    fun merge_compiler_support_task_rejects_retired_runtime_discovery_support_rows() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-retired-compiler-support-test-")
+        val localRoot = root.resolve("local")
+        val outputRoot = root.resolve("merged")
+        Files.createDirectories(localRoot)
+        Files.writeString(
+            localRoot.resolve("compiler-support.tsv"),
+            """
+            kind	className	sourceFile	entries
+            event-source-mapping	io.github.composefluent.winrt.projections.support.WinRTEventProjectionHelpers	EventSourceMappings.kt	1
+            """.trimIndent(),
+        )
+        Files.writeString(localRoot.resolve("EventSourceMappings.kt"), "object EventSourceMappings")
+        val task = project.tasks.register(
+            "mergeRetiredWinRtCompilerSupportUnderTest",
+            MergeWinRtCompilerSupportTask::class.java,
+        ) { registeredTask ->
+            registeredTask.localCompilerSupportManifest.set(localRoot.resolve("compiler-support.tsv").toFile())
+            registeredTask.outputDirectory.set(outputRoot.toFile())
+        }.get()
+
+        try {
+            task.merge()
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("retired runtime-discovery support kind 'event-source-mapping'"))
+            assertFalse(Files.exists(outputRoot.resolve("compiler-support.tsv")))
+            return
+        }
+
+        throw AssertionError("Expected retired runtime-discovery compiler support rows to fail closed.")
     }
 
     @Test
