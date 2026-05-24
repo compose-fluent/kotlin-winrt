@@ -107,6 +107,7 @@ internal class KotlinExpectActualProjectionRenderer(
                         returnTypeName = method.returnTypeName,
                         parameters = method.parameters.map { it.name to it.typeName },
                         typesByQualifiedName = plan.typesByQualifiedName,
+                        currentNamespace = type.namespace,
                     )
                 } &&
             type.properties
@@ -118,12 +119,14 @@ internal class KotlinExpectActualProjectionRenderer(
                         returnTypeName = propertyTypeName,
                         parameters = emptyList(),
                         typesByQualifiedName = plan.typesByQualifiedName,
+                        currentNamespace = type.namespace,
                     ) && (
                         property.isReadOnly ||
                             canBuildJvmFfmCallPlan(
                                 returnTypeName = "Unit",
                                 parameters = listOf("value" to propertyTypeName),
                                 typesByQualifiedName = plan.typesByQualifiedName,
+                                currentNamespace = type.namespace,
                             )
                         )
                 }
@@ -132,13 +135,14 @@ internal class KotlinExpectActualProjectionRenderer(
         returnTypeName: String,
         parameters: List<Pair<String, String>>,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
+        currentNamespace: String? = null,
     ): Boolean =
         runCatching {
-            val returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName)
+            val returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName, currentNamespace)
             val parameterBindings = parameters.map { (name, typeName) ->
                 KotlinProjectionAbiParameterBinding(
                     name = name,
-                    typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName),
+                    typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName, currentNamespace),
                 )
             }
             if (
@@ -683,11 +687,11 @@ internal class KotlinExpectActualProjectionRenderer(
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): FunSpec {
-        val returnBinding = baseRenderer.renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName)
+        val returnBinding = baseRenderer.renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName, slotInterfaceType.namespace)
         val parameterBindings = method.parameters.map { parameter ->
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
-                typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, typesByQualifiedName),
+                typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, typesByQualifiedName, slotInterfaceType.namespace),
             )
         }
         val callPlan = buildJvmInterfaceAbiCallPlan(
@@ -726,7 +730,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
         val getterCallPlan = buildJvmInterfaceAbiCallPlan(
-            returnBinding = baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName),
+            returnBinding = baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace),
             parameterBindings = emptyList(),
             suppressHResultCheck = property.isNoException,
             typesByQualifiedName = typesByQualifiedName,
@@ -747,7 +751,7 @@ internal class KotlinExpectActualProjectionRenderer(
         if (!property.isReadOnly) {
             val setterCallPlan = buildJvmInterfaceAbiCallPlan(
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", baseRenderer.renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace))),
                 suppressHResultCheck = property.isNoException,
                 typesByQualifiedName = typesByQualifiedName,
             ) ?: error("Generator interface proxy parity failed to plan setter ${slotInterfaceType.qualifiedName}.${property.name}")

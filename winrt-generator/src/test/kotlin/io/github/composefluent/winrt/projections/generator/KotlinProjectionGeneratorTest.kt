@@ -356,18 +356,18 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "GetChild",
-                                    returnTypeName = "Sample.Foundation.IChild",
+                                    returnTypeName = "IChild",
                                 ),
                                 WinRtMethodDefinition(
                                     name = "SetChild",
                                     returnTypeName = "Unit",
-                                    parameters = listOf(WinRtParameterDefinition("child", "Sample.Foundation.IChild")),
+                                    parameters = listOf(WinRtParameterDefinition("child", "IChild")),
                                 ),
                             ),
                             properties = listOf(
                                 WinRtPropertyDefinition(
                                     name = "Child",
-                                    typeName = "Sample.Foundation.IChild",
+                                    typeName = "IChild",
                                     getterMethodName = "get_Child",
                                     setterMethodName = "put_Child",
                                 ),
@@ -8322,7 +8322,7 @@ class KotlinProjectionGeneratorTest {
             properties = listOf(
                 WinRtPropertyDefinition(
                     name = "Owner",
-                    typeName = "Sample.Foundation.Widget",
+                    typeName = "Widget",
                     getterMethodName = "get_Owner",
                     getterMethodRowId = 6,
                 ),
@@ -8338,7 +8338,7 @@ class KotlinProjectionGeneratorTest {
             ),
         ).toString()
 
-        assertTrue(property, property.contains("override val owner: sample.foundation.Widget"))
+        assertTrue(property, property.contains("override val owner: Widget?"))
         assertTrue(
             property,
             property.contains("WinRtProjectionIntrinsic.getProjectedRuntimeClass(") ||
