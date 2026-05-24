@@ -166,6 +166,11 @@ class KotlinProjectionGeneratorTest {
         assertTrue(registrar, registrar.contains("sample.foundation.Widget\tSample.Foundation.Widget\tRuntimeClass\tSample.Foundation.WidgetBase\tsample.foundation.Widget.Metadata"))
         assertTrue(manifest, manifest.contains("projection-registrar\tio.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic\tprojection-registrar.tsv\t2"))
         assertTrue(widget, widget.contains("WinRtProjectionSupportIntrinsic.ensureInitialized()"))
+        filesByName.values
+            .filter { file -> file.relativePath.contains("/projections/support/") }
+            .forEach { file ->
+                assertFalse(file.relativePath, file.contents.contains("cswinrt", ignoreCase = true))
+            }
     }
 
     @Test
