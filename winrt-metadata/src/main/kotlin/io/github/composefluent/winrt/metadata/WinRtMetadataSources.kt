@@ -553,7 +553,7 @@ object WinRtMetadataSourceResolver {
     }
 
     private fun discoverPathSource(path: Path): List<Path> = when {
-        path.isDirectory() -> Files.walk(path).use { stream ->
+        path.isDirectory() -> Files.list(path).use { stream ->
             stream.asSequence()
                 .filter(Files::isRegularFile)
                 .filter(::looksLikeCliMetadataCandidate)

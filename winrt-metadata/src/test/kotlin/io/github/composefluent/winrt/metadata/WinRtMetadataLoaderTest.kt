@@ -455,6 +455,19 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
+    fun directory_metadata_inputs_match_reference_immediate_scan() {
+        val assembly = buildManagedMetadataSample()
+        val root = Files.createTempDirectory("kotlin-winrt-metadata-directory-")
+        val nested = root.resolve("nested").createDirectories()
+        val nestedAssembly = nested.resolve(assembly.fileName.toString())
+        Files.copy(assembly, nestedAssembly)
+
+        val discovered = WinRtMetadataLoader.discoverMetadataFiles(listOf(root))
+
+        assertFalse(discovered.any { it.sameMetadataPathAs(nestedAssembly) })
+    }
+
+    @Test
     fun canonicalizes_duplicate_path_forms_and_keeps_loader_output_stable() {
         val assembly = buildManagedMetadataSample()
         val duplicatePathForm = assembly.parent.resolve(".").resolve(assembly.fileName.toString())
