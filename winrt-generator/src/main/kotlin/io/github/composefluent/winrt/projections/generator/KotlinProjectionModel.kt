@@ -532,6 +532,9 @@ internal data class KotlinProjectionIntegralAbiDescriptor(
     val platformReadFunctionName: String,
     val platformWriteFunctionName: String,
     val typeSignatureFunctionName: String,
+    val projectionIntrinsicShapeName: String? = null,
+    val projectionIntrinsicGetterName: String? = null,
+    val projectionIntrinsicSetterName: String? = null,
     val abiSizeBytes: Int,
     val comArgumentKind: KotlinProjectionComArgumentKind,
     val argumentConversionSuffix: String = "",
@@ -900,6 +903,9 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         platformReadFunctionName = "readInt32",
         platformWriteFunctionName = "writeInt32",
         typeSignatureFunctionName = "int32",
+        projectionIntrinsicShapeName = "Int32",
+        projectionIntrinsicGetterName = "getInt32",
+        projectionIntrinsicSetterName = "setInt32",
         abiSizeBytes = 4,
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
         literalRenderer = { valueBits -> CodeBlock.of("%L", valueBits.toInt()) },
@@ -912,6 +918,9 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
         platformReadFunctionName = "readInt32",
         platformWriteFunctionName = "writeInt32",
         typeSignatureFunctionName = "uint32",
+        projectionIntrinsicShapeName = "UInt32",
+        projectionIntrinsicGetterName = "getUInt32",
+        projectionIntrinsicSetterName = "setUInt32",
         abiSizeBytes = 4,
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
         argumentConversionSuffix = ".toInt()",
@@ -964,6 +973,15 @@ internal fun integralDelegateValueKindCode(type: WinRtIntegralType): CodeBlock =
 
 internal fun integralTypeSignatureCode(type: WinRtIntegralType): CodeBlock =
     CodeBlock.of("%T.%L()", WINRT_TYPE_SIGNATURE_CLASS_NAME, integralAbiDescriptor(type).typeSignatureFunctionName)
+
+internal fun integralProjectionIntrinsicShapeName(type: WinRtIntegralType): String? =
+    integralAbiDescriptor(type).projectionIntrinsicShapeName
+
+internal fun integralProjectionIntrinsicGetterName(type: WinRtIntegralType): String? =
+    integralAbiDescriptor(type).projectionIntrinsicGetterName
+
+internal fun integralProjectionIntrinsicSetterName(type: WinRtIntegralType): String? =
+    integralAbiDescriptor(type).projectionIntrinsicSetterName
 
 internal fun integralAbiSizeExpression(type: WinRtIntegralType): CodeBlock =
     CodeBlock.of("%L", integralAbiDescriptor(type).abiSizeBytes)

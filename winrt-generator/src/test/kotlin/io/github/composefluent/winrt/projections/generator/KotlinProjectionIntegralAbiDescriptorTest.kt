@@ -11,14 +11,14 @@ class KotlinProjectionIntegralAbiDescriptorTest {
         val platformAbiName = PLATFORM_ABI_CLASS_NAME.canonicalName
         val typeSignatureName = WINRT_TYPE_SIGNATURE_CLASS_NAME.canonicalName
         val expected = mapOf(
-            WinRtIntegralType.Int8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.Int8, "INT8", "readInt8", "writeInt8", "int8", "rawArgs[0] as kotlin.Byte", "$platformAbiName.readInt8(address)", "$platformAbiName.writeInt8(address, value)"),
-            WinRtIntegralType.UInt8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.UInt8, "UINT8", "readInt8", "writeInt8", "uint8", "(rawArgs[0] as kotlin.Byte).toUByte()", "$platformAbiName.readInt8(address).toUByte()", "$platformAbiName.writeInt8(address, value.toByte())"),
-            WinRtIntegralType.Int16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.Int16, "INT16", "readInt16", "writeInt16", "int16", "rawArgs[0] as kotlin.Short", "$platformAbiName.readInt16(address)", "$platformAbiName.writeInt16(address, value)"),
-            WinRtIntegralType.UInt16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.UInt16, "UINT16", "readInt16", "writeInt16", "uint16", "(rawArgs[0] as kotlin.Short).toUShort()", "$platformAbiName.readInt16(address).toUShort()", "$platformAbiName.writeInt16(address, value.toShort())"),
-            WinRtIntegralType.Int32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.Int32, "INT32", "readInt32", "writeInt32", "int32", "rawArgs[0] as kotlin.Int", "$platformAbiName.readInt32(address)", "$platformAbiName.writeInt32(address, value)"),
-            WinRtIntegralType.UInt32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.UInt32, "UINT32", "readInt32", "writeInt32", "uint32", "(rawArgs[0] as kotlin.Int).toUInt()", "$platformAbiName.readInt32(address).toUInt()", "$platformAbiName.writeInt32(address, value.toInt())"),
-            WinRtIntegralType.Int64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.Int64, "INT64", "readInt64", "writeInt64", "int64", "rawArgs[0] as kotlin.Long", "$platformAbiName.readInt64(address)", "$platformAbiName.writeInt64(address, value)"),
-            WinRtIntegralType.UInt64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.UInt64, "UINT64", "readInt64", "writeInt64", "uint64", "(rawArgs[0] as kotlin.Long).toULong()", "$platformAbiName.readInt64(address).toULong()", "$platformAbiName.writeInt64(address, value.toLong())"),
+            WinRtIntegralType.Int8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.Int8, "INT8", "readInt8", "writeInt8", "int8", null, null, null, "rawArgs[0] as kotlin.Byte", "$platformAbiName.readInt8(address)", "$platformAbiName.writeInt8(address, value)"),
+            WinRtIntegralType.UInt8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.UInt8, "UINT8", "readInt8", "writeInt8", "uint8", null, null, null, "(rawArgs[0] as kotlin.Byte).toUByte()", "$platformAbiName.readInt8(address).toUByte()", "$platformAbiName.writeInt8(address, value.toByte())"),
+            WinRtIntegralType.Int16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.Int16, "INT16", "readInt16", "writeInt16", "int16", null, null, null, "rawArgs[0] as kotlin.Short", "$platformAbiName.readInt16(address)", "$platformAbiName.writeInt16(address, value)"),
+            WinRtIntegralType.UInt16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.UInt16, "UINT16", "readInt16", "writeInt16", "uint16", null, null, null, "(rawArgs[0] as kotlin.Short).toUShort()", "$platformAbiName.readInt16(address).toUShort()", "$platformAbiName.writeInt16(address, value.toShort())"),
+            WinRtIntegralType.Int32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.Int32, "INT32", "readInt32", "writeInt32", "int32", "Int32", "getInt32", "setInt32", "rawArgs[0] as kotlin.Int", "$platformAbiName.readInt32(address)", "$platformAbiName.writeInt32(address, value)"),
+            WinRtIntegralType.UInt32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.UInt32, "UINT32", "readInt32", "writeInt32", "uint32", "UInt32", "getUInt32", "setUInt32", "(rawArgs[0] as kotlin.Int).toUInt()", "$platformAbiName.readInt32(address).toUInt()", "$platformAbiName.writeInt32(address, value.toInt())"),
+            WinRtIntegralType.Int64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.Int64, "INT64", "readInt64", "writeInt64", "int64", null, null, null, "rawArgs[0] as kotlin.Long", "$platformAbiName.readInt64(address)", "$platformAbiName.writeInt64(address, value)"),
+            WinRtIntegralType.UInt64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.UInt64, "UINT64", "readInt64", "writeInt64", "uint64", null, null, null, "(rawArgs[0] as kotlin.Long).toULong()", "$platformAbiName.readInt64(address).toULong()", "$platformAbiName.writeInt64(address, value.toLong())"),
         )
 
         expected.forEach { (type, expectedAbi) ->
@@ -30,6 +30,9 @@ class KotlinProjectionIntegralAbiDescriptorTest {
             assertEquals("platform read function for $type", expectedAbi.platformReadFunctionName, descriptor.platformReadFunctionName)
             assertEquals("platform write function for $type", expectedAbi.platformWriteFunctionName, descriptor.platformWriteFunctionName)
             assertEquals("type signature function for $type", expectedAbi.typeSignatureFunctionName, descriptor.typeSignatureFunctionName)
+            assertEquals("intrinsic shape for $type", expectedAbi.projectionIntrinsicShapeName, descriptor.projectionIntrinsicShapeName)
+            assertEquals("intrinsic getter for $type", expectedAbi.projectionIntrinsicGetterName, descriptor.projectionIntrinsicGetterName)
+            assertEquals("intrinsic setter for $type", expectedAbi.projectionIntrinsicSetterName, descriptor.projectionIntrinsicSetterName)
             assertEquals("array element width for $type", expectedAbi.sizeBytes.toString(), integralAbiSizeExpression(type).toString())
             assertEquals("delegate argument kind for $type", expectedAbi.argumentKind, abiArgumentKindForIntegralType(type))
             assertEquals("raw carrier expression for $type", expectedAbi.rawCarrierExpression, integralAbiCarrierExpression(type, CodeBlock.of("rawArgs[0]")).toString())
@@ -48,6 +51,9 @@ class KotlinProjectionIntegralAbiDescriptorTest {
         val platformReadFunctionName: String,
         val platformWriteFunctionName: String,
         val typeSignatureFunctionName: String,
+        val projectionIntrinsicShapeName: String?,
+        val projectionIntrinsicGetterName: String?,
+        val projectionIntrinsicSetterName: String?,
         val rawCarrierExpression: String,
         val platformReadExpression: String,
         val platformWriteExpression: String,
