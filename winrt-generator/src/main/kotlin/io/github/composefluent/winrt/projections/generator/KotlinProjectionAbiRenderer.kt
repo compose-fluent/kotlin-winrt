@@ -292,7 +292,7 @@ internal fun KotlinProjectionRenderer.buildAbiParameterMarshaler(
             name = parameterName,
             typeBinding = parameterBinding.typeBinding,
             isReturn = false,
-            abiArgumentExpression = CodeBlock.of("%L", parameterName),
+            abiArgumentExpression = CodeBlock.of("%L.code.toShort()", parameterName),
             abiArgumentKind = KotlinProjectionComArgumentKind.Int16,
         )
         KotlinProjectionAbiValueKind.GuidValue -> {
