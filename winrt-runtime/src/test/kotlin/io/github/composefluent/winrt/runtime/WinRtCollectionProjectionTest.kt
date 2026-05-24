@@ -96,6 +96,51 @@ class WinRtCollectionProjectionTest {
     }
 
     @Test
+    fun object_dictionary_ccw_distinguishes_null_values_from_missing_keys() {
+        val allocated = mutableListOf<AutoCloseable>()
+        val keyAdapter = labelAdapter(allocated)
+        val valueAdapter = WinRtReferenceValueAdapters.object_
+        val readOnlyAbi = WinRtReadOnlyDictionaryProjection.fromManaged(
+            linkedMapOf<String, Any?>("present" to null),
+            keyAdapter,
+            valueAdapter,
+        )
+        val mutableAbi = WinRtDictionaryProjection.fromManaged(
+            linkedMapOf<String, Any?>("present" to null),
+            keyAdapter,
+            valueAdapter,
+        )
+        val key = LabelInspectableBox.create("present").also(allocated::add).reference
+
+        try {
+            ComObjectReference(readOnlyAbi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+                ComObjectReference(owner.pointer, mapViewInterfaceIdFor(keyAdapter, valueAdapter), preventReleaseOnDispose = true).use { borrowed ->
+                    WinRtMapViewReference(borrowed.getRefPointer().asRawAddress(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).use { mapView ->
+                        assertTrue(mapView.hasKey(key))
+                        assertEquals(null, mapView.lookupOrNull(key))
+                    }
+                }
+            }
+            ComObjectReference(mutableAbi.asRawComPtr(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { owner ->
+                ComObjectReference(owner.pointer, mapInterfaceIdFor(keyAdapter, valueAdapter), preventReleaseOnDispose = true).use { borrowed ->
+                    WinRtMapReference(borrowed.getRefPointer().asRawAddress(), mapInterfaceIdFor(keyAdapter, valueAdapter)).use { map ->
+                        assertTrue(map.hasKey(key))
+                        assertEquals(null, map.lookupOrNull(key))
+                    }
+                }
+            }
+        } finally {
+            if (!PlatformAbi.isNull(readOnlyAbi)) {
+                IUnknownReference(readOnlyAbi.asRawComPtr(), mapViewInterfaceIdFor(keyAdapter, valueAdapter)).close()
+            }
+            if (!PlatformAbi.isNull(mutableAbi)) {
+                IUnknownReference(mutableAbi.asRawComPtr(), mapInterfaceIdFor(keyAdapter, valueAdapter)).close()
+            }
+            allocated.closeAll()
+        }
+    }
+
+    @Test
     fun mutable_list_helpers_mutate_managed_list_and_project_back() {
         val allocated = mutableListOf<AutoCloseable>()
         val adapter = labelAdapter(allocated)
