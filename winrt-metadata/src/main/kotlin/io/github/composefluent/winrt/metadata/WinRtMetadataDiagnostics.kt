@@ -255,7 +255,7 @@ class WinRtMetadataValidator private constructor(
         property: WinRtPropertyDefinition,
         diagnostics: MutableList<WinRtMetadataDiagnostic>,
     ) {
-        if (!property.hasValidAccessors) {
+        if (!property.hasValidAccessors || !property.hasGetterOrSetterAccessor()) {
             diagnostics += error(
                 code = WinRtMetadataDiagnosticCode.InvalidPropertyAccessors,
                 typeName = type.qualifiedName,
@@ -266,6 +266,12 @@ class WinRtMetadataValidator private constructor(
         }
         validateSignatureType(property.type, type.namespace, type.qualifiedName, property.name, "property type", diagnostics, property.rowId())
     }
+
+    private fun WinRtPropertyDefinition.hasGetterOrSetterAccessor(): Boolean =
+        getterMethodName != null ||
+            setterMethodName != null ||
+            getterMethodRowId != null ||
+            setterMethodRowId != null
 
     private fun validateEvent(
         type: WinRtTypeDefinition,

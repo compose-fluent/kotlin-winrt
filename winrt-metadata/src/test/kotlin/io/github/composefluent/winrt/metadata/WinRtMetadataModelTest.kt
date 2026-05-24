@@ -764,6 +764,40 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun metadata_validator_rejects_properties_without_getter_or_setter_accessor() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val report = model.validateForProjection()
+
+        assertTrue(report.hasErrors)
+        assertTrue(report.errors.any { diagnostic ->
+            diagnostic.code == WinRtMetadataDiagnosticCode.InvalidPropertyAccessors &&
+                diagnostic.typeName == "Sample.Foundation.IWidget" &&
+                diagnostic.memberName == "Title"
+        })
+    }
+
+    @Test
     fun closure_resolver_materializes_default_precedence_and_generic_interface_closure() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
