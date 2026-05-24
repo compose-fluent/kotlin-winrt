@@ -4,7 +4,8 @@ import kotlin.reflect.KClass
 
 private const val muxCommandRuntimeTypeName = "Microsoft.UI.Xaml.Input.ICommand"
 private const val muxCommandInteropAlias = "Microsoft.UI.Xaml.Interop.ICommand"
-private const val wuxCommandRuntimeTypeName = "Windows.UI.Xaml.Interop.ICommand"
+private const val wuxCommandRuntimeTypeName = "Windows.UI.Xaml.Input.ICommand"
+private const val wuxCommandInteropAlias = "Windows.UI.Xaml.Interop.ICommand"
 private const val muxPropertyChangedNotifierTypeName = "Microsoft.UI.Xaml.Data.INotifyPropertyChanged"
 private const val wuxPropertyChangedNotifierTypeName = "Windows.UI.Xaml.Data.INotifyPropertyChanged"
 private const val muxCollectionChangedNotifierTypeName = "Microsoft.UI.Xaml.Interop.INotifyCollectionChanged"
@@ -344,7 +345,12 @@ internal object XamlSystemProjectionMappings {
             helperType = WinRtCommandProjection::class,
             canonicalAbiTypeName = commandRuntimeTypeName(),
             iid = IID.ICommand,
-            aliases = setOf(muxCommandInteropAlias, muxCommandRuntimeTypeName, wuxCommandRuntimeTypeName) - commandRuntimeTypeName(),
+            aliases = setOf(
+                muxCommandRuntimeTypeName,
+                muxCommandInteropAlias,
+                wuxCommandRuntimeTypeName,
+                wuxCommandInteropAlias,
+            ) - commandRuntimeTypeName(),
         )
         registerInterface(
             type = WinRtPropertyChangedNotifier::class,

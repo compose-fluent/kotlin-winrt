@@ -37,6 +37,13 @@ class RuntimeConfigurationTest {
                 TypeNameSupport.getNameForType(WinRtPropertyChangedNotifier::class),
             )
             assertEquals(
+                "Microsoft.UI.Xaml.Input.ICommand",
+                TypeNameSupport.getNameForType(WinRtCommand::class),
+            )
+            assertEquals(WinRtCommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Interop.ICommand"))
+            assertEquals(WinRtCommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Input.ICommand"))
+            assertEquals(WinRtCommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Interop.ICommand"))
+            assertEquals(
                 "Microsoft.UI.Xaml.Interop.NotifyCollectionChangedAction",
                 TypeNameSupport.getNameForType(WinRtNotifyCollectionChangedAction::class),
             )
@@ -68,6 +75,13 @@ class RuntimeConfigurationTest {
                 "Windows.UI.Xaml.Data.INotifyPropertyChanged",
                 TypeNameSupport.getNameForType(WinRtPropertyChangedNotifier::class),
             )
+            assertEquals(
+                "Windows.UI.Xaml.Input.ICommand",
+                TypeNameSupport.getNameForType(WinRtCommand::class),
+            )
+            assertEquals(WinRtCommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Input.ICommand"))
+            assertEquals(WinRtCommand::class, TypeNameSupport.findKClassByNameCached("Microsoft.UI.Xaml.Interop.ICommand"))
+            assertEquals(WinRtCommand::class, TypeNameSupport.findKClassByNameCached("Windows.UI.Xaml.Interop.ICommand"))
             assertEquals(
                 "Windows.UI.Xaml.Interop.NotifyCollectionChangedAction",
                 TypeNameSupport.getNameForType(WinRtNotifyCollectionChangedAction::class),
