@@ -448,7 +448,7 @@ class KotlinProjectionPlanner(
                 }
             }
             type.events.filterNot { it.isStatic }.forEach { event ->
-                if (event.addMethodName != null || event.addMethodRowId != null) {
+                if (event.hasNativeProjectionAddAccessor()) {
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
@@ -468,7 +468,7 @@ class KotlinProjectionPlanner(
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
-                                    (it.addMethodName != null || it.addMethodRowId != null)
+                                    it.hasNativeProjectionAddAccessor()
                             }
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
@@ -476,7 +476,7 @@ class KotlinProjectionPlanner(
                         },
                     )?.let(::add)
                 }
-                if (event.removeMethodName != null || event.removeMethodRowId != null) {
+                if (event.hasNativeProjectionRemoveAccessor()) {
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
@@ -496,7 +496,7 @@ class KotlinProjectionPlanner(
                         signatureMatcher = { interfaceType ->
                             interfaceType.events.any {
                                 it.projectionSignatureKey() == event.projectionSignatureKey() &&
-                                    (it.removeMethodName != null || it.removeMethodRowId != null)
+                                    it.hasNativeProjectionRemoveAccessor()
                             }
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
