@@ -264,16 +264,7 @@ internal fun KotlinProjectionRenderer.nativeArrayElementSizeExpression(
     }
 
 internal fun KotlinProjectionRenderer.nativeArrayIntegralElementSizeExpression(type: WinRtIntegralType): CodeBlock =
-    when (type) {
-        WinRtIntegralType.Int8,
-        WinRtIntegralType.UInt8 -> CodeBlock.of("1")
-        WinRtIntegralType.Int16,
-        WinRtIntegralType.UInt16 -> CodeBlock.of("2")
-        WinRtIntegralType.Int32,
-        WinRtIntegralType.UInt32 -> CodeBlock.of("4")
-        WinRtIntegralType.Int64,
-        WinRtIntegralType.UInt64 -> CodeBlock.of("8")
-    }
+    integralAbiSizeExpression(type)
 
 internal fun KotlinProjectionRenderer.nativeArrayElementSliceCode(
     elementBinding: KotlinProjectionAbiTypeBinding,

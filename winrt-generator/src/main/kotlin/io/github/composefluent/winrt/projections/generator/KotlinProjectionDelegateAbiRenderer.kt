@@ -199,16 +199,7 @@ private fun KotlinProjectionRenderer.nullableDelegateParameterMarshaler(
 }
 
 internal fun abiArgumentKindForIntegralType(type: WinRtIntegralType): KotlinProjectionComArgumentKind =
-    when (type) {
-        WinRtIntegralType.Int8,
-        WinRtIntegralType.UInt8 -> KotlinProjectionComArgumentKind.Int8
-        WinRtIntegralType.Int16,
-        WinRtIntegralType.UInt16 -> KotlinProjectionComArgumentKind.Int16
-        WinRtIntegralType.Int32,
-        WinRtIntegralType.UInt32 -> KotlinProjectionComArgumentKind.Int32
-        WinRtIntegralType.Int64,
-        WinRtIntegralType.UInt64 -> KotlinProjectionComArgumentKind.Int64
-    }
+    integralAbiDescriptor(type).comArgumentKind
 
 internal fun KotlinProjectionRenderer.outboundDelegateInvokeShape(
     typeBinding: KotlinProjectionAbiTypeBinding,
@@ -289,16 +280,7 @@ internal fun KotlinProjectionRenderer.enumReturnReadback(
 }
 
 internal fun KotlinProjectionRenderer.abiResultAllocationForIntegralType(type: WinRtIntegralType): CodeBlock =
-    when (type) {
-        WinRtIntegralType.Int8,
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.allocateInt8Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int16,
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.allocateBytes(__scope, 2)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int32,
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.allocateInt32Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int64,
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.allocateInt64Slot(__scope)", PLATFORM_ABI_CLASS_NAME)
-    }
+    integralResultSlotAllocation(type, "__scope")
 
 internal fun KotlinProjectionRenderer.abiIntegralArgumentConversionSuffix(type: WinRtIntegralType): String =
     integralAbiDescriptor(type).argumentConversionSuffix
