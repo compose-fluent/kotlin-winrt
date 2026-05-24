@@ -5179,6 +5179,100 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_classifies_required_forwarder_projected_types_from_model() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IAsset",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111111"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetAsset",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-2222-2222-222222222222"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetAsset",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidgetAsset",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetAsset", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetBase",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Resolve",
+                                    returnTypeName = "Sample.Foundation.WidgetAsset",
+                                    parameters = listOf(WinRtParameterDefinition("asset", "Sample.Foundation.IAsset")),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Current",
+                                    typeName = "Sample.Foundation.WidgetAsset",
+                                    getterMethodName = "get_Current",
+                                    setterMethodName = "put_Current",
+                                    getterMethodRowId = 11,
+                                    setterMethodRowId = 12,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("44444444-4444-4444-4444-444444444444"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val widgetContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(widgetContents.contains("override fun resolve(asset: IAsset): WidgetAsset"))
+        assertTrue(widgetContents.contains("override var current: WidgetAsset"))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
+        assertTrue(widgetContents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(widgetContents.contains("\"RawAddress\""))
+        assertTrue(widgetContents.contains("WidgetAsset.Metadata::wrap"))
+        assertTrue(widgetContents.contains("PlatformAbi.fromRawComPtr((asset as IWinRTObject).nativeObject.pointer)"))
+        assertTrue(widgetContents.contains("winRtProjectionMarshaler(value, \"Sample.Foundation.WidgetAsset?\""))
+        assertFalse(widgetContents.contains("ComVtableInvoker.invokeGenericArgs"))
+        assertFalse(widgetContents.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun generator_routes_activation_factory_creates_through_projected_object_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
