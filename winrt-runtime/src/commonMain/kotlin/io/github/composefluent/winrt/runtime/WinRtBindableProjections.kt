@@ -119,7 +119,12 @@ internal object WinRtBindableObjectMarshaller {
                 if (PlatformAbi.isNull(value)) {
                     null
                 } else {
-                    IUnknownReference(value.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable()
+                    val borrowed = IUnknownReference(value.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
+                    try {
+                        borrowed.asInspectable()
+                    } finally {
+                        borrowed.close()
+                    }
                 }
 
             else -> null

@@ -94,6 +94,10 @@ internal fun tryProjectBorrowedInspectableValue(pointer: RawAddress): Any? {
     return try {
         tryProjectInspectableValue(inspectable)
     } finally {
-        inspectable.close()
+        try {
+            inspectable.close()
+        } finally {
+            borrowed.close()
+        }
     }
 }
