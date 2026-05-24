@@ -112,11 +112,15 @@ object WinRtReferenceValueAdapters {
                         "Expected non-null IReference<$projectedTypeName> value.",
                         HResult(TYPE_E_TYPEMISMATCH),
                     )
-                WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType) as? T
-                    ?: throw WinRtInvalidCastException(
-                        "Unable to project IReference<$projectedTypeName> value.",
-                        HResult(TYPE_E_TYPEMISMATCH),
-                    )
+                try {
+                    WinRtValueBoxing.tryProjectInspectableAsType(inspectable, projectedType) as? T
+                        ?: throw WinRtInvalidCastException(
+                            "Unable to project IReference<$projectedTypeName> value.",
+                            HResult(TYPE_E_TYPEMISMATCH),
+                        )
+                } finally {
+                    inspectable.close()
+                }
             },
             marshaller = { value -> ComWrappersSupport.createCCWForObject(value, nullableInterfaceId) },
         )
