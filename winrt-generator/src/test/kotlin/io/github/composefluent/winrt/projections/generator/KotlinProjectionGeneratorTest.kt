@@ -12789,22 +12789,19 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val contents = KotlinProjectionGenerator()
+        val filesByName = KotlinProjectionGenerator(emitSupportFiles = true)
             .generate(model)
             .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("WidgetSink.kt")
+        val contents = filesByName
+            .getValue("IWidgetSink.kt")
             .contents
 
         assertTrue(contents, contents.contains("fun setWidgets(widgets: Iterable<IWidget>)"))
-        if (contents.contains("_iWidgetSinkProjection")) {
-            assertTrue(contents, contents.contains("_iWidgetSinkProjection.setWidgets(widgets)"))
-        } else {
-            assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
-            assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
-            assertTrue(contents, contents.contains("WinRtProjectionIntrinsic.callUnit("))
-            assertTrue(contents, contents.contains("\"RawAddress\""))
-            assertFalse(contents, contents.contains("ComVtableInvoker.invokeArgs"))
-        }
+        assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
+        assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
+        assertTrue(contents, contents.contains("WinRtProjectionIntrinsic.callUnit("))
+        assertTrue(contents, contents.contains("\"RawAddress\""))
+        assertFalse(contents, contents.contains("ComVtableInvoker.invokeArgs"))
     }
 
     @Test
