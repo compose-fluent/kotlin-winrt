@@ -62,10 +62,10 @@ object WinRtReferenceProjectionInterop {
     ): T =
         PlatformAbi.confinedScope().use { scope ->
             val resultOut = PlatformAbi.allocatePointerSlot(scope)
-            val hr = ComVtableInvoker.invokeGenericArgs(
+            val hr = ComVtableInvoker.invokeArgs(
                 instance = reference.pointer,
                 slot = slot,
-                args = arrayOf(resultOut),
+                arg0 = resultOut,
             )
             HResult(hr).requireSuccess()
             WinRtReferenceProjection.fromAbi(PlatformAbi.readPointer(resultOut), interfaceId) as T
@@ -78,10 +78,10 @@ object WinRtReferenceProjectionInterop {
         interfaceId: Guid,
     ) {
         WinRtReferenceProjection.createMarshaler(value, interfaceId).use { valueAbi ->
-            val hr = ComVtableInvoker.invokeGenericArgs(
+            val hr = ComVtableInvoker.invokeArgs(
                 instance = reference.pointer,
                 slot = slot,
-                args = arrayOf(valueAbi?.abi ?: PlatformAbi.nullPointer),
+                arg0 = valueAbi?.abi ?: PlatformAbi.nullPointer,
             )
             HResult(hr).requireSuccess()
         }
