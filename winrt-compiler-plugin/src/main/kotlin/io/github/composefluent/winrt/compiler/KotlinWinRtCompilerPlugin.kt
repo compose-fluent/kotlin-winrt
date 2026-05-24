@@ -2845,7 +2845,7 @@ class KotlinWinRtIrGenerationExtension(
         projectionRegistrarEntries: List<KotlinWinRtProjectionRegistrarEntry>,
     ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
-        Files.deleteIfExists(outputDirectory.resolve(DEPRECATED_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
+        Files.deleteIfExists(outputDirectory.resolve(STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
         if (entries.isEmpty()) {
             return
         }
@@ -4011,7 +4011,7 @@ private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
 private const val PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX: String =
     "io/github/composefluent/winrt/projections/support/WinRTProjectionSupport_"
 
-private const val DEPRECATED_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
+private const val STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
     "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class"
 
 private const val PROJECTION_REGISTRAR_CHUNK_SIZE: Int = 128
