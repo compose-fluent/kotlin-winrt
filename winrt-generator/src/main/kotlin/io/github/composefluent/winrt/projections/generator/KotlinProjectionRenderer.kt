@@ -225,7 +225,7 @@ class KotlinProjectionRenderer(
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { method ->
                 builder.addFunction(renderInterfaceProxyMethod(interfaceType, method, plan.typesByQualifiedName))
             }
-            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.getterMethodName != null }.forEach { property ->
+            interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).filter { it.hasNativeProjectionGetterAccessor() }.forEach { property ->
                 builder.addProperty(renderInterfaceProxyProperty(interfaceType, property, plan.typesByQualifiedName))
             }
             interfaceType.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
@@ -751,6 +751,9 @@ class KotlinProjectionRenderer(
                 }.getOrDefault(false)
             } &&
                 interfaceType.properties.filterNot(WinRtPropertyDefinition::isStatic).all { property ->
+                    if (!property.hasNativeProjectionGetterAccessor()) {
+                        return@all false
+                    }
                     val propertyTypeName = property.projectedPropertyTypeName(interfaceType.qualifiedName, plan.typesByQualifiedName)
                     runCatching {
                         buildAbiCallPlan(
@@ -760,6 +763,7 @@ class KotlinProjectionRenderer(
                     }.getOrDefault(false) &&
                         (
                             property.isReadOnly ||
+                                property.hasNativeProjectionSetterAccessor() &&
                                 runCatching {
                                     buildAbiCallPlan(
                                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
