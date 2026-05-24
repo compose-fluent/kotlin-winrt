@@ -6,7 +6,12 @@ internal object UriProjection {
         if (PlatformAbi.isNull(pointer)) {
             return null
         }
-        return IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable().use(::fromInspectable)
+        val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
+        return try {
+            borrowed.asInspectable().use(::fromInspectable)
+        } finally {
+            borrowed.close()
+        }
     }
 
     fun fromInspectable(inspectable: IInspectableReference): WinRtUri {
