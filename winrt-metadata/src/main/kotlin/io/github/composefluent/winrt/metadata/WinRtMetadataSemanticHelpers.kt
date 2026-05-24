@@ -1668,10 +1668,16 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             propertyNames = type.properties.map(WinRtPropertyDefinition::name).sorted(),
             eventNames = type.events.map(WinRtEventDefinition::name).sorted(),
             newPropertyNames = type.properties
-                .filter { property -> property.getterMethodName == null && property.setterMethodName != null }
+                .filter { property -> !property.hasGetterAccessor() && property.hasSetterAccessor() }
                 .map(WinRtPropertyDefinition::name)
                 .sorted(),
         )
+
+    private fun WinRtPropertyDefinition.hasGetterAccessor(): Boolean =
+        getterMethodName != null || getterMethodRowId != null
+
+    private fun WinRtPropertyDefinition.hasSetterAccessor(): Boolean =
+        setterMethodName != null || setterMethodRowId != null
 
     fun guidSignatureDescriptor(type: WinRtTypeDefinition): WinRtGuidSignatureDescriptor {
         val guidText = type.iid?.toString()
