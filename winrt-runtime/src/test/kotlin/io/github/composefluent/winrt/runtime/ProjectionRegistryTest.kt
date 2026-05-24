@@ -329,7 +329,7 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun type_name_support_resolves_boxed_reference_runtime_names_like_cswinrt() {
+    fun type_name_support_resolves_boxed_reference_runtime_names_like_reference_projection() {
         ComWrappersSupport.clearRegistriesForTests()
         registerTestTypeDescriptors()
         ComWrappersSupport.registerProjectionAssembly(TestProjectedEnum::class)
