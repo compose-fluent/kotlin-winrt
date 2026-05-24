@@ -849,8 +849,13 @@ class KotlinProjectionRenderer(
     internal fun renderAbiTypeBinding(
         typeName: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
+        currentNamespace: String? = null,
     ): KotlinProjectionAbiTypeBinding {
-        val binding = renderAbiTypeBinding(WinRtTypeRef.fromDisplayName(typeName).normalized(), typesByQualifiedName)
+        val binding = renderAbiTypeBinding(
+            WinRtTypeRef.fromDisplayName(typeName).normalized(),
+            typesByQualifiedName,
+            currentNamespace,
+        )
         if (!typeName.trim().endsWith("?")) {
             return binding
         }
@@ -866,6 +871,7 @@ class KotlinProjectionRenderer(
     private fun renderAbiTypeBinding(
         typeRef: WinRtTypeRef,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        currentNamespace: String? = null,
     ): KotlinProjectionAbiTypeBinding {
         val normalizedType = typeRef.normalized()
         val trimmed = normalizedType.typeName
@@ -875,12 +881,15 @@ class KotlinProjectionRenderer(
             else -> trimmed
         }
         val typeArguments = when (normalizedType.kind) {
-            WinRtTypeRefKind.Named -> normalizedType.typeArguments.map { renderAbiTypeBinding(it, typesByQualifiedName) }
-            WinRtTypeRefKind.Array -> listOf(renderAbiTypeBinding(normalizedType.elementType ?: WinRtTypeRef.unknown(), typesByQualifiedName))
+            WinRtTypeRefKind.Named -> normalizedType.typeArguments.map { renderAbiTypeBinding(it, typesByQualifiedName, currentNamespace) }
+            WinRtTypeRefKind.Array -> listOf(renderAbiTypeBinding(normalizedType.elementType ?: WinRtTypeRef.unknown(), typesByQualifiedName, currentNamespace))
             else -> emptyList()
         }
         val mappedType = mappedTypeByAbiName(rawTypeName)
-        val resolvedType = typesByQualifiedName[rawTypeName]
+        val resolvedQualifiedTypeName = typesByQualifiedName[rawTypeName]?.qualifiedName
+            ?: currentNamespace?.let { namespace -> typesByQualifiedName["$namespace.$rawTypeName"]?.qualifiedName }
+            ?: rawTypeName
+        val resolvedType = typesByQualifiedName[resolvedQualifiedTypeName]
         val fundamentalType = winRtFundamentalTypeForName(rawTypeName)
         val kind = if (isWinRtVoidTypeName(rawTypeName)) {
             KotlinProjectionAbiValueKind.Unit
@@ -920,12 +929,14 @@ class KotlinProjectionRenderer(
                         typeBinding = renderAbiTypeBinding(
                             WinRtTypeRef.fromDisplayName(parameter.typeName).normalized(),
                             typesByQualifiedName,
+                            currentNamespace,
                         ).withDelegateGenericArgumentProjection(typeArguments),
                     )
                 },
                 returnBinding = renderAbiTypeBinding(
                     WinRtTypeRef.fromDisplayName(invokeMethod.returnTypeName).normalized(),
                     typesByQualifiedName,
+                    currentNamespace,
                 ).withDelegateGenericArgumentProjection(typeArguments),
             )
         } else {
@@ -943,7 +954,7 @@ class KotlinProjectionRenderer(
         return KotlinProjectionAbiTypeBinding(
             kind = kind,
             typeName = trimmed,
-            resolvedTypeName = rawTypeName,
+            resolvedTypeName = resolvedQualifiedTypeName,
             sourceTypeKind = resolvedType?.kind,
             abiSize = resolvedType?.abiSize,
             abiAlignment = resolvedType?.abiAlignment,

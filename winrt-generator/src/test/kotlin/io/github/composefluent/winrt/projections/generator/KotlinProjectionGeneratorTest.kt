@@ -5214,15 +5214,15 @@ class KotlinProjectionGeneratorTest {
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "Resolve",
-                                    returnTypeName = "Sample.Foundation.WidgetAsset",
-                                    parameters = listOf(WinRtParameterDefinition("asset", "Sample.Foundation.IAsset")),
+                                    returnTypeName = "WidgetAsset",
+                                    parameters = listOf(WinRtParameterDefinition("asset", "IAsset")),
                                     methodRowId = 10,
                                 ),
                             ),
                             properties = listOf(
                                 WinRtPropertyDefinition(
                                     name = "Current",
-                                    typeName = "Sample.Foundation.WidgetAsset",
+                                    typeName = "WidgetAsset",
                                     getterMethodName = "get_Current",
                                     setterMethodName = "put_Current",
                                     getterMethodRowId = 11,
