@@ -9281,7 +9281,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_routes_short_abi_argument_lists_through_descriptor_marker() {
+    fun generator_routes_int16_carrier_abi_argument_lists_through_descriptor_marker() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -9312,14 +9312,21 @@ class KotlinProjectionGeneratorTest {
                                     methodRowId = 8,
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "setMarker",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("marker", "Char16")),
+                                    methodRowId = 9,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "configure",
                                     returnTypeName = "Unit",
                                     parameters = listOf(
                                         WinRtParameterDefinition("enabled", "Boolean"),
                                         WinRtParameterDefinition("offset", "Short"),
+                                        WinRtParameterDefinition("marker", "Char16"),
                                         WinRtParameterDefinition("opacity", "Float"),
                                     ),
-                                    methodRowId = 9,
+                                    methodRowId = 10,
                                 ),
                             ),
                         ),
@@ -9348,14 +9355,21 @@ class KotlinProjectionGeneratorTest {
                                     methodRowId = 8,
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "setMarker",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("marker", "Char16")),
+                                    methodRowId = 9,
+                                ),
+                                WinRtMethodDefinition(
                                     name = "configure",
                                     returnTypeName = "Unit",
                                     parameters = listOf(
                                         WinRtParameterDefinition("enabled", "Boolean"),
                                         WinRtParameterDefinition("offset", "Short"),
+                                        WinRtParameterDefinition("marker", "Char16"),
                                         WinRtParameterDefinition("opacity", "Float"),
                                     ),
-                                    methodRowId = 9,
+                                    methodRowId = 10,
                                 ),
                             ),
                             implementedInterfaces = listOf(
@@ -9377,19 +9391,23 @@ class KotlinProjectionGeneratorTest {
         if (shapeContents.contains("_iShapeProjection")) {
             assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.setOffset(offset)"))
             assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.setOpacity(opacity)"))
-            assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.configure(enabled, offset, opacity)"))
+            assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.setMarker(marker)"))
+            assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.configure(enabled, offset, marker, opacity)"))
         } else {
             assertTrue(shapeContents, shapeContents.contains("WinRtProjectionIntrinsic.callUnit("))
             assertTrue(shapeContents, shapeContents.contains("if (enabled) 1.toByte() else"))
             assertTrue(shapeContents, shapeContents.contains("0.toByte()"))
+            assertTrue(shapeContents, shapeContents.contains("marker.code.toShort()"))
             assertTrue(shapeContents, shapeContents.contains("\"Int16\","))
-            assertTrue(shapeContents, shapeContents.contains("\"Byte,Int16,Float\","))
+            assertTrue(shapeContents, shapeContents.contains("\"Byte,Int16,Int16,Float\","))
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.SETMARKER_SLOT"))
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT"))
             assertTrue(shapeContents, shapeContents.contains("Metadata.CONFIGURE_SLOT"))
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT, offset"))
+            assertTrue(shapeContents, shapeContents.contains("Metadata.SETMARKER_SLOT, marker.code.toShort()"))
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT, opacity"))
-            assertTrue(shapeContents, shapeContents.contains("offset, opacity"))
+            assertTrue(shapeContents, shapeContents.contains("offset, marker.code.toShort(), opacity"))
             assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
             assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeGenericArgs(instance = _defaultInterface.pointer"))
         }
