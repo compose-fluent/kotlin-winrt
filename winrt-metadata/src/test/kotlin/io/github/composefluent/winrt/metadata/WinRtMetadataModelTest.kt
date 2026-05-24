@@ -21,6 +21,29 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun property_readonly_uses_setter_accessor_identity() {
+        val namedSetter = WinRtPropertyDefinition(
+            name = "Title",
+            typeName = "String",
+            setterMethodName = "put_Title",
+        )
+        val rowIdSetter = WinRtPropertyDefinition(
+            name = "Subtitle",
+            typeName = "String",
+            setterMethodRowId = 42,
+        )
+        val getterOnly = WinRtPropertyDefinition(
+            name = "Name",
+            typeName = "String",
+            getterMethodName = "get_Name",
+        )
+
+        assertEquals(false, namedSetter.isReadOnly)
+        assertEquals(false, rowIdSetter.isReadOnly)
+        assertEquals(true, getterOnly.isReadOnly)
+    }
+
+    @Test
     fun normalizes_namespace_and_type_order_deterministically() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

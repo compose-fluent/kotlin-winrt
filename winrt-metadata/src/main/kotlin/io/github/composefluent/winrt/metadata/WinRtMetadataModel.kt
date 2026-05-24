@@ -512,7 +512,7 @@ data class WinRtPropertyDefinition(
     val typeSignature: WinRtTypeRef? = null,
 ) {
     val isReadOnly: Boolean
-        get() = setterMethodName == null
+        get() = setterMethodName == null && setterMethodRowId == null
 
     val type: WinRtTypeRef
         get() = typeSignature ?: WinRtTypeRef.fromDisplayName(typeName)
