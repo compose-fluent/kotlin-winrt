@@ -95,6 +95,6 @@ val validateWinRtSampleSmoke by tasks.registering {
 
 tasks.register("validateWinRtQueue16") {
     group = "verification"
-    description = "Runs Queue 16 validation in cswinrt-aligned order: generator, plugin graph, projections, samples."
+    description = "Runs Queue 16 validation in reference-aligned order: generator, plugin graph, projections, samples."
     dependsOn(validateWinRtSampleSmoke)
 }
