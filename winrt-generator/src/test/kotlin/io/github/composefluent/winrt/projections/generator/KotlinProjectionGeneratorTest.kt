@@ -9659,9 +9659,38 @@ class KotlinProjectionGeneratorTest {
         val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
 
         assertTrue(expression, expression.contains("val __operationResultRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
-        assertTrue(expression, expression.contains("val __operationInspectable = __operationResultRef.asInspectable()"))
+        assertTrue(expression, expression.contains("val __operationInspectable = try {"))
+        assertTrue(expression, expression.contains("__operationResultRef.asInspectable()"))
+        assertTrue(expression, expression.contains("} finally {"))
         assertTrue(expression, expression.contains("__operationResultRef.close()"))
         assertTrue(expression, expression.contains("sample.foundation.WidgetResult.Metadata.wrap(__operationInspectable)"))
+        assertFalse(expression, expression.contains("val __operationInspectable = __operationResultRef.asInspectable()"))
+    }
+
+    @Test
+    fun generator_closes_async_inspectable_result_unknown_after_inspectable_query_failure() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<io.github.composefluent.winrt.runtime.IInspectableReference>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.InspectableReference,
+                    typeName = "io.github.composefluent.winrt.runtime.IInspectableReference",
+                    resolvedTypeName = "io.github.composefluent.winrt.runtime.IInspectableReference",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("val __operationResultRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
+        assertTrue(expression, expression.contains("val __operationInspectable = try {"))
+        assertTrue(expression, expression.contains("__operationResultRef.asInspectable()"))
+        assertTrue(expression, expression.contains("} finally {"))
+        assertTrue(expression, expression.contains("__operationResultRef.close()"))
+        assertTrue(expression, expression.contains("__operationInspectable"))
+        assertFalse(expression, expression.contains("val __operationInspectable = __operationResultRef.asInspectable()"))
     }
 
     @Test
