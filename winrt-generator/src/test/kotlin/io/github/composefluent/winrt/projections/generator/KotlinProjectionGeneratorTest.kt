@@ -11916,6 +11916,18 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationSupportIntrinsic.initializeBySourceType(sourceType)"))
         assertFalse(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
         assertFalse(genericTypeInstantiations.contains("Class.forName"))
+        val forbiddenRuntimeLookupTokens = listOf(
+            "Class.forName",
+            "Proxy.newProxyInstance",
+            "java.lang.reflect",
+        )
+        filesByName.values
+            .filter { file -> file.relativePath.endsWith(".kt") }
+            .forEach { file ->
+                forbiddenRuntimeLookupTokens.forEach { token ->
+                    assertFalse(file.relativePath, file.contents.contains(token))
+                }
+            }
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         assertFalse(filesByName.containsKey("event-sources.tsv"))
         assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
