@@ -11300,7 +11300,7 @@ class KotlinProjectionGeneratorTest {
 
         val genericAbiRegistry = filesByName.getValue("generic-abi-registry.tsv").contents
         val genericAbiRegistrySource = filesByName.getValue("WinRTGenericAbiRegistry.kt").contents
-        assertTrue(genericAbiRegistry.contains("_get_Value_Int"))
+        assertTrue(genericAbiRegistry.contains("_get_Value_int"))
         assertTrue(genericAbiRegistry.contains("Windows.Foundation.IReference<Int>"))
         assertTrue(genericAbiRegistrySource.contains("fun registerAbiDelegates"))
         assertTrue(genericAbiRegistrySource.contains("WinRtGenericAbiSupportIntrinsic"))
@@ -11721,9 +11721,13 @@ class KotlinProjectionGeneratorTest {
                             name = "Point",
                             kind = WinRtTypeKind.Struct,
                             fields = listOf(
-                                WinRtFieldDefinition("X", "Float"),
-                                WinRtFieldDefinition("Y", "Float"),
+                                WinRtFieldDefinition("X", "Float", rowId = 1, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRtFieldDefinition("Y", "Float", rowId = 2, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
                             ),
+                            layout = WinRtTypeLayout(WinRtTypeLayoutKind.Sequential, packingSize = 4, classSize = 8),
+                            isBlittable = true,
+                            abiSize = 8,
+                            abiAlignment = 4,
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -11782,8 +11786,8 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callUnit("))
-        assertTrue(contents.contains("\"Float,Struct\""))
-        assertTrue(contents.contains("\"Float,Struct,RawAddress\""))
+        assertTrue(contents.contains("\"Float,Struct8_4\""))
+        assertTrue(contents.contains("\"Float,Struct8_4,RawAddress\""))
         assertTrue(contents.contains("Point.Metadata"))
         assertTrue(contents.contains("winRtProjectionMarshaler(easingFunction, \"Sample.Foundation.EasingFunction\""))
         assertTrue(contents.contains("Guid(\"11111111-2222-3333-4444-555555555558\")).use {"))
@@ -11806,9 +11810,13 @@ class KotlinProjectionGeneratorTest {
                             name = "Point",
                             kind = WinRtTypeKind.Struct,
                             fields = listOf(
-                                WinRtFieldDefinition("X", "Float"),
-                                WinRtFieldDefinition("Y", "Float"),
+                                WinRtFieldDefinition("X", "Float", rowId = 1, offset = 0, abiSize = 4, abiAlignment = 4, isBlittable = true),
+                                WinRtFieldDefinition("Y", "Float", rowId = 2, offset = 4, abiSize = 4, abiAlignment = 4, isBlittable = true),
                             ),
+                            layout = WinRtTypeLayout(WinRtTypeLayoutKind.Sequential, packingSize = 4, classSize = 8),
+                            isBlittable = true,
+                            abiSize = 8,
+                            abiAlignment = 4,
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
@@ -11857,7 +11865,7 @@ class KotlinProjectionGeneratorTest {
             .contents
 
         assertTrue(contents.contains("WinRtProjectionIntrinsic.callProjectedRuntimeClass("))
-        assertTrue(contents.contains("\"Float,Struct\""))
+        assertTrue(contents.contains("\"Float,Struct8_4\""))
         assertTrue(contents.contains("Brush.Metadata::wrap"))
         assertTrue(contents.contains("Point.Metadata"))
         assertFalse(contents.contains("PlatformAbi.allocateBytes"))
