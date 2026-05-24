@@ -57,7 +57,12 @@ object WinRtObjectMarshaller {
         val handle = value.createWinRtDelegateHandle()
         ProjectedDelegateObjectRoots.retain(handle)
         val reference = handle.createReference()
-        val inspectableReference = reference.asInspectable()
+        val inspectableReference = try {
+            reference.asInspectable()
+        } catch (throwable: Throwable) {
+            reference.close()
+            throw throwable
+        }
         return WinRtObjectMarshaler(inspectableReference.pointer.asRawAddress()) {
             try {
                 inspectableReference.close()
