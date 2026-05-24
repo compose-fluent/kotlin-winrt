@@ -146,7 +146,7 @@ class KotlinProjectionRenderer(
             builder.addSuperinterface(resolveTypeName(implemented.interfaceName))
         }
         plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).forEach { builder.addFunction(renderInterfaceMethod(it)) }
-        plan.type.properties.filterNot { it.isStatic }.filter { it.getterMethodName != null }.forEach {
+        plan.type.properties.filterNot { it.isStatic }.filter { it.hasNativeProjectionGetterAccessor() }.forEach {
             builder.addProperty(renderInterfaceProperty(plan.type.qualifiedName, it, plan.typesByQualifiedName))
         }
         plan.type.events.filterNot { it.isStatic }.forEach { event ->
@@ -1199,7 +1199,7 @@ class KotlinProjectionRenderer(
         addRuntimeClassAuthoringInvokeBridges(builder, plan, mappedCollectionMemberNames)
         plan.type.properties
             .filterNot { it.isStatic }
-            .filter { it.getterMethodName != null }
+            .filter { it.hasNativeProjectionGetterAccessor() }
             .filterNot { it.isMappedCollectionRuntimeProperty(plan, mappedCollectionMemberNames) }
             .filterNot { property -> isRuntimeClassDelegatedMember(plan, "${property.name.uppercase()}_GETTER_SLOT") }
             .filterNot { plan.usesMappedDataErrorInfoAugmentation && it.name == "HasErrors" }
