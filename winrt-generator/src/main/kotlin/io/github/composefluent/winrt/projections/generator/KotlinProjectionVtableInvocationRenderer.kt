@@ -164,6 +164,16 @@ internal fun KotlinProjectionRenderer.renderInlineAbiInvocation(
                 slotExpression = slotExpression,
                 returnBinding = resultMarshaler.typeBinding,
                 abiArguments = parameterAbiArguments,
+            ) ?: renderInlineDescriptorBooleanIntrinsicInvocation(
+                invokeTargetExpression = invokeTargetExpression,
+                slotExpression = slotExpression,
+                returnBinding = resultMarshaler.typeBinding,
+                abiArguments = parameterAbiArguments,
+            ) ?: renderInlineDescriptorScalarIntrinsicInvocation(
+                invokeTargetExpression = invokeTargetExpression,
+                slotExpression = slotExpression,
+                returnBinding = resultMarshaler.typeBinding,
+                abiArguments = parameterAbiArguments,
             ) ?: renderInlineDescriptorObjectIntrinsicInvocation(
                 invokeTargetExpression = invokeTargetExpression,
                 slotExpression = slotExpression,
@@ -356,6 +366,69 @@ private fun KotlinProjectionRenderer.renderInlineDescriptorObjectIntrinsicInvoca
         .indent()
         .add("%L,\n", invokeTargetExpression)
         .add("%L,\n", slotExpression)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .apply {
+            abiArguments.forEach { argument ->
+                add("%L,\n", argument.expression)
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderInlineDescriptorBooleanIntrinsicInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    abiArguments: List<KotlinProjectionComArgument>,
+): CodeBlock? {
+    if (
+        !useProjectionIntrinsics ||
+        abiArguments.isEmpty() ||
+        returnBinding.kind != KotlinProjectionAbiValueKind.Boolean
+    ) {
+        return null
+    }
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorAbiToken() ?: return null
+    }
+    return CodeBlock.builder()
+        .add("val __result = %T.callBoolean(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME)
+        .indent()
+        .add("%L,\n", invokeTargetExpression)
+        .add("%L,\n", slotExpression)
+        .add("%S,\n", argumentShapes.joinToString(","))
+        .apply {
+            abiArguments.forEach { argument ->
+                add("%L,\n", argument.expression)
+            }
+        }
+        .unindent()
+        .add(")\n")
+        .build()
+}
+
+private fun KotlinProjectionRenderer.renderInlineDescriptorScalarIntrinsicInvocation(
+    invokeTargetExpression: String,
+    slotExpression: CodeBlock,
+    returnBinding: KotlinProjectionAbiTypeBinding,
+    abiArguments: List<KotlinProjectionComArgument>,
+): CodeBlock? {
+    if (!useProjectionIntrinsics || abiArguments.isEmpty()) {
+        return null
+    }
+    val returnShape = scalarIntrinsicReturnShape(returnBinding) ?: return null
+    val returnType = resolvedReturnClassName(returnBinding) ?: return null
+    val argumentShapes = abiArguments.map { argument ->
+        argument.kind?.descriptorAbiToken() ?: return null
+    }
+    return CodeBlock.builder()
+        .add("val __result = %T.callScalar<%T>(\n", WINRT_PROJECTION_INTRINSIC_CLASS_NAME, returnType)
+        .indent()
+        .add("%L,\n", invokeTargetExpression)
+        .add("%L,\n", slotExpression)
+        .add("%S,\n", returnShape)
         .add("%S,\n", argumentShapes.joinToString(","))
         .apply {
             abiArguments.forEach { argument ->
