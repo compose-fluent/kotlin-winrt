@@ -2009,7 +2009,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                     note = when {
                         modeled -> "Decoded into normalized metadata descriptors."
                         projectionAffecting -> "Projection-affecting in ECMA metadata; decode before generator consumes this table."
-                        else -> "Cache-tolerated infrastructure table; no active CsWinRT generator semantic for the current Kotlin target."
+                        else -> "Cache-tolerated infrastructure table; no active reference generator semantic for the current Kotlin target."
                     },
                 )
             }
