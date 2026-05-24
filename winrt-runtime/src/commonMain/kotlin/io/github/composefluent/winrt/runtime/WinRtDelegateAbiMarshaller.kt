@@ -134,7 +134,12 @@ internal object WinRtDelegateAbiMarshaller {
                 if (PlatformAbi.isNull(pointer)) {
                     null
                 } else {
-                    IUnknownReference(pointer.asRawComPtr()).asInspectable()
+                    val reference = IUnknownReference(pointer.asRawComPtr())
+                    try {
+                        reference.asInspectable()
+                    } finally {
+                        reference.close()
+                    }
                 }
             }
 
