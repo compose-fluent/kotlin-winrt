@@ -2448,6 +2448,38 @@ private data class ParsedPropertySignature(
     val type: ParsedTypeSignature,
 )
 
+private const val ELEMENT_TYPE_BOOLEAN = 0x02
+private const val ELEMENT_TYPE_CHAR = 0x03
+private const val ELEMENT_TYPE_I1 = 0x04
+private const val ELEMENT_TYPE_U1 = 0x05
+private const val ELEMENT_TYPE_I2 = 0x06
+private const val ELEMENT_TYPE_U2 = 0x07
+private const val ELEMENT_TYPE_I4 = 0x08
+private const val ELEMENT_TYPE_U4 = 0x09
+private const val ELEMENT_TYPE_I8 = 0x0A
+private const val ELEMENT_TYPE_U8 = 0x0B
+private const val ELEMENT_TYPE_R4 = 0x0C
+private const val ELEMENT_TYPE_R8 = 0x0D
+private const val ELEMENT_TYPE_STRING = 0x0E
+
+private fun winRtFundamentalTypeForElementTypeMarker(marker: Int): WinRtFundamentalType? =
+    when (marker) {
+        ELEMENT_TYPE_BOOLEAN -> WinRtFundamentalType.Boolean
+        ELEMENT_TYPE_CHAR -> WinRtFundamentalType.Char
+        ELEMENT_TYPE_I1 -> WinRtFundamentalType.Int8
+        ELEMENT_TYPE_U1 -> WinRtFundamentalType.UInt8
+        ELEMENT_TYPE_I2 -> WinRtFundamentalType.Int16
+        ELEMENT_TYPE_U2 -> WinRtFundamentalType.UInt16
+        ELEMENT_TYPE_I4 -> WinRtFundamentalType.Int32
+        ELEMENT_TYPE_U4 -> WinRtFundamentalType.UInt32
+        ELEMENT_TYPE_I8 -> WinRtFundamentalType.Int64
+        ELEMENT_TYPE_U8 -> WinRtFundamentalType.UInt64
+        ELEMENT_TYPE_R4 -> WinRtFundamentalType.Float
+        ELEMENT_TYPE_R8 -> WinRtFundamentalType.Double
+        ELEMENT_TYPE_STRING -> WinRtFundamentalType.String
+        else -> null
+    }
+
 private class SignatureReader(
     private val bytes: ByteArray,
     private val typeDefNames: Array<String>,
@@ -2495,21 +2527,12 @@ private class SignatureReader(
             return parsed(WinRtTypeRef.unknown())
         }
 
-        return when (val elementType = readByte()) {
+        val elementType = readByte()
+        winRtFundamentalTypeForElementTypeMarker(elementType)?.let { fundamentalType ->
+            return parsed(WinRtTypeRef.named(fundamentalType.toKotlinProjectionTypeName()))
+        }
+        return when (elementType) {
             ELEMENT_TYPE_VOID -> parsed(WinRtTypeRef.named("Unit"))
-            ELEMENT_TYPE_BOOLEAN -> parsed(WinRtTypeRef.named("Boolean"))
-            ELEMENT_TYPE_CHAR -> parsed(WinRtTypeRef.named("Char"))
-            ELEMENT_TYPE_I1 -> parsed(WinRtTypeRef.named("Byte"))
-            ELEMENT_TYPE_U1 -> parsed(WinRtTypeRef.named("UByte"))
-            ELEMENT_TYPE_I2 -> parsed(WinRtTypeRef.named("Short"))
-            ELEMENT_TYPE_U2 -> parsed(WinRtTypeRef.named("UShort"))
-            ELEMENT_TYPE_I4 -> parsed(WinRtTypeRef.named("Int"))
-            ELEMENT_TYPE_U4 -> parsed(WinRtTypeRef.named("UInt"))
-            ELEMENT_TYPE_I8 -> parsed(WinRtTypeRef.named("Long"))
-            ELEMENT_TYPE_U8 -> parsed(WinRtTypeRef.named("ULong"))
-            ELEMENT_TYPE_R4 -> parsed(WinRtTypeRef.named("Float"))
-            ELEMENT_TYPE_R8 -> parsed(WinRtTypeRef.named("Double"))
-            ELEMENT_TYPE_STRING -> parsed(WinRtTypeRef.named("String"))
             ELEMENT_TYPE_OBJECT -> parsed(WinRtTypeRef.named("System.Object"))
             ELEMENT_TYPE_I -> parsed(WinRtTypeRef.named("Long"))
             ELEMENT_TYPE_U -> parsed(WinRtTypeRef.named("ULong"))
@@ -2578,19 +2601,6 @@ private class SignatureReader(
 
         private const val ELEMENT_TYPE_END = 0x00
         private const val ELEMENT_TYPE_VOID = 0x01
-        private const val ELEMENT_TYPE_BOOLEAN = 0x02
-        private const val ELEMENT_TYPE_CHAR = 0x03
-        private const val ELEMENT_TYPE_I1 = 0x04
-        private const val ELEMENT_TYPE_U1 = 0x05
-        private const val ELEMENT_TYPE_I2 = 0x06
-        private const val ELEMENT_TYPE_U2 = 0x07
-        private const val ELEMENT_TYPE_I4 = 0x08
-        private const val ELEMENT_TYPE_U4 = 0x09
-        private const val ELEMENT_TYPE_I8 = 0x0A
-        private const val ELEMENT_TYPE_U8 = 0x0B
-        private const val ELEMENT_TYPE_R4 = 0x0C
-        private const val ELEMENT_TYPE_R8 = 0x0D
-        private const val ELEMENT_TYPE_STRING = 0x0E
         private const val ELEMENT_TYPE_PTR = 0x0F
         private const val ELEMENT_TYPE_BYREF = 0x10
         private const val ELEMENT_TYPE_VALUETYPE = 0x11
@@ -2655,20 +2665,10 @@ private class CustomAttributeBlobReader(
 
     private fun readFieldOrPropType(): CustomAttributeElementType {
         val marker = readByte()
+        winRtFundamentalTypeForElementTypeMarker(marker)?.let { fundamentalType ->
+            return fundamentalType.toCustomAttributeElementType()
+        }
         return when (marker) {
-            ELEMENT_TYPE_BOOLEAN -> CustomAttributeElementType.Boolean
-            ELEMENT_TYPE_CHAR -> CustomAttributeElementType.Char
-            ELEMENT_TYPE_I1 -> CustomAttributeElementType.Int8
-            ELEMENT_TYPE_U1 -> CustomAttributeElementType.UInt8
-            ELEMENT_TYPE_I2 -> CustomAttributeElementType.Int16
-            ELEMENT_TYPE_U2 -> CustomAttributeElementType.UInt16
-            ELEMENT_TYPE_I4 -> CustomAttributeElementType.Int32
-            ELEMENT_TYPE_U4 -> CustomAttributeElementType.UInt32
-            ELEMENT_TYPE_I8 -> CustomAttributeElementType.Int64
-            ELEMENT_TYPE_U8 -> CustomAttributeElementType.UInt64
-            ELEMENT_TYPE_R4 -> CustomAttributeElementType.Float32
-            ELEMENT_TYPE_R8 -> CustomAttributeElementType.Float64
-            ELEMENT_TYPE_STRING -> CustomAttributeElementType.String
             SERIALIZATION_TYPE_TYPE -> CustomAttributeElementType.Type
             SERIALIZATION_TYPE_OBJECT -> CustomAttributeElementType.Object
             SERIALIZATION_TYPE_ENUM -> CustomAttributeElementType.Enum(readSerializedString().orEmpty())
@@ -2800,19 +2800,6 @@ private class CustomAttributeBlobReader(
     }
 
     private companion object {
-        private const val ELEMENT_TYPE_BOOLEAN = 0x02
-        private const val ELEMENT_TYPE_CHAR = 0x03
-        private const val ELEMENT_TYPE_I1 = 0x04
-        private const val ELEMENT_TYPE_U1 = 0x05
-        private const val ELEMENT_TYPE_I2 = 0x06
-        private const val ELEMENT_TYPE_U2 = 0x07
-        private const val ELEMENT_TYPE_I4 = 0x08
-        private const val ELEMENT_TYPE_U4 = 0x09
-        private const val ELEMENT_TYPE_I8 = 0x0A
-        private const val ELEMENT_TYPE_U8 = 0x0B
-        private const val ELEMENT_TYPE_R4 = 0x0C
-        private const val ELEMENT_TYPE_R8 = 0x0D
-        private const val ELEMENT_TYPE_STRING = 0x0E
         private const val ELEMENT_TYPE_SZARRAY = 0x1D
         private const val SERIALIZATION_TYPE_TYPE = 0x50
         private const val SERIALIZATION_TYPE_OBJECT = 0x51
