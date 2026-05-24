@@ -663,7 +663,12 @@ object ComWrappersSupport {
 
     private fun wrapInspectable(pointer: RawAddress): IInspectableReference? {
         val existingInspectable = runCatching {
-            IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true).asInspectable()
+            val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
+            try {
+                borrowed.asInspectable()
+            } finally {
+                borrowed.close()
+            }
         }.getOrNull()
         if (existingInspectable != null) {
             return existingInspectable
