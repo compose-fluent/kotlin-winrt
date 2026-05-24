@@ -1581,27 +1581,45 @@ internal fun KotlinProjectionRenderer.collectRequiredForwardInterfaceTypes(
     interfaceName: String,
     plan: KotlinTypeProjectionPlan,
     visiting: MutableSet<String>,
+    currentNamespace: String = plan.type.namespace,
 ): List<RequiredForwardInterfaceType> {
     val rawName = interfaceName.substringBefore('<').removeSuffix("?")
-    val interfaceType = plan.typesByQualifiedName[rawName] ?: return emptyList()
-    val genericArguments = genericArgumentTypeRefs(interfaceName)
-    if (!visiting.add(interfaceName)) {
+    val resolvedRawName = resolveRequiredForwardInterfaceRawName(rawName, currentNamespace, plan.typesByQualifiedName)
+    val resolvedInterfaceName = interfaceName.replacePrefix(rawName, resolvedRawName)
+    val interfaceType = plan.typesByQualifiedName[resolvedRawName] ?: return emptyList()
+    val genericArguments = genericArgumentTypeRefs(resolvedInterfaceName)
+    if (!visiting.add(resolvedInterfaceName)) {
         return emptyList()
     }
     return try {
         buildList {
-            add(RequiredForwardInterfaceType(interfaceName, interfaceType, genericArguments))
+            add(RequiredForwardInterfaceType(resolvedInterfaceName, interfaceType, genericArguments))
             interfaceType.implementedInterfaces.forEach { implemented ->
                 val substitutedInterfaceName = implemented.interfaceType
                     .substituteTypeParameters(genericArguments)
                     .normalized()
                     .typeName
-                addAll(collectRequiredForwardInterfaceTypes(substitutedInterfaceName, plan, visiting))
+                addAll(collectRequiredForwardInterfaceTypes(substitutedInterfaceName, plan, visiting, interfaceType.namespace))
             }
         }
     } finally {
-        visiting.remove(interfaceName)
+        visiting.remove(resolvedInterfaceName)
     }
+}
+
+private fun String.replacePrefix(oldPrefix: String, newPrefix: String): String =
+    if (startsWith(oldPrefix)) newPrefix + removePrefix(oldPrefix) else this
+
+private fun resolveRequiredForwardInterfaceRawName(
+    rawName: String,
+    currentNamespace: String,
+    typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+): String {
+    if (rawName in typesByQualifiedName || '.' in rawName) {
+        return rawName
+    }
+    val qualifiedName = "$currentNamespace.$rawName"
+    return if (qualifiedName in typesByQualifiedName) qualifiedName else rawName
 }
 
 private fun genericArgumentTypeRefs(typeName: String): List<WinRtTypeRef> {

@@ -5276,7 +5276,7 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("44444444-4444-4444-4444-444444444444"),
                             implementedInterfaces = listOf(
-                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                                WinRtInterfaceImplementationDefinition("IWidgetBase"),
                             ),
                         ),
                         WinRtTypeDefinition(
@@ -5285,8 +5285,8 @@ class KotlinProjectionGeneratorTest {
                             kind = WinRtTypeKind.RuntimeClass,
                             defaultInterfaceName = "Sample.Foundation.IWidget",
                             implementedInterfaces = listOf(
-                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
-                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidgetBase"),
+                                WinRtInterfaceImplementationDefinition("IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("IWidgetBase"),
                             ),
                         ),
                     ),
