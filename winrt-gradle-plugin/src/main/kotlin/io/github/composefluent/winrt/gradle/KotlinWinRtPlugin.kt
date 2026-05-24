@@ -230,7 +230,7 @@ private fun configureWinRtApplicationTasks(
         BuildWinRtAuthoringHostTask::class.java,
         Action<BuildWinRtAuthoringHostTask> { task ->
             task.group = "kotlin-winrt"
-            task.description = "Builds cswinrt-style native JVM host DLLs for authored WinRT activation."
+            task.description = "Builds reference-aligned native JVM host DLLs for authored WinRT activation."
             task.outputDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/bin"))
             task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/src"))
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })

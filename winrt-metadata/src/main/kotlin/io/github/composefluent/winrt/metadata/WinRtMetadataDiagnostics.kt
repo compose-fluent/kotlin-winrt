@@ -310,7 +310,7 @@ class WinRtMetadataValidator private constructor(
                     typeName = ownerTypeName,
                     memberName = memberName,
                     rowId = rowId,
-                    message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: unknown type.",
+                    message = "$role cannot be lowered through the reference projection type semantics kernel: unknown type.",
                 )
             }
 
@@ -371,7 +371,7 @@ class WinRtMetadataValidator private constructor(
                     typeName = ownerTypeName,
                     memberName = memberName,
                     rowId = rowId,
-                    message = "$role cannot be lowered through the CsWinRT-style type semantics kernel: ${failure.message}",
+                    message = "$role cannot be lowered through the reference projection type semantics kernel: ${failure.message}",
                 )
             }
     }
