@@ -2059,10 +2059,14 @@ class KotlinProjectionSupportRenderer {
         binding: KotlinProjectionInstanceMemberBinding,
     ): CodeBlock {
         val interfaceType = interfacePlan.type
+        val receiveArrayParameterName = authoringCcwReceiveArrayReturnParameter(interfaceType, binding)?.name
         val code = CodeBlock.builder()
         code.add("try {\n")
         code.indent()
         binding.parameterBindings.forEachIndexed { index, parameter ->
+            if (parameter.name == receiveArrayParameterName) {
+                return@forEachIndexed
+            }
             code.add(
                 "val %L = %L\n",
                 parameter.name,
@@ -2084,8 +2088,11 @@ class KotlinProjectionSupportRenderer {
                 authoringCcwPostInvocationParameterCode(parameter, authoringCcwParameterRawIndex(binding.parameterBindings, index))
                     ?.let { postInvocation -> code.add("%L\n", postInvocation) }
             }
-            val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
             if (returnBinding.kind == KotlinProjectionAbiValueKind.Array) {
+                val returnRawIndex = receiveArrayParameterName?.let { name ->
+                    val parameterIndex = binding.parameterBindings.indexOfFirst { parameter -> parameter.name == name }
+                    if (parameterIndex >= 0) authoringCcwParameterRawIndex(binding.parameterBindings, parameterIndex) else null
+                } ?: authoringCcwAbiArgumentCount(binding.parameterBindings)
                 code.add(
                     "%L\n",
                     authoringCcwWriteArrayReturnCode(
@@ -2096,6 +2103,7 @@ class KotlinProjectionSupportRenderer {
                     ),
                 )
             } else {
+                val returnRawIndex = authoringCcwAbiArgumentCount(binding.parameterBindings)
                 code.add("%L\n", authoringCcwWriteReturnCode(returnBinding, "rawArgs[$returnRawIndex] as RawAddress", "__result"))
             }
             code.add("%T.S_OK.value\n", KNOWN_HRESULTS_CLASS_NAME)
@@ -2119,6 +2127,9 @@ class KotlinProjectionSupportRenderer {
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.let { method ->
+                method.receiveArrayResultParameter()?.let { receiveArrayParameter ->
+                    return planner.classifyAbiTypeBinding(receiveArrayParameter.typeName, interfaceType.namespace, interfacePlan.typesByQualifiedName)
+                }
                 return planner.classifyAbiTypeBinding(method.returnTypeName, interfaceType.namespace, interfacePlan.typesByQualifiedName)
             }
         interfaceType.properties.firstOrNull { property ->
@@ -2137,15 +2148,18 @@ class KotlinProjectionSupportRenderer {
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.let { method ->
+                val receiveArrayParameterName = method.receiveArrayResultParameter()?.name
                 return CodeBlock.builder()
                     .add("value.%L(", method.projectedMethodName())
                     .apply {
-                        binding.parameterBindings.forEachIndexed { index, parameter ->
-                            if (index > 0) {
-                                add(", ")
+                        binding.parameterBindings
+                            .filterNot { parameter -> parameter.name == receiveArrayParameterName }
+                            .forEachIndexed { index, parameter ->
+                                if (index > 0) {
+                                    add(", ")
+                                }
+                                add("%L", parameter.name)
                             }
-                            add("%L", parameter.name)
-                        }
                     }
                     .add(")")
                     .build()
@@ -2163,6 +2177,15 @@ class KotlinProjectionSupportRenderer {
         }
         return CodeBlock.of("error(%S)", "No authored member body for ${interfaceType.qualifiedName}.${binding.bindingName}")
     }
+
+    private fun authoringCcwReceiveArrayReturnParameter(
+        interfaceType: WinRtTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): io.github.composefluent.winrt.metadata.WinRtParameterDefinition? =
+        interfaceType.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
+            ?.receiveArrayResultParameter()
 
     private fun authoringCcwBindingIsSupported(binding: KotlinProjectionInstanceMemberBinding): Boolean =
         binding.parameterBindings.all { authoringCcwAbiBindingIsSupported(it.typeBinding) } &&

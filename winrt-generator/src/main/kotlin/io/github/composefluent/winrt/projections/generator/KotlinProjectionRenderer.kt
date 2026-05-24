@@ -339,8 +339,8 @@ class KotlinProjectionRenderer(
         method: WinRtMethodDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): FunSpec {
-        val returnBinding = renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName, slotInterfaceType.namespace)
-        val parameterBindings = method.parameters.map { parameter ->
+        val returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), typesByQualifiedName, slotInterfaceType.namespace)
+        val parameterBindings = method.projectedKotlinParameters().map { parameter ->
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
                 typeBinding = renderAbiTypeBinding(parameter.typeName, typesByQualifiedName, slotInterfaceType.namespace),
@@ -431,8 +431,8 @@ class KotlinProjectionRenderer(
         return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
             .addModifiers(KModifier.OVERRIDE)
             .addMethodGenericParameters(method, objectShape)
-            .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-            .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
+            .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+            .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
             .addCode("%L\n", invocation)
             .build()
     }
@@ -737,8 +737,8 @@ class KotlinProjectionRenderer(
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).all { method ->
                 runCatching {
                     buildAbiCallPlan(
-                        returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, interfaceType.namespace),
-                        parameterBindings = method.parameters.map { parameter ->
+                        returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, interfaceType.namespace),
+                        parameterBindings = method.projectedKotlinParameters().map { parameter ->
                             KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, interfaceType.namespace))
                         },
                     ) != null
@@ -1275,14 +1275,14 @@ class KotlinProjectionRenderer(
 
     private fun renderRuntimeClassAuthoringInvokeBridge(method: WinRtMethodDefinition): FunSpec {
         val methodName = method.projectedMethodName()
-        val parameterSpecs = method.parameters.map { parameter ->
+        val parameterSpecs = method.projectedKotlinParameters().map { parameter ->
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
         val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
-        val returns = if (isWinRtVoidTypeName(method.returnTypeName)) {
+        val returns = if (isWinRtVoidTypeName(method.projectedKotlinReturnTypeName())) {
             UNIT
         } else {
-            resolveTypeName(method.returnTypeName)
+            resolveTypeName(method.projectedKotlinReturnTypeName())
         }
         return FunSpec.builder(authoringInvokeBridgeName(method))
             .addParameters(parameterSpecs)
@@ -1354,11 +1354,11 @@ class KotlinProjectionRenderer(
             ?: return null
         val objectShape = runtimeObjectMethodShape(method)
         val functionName = objectShape?.name ?: method.projectedMethodName()
-        val parameterSpecs = objectShape?.parameters ?: method.parameters.map { parameter ->
+        val parameterSpecs = objectShape?.parameters ?: method.projectedKotlinParameters().map { parameter ->
             ParameterSpec.builder(parameter.name, resolveTypeName(parameter.typeName)).build()
         }
         val arguments = parameterSpecs.joinToString(", ") { parameter -> parameter.name }
-        val returns = objectShape?.returnType ?: resolveTypeName(method.returnTypeName)
+        val returns = objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName())
         return FunSpec.builder(functionName)
             .addProjectedAttributeAnnotations(binding.projectedAttributes)
             .addMethodGenericParameters(method, objectShape)
