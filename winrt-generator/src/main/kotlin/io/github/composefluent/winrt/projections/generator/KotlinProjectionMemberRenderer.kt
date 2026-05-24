@@ -37,6 +37,7 @@ import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
 import io.github.composefluent.winrt.metadata.WinRtProjectedAttributeDescriptor
+import io.github.composefluent.winrt.metadata.metadataParameterCategoryFor
 import io.github.composefluent.winrt.metadata.projectedAttributes
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
@@ -1659,10 +1660,20 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
 ): FunSpec? {
     val returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, slotInterfaceType.namespace)
     val parameterBindings = method.projectedKotlinParameters().map { parameter ->
-        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace))
+        KotlinProjectionAbiParameterBinding(
+            name = parameter.name,
+            typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace),
+            category = metadataParameterCategoryFor(parameter),
+        )
     }
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
     val invocation = renderInstanceDescriptorScalarIntrinsicInvocation(
+        referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
+        slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName),
+        returnBinding = returnBinding,
+        parameterBindings = parameterBindings,
+        suppressHResultCheck = method.isNoException,
+    ) ?: renderInstanceArrayResultIntrinsicInvocation(
         referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
         slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName),
         returnBinding = returnBinding,

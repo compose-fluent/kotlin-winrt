@@ -43,6 +43,7 @@ import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
+import io.github.composefluent.winrt.metadata.metadataParameterCategoryFor
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
@@ -363,12 +364,12 @@ class KotlinProjectionPlanner(
                     typesByQualifiedName = typesByQualifiedName,
                     bindingName = method.abiSlotConstantName(type.methods),
                     slotConstantName = method.abiSlotConstantName(type.methods),
-                    returnBinding = classifyAbiTypeBinding(signatureDescriptor.projectionReturnTypeName, type.namespace, typesByQualifiedName),
-                    parameterBindings = signatureDescriptor.parameters.map { parameter ->
+                    returnBinding = classifyAbiTypeBinding(method.projectedKotlinReturnTypeName(), type.namespace, typesByQualifiedName),
+                    parameterBindings = method.projectedKotlinParameters().map { parameter ->
                         KotlinProjectionAbiParameterBinding(
-                            name = parameter.escapedName,
-                            typeBinding = classifyAbiTypeBinding(parameter.projectionTypeName, type.namespace, typesByQualifiedName),
-                            category = parameter.category,
+                            name = parameter.name,
+                            typeBinding = classifyAbiTypeBinding(parameter.typeName, type.namespace, typesByQualifiedName),
+                            category = metadataParameterCategoryFor(parameter),
                         )
                     },
                     signatureDescriptor = signatureDescriptor,

@@ -36,6 +36,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.guidSignatureFragment
+import io.github.composefluent.winrt.metadata.metadataParameterCategoryFor
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
@@ -344,6 +345,7 @@ class KotlinProjectionRenderer(
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
                 typeBinding = renderAbiTypeBinding(parameter.typeName, typesByQualifiedName, slotInterfaceType.namespace),
+                category = metadataParameterCategoryFor(parameter),
             )
         }
         val callPlan = requireAbiCallPlan(
@@ -739,7 +741,11 @@ class KotlinProjectionRenderer(
                     buildAbiCallPlan(
                         returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, interfaceType.namespace),
                         parameterBindings = method.projectedKotlinParameters().map { parameter ->
-                            KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, interfaceType.namespace))
+                            KotlinProjectionAbiParameterBinding(
+                                name = parameter.name,
+                                typeBinding = renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, interfaceType.namespace),
+                                category = metadataParameterCategoryFor(parameter),
+                            )
                         },
                     ) != null
                 }.getOrDefault(false)

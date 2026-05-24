@@ -2707,7 +2707,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 fun WinRtMetadataModel.semanticHelpers(): WinRtMetadataSemanticHelpers =
     WinRtMetadataSemanticHelpers(this)
 
-internal fun metadataParameterCategoryFor(parameter: WinRtParameterDefinition): WinRtMetadataParameterCategory {
+fun metadataParameterCategoryFor(parameter: WinRtParameterDefinition): WinRtMetadataParameterCategory {
     val type = parameter.type.normalized()
     if (type.kind == WinRtTypeRefKind.Array) {
         return when {
