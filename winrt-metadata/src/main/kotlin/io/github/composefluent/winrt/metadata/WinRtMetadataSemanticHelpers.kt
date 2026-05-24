@@ -1343,7 +1343,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
         return WinRtManualInterfaceDescriptor(
             typeName = type.qualifiedName,
             manuallyGenerated = manuallyGenerated,
-            reason = if (manuallyGenerated) "CsWinRT manually generates Microsoft.UI.Xaml.Interop bindable collection interfaces." else null,
+            reason = if (manuallyGenerated) "The reference projection manually generates Microsoft.UI.Xaml.Interop bindable collection interfaces." else null,
         )
     }
 
@@ -2053,7 +2053,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             WinRtMetadataParityAuditEntry("code_writers.h", "generic ABI class initialization descriptors", "WinRtMetadataSemanticHelpers.genericAbiClassInitializationDescriptor", true),
             WinRtMetadataParityAuditEntry("code_writers.h", "required-interface ABI augmentation descriptors", "WinRtMetadataSemanticHelpers.requiredInterfaceAugmentationDescriptor", true),
             WinRtMetadataParityAuditEntry("code_writers.h", "module activation/authoring helper descriptors", "WinRtMetadataSemanticHelpers.moduleActivationAndAuthoringDescriptor", true),
-            WinRtMetadataParityAuditEntry("cswinrt full audit", "metadata/generator/runtime/plugin/authoring classification", "PLAN.md Queue 10.9 + Metadata audit classification", true),
+            WinRtMetadataParityAuditEntry("reference full audit", "metadata/generator/runtime/plugin/authoring classification", "PLAN.md Queue 10.9 + Metadata audit classification", true),
         )
 
     private data class MutableMergedProperty(

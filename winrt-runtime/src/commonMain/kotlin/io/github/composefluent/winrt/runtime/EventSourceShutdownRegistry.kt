@@ -6,7 +6,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 /**
  * Tracks native event subscriptions whose callbacks are backed by JVM FFM upcall stubs.
  *
- * CsWinRT owns event registrations through EventSource/EventSourceState and removes the native
+ * The reference projection owns event registrations through EventSource/EventSourceState and removes the native
  * handler when the managed event source is torn down. Kotlin also needs a process-shutdown path:
  * if WinUI keeps a native event registration alive while the JVM is exiting, a late native callback
  * can enter an FFM upcall stub after thread attachment is no longer possible.
