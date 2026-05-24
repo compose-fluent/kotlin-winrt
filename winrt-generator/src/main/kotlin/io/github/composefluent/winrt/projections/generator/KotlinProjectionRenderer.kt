@@ -1920,19 +1920,19 @@ class KotlinProjectionRenderer(
             return false
         }
         if (plan.mutableCollectionBindings.isNotEmpty() || plan.readOnlyCollectionBindings.isNotEmpty()) {
-            val hasGetterBinding = getterMethodName == null ||
+            val hasGetterBinding = !hasNativeProjectionGetterAccessor() ||
                 plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
-            val hasSetterBinding = setterMethodName == null ||
+            val hasSetterBinding = !hasNativeProjectionSetterAccessor() ||
                 plan.instanceMemberBindings.any { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
             if (!hasGetterBinding || !hasSetterBinding) {
                 return true
             }
         }
-        val getterIsMapped = getterMethodName == null ||
+        val getterIsMapped = !hasNativeProjectionGetterAccessor() ||
             plan.instanceMemberBindings
                 .firstOrNull { it.bindingName == "${name.uppercase()}_GETTER_SLOT" }
                 ?.isMappedCollectionOrIteratorBinding == true
-        val setterIsMapped = setterMethodName == null ||
+        val setterIsMapped = !hasNativeProjectionSetterAccessor() ||
             plan.instanceMemberBindings
                 .firstOrNull { it.bindingName == "${name.uppercase()}_SETTER_SLOT" }
                 ?.isMappedCollectionOrIteratorBinding == true
