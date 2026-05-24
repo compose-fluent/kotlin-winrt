@@ -8,6 +8,12 @@ internal fun WinRtEventDefinition.hasNativeProjectionAccessorPair(): Boolean =
         (addMethodName != null || addMethodRowId != null) &&
         (removeMethodName != null || removeMethodRowId != null)
 
+internal fun WinRtEventDefinition.hasNativeProjectionAddAccessor(): Boolean =
+    hasValidAccessors && (addMethodName != null || addMethodRowId != null)
+
+internal fun WinRtEventDefinition.hasNativeProjectionRemoveAccessor(): Boolean =
+    hasValidAccessors && (removeMethodName != null || removeMethodRowId != null)
+
 internal fun WinRtPropertyDefinition.hasNativeProjectionGetterAccessor(): Boolean =
     hasValidAccessors && (getterMethodName != null || getterMethodRowId != null)
 

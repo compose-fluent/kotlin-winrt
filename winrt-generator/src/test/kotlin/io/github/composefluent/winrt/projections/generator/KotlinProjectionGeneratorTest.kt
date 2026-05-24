@@ -452,6 +452,7 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
         assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(plan.instanceMemberBindings.any { binding -> binding.bindingName.contains("Changed") })
         assertTrue(filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents.contains("public interface IWidget"))
     }
 
