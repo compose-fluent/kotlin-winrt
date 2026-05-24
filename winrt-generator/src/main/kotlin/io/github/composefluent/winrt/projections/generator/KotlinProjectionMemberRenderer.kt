@@ -833,7 +833,10 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorAsyncIntrinsicInvo
 
 internal fun scalarIntrinsicReturnShape(binding: KotlinProjectionAbiTypeBinding): String? =
     when (binding.kind) {
+        KotlinProjectionAbiValueKind.Int8 -> "Int8"
+        KotlinProjectionAbiValueKind.UInt8 -> "UInt8"
         KotlinProjectionAbiValueKind.Int16 -> "Int16"
+        KotlinProjectionAbiValueKind.UInt16 -> "UInt16"
         KotlinProjectionAbiValueKind.Int32 -> "Int32"
         KotlinProjectionAbiValueKind.UInt32 -> "UInt32"
         KotlinProjectionAbiValueKind.Int64 -> "Int64"

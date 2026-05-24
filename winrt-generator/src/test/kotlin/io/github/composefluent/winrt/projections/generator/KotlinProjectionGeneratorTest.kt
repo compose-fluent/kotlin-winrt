@@ -4172,6 +4172,30 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                     methodRowId = 20,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetFlags",
+                                    returnTypeName = "Byte",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("propertyName", "String"),
+                                    ),
+                                    methodRowId = 21,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetKind",
+                                    returnTypeName = "UByte",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("propertyName", "String"),
+                                    ),
+                                    methodRowId = 22,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetCode",
+                                    returnTypeName = "UShort",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("propertyName", "String"),
+                                    ),
+                                    methodRowId = 23,
+                                ),
                             ),
                         ),
                     ),
@@ -4188,7 +4212,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callBoolean("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callScalar("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Int8\","))
+        assertTrue(interfaceContents, interfaceContents.contains("\"UInt8\","))
         assertTrue(interfaceContents, interfaceContents.contains("\"Int16\","))
+        assertTrue(interfaceContents, interfaceContents.contains("\"UInt16\","))
         assertTrue(interfaceContents, interfaceContents.contains("\"String\","))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
