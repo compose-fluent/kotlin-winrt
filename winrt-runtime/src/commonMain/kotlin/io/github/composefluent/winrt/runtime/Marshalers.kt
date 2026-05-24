@@ -801,6 +801,7 @@ private fun <T> copyManagedPointerArray(
         return
     }
 
+    disposePointerArray(values.size, destination, disposeAbiPointer)
     val createdPointers = mutableListOf<RawAddress>()
     try {
         values.forEachIndexed { index, value ->
