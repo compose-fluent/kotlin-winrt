@@ -474,6 +474,14 @@ internal fun KotlinProjectionRenderer.renderComVtableInvocation(
         }
         builder.add(")")
     } else {
+        if (useProjectionIntrinsics) {
+            error(
+                "No descriptor intrinsic or direct vtable invocation overload for ABI argument shape " +
+                    abiArguments.joinToString(prefix = "[", postfix = "]") { argument ->
+                        argument.kind?.name ?: "Unknown"
+                    },
+            )
+        }
         builder.add(
             "%T.invokeGenericArgs(instance = %L.pointer, slot = %L",
             COM_VTABLE_INVOKER_CLASS_NAME,
