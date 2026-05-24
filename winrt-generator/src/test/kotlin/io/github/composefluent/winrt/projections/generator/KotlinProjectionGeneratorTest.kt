@@ -12801,7 +12801,9 @@ class KotlinProjectionGeneratorTest {
         } else {
             assertTrue(contents, contents.contains("WinRtIterableProjection.createMarshaler(widgets"))
             assertTrue(contents, contents.contains("WinRtReferenceValueAdapter<IWidget>"))
-            assertTrue(contents, contents.contains("ComVtableInvoker.invokeArgs"))
+            assertTrue(contents, contents.contains("WinRtProjectionIntrinsic.callUnit("))
+            assertTrue(contents, contents.contains("\"RawAddress\""))
+            assertFalse(contents, contents.contains("ComVtableInvoker.invokeArgs"))
         }
     }
 
