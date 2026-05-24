@@ -11356,6 +11356,37 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "ReceiveNamesThenSuffix",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "names",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                        WinRtParameterDefinition("suffix", "String"),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ReceiveTwoNameArrays",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "firstNames",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                        WinRtParameterDefinition(
+                                            "secondNames",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
                                     name = "RoundTripGeneric",
                                     returnTypeName = "M0",
                                     genericParameterCount = 1,
@@ -11938,6 +11969,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[1] as RawAddress, __returnArray?.length ?: 0)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[2] as RawAddress"))
         assertFalse(ccwFactories.contains("Authored ReceiveArray parameter"))
+        assertFalse(ccwFactories.contains("value.receiveNamesThenSuffix("))
+        assertFalse(ccwFactories.contains("value.receiveTwoNameArrays("))
         assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.fromAbi<M0>(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.roundTripGeneric(value)"))
         assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.createReference(__result).use"))

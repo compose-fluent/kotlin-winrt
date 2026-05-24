@@ -2004,7 +2004,7 @@ class KotlinProjectionSupportRenderer {
         }
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
-        } else if (authoringCcwBindingIsSupported(binding)) {
+        } else if (authoringCcwBindingIsSupported(interfacePlan.type, binding)) {
             authoringCcwOrdinaryMemberHandlerCode(interfacePlan, binding)
         } else {
             authoringCcwUnsupportedMemberHandlerCode(binding)
@@ -2186,6 +2186,17 @@ class KotlinProjectionSupportRenderer {
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.receiveArrayResultParameter()
+
+    private fun authoringCcwBindingIsSupported(
+        interfaceType: WinRtTypeDefinition,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ): Boolean {
+        val receiveArrayParameterName = authoringCcwReceiveArrayReturnParameter(interfaceType, binding)?.name
+        return binding.parameterBindings.all { parameter ->
+            parameter.category != WinRtMetadataParameterCategory.ReceiveArray ||
+                parameter.name == receiveArrayParameterName
+        } && authoringCcwBindingIsSupported(binding)
+    }
 
     private fun authoringCcwBindingIsSupported(binding: KotlinProjectionInstanceMemberBinding): Boolean =
         binding.parameterBindings.all { authoringCcwAbiBindingIsSupported(it.typeBinding) } &&
