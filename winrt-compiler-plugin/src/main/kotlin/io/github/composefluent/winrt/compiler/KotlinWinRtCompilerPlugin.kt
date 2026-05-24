@@ -368,6 +368,8 @@ class KotlinWinRtIrGenerationExtension(
         private val kotlinError: IrSimpleFunctionSymbol,
         private val hResultConstructor: IrConstructorSymbol,
         private val hResultRequireSuccess: IrSimpleFunctionSymbol,
+        private val ubyteConstructor: IrConstructorSymbol?,
+        private val ushortConstructor: IrConstructorSymbol?,
         private val uintConstructor: IrConstructorSymbol?,
         private val ulongConstructor: IrConstructorSymbol?,
         private val jvmFfmSymbols: JvmFfmSymbols?,
@@ -1635,7 +1637,9 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? {
             val symbols = jvmFfmSymbols ?: return null
             val scope = builderScope ?: return null
-            if ((returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
+            if ((returnKind == NoArgumentGetterReturnKind.UInt8 && ubyteConstructor == null) ||
+                (returnKind == NoArgumentGetterReturnKind.UInt16 && ushortConstructor == null) ||
+                (returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt64 && ulongConstructor == null)
             ) {
                 return null
@@ -1691,7 +1695,10 @@ class KotlinWinRtIrGenerationExtension(
                 when (returnKind) {
                     NoArgumentGetterReturnKind.String -> platformAbiAllocatePointerSlot
                     NoArgumentGetterReturnKind.Boolean -> platformAbiAllocateInt8Slot
+                    NoArgumentGetterReturnKind.Int8,
+                    NoArgumentGetterReturnKind.UInt8 -> platformAbiAllocateInt8Slot
                     NoArgumentGetterReturnKind.Int16 -> platformAbiAllocateBytes
+                    NoArgumentGetterReturnKind.UInt16 -> platformAbiAllocateBytes
                     NoArgumentGetterReturnKind.Int32,
                     NoArgumentGetterReturnKind.UInt32 -> platformAbiAllocateInt32Slot
                     NoArgumentGetterReturnKind.Int64,
@@ -1702,8 +1709,12 @@ class KotlinWinRtIrGenerationExtension(
             ).apply {
                 arguments[0] = builder.irGetObject(platformAbi)
                 arguments[1] = nativeScope
-                if (returnKind == NoArgumentGetterReturnKind.Int16 || returnKind == NoArgumentGetterReturnKind.Float) {
-                    arguments[2] = builder.irLong(if (returnKind == NoArgumentGetterReturnKind.Int16) 2L else 4L)
+                if (
+                    returnKind == NoArgumentGetterReturnKind.Int16 ||
+                    returnKind == NoArgumentGetterReturnKind.UInt16 ||
+                    returnKind == NoArgumentGetterReturnKind.Float
+                ) {
+                    arguments[2] = builder.irLong(if (returnKind == NoArgumentGetterReturnKind.Float) 4L else 2L)
                 }
             }
 
@@ -1726,9 +1737,25 @@ class KotlinWinRtIrGenerationExtension(
                     arguments[0] = builder.irGetObject(platformAbi)
                     arguments[1] = resultOut
                 }
+                NoArgumentGetterReturnKind.Int8 -> builder.irCall(platformAbiReadInt8).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.UInt8 -> builder.irCall(requireNotNull(ubyteConstructor)).apply {
+                    arguments[0] = builder.irCall(platformAbiReadInt8).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = resultOut
+                    }
+                }
                 NoArgumentGetterReturnKind.Int16 -> builder.irCall(platformAbiReadInt16).apply {
                     arguments[0] = builder.irGetObject(platformAbi)
                     arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.UInt16 -> builder.irCall(requireNotNull(ushortConstructor)).apply {
+                    arguments[0] = builder.irCall(platformAbiReadInt16).apply {
+                        arguments[0] = builder.irGetObject(platformAbi)
+                        arguments[1] = resultOut
+                    }
                 }
                 NoArgumentGetterReturnKind.UInt32 -> builder.irCall(requireNotNull(uintConstructor)).apply {
                     arguments[0] = builder.irCall(platformAbiReadInt32).apply {
@@ -1864,7 +1891,10 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? {
             val returnShape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val returnKind = when (returnShape) {
+                "Int8" -> NoArgumentGetterReturnKind.Int8
+                "UInt8" -> NoArgumentGetterReturnKind.UInt8
                 "Int16" -> NoArgumentGetterReturnKind.Int16
+                "UInt16" -> NoArgumentGetterReturnKind.UInt16
                 "Int32" -> NoArgumentGetterReturnKind.Int32
                 "UInt32" -> NoArgumentGetterReturnKind.UInt32
                 "Int64" -> NoArgumentGetterReturnKind.Int64
@@ -1893,7 +1923,9 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? {
             val symbols = jvmFfmSymbols ?: return null
             val scope = builderScope ?: return null
-            if ((returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
+            if ((returnKind == NoArgumentGetterReturnKind.UInt8 && ubyteConstructor == null) ||
+                (returnKind == NoArgumentGetterReturnKind.UInt16 && ushortConstructor == null) ||
+                (returnKind == NoArgumentGetterReturnKind.UInt32 && uintConstructor == null) ||
                 (returnKind == NoArgumentGetterReturnKind.UInt64 && ulongConstructor == null) ||
                 returnKind == NoArgumentGetterReturnKind.String
             ) {
@@ -2373,7 +2405,10 @@ class KotlinWinRtIrGenerationExtension(
         private enum class NoArgumentGetterReturnKind {
             String,
             Boolean,
+            Int8,
+            UInt8,
             Int16,
+            UInt16,
             Int32,
             UInt32,
             Int64,
@@ -2537,6 +2572,10 @@ class KotlinWinRtIrGenerationExtension(
                     rawComPtrValueGetter = rawComPtrValueGetter,
                     rawAddressValueGetter = rawAddressValueGetter,
                 )
+                val ubyteConstructor = pluginContext.referenceClass(KOTLIN_UBYTE_CLASS_ID)
+                    ?.singleValueConstructor()
+                val ushortConstructor = pluginContext.referenceClass(KOTLIN_USHORT_CLASS_ID)
+                    ?.singleValueConstructor()
                 val uintConstructor = pluginContext.referenceClass(KOTLIN_UINT_CLASS_ID)
                     ?.singleValueConstructor()
                 val ulongConstructor = pluginContext.referenceClass(KOTLIN_ULONG_CLASS_ID)
@@ -2589,6 +2628,8 @@ class KotlinWinRtIrGenerationExtension(
                     kotlinError = kotlinError,
                     hResultConstructor = hResultConstructor,
                     hResultRequireSuccess = hResultRequireSuccess,
+                    ubyteConstructor = ubyteConstructor,
+                    ushortConstructor = ushortConstructor,
                     uintConstructor = uintConstructor,
                     ulongConstructor = ulongConstructor,
                     jvmFfmSymbols = jvmFfmSymbols,
@@ -3845,6 +3886,12 @@ private val KOTLIN_UINT_FQ_NAME =
 
 private val KOTLIN_ULONG_FQ_NAME =
     FqName("kotlin.ULong")
+
+private val KOTLIN_UBYTE_CLASS_ID =
+    ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("UByte"))
+
+private val KOTLIN_USHORT_CLASS_ID =
+    ClassId(KOTLIN_PACKAGE_FQ_NAME, Name.identifier("UShort"))
 
 private val WINRT_RAW_COM_PTR_FQ_NAME =
     FqName("io.github.composefluent.winrt.runtime.RawComPtr")
