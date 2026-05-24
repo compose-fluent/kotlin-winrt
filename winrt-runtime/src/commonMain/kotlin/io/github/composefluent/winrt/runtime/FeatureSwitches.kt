@@ -4,22 +4,23 @@ package io.github.composefluent.winrt.runtime
  * Shared runtime configuration switches corresponding to
  * `.cswinrt/src/WinRT.Runtime/Configuration/FeatureSwitches.cs`.
  *
- * Kotlin/JVM narrows `.cswinrt`'s `AppContext`-backed lookup to JVM system properties with the
- * same switch names. Kotlin/Native currently falls back to defaults unless tests override values.
+ * Kotlin/JVM narrows `.cswinrt`'s `AppContext`-backed lookup to JVM system properties with
+ * Kotlin-owned switch names. Kotlin/Native currently falls back to defaults unless tests override
+ * values.
  */
 internal object FeatureSwitches {
-    const val EnableDynamicObjectsSupportPropertyName: String = "CSWINRT_ENABLE_DYNAMIC_OBJECTS_SUPPORT"
-    const val UseExceptionResourceKeysPropertyName: String = "CSWINRT_USE_EXCEPTION_RESOURCE_KEYS"
-    const val EnableDefaultCustomTypeMappingsPropertyName: String = "CSWINRT_ENABLE_DEFAULT_CUSTOM_TYPE_MAPPINGS"
-    const val EnableICustomPropertyProviderSupportPropertyName: String = "CSWINRT_ENABLE_ICUSTOMPROPERTYPROVIDER_SUPPORT"
-    const val EnableIReferenceSupportPropertyName: String = "CSWINRT_ENABLE_IREFERENCE_SUPPORT"
-    const val EnableIDynamicInterfaceCastableSupportPropertyName: String = "CSWINRT_ENABLE_IDYNAMICINTERFACECASTABLE"
-    const val EnableManifestFreeActivationPropertyName: String = "CSWINRT_ENABLE_MANIFEST_FREE_ACTIVATION"
+    const val EnableDynamicObjectsSupportPropertyName: String = "KOTLIN_WINRT_ENABLE_DYNAMIC_OBJECTS_SUPPORT"
+    const val UseExceptionResourceKeysPropertyName: String = "KOTLIN_WINRT_USE_EXCEPTION_RESOURCE_KEYS"
+    const val EnableDefaultCustomTypeMappingsPropertyName: String = "KOTLIN_WINRT_ENABLE_DEFAULT_CUSTOM_TYPE_MAPPINGS"
+    const val EnableICustomPropertyProviderSupportPropertyName: String = "KOTLIN_WINRT_ENABLE_ICUSTOMPROPERTYPROVIDER_SUPPORT"
+    const val EnableIReferenceSupportPropertyName: String = "KOTLIN_WINRT_ENABLE_IREFERENCE_SUPPORT"
+    const val EnableIDynamicInterfaceCastableSupportPropertyName: String = "KOTLIN_WINRT_ENABLE_IDYNAMICINTERFACECASTABLE"
+    const val EnableManifestFreeActivationPropertyName: String = "KOTLIN_WINRT_ENABLE_MANIFEST_FREE_ACTIVATION"
     const val ManifestFreeActivationReportOriginalExceptionPropertyName: String =
-        "CSWINRT_MANIFEST_FREE_ACTIVATION_REPORT_ORIGINAL_EXCEPTION"
-    const val UseWindowsUIXamlProjectionsPropertyName: String = "CSWINRT_USE_WINDOWS_UI_XAML_PROJECTIONS"
+        "KOTLIN_WINRT_MANIFEST_FREE_ACTIVATION_REPORT_ORIGINAL_EXCEPTION"
+    const val UseWindowsUIXamlProjectionsPropertyName: String = "KOTLIN_WINRT_USE_WINDOWS_UI_XAML_PROJECTIONS"
     const val SuppressCustomPropertyNotSupportedExceptionPropertyName: String =
-        "CSWINRT_SUPPRESS_CUSTOM_PROPERTY_NOT_SUPPORTED_EXCEPTION"
+        "KOTLIN_WINRT_SUPPRESS_CUSTOM_PROPERTY_NOT_SUPPORTED_EXCEPTION"
     const val TraceCcwPropertyName: String = "KOTLIN_WINRT_TRACE_CCW"
 
     private val cachedResults = ConcurrentCacheMap<String, Int>()
