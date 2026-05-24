@@ -9586,6 +9586,29 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_closes_async_runtime_class_result_unknown_after_inspectable_query() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.WidgetResult>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                    typeName = "Sample.Foundation.WidgetResult",
+                    resolvedTypeName = "Sample.Foundation.WidgetResult",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("val __operationResultRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
+        assertTrue(expression, expression.contains("val __operationInspectable = __operationResultRef.asInspectable()"))
+        assertTrue(expression, expression.contains("__operationResultRef.close()"))
+        assertTrue(expression, expression.contains("sample.foundation.WidgetResult.Metadata.wrap(__operationInspectable)"))
+    }
+
+    @Test
     fun generator_routes_async_operation_calls_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
