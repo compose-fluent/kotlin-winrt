@@ -254,6 +254,18 @@ class KotlinProjectionGeneratorTest {
                                     returnTypeName = "String",
                                     parameters = listOf(WinRtParameterDefinition("value", "String")),
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "ReceiveNames",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "names",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                ),
                             ),
                             properties = listOf(
                                 WinRtPropertyDefinition(
@@ -279,6 +291,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(common, common.contains("public interface IWidget"))
         assertFalse(common, common.contains("public expect interface IWidget"))
         assertTrue(common, common.contains("public fun rename(`value`: String): String"))
+        assertTrue(common, common.contains("public fun receiveNames(): Array<String>"))
         assertTrue(common, common.contains("public val count: Int"))
         assertFalse(common, common.contains("NativeProjection"))
         assertTrue(jvm, jvm.contains("internal object IWidgetJvmProjection"))
@@ -289,6 +302,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("FunctionDescriptor.of(ValueLayout.JAVA_INT"))
         assertTrue(jvm, jvm.contains("Linker.nativeLinker()"))
         assertTrue(jvm, jvm.contains("JvmAbi.invoke_p_p"))
+        assertTrue(jvm, jvm.contains("override fun receiveNames(): Array<String>"))
+        assertTrue(jvm, jvm.contains("Marshaler.string()"))
+        assertTrue(jvm, jvm.contains("__arrayMarshaler.fromAbiArray(__arrayLength,"))
+        assertTrue(jvm, jvm.contains("__arrayMarshaler.disposeAbiArray(__arrayLength, __arrayData)"))
         assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
     }
 
