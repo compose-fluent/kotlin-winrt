@@ -897,6 +897,10 @@ class KotlinProjectionGeneratorTest {
                                     name = "Changed",
                                     delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
                                     isStatic = true,
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
                                 ),
                             ),
                         ),
@@ -2069,6 +2073,10 @@ class KotlinProjectionGeneratorTest {
                                     name = "Changed",
                                     delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
                                     isStatic = true,
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
                                 ),
                             ),
                         ),
@@ -4065,13 +4073,12 @@ class KotlinProjectionGeneratorTest {
             ),
         )
 
-        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
-            .generate(model)
-            .associateBy { it.relativePath.substringAfterLast('/') }
-            .getValue("IWidget.kt")
-            .contents
+        val error = runCatching {
+            KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
+        }.exceptionOrNull()
 
-        assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertNotNull(error)
+        assertTrue(error!!.message.orEmpty().contains("InvalidEventAccessors"))
     }
 
     @Test
@@ -7011,8 +7018,8 @@ class KotlinProjectionGeneratorTest {
                                 WinRtFieldDefinition("Ratio", "System.Single"),
                             ),
                             properties = listOf(
-                                WinRtPropertyDefinition("SourceType", "System.Type"),
-                                WinRtPropertyDefinition("AliasType", "Type"),
+                                WinRtPropertyDefinition("SourceType", "System.Type", getterMethodName = "get_SourceType"),
+                                WinRtPropertyDefinition("AliasType", "Type", getterMethodName = "get_AliasType"),
                             ),
                         ),
                     ),
@@ -9179,6 +9186,10 @@ class KotlinProjectionGeneratorTest {
                                 WinRtEventDefinition(
                                     name = "Changed",
                                     delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 21,
+                                    removeMethodRowId = 22,
                                 ),
                             ),
                         ),
