@@ -3967,6 +3967,58 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_fails_interface_native_projection_closed_for_missing_event_remove_accessor() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "EventHandlerCallback",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555567"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Object"),
+                                        WinRtParameterDefinition("args", "Object"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555568"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.EventHandlerCallback",
+                                    addMethodName = "add_Changed",
+                                    addMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("IWidget.kt")
+            .contents
+
+        assertFalse(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+    }
+
+    @Test
     fun generator_keeps_projected_object_and_collection_interface_native_projection_on_kotlin_fallback() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
