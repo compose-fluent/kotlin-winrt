@@ -456,6 +456,72 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_slice_falls_back_for_invalid_event_accessors() {
+        val namespace = WinRtNamespace(
+            name = "Sample.Foundation",
+            types = listOf(
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "WidgetChangedHandler",
+                    kind = WinRtTypeKind.Delegate,
+                    iid = Guid("99999999-2222-3333-4444-555555555555"),
+                    methods = listOf(
+                        WinRtMethodDefinition(
+                            name = "Invoke",
+                            returnTypeName = "Unit",
+                        ),
+                    ),
+                ),
+                WinRtTypeDefinition(
+                    namespace = "Sample.Foundation",
+                    name = "IWidget",
+                    kind = WinRtTypeKind.Interface,
+                    iid = Guid("11111111-2222-3333-4444-555555555555"),
+                    methods = listOf(
+                        WinRtMethodDefinition(
+                            name = "add_Changed",
+                            returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                            parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")),
+                            isSpecialName = true,
+                            methodRowId = 6,
+                        ),
+                        WinRtMethodDefinition(
+                            name = "remove_Changed",
+                            returnTypeName = "Unit",
+                            parameters = listOf(WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")),
+                            isSpecialName = true,
+                            methodRowId = 7,
+                        ),
+                    ),
+                    events = listOf(
+                        WinRtEventDefinition(
+                            name = "Changed",
+                            delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                            addMethodName = "add_Changed",
+                            removeMethodName = "remove_Changed",
+                            addMethodRowId = 6,
+                            removeMethodRowId = 7,
+                            hasValidAccessors = false,
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val typesByQualifiedName = namespace.types.associateBy { it.qualifiedName }
+        val interfaceIidsByName = namespace.types.associate { it.qualifiedName to it.iid }
+        val plan = KotlinProjectionPlanner()
+            .planNamespace(namespace, interfaceIidsByName, typesByQualifiedName)
+            .single { it.type.qualifiedName == "Sample.Foundation.IWidget" }
+        val filesByPath = KotlinExpectActualProjectionRenderer(KotlinProjectionRenderer())
+            .render(plan)
+            .associateBy(KotlinProjectionFile::relativePath)
+
+        assertTrue(filesByPath.containsKey("commonMain/kotlin/sample/foundation/IWidget.kt"))
+        assertFalse(filesByPath.containsKey("jvmMain/kotlin/sample/foundation/IWidget.kt"))
+        assertTrue(filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents.contains("public interface IWidget"))
+    }
+
+    @Test
     fun expect_actual_interface_slice_emits_jvm_projected_interface_abi_calls() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

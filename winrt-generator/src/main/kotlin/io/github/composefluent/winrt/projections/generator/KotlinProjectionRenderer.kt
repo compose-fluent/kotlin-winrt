@@ -773,11 +773,6 @@ class KotlinProjectionRenderer(
                 }
         }
 
-    private fun WinRtEventDefinition.hasNativeProjectionAccessorPair(): Boolean =
-        hasValidAccessors &&
-            (addMethodName != null || addMethodRowId != null) &&
-            (removeMethodName != null || removeMethodRowId != null)
-
     internal fun collectInterfaceProxyTypes(plan: KotlinTypeProjectionPlan): List<WinRtTypeDefinition> =
         collectInterfaceProxyTypes(plan.type, plan, linkedSetOf(), emptyList())
 
