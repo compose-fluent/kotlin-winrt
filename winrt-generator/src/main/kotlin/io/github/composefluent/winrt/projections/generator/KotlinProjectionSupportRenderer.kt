@@ -2453,7 +2453,7 @@ class KotlinProjectionSupportRenderer {
             ?: return CodeBlock.of("error(%S)", "Unsupported authored ABI array return ${binding.describeAbiKind()}")
         typeRenderer.nonBlittableArrayElementMarshalerExpression(elementBinding)?.let { elementMarshaler ->
             return CodeBlock.of(
-                "run {\n·val __returnArrayMarshaler = %L\n·val __returnArray = __returnArrayMarshaler.createMarshalerArray(%L)\n·%T.writeInt32(%L, __returnArray?.length ?: 0)\n·%T.writePointer(%L, __returnArray?.data ?: %T.nullPointer)\n}",
+                "run {\n·val __returnArrayMarshaler = %L\n·val __returnArray = __returnArrayMarshaler.fromManagedArray(%L)\n·%T.writeInt32(%L, __returnArray?.length ?: 0)\n·%T.writePointer(%L, __returnArray?.data ?: %T.nullPointer)\n}",
                 elementMarshaler,
                 valueExpression,
                 PLATFORM_ABI_CLASS_NAME,

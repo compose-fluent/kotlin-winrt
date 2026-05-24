@@ -11927,7 +11927,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("__arrayMarshaler.fromAbiArray(__arrayLength, __arrayData)"))
         assertTrue(ccwFactories.contains("value.roundTripNames(names)"))
         assertTrue(ccwFactories.contains("val __returnArrayMarshaler = Marshaler.string()"))
-        assertTrue(ccwFactories.contains("val __returnArray = __returnArrayMarshaler.createMarshalerArray(__result)"))
+        assertTrue(ccwFactories.contains("val __returnArray = __returnArrayMarshaler.fromManagedArray(__result)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[2] as RawAddress, __returnArray?.length ?: 0)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[3] as RawAddress"))
         assertTrue(ccwFactories.contains("val __result = value.receiveNames()"))
