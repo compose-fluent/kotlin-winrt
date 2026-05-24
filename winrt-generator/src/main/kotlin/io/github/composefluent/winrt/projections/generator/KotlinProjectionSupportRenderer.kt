@@ -2598,7 +2598,7 @@ class KotlinProjectionSupportRenderer {
 
     private fun supportFileSpec(fileName: String): FileSpec.Builder =
         FileSpec.builder(SUPPORT_PACKAGE, fileName)
-            .addFileComment("Deterministic generator handoff for .cswinrt %L writer parity.", fileName)
+            .addFileComment("Deterministic generator handoff for reference %L writer parity.", fileName)
 
     private fun KotlinTypeProjectionPlan.hasGeneratedRuntimeClassMetadataRegistration(): Boolean =
         declarationKind == KotlinProjectionDeclarationKind.Class &&
