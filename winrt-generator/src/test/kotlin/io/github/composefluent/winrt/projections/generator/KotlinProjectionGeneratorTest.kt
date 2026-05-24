@@ -103,6 +103,28 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun planner_resolves_namespace_relative_mapped_abi_types() {
+        val iterable = WinRtTypeDefinition(
+            namespace = "Windows.Foundation.Collections",
+            name = "IIterable",
+            kind = WinRtTypeKind.Interface,
+            genericParameters = listOf(WinRtGenericParameterDefinition("T0", 0)),
+            iid = Guid("faa585ea-6214-4217-afda-7f46de5869b3"),
+        )
+        val typesByQualifiedName = mapOf(iterable.qualifiedName to iterable)
+
+        val binding = KotlinProjectionPlanner().classifyAbiTypeBinding(
+            typeName = "IIterable<String>",
+            currentNamespace = "Windows.Foundation.Collections",
+            typesByQualifiedName = typesByQualifiedName,
+        )
+
+        assertEquals(KotlinProjectionAbiValueKind.MappedIterable, binding.kind)
+        assertEquals("Windows.Foundation.Collections.IIterable", binding.resolvedTypeName)
+        assertEquals(KotlinProjectionAbiValueKind.String, binding.typeArguments.single().kind)
+    }
+
+    @Test
     fun generator_emits_projection_registrar_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
