@@ -76,22 +76,22 @@ class WinRtMapViewAdapter<K, V>(
     private val keyValuePairInterfaceId: Guid,
     private val keyProjector: (IUnknownReference?) -> K,
     private val valueProjector: (IUnknownReference?) -> V,
-    private val keyMarshaller: (K) -> ComObjectReference,
+    private val keyMarshaller: (K) -> WinRtObjectMarshaler,
 ) : AbstractMap<K, V>(), AutoCloseable {
     override val entries: Set<Map.Entry<K, V>>
         get() = buildEntries().toSet()
 
     override fun containsKey(key: K): Boolean =
         keyMarshaller(key).use { marshaledKey ->
-            mapView.hasKey(marshaledKey)
+            mapView.hasKey(marshaledKey.abi)
         }
 
     override fun get(key: K): V? =
         keyMarshaller(key).use { marshaledKey ->
-            if (!mapView.hasKey(marshaledKey)) {
+            if (!mapView.hasKey(marshaledKey.abi)) {
                 null
             } else {
-                projectAndClose(mapView.lookupOrNull(marshaledKey), valueProjector)
+                projectAndClose(mapView.lookupOrNull(marshaledKey.abi), valueProjector)
             }
         }
 
@@ -122,8 +122,8 @@ class WinRtMapAdapter<K, V>(
     private val keyValuePairInterfaceId: Guid,
     private val keyProjector: (IUnknownReference?) -> K,
     private val valueProjector: (IUnknownReference?) -> V,
-    private val keyMarshaller: (K) -> ComObjectReference,
-    private val valueMarshaller: (V) -> ComObjectReference,
+    private val keyMarshaller: (K) -> WinRtObjectMarshaler,
+    private val valueMarshaller: (V) -> WinRtObjectMarshaler,
 ) : AbstractMutableMap<K, V>(), AutoCloseable {
     override val entries: MutableSet<MutableMap.MutableEntry<K, V>>
         get() = buildEntries().toMutableSet()
@@ -132,7 +132,7 @@ class WinRtMapAdapter<K, V>(
         val previous = get(key)
         keyMarshaller(key).use { marshaledKey ->
             valueMarshaller(value).use { marshaledValue ->
-                map.insert(marshaledKey, marshaledValue)
+                map.insert(marshaledKey.abi, marshaledValue.abi)
             }
         }
         return previous
@@ -140,17 +140,20 @@ class WinRtMapAdapter<K, V>(
 
     override fun get(key: K): V? =
         keyMarshaller(key).use { marshaledKey ->
-            if (!map.hasKey(marshaledKey)) {
+            if (!map.hasKey(marshaledKey.abi)) {
                 null
             } else {
-                projectAndClose(map.lookupOrNull(marshaledKey), valueProjector)
+                projectAndClose(map.lookupOrNull(marshaledKey.abi), valueProjector)
             }
         }
 
     override fun remove(key: K): V? {
-        val previous = get(key) ?: return null
+        val previous = get(key)
         keyMarshaller(key).use { marshaledKey ->
-            map.remove(marshaledKey)
+            if (!map.hasKey(marshaledKey.abi)) {
+                return null
+            }
+            map.remove(marshaledKey.abi)
         }
         return previous
     }

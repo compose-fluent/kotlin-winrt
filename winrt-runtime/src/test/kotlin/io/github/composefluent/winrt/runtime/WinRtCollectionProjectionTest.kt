@@ -141,6 +141,58 @@ class WinRtCollectionProjectionTest {
     }
 
     @Test
+    fun object_dictionary_rcw_and_ccw_preserve_null_keys_and_values() {
+        val adapter = WinRtReferenceValueAdapters.object_
+        val readOnlyManaged = linkedMapOf<Any?, Any?>(null to null)
+        val mutableManaged = linkedMapOf<Any?, Any?>(null to null)
+        val readOnlyAbi = WinRtReadOnlyDictionaryProjection.fromManaged(readOnlyManaged, adapter, adapter)
+        val mutableAbi = WinRtDictionaryProjection.fromManaged(mutableManaged, adapter, adapter)
+
+        try {
+            ComObjectReference(readOnlyAbi.asRawComPtr(), mapViewInterfaceIdFor(adapter, adapter)).use { owner ->
+                ComObjectReference(owner.pointer, mapViewInterfaceIdFor(adapter, adapter), preventReleaseOnDispose = true).use { borrowed ->
+                    WinRtMapViewReference(borrowed.getRefPointer().asRawAddress(), mapViewInterfaceIdFor(adapter, adapter)).use { mapView ->
+                        assertTrue(mapView.hasKey(PlatformAbi.nullPointer))
+                        assertEquals(null, mapView.lookupOrNull(PlatformAbi.nullPointer))
+                    }
+                    WinRtReadOnlyDictionaryProjection.fromAbi(
+                        borrowed.getRefPointer().asRawAddress(),
+                        adapter,
+                        adapter,
+                    )!!.use { projected ->
+                        assertTrue(projected.containsKey(null))
+                        assertEquals(null, projected[null])
+                    }
+                }
+            }
+            ComObjectReference(mutableAbi.asRawComPtr(), mapInterfaceIdFor(adapter, adapter)).use { owner ->
+                ComObjectReference(owner.pointer, mapInterfaceIdFor(adapter, adapter), preventReleaseOnDispose = true).use { borrowed ->
+                    WinRtDictionaryProjection.fromAbi(
+                        borrowed.getRefPointer().asRawAddress(),
+                        adapter,
+                        adapter,
+                    )!!.use { projected ->
+                        assertTrue(projected.containsKey(null))
+                        assertEquals(null, projected[null])
+                        projected[null] = null
+                        assertTrue(mutableManaged.containsKey(null))
+                        assertEquals(null, mutableManaged[null])
+                        projected.remove(null)
+                        assertTrue(!mutableManaged.containsKey(null))
+                    }
+                }
+            }
+        } finally {
+            if (!PlatformAbi.isNull(readOnlyAbi)) {
+                IUnknownReference(readOnlyAbi.asRawComPtr(), mapViewInterfaceIdFor(adapter, adapter)).close()
+            }
+            if (!PlatformAbi.isNull(mutableAbi)) {
+                IUnknownReference(mutableAbi.asRawComPtr(), mapInterfaceIdFor(adapter, adapter)).close()
+            }
+        }
+    }
+
+    @Test
     fun mutable_list_helpers_mutate_managed_list_and_project_back() {
         val allocated = mutableListOf<AutoCloseable>()
         val adapter = labelAdapter(allocated)

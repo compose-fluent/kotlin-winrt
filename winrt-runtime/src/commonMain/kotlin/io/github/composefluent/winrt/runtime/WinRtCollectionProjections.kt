@@ -841,7 +841,7 @@ object WinRtReadOnlyDictionaryProjection {
                 keyValuePairInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                 keyProjector = keyAdapter.projector,
                 valueProjector = valueAdapter.projector,
-                keyMarshaller = keyAdapter.marshaller,
+                keyMarshaller = keyAdapter::createInputMarshaler,
             )
         }
 
@@ -991,8 +991,8 @@ object WinRtDictionaryProjection {
                 keyValuePairInterfaceId = keyValuePairInterfaceId(keyAdapter, valueAdapter),
                 keyProjector = keyAdapter.projector,
                 valueProjector = valueAdapter.projector,
-                keyMarshaller = keyAdapter.marshaller,
-                valueMarshaller = valueAdapter.marshaller,
+                keyMarshaller = keyAdapter::createInputMarshaler,
+                valueMarshaller = valueAdapter::createInputMarshaler,
             )
         }
 
@@ -1073,7 +1073,8 @@ object WinRtDictionaryProjection {
                         ) { rawArgs ->
                             val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
                             val value = decodeBorrowedValue(rawArgs[1] as RawAddress, valueAdapter)
-                            val replaced = managed.put(key, value) != null
+                            val replaced = managed.containsKey(key)
+                            managed[key] = value
                             (rawArgs[2] as RawAddress).writeBoolean(replaced)
                             KnownHResults.S_OK.value
                         },
@@ -1081,9 +1082,10 @@ object WinRtDictionaryProjection {
                             signature = ComMethodSignature.of(ComAbiValueKind.Pointer),
                         ) { rawArgs ->
                             val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
-                            if (managed.remove(key) == null) {
+                            if (!managed.containsKey(key)) {
                                 KnownHResults.E_BOUNDS.value
                             } else {
+                                managed.remove(key)
                                 KnownHResults.S_OK.value
                             }
                         },
