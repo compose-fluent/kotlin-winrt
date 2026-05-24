@@ -1516,6 +1516,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_runtime_class_slice_accepts_row_id_only_property_accessors() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/Widget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/Widget.kt").contents
+        assertTrue(common, common.contains("public expect class Widget internal constructor("))
+        assertTrue(jvm, jvm.contains("public actual class Widget internal actual constructor("))
+        assertTrue(jvm, jvm.contains("IWidget by IWidgetJvmProjection.wrap(Metadata.acquireInterface(_inner, IWidget.Metadata.IID))"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
+    }
+
+    @Test
     fun expect_actual_runtime_class_slice_normalizes_nullable_public_interface_names() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
