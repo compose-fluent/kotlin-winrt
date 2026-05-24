@@ -1969,17 +1969,9 @@ class KotlinProjectionSupportRenderer {
         KotlinProjectionAbiValueKind.UInt64 -> CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Float -> CodeBlock.of("%T.Float", COM_ABI_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Double -> CodeBlock.of("%T.Double", COM_ABI_VALUE_KIND_CLASS_NAME)
-        KotlinProjectionAbiValueKind.Enum -> when (binding.enumUnderlyingType) {
-            WinRtIntegralType.Int8,
-            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.Int8", COM_ABI_VALUE_KIND_CLASS_NAME)
-            WinRtIntegralType.Int16,
-            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.Int16", COM_ABI_VALUE_KIND_CLASS_NAME)
-            WinRtIntegralType.Int64,
-            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
-            WinRtIntegralType.Int32,
-            WinRtIntegralType.UInt32,
-            null -> CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME)
-        }
+        KotlinProjectionAbiValueKind.Enum ->
+            binding.enumUnderlyingType?.let(::integralComAbiValueKindCode)
+                ?: CodeBlock.of("%T.Int32", COM_ABI_VALUE_KIND_CLASS_NAME)
         KotlinProjectionAbiValueKind.Struct ->
             if (binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken") {
                 CodeBlock.of("%T.Int64", COM_ABI_VALUE_KIND_CLASS_NAME)
@@ -2006,7 +1998,6 @@ class KotlinProjectionSupportRenderer {
             authoringCcwUnsupportedMemberHandlerCode(binding)
         }
     }
-
     private fun authoringCcwEventHandlerCode(
         event: WinRtEventDefinition,
         binding: KotlinProjectionInstanceMemberBinding,
@@ -2354,17 +2345,9 @@ class KotlinProjectionSupportRenderer {
     private fun authoringCcwDecodeEnumRawCode(
         binding: KotlinProjectionAbiTypeBinding,
         index: Int,
-    ): CodeBlock = when (binding.enumUnderlyingType) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("rawArgs[%L] as Byte", index)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("(rawArgs[%L] as Byte).toUByte()", index)
-        WinRtIntegralType.Int16 -> CodeBlock.of("rawArgs[%L] as Short", index)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("(rawArgs[%L] as Short).toUShort()", index)
-        WinRtIntegralType.Int64 -> CodeBlock.of("rawArgs[%L] as Long", index)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("(rawArgs[%L] as Long).toULong()", index)
-        WinRtIntegralType.Int32,
-        WinRtIntegralType.UInt32,
-        null -> CodeBlock.of("rawArgs[%L] as Int", index)
-    }
+    ): CodeBlock =
+        binding.enumUnderlyingType?.let { integralAbiCarrierExpression(it, CodeBlock.of("rawArgs[%L]", index)) }
+            ?: CodeBlock.of("rawArgs[%L] as Int", index)
 
     private fun authoringCcwWriteReturnCode(
         binding: KotlinProjectionAbiTypeBinding,
@@ -2389,17 +2372,9 @@ class KotlinProjectionSupportRenderer {
             "%L",
             authoringCcwWriteReturnCode(
                 KotlinProjectionAbiTypeBinding(
-                    kind = when (binding.enumUnderlyingType) {
-                        WinRtIntegralType.Int8 -> KotlinProjectionAbiValueKind.Int8
-                        WinRtIntegralType.UInt8 -> KotlinProjectionAbiValueKind.UInt8
-                        WinRtIntegralType.Int16 -> KotlinProjectionAbiValueKind.Int16
-                        WinRtIntegralType.UInt16 -> KotlinProjectionAbiValueKind.UInt16
-                        WinRtIntegralType.Int64 -> KotlinProjectionAbiValueKind.Int64
-                        WinRtIntegralType.UInt64 -> KotlinProjectionAbiValueKind.UInt64
-                        WinRtIntegralType.Int32,
-                        WinRtIntegralType.UInt32,
-                        null -> KotlinProjectionAbiValueKind.Int32
-                    },
+                    kind = binding.enumUnderlyingType
+                        ?.let { integralAbiDescriptor(it).abiValueKind }
+                        ?: KotlinProjectionAbiValueKind.Int32,
                     typeName = binding.typeName,
                 ),
                 outExpression,
