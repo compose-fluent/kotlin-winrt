@@ -11866,6 +11866,25 @@ class KotlinProjectionGeneratorTest {
         assertTrue(authoringAbiClasses.contains("fun DisposeAbiArray("))
         assertFalse(authoringAbiClasses.contains("unsupportedAuthoringAbiArrayOperation"))
         assertTrue(authoringAbiClasses.contains("object WinRTAuthoringAbiClasses"))
+        val projectionFilesByName = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val widgetInterface = projectionFilesByName.getValue("IWidget.kt").contents
+        val widgetClass = projectionFilesByName.getValue("Widget.kt").contents
+        assertTrue(widgetInterface.contains("fun roundTripNames(names: Array<String>): Array<String>"))
+        assertTrue(widgetInterface.contains("fun fillNames(names: Array<String>)"))
+        assertTrue(widgetInterface.contains("fun receiveNames(): Array<String>"))
+        assertTrue(widgetInterface.contains("fun receiveNamesForPrefix(prefix: String): Array<String>"))
+        assertFalse(widgetInterface.contains("receiveNames(names: Array<String>)"))
+        assertTrue(widgetClass.contains("WinRtProjectionIntrinsic.getArray("))
+        assertTrue(widgetClass.contains("IWidget.Metadata.RECEIVENAMES_SLOT"))
+        assertTrue(widgetClass.contains("__namesArrayMarshaler.createMarshalerArray(names).use"))
+        assertTrue(widgetClass.contains("__namesArrayMarshaler.fromAbiArray("))
+        assertTrue(widgetClass.contains("names.size"))
+        assertTrue(widgetClass.contains("__namesArrayAbi?.data ?: PlatformAbi.nullPointer"))
+        assertTrue(widgetClass.contains("__arrayMarshaler.fromAbiArray(__arrayLength,"))
+        assertTrue(widgetClass.contains("__arrayData)?.toTypedArray() ?: emptyArray()"))
+        assertTrue(widgetClass.contains("__arrayMarshaler.disposeAbiArray(__arrayLength, __arrayData)"))
         val customQiPlan = filesByName.getValue("WinRTAuthoringCustomQueryInterfacePlan.kt").contents
         assertTrue(customQiPlan.contains("data class AuthoringCustomQueryInterfaceEntry"))
         assertTrue(customQiPlan.contains("projectedTypeName = \"Sample.Foundation.Widget\""))
