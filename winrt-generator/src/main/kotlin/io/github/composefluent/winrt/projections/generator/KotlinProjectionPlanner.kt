@@ -1213,12 +1213,10 @@ class KotlinProjectionPlanner(
         if (kind != KotlinProjectionAbiValueKind.GenericParameter || genericArguments.isEmpty()) {
             return this
         }
-        val argument = genericArguments.getOrNull(typeName.drop(1).toIntOrNull() ?: return this) ?: return this
-        return copy(
-            typeName = argument.typeName,
-            resolvedTypeName = argument.resolvedTypeName,
-            sourceTypeKind = argument.sourceTypeKind,
-        )
+        val index = resolvedTypeName.removePrefix("T").removePrefix("M").toIntOrNull()
+            ?: typeName.removePrefix("T").removePrefix("M").toIntOrNull()
+            ?: return this
+        return genericArguments.getOrNull(index) ?: this
     }
 
     private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
