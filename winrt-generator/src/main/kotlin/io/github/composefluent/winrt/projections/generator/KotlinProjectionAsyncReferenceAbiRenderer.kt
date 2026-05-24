@@ -420,16 +420,8 @@ internal fun KotlinProjectionRenderer.bindingAllocationForAsyncEnum(
     scopeName: String,
 ): CodeBlock? = resultBinding.enumUnderlyingType?.let { integralResultSlotAllocation(it, scopeName) }
 
-internal fun KotlinProjectionRenderer.abiTypeSignatureForIntegralType(type: WinRtIntegralType): CodeBlock = when (type) {
-    WinRtIntegralType.Int8 -> CodeBlock.of("%T.int8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.UInt8 -> CodeBlock.of("%T.uint8()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.Int16 -> CodeBlock.of("%T.int16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.UInt16 -> CodeBlock.of("%T.uint16()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.Int32 -> CodeBlock.of("%T.int32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.UInt32 -> CodeBlock.of("%T.uint32()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.Int64 -> CodeBlock.of("%T.int64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-    WinRtIntegralType.UInt64 -> CodeBlock.of("%T.uint64()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
-}
+internal fun KotlinProjectionRenderer.abiTypeSignatureForIntegralType(type: WinRtIntegralType): CodeBlock =
+    integralTypeSignatureCode(type)
 
 internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
