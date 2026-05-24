@@ -4164,6 +4164,14 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                     methodRowId = 19,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "GetLevel",
+                                    returnTypeName = "Short",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("propertyName", "String"),
+                                    ),
+                                    methodRowId = 20,
+                                ),
                             ),
                         ),
                     ),
@@ -4180,6 +4188,7 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callBoolean("))
         assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callScalar("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"Int16\","))
         assertTrue(interfaceContents, interfaceContents.contains("\"String\","))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
