@@ -11331,6 +11331,18 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "ReceiveNames",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "names",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
                                     name = "RoundTripGeneric",
                                     returnTypeName = "M0",
                                     genericParameterCount = 1,
@@ -11905,6 +11917,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("val __returnArray = __returnArrayMarshaler.createMarshalerArray(__result)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[2] as RawAddress, __returnArray?.length ?: 0)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[3] as RawAddress"))
+        assertTrue(ccwFactories.contains("val __result = value.receiveNames()"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress, __returnArray?.length ?: 0)"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
+        assertFalse(ccwFactories.contains("Authored ReceiveArray parameter"))
         assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.fromAbi<M0>(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.roundTripGeneric(value)"))
         assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.createReference(__result).use"))

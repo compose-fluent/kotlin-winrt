@@ -24,12 +24,14 @@ import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
+import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
@@ -238,8 +240,8 @@ internal fun KotlinProjectionRenderer.renderInterfaceMethod(method: WinRtMethodD
                 addModifiers(KModifier.OVERRIDE)
             }
         }
-        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .build()
 }
 
@@ -247,8 +249,8 @@ internal fun KotlinProjectionRenderer.renderStubMethod(method: WinRtMethodDefini
     val objectShape = runtimeObjectMethodShape(method)
     val builder = FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
         .addMethodGenericParameters(method, objectShape)
-        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
-        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
         .addCode("return %L\n", missingAbiBindingError("method ${method.name}"))
     if (override || objectShape != null) {
         builder.addModifiers(KModifier.OVERRIDE)
@@ -409,8 +411,8 @@ internal fun KotlinProjectionRenderer.renderBoundMethod(
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(objectShape?.let { listOf(KModifier.OVERRIDE) } ?: runtimeClassMemberModifiers(plan, binding))
-        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
-        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .apply {
             if (objectShape?.kind == RuntimeObjectMethodKind.Equals) {
                 addCode("if (other !is %T) return false\n", IWINRT_OBJECT_CLASS_NAME)
@@ -576,6 +578,24 @@ internal fun KotlinProjectionRenderer.renderBoundProperty(
     }
     return builder.build()
 }
+
+internal fun WinRtMethodDefinition.receiveArrayResultParameter(): WinRtParameterDefinition? {
+    if (returnTypeName != "Unit") {
+        return null
+    }
+    val parameter = parameters.singleOrNull { candidate ->
+        candidate.type.normalized().kind == WinRtTypeRefKind.Array &&
+            candidate.typeIsByRef &&
+            candidate.isOutParameter
+    } ?: return null
+    return if (parameters.lastOrNull() == parameter) parameter else null
+}
+
+internal fun WinRtMethodDefinition.projectedKotlinParameters(): List<WinRtParameterDefinition> =
+    receiveArrayResultParameter()?.let { receiveArray -> parameters.filterNot { it == receiveArray } } ?: parameters
+
+internal fun WinRtMethodDefinition.projectedKotlinReturnTypeName(): String =
+    receiveArrayResultParameter()?.typeName ?: returnTypeName
 
 private fun KotlinProjectionRenderer.renderInstanceOneArgUnitIntrinsicInvocation(
     binding: KotlinProjectionInstanceMemberBinding,
@@ -1637,8 +1657,8 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     slotInterfaceType: WinRtTypeDefinition,
     method: WinRtMethodDefinition,
 ): FunSpec? {
-    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, slotInterfaceType.namespace)
-    val parameterBindings = method.parameters.map { parameter ->
+    val returnBinding = renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), plan.typesByQualifiedName, slotInterfaceType.namespace)
+    val parameterBindings = method.projectedKotlinParameters().map { parameter ->
         KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace))
     }
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
@@ -1664,8 +1684,8 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         .addProjectedAttributeAnnotations(projectedAttributes)
         .addMethodGenericParameters(method, objectShape)
         .addModifiers(KModifier.OVERRIDE)
-        .returns(objectShape?.returnType ?: resolveTypeName(method.returnTypeName))
-        .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
+        .returns(objectShape?.returnType ?: resolveTypeName(method.projectedKotlinReturnTypeName()))
+        .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, resolveTypeName(it.typeName)).build() })
         .addCode("%L\n", invocation)
         .build()
 }
