@@ -502,11 +502,11 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
         resolvedReturnClassName(resultBinding)?.let { resultType ->
             CodeBlock.of(
-                "%T.Metadata.wrap(%T(%T.toRawComPtr(%T.readPointer(__operationResultOut))).asInspectable())",
-                resultType,
+                "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n%T.Metadata.wrap(__operationInspectable)\n}",
                 IUNKNOWN_REFERENCE_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
+                resultType,
             )
         }
     else -> null
