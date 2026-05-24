@@ -47,7 +47,7 @@ class WindowsRuntimePlatformTest {
     }
 
     @Test
-    fun iid_catalog_matches_cswinrt_reference_values() {
+    fun iid_catalog_matches_reference_reference_values() {
         assertEquals(Guid("00000037-0000-0000-C000-000000000046"), IID.IWeakReference)
         assertEquals(Guid("00000038-0000-0000-C000-000000000046"), IID.IWeakReferenceSource)
         assertEquals(Guid("64BD43F8-BFEE-4EC4-B7EB-2935158DAE21"), IID.IReferenceTrackerTarget)

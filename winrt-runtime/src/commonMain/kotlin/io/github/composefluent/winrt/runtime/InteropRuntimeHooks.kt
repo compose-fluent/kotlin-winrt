@@ -9,7 +9,7 @@ internal object InteropRuntimeHooks {
         definition: WinRtCcwDefinition,
     ): WinRtCcwDefinition {
         val existingInterfaceIds = definition.interfaceDefinitions.mapTo(linkedSetOf()) { it.interfaceId }
-        val authoredInterfaces = definition.interfaceDefinitions.filterNot { it.interfaceId in cswinrtAppendedInterfaceIds }
+        val authoredInterfaces = definition.interfaceDefinitions.filterNot { it.interfaceId in referenceAppendedInterfaceIds }
         val augmentedInterfaces = buildList {
             addAll(authoredInterfaces)
             add(createStringableInterfaceDefinition(value))
@@ -31,7 +31,7 @@ internal object InteropRuntimeHooks {
         )
     }
 
-    private val cswinrtAppendedInterfaceIds = setOf(
+    private val referenceAppendedInterfaceIds = setOf(
         IID.IStringable,
         IID.IWeakReferenceSource,
         IID.IReferenceTrackerTarget,

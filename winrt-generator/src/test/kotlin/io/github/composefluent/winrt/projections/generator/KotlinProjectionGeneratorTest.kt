@@ -2238,7 +2238,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_projects_method_generic_parameters_like_cswinrt_method_generic_signature_branch() {
+    fun generator_projects_method_generic_parameters_like_reference_method_generic_signature_branch() {
         // Mirrors .cswinrt/src/cswinrt/code_writers.h write_abi_signature MethodDef.GenericParam() handling.
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -2338,7 +2338,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_reproduces_cswinrt_json_value_function_calls_surface_from_real_winmd() {
+    fun generator_reproduces_reference_json_value_function_calls_surface_from_real_winmd() {
         // Mirrors .cswinrt/src/Tests/FunctionalTests/JsonValueFunctionCalls/Program.cs.
         val filesByName = generateWindowsDataJsonFromInstalledWinmd()
 
@@ -2353,7 +2353,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_reproduces_cswinrt_json_api_compat_surface_from_real_winmd() {
+    fun generator_reproduces_reference_json_api_compat_surface_from_real_winmd() {
         // Mirrors the Windows.Data.Json block in .cswinrt/src/Tests/UnitTest/ApiCompatTests.cs.
         val filesByName = generateWindowsDataJsonFromInstalledWinmd()
 
@@ -2805,7 +2805,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun planner_tracks_cswinrt_declaration_ownership_traits() {
+    fun planner_tracks_reference_declaration_ownership_traits() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -8445,7 +8445,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_applies_cswinrt_collection_async_and_custom_type_mappings() {
+    fun generator_applies_reference_collection_async_and_custom_type_mappings() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -8746,7 +8746,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_skips_cswinrt_mapped_declarations_without_kotlin_support_surfaces() {
+    fun generator_skips_reference_mapped_declarations_without_kotlin_support_surfaces() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -8797,7 +8797,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_uses_runtime_backed_cswinrt_system_mapped_type_names() {
+    fun generator_uses_runtime_backed_reference_system_mapped_type_names() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -9303,7 +9303,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_consumes_cswinrt_object_reference_cache_plans() {
+    fun generator_consumes_reference_object_reference_cache_plans() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -10884,7 +10884,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_emits_cswinrt_writer_support_handoffs_when_enabled() {
+    fun generator_emits_reference_writer_support_handoffs_when_enabled() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(

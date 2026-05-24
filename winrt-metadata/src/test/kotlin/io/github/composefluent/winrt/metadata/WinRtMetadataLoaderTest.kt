@@ -543,7 +543,7 @@ class WinRtMetadataLoaderTest {
     }
 
     @Test
-    fun expands_response_file_inputs_and_applies_cswinrt_style_filters() {
+    fun expands_response_file_inputs_and_applies_reference_style_filters() {
         val assembly = buildManagedMetadataSample()
         val responseFile = Files.createTempFile("kotlin-winrt-metadata-inputs", ".rsp")
         responseFile.writeText(

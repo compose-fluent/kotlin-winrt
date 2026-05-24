@@ -226,7 +226,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_host_bridge_matches_cswinrt_dll_get_activation_factory_shape() {
+    fun authored_host_bridge_matches_reference_dll_get_activation_factory_shape() {
         ComWrappersSupport.clearRegistriesForTests()
         WinRtAuthoring.clearActivationFactoryFallbacksForTests()
         val interfaceId = Guid("77777777-1111-2222-3333-444444444444")
@@ -290,7 +290,7 @@ class WinRtAuthoringTest {
     }
 
     @Test
-    fun authored_host_manifest_loader_reads_cswinrt_style_target_mappings() {
+    fun authored_host_manifest_loader_reads_reference_style_target_mappings() {
         val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-schema-")
         val manifestPath = directory.resolve("MappedComponent.host.json")
         Files.writeString(

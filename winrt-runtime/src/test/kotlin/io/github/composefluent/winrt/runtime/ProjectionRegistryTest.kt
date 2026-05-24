@@ -251,7 +251,7 @@ class ProjectionRegistryTest {
     }
 
     @Test
-    fun runtime_117_system_projection_mappings_follow_cswinrt_owner_set() {
+    fun runtime_117_system_projection_mappings_follow_reference_owner_set() {
         ComWrappersSupport.clearRegistriesForTests()
 
         assertEquals(DateTimeProjection::class, TypeExtensions.findHelperType(Instant::class))

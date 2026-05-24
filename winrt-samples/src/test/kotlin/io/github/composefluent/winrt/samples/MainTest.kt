@@ -17,7 +17,7 @@ class MainTest {
     }
 
     @Test
-    fun json_sample_keeps_cswinrt_api_compat_shape() {
+    fun json_sample_keeps_reference_api_compat_shape() {
         assertTrue(JsonApiCompatSample.sampleText.contains("\"id\": \"1146217767\""))
         assertTrue(JsonApiCompatSample.sampleText.contains("\"phone\": null"))
         assertTrue(JsonApiCompatSample.sampleText.contains("\"education\""))
@@ -25,7 +25,7 @@ class MainTest {
     }
 
     @Test
-    fun net_projection_sample_keeps_cswinrt_simple_math_call_flow() {
+    fun net_projection_sample_keeps_reference_simple_math_call_flow() {
         assertEquals(
             "SimpleMathComponent.SimpleMath",
             SimpleMath.Metadata.TYPE_NAME,
@@ -34,7 +34,7 @@ class MainTest {
     }
 
     @Test
-    fun windows_data_json_sample_matches_cswinrt_api_compat_call_flow() {
+    fun windows_data_json_sample_matches_reference_api_compat_call_flow() {
         assumeTrue(PlatformRuntime.isWindows && shouldRunNativeSmoke())
 
         val result = JsonApiCompatSample.run()

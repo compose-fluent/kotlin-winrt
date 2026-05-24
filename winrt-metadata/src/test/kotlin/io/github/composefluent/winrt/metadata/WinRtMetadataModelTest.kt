@@ -1105,7 +1105,7 @@ class WinRtMetadataModelTest {
         assertEquals(WinRtEventHandlerKind.NotifyCollectionChangedEventHandler, collectionChanged.kind)
     }
     @Test
-    fun resolves_type_semantics_like_cswinrt_helper_kernel() {
+    fun resolves_type_semantics_like_reference_helper_kernel() {
         val iBox = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "IBox",
@@ -1208,7 +1208,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_mirror_cswinrt_method_type_and_accessor_helpers() {
+    fun semantic_helpers_mirror_reference_method_type_and_accessor_helpers() {
         val defaultInterface = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "IWidget",
@@ -1757,7 +1757,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_render_generic_abi_delegate_fundamental_aliases_like_cswinrt_abi_types() {
+    fun semantic_helpers_render_generic_abi_delegate_fundamental_aliases_like_reference_abi_types() {
         val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
         val inventory = helpers.collectGenericAbiInventory(
             WinRtTypeDefinition(
@@ -1789,7 +1789,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_render_signature_writer_fundamentals_like_cswinrt_abi_types() {
+    fun semantic_helpers_render_signature_writer_fundamentals_like_reference_abi_types() {
         val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
         val cases = mapOf(
             "System.String" to "IntPtr",
@@ -1824,7 +1824,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_expose_raw_table_boundaries_and_cswinrt_audit_entries() {
+    fun semantic_helpers_expose_raw_table_boundaries_and_reference_audit_entries() {
         val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
         val boundaries = helpers.auxiliaryTableSemanticBoundaries(
             WinRtMetadataAuxiliaryTableInventory(
@@ -1884,13 +1884,13 @@ class WinRtMetadataModelTest {
                 "module activation/authoring helper descriptors",
                 "metadata/generator/runtime/plugin/authoring classification",
             ),
-            helpers.cswinrtMetadataParityAudit().map { it.cswinrtEntryPoint },
+            helpers.referenceMetadataParityAudit().map { it.referenceEntryPoint },
         )
-        assertEquals(emptyList<WinRtMetadataParityAuditEntry>(), helpers.cswinrtMetadataParityAudit().filterNot { it.closed })
+        assertEquals(emptyList<WinRtMetadataParityAuditEntry>(), helpers.referenceMetadataParityAudit().filterNot { it.closed })
     }
 
     @Test
-    fun projection_inventory_mirrors_cswinrt_namespace_traversal_inputs() {
+    fun projection_inventory_mirrors_reference_namespace_traversal_inputs() {
         val iWidget = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "IWidget",
@@ -2175,7 +2175,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun projection_inventory_tracks_cswinrt_namespace_additions_for_generated_namespaces() {
+    fun projection_inventory_tracks_reference_namespace_additions_for_generated_namespaces() {
         val model = WinRtMetadataModel(
             listOf(
                 WinRtNamespace(
@@ -2231,7 +2231,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun projection_helper_outputs_follow_cswinrt_target_and_filter_conditions() {
+    fun projection_helper_outputs_follow_reference_target_and_filter_conditions() {
         val model = WinRtMetadataModel(
             listOf(
                 WinRtNamespace(
@@ -2373,7 +2373,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun semantic_helpers_expose_cswinrt_writer_exactness_descriptors() {
+    fun semantic_helpers_expose_reference_writer_exactness_descriptors() {
         val point = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "Point",
@@ -2663,7 +2663,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun object_reference_descriptor_mirrors_cswinrt_class_objref_rules() {
+    fun object_reference_descriptor_mirrors_reference_class_objref_rules() {
         val bindableVector = WinRtTypeDefinition(
             namespace = "Microsoft.UI.Xaml.Interop",
             name = "IBindableVector",
@@ -2855,7 +2855,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun required_interface_mapped_helpers_carry_cswinrt_call_mode_and_removal_rules() {
+    fun required_interface_mapped_helpers_carry_reference_call_mode_and_removal_rules() {
         val iterable = WinRtTypeDefinition(
             namespace = "Windows.Foundation.Collections",
             name = "IIterable",
@@ -2936,7 +2936,7 @@ class WinRtMetadataModelTest {
     }
 
     @Test
-    fun projected_attributes_follow_cswinrt_custom_and_platform_filtering() {
+    fun projected_attributes_follow_reference_custom_and_platform_filtering() {
         val type = WinRtTypeDefinition(
             namespace = "Sample.Foundation",
             name = "WidgetAttribute",

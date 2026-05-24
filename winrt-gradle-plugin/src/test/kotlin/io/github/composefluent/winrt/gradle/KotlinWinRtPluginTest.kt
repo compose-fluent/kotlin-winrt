@@ -753,7 +753,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun authoring_host_task_generates_cswinrt_style_native_exports() {
+    fun authoring_host_task_generates_reference_style_native_exports() {
         val project = ProjectBuilder.builder().build()
         val manifest = project.layout.buildDirectory.file("component/SampleComponent.host.json").get().asFile.toPath()
         Files.createDirectories(manifest.parent)

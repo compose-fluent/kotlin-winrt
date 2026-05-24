@@ -6,7 +6,7 @@ import kotlin.test.assertNotEquals
 
 class ParameterizedInterfaceIdTest {
     @Test
-    fun creates_winrt_pinterface_guid_from_known_cswinrt_signature() {
+    fun creates_winrt_pinterface_guid_from_known_reference_signature() {
         assertEquals(
             Guid("98B9ACC1-4B56-532E-AC73-03D5291CCA90"),
             ParameterizedInterfaceId.createFromSignature(
@@ -16,7 +16,7 @@ class ParameterizedInterfaceIdTest {
     }
 
     @Test
-    fun creates_winrt_runtime_class_signature_guid_from_known_cswinrt_signature() {
+    fun creates_winrt_runtime_class_signature_guid_from_known_reference_signature() {
         assertEquals(
             Guid("B9D890EA-0397-53EA-A1AC-96653135C3D4"),
             ParameterizedInterfaceId.createFromSignature(
