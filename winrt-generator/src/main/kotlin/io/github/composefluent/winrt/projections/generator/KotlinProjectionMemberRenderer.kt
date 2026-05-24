@@ -1619,9 +1619,9 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
     slotInterfaceType: WinRtTypeDefinition,
     method: WinRtMethodDefinition,
 ): FunSpec? {
-    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName)
+    val returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, slotInterfaceType.namespace)
     val parameterBindings = method.parameters.map { parameter ->
-        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName))
+        KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, slotInterfaceType.namespace))
     }
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
     val invocation = renderInstanceDescriptorScalarIntrinsicInvocation(
@@ -1689,7 +1689,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
     property.getter?.let { getter ->
         val getterTypeName = getter.property.projectedPropertyTypeName(getter.ownerInterfaceName, plan.typesByQualifiedName)
         val callPlan = buildAbiCallPlan(
-            returnBinding = renderAbiTypeBinding(getterTypeName, plan.typesByQualifiedName),
+            returnBinding = renderAbiTypeBinding(getterTypeName, plan.typesByQualifiedName, getter.slotInterfaceType.namespace),
             parameterBindings = emptyList(),
             suppressHResultCheck = getter.property.isNoException,
         ) ?: return null
@@ -1704,7 +1704,7 @@ private fun KotlinProjectionRenderer.renderRequiredForwardProperty(
         val setterTypeName = setter.property.projectedPropertyTypeName(setter.ownerInterfaceName, plan.typesByQualifiedName)
         val callPlan = buildAbiCallPlan(
             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setterTypeName, plan.typesByQualifiedName))),
+            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(setterTypeName, plan.typesByQualifiedName, setter.slotInterfaceType.namespace))),
             suppressHResultCheck = setter.property.isNoException,
         ) ?: return null
         val invocation = renderInlineAbiInvocation(
