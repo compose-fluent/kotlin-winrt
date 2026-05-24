@@ -2194,7 +2194,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
 
     private fun renderAbiTypeName(type: WinRtTypeRef): String {
         val normalizedTypeName = type.normalized().typeName
-        return winRtFundamentalTypeForName(normalizedTypeName)?.toCsWinRtAbiTypeName() ?: normalizedTypeName
+        return winRtFundamentalTypeForName(normalizedTypeName)?.toNativeAbiTypeName() ?: normalizedTypeName
     }
 
     private fun signatureParameterWriterDescriptor(
@@ -2343,7 +2343,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
     }
 
     private fun escapeIdentifier(value: String): String =
-        if (value in KOTLIN_KEYWORDS || value in CSWINRT_KEYWORDS) "`$value`" else value
+        if (value in KOTLIN_KEYWORDS || value in CSHARP_PROJECTION_KEYWORDS) "`$value`" else value
 
     private inner class GenericAbiInventoryCollector {
         private val abiDelegates = linkedMapOf<String, WinRtGenericAbiDelegateDescriptor>()
@@ -2615,7 +2615,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
                 WinRtProjectionCategory.Fundamental,
                 WinRtProjectionCategory.String,
                 -> winRtFundamentalTypeForName(descriptor.typeName)
-                    ?.toCsWinRtAbiTypeName()
+                    ?.toNativeAbiTypeName()
                     ?: descriptor.typeName
                 WinRtProjectionCategory.Guid,
                 WinRtProjectionCategory.Enum,
@@ -2700,7 +2700,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             "is", "null", "object", "package", "return", "super", "this", "throw", "true", "try", "typealias",
             "typeof", "val", "var", "when", "while",
         )
-        private val CSWINRT_KEYWORDS = setOf("event", "delegate", "base", "params", "ref", "out", "in")
+        private val CSHARP_PROJECTION_KEYWORDS = setOf("event", "delegate", "base", "params", "ref", "out", "in")
     }
 }
 
