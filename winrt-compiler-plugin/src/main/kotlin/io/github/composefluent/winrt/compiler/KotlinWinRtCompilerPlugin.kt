@@ -343,6 +343,7 @@ class KotlinWinRtIrGenerationExtension(
         private val platformAbiAllocateBytes: IrSimpleFunctionSymbol,
         private val platformAbiReadPointer: IrSimpleFunctionSymbol,
         private val platformAbiReadInt8: IrSimpleFunctionSymbol,
+        private val platformAbiReadInt16: IrSimpleFunctionSymbol,
         private val platformAbiReadInt32: IrSimpleFunctionSymbol,
         private val platformAbiReadInt64: IrSimpleFunctionSymbol,
         private val platformAbiReadFloat: IrSimpleFunctionSymbol,
@@ -1690,6 +1691,7 @@ class KotlinWinRtIrGenerationExtension(
                 when (returnKind) {
                     NoArgumentGetterReturnKind.String -> platformAbiAllocatePointerSlot
                     NoArgumentGetterReturnKind.Boolean -> platformAbiAllocateInt8Slot
+                    NoArgumentGetterReturnKind.Int16 -> platformAbiAllocateBytes
                     NoArgumentGetterReturnKind.Int32,
                     NoArgumentGetterReturnKind.UInt32 -> platformAbiAllocateInt32Slot
                     NoArgumentGetterReturnKind.Int64,
@@ -1700,8 +1702,8 @@ class KotlinWinRtIrGenerationExtension(
             ).apply {
                 arguments[0] = builder.irGetObject(platformAbi)
                 arguments[1] = nativeScope
-                if (returnKind == NoArgumentGetterReturnKind.Float) {
-                    arguments[2] = builder.irLong(4L)
+                if (returnKind == NoArgumentGetterReturnKind.Int16 || returnKind == NoArgumentGetterReturnKind.Float) {
+                    arguments[2] = builder.irLong(if (returnKind == NoArgumentGetterReturnKind.Int16) 2L else 4L)
                 }
             }
 
@@ -1721,6 +1723,10 @@ class KotlinWinRtIrGenerationExtension(
                     builder.irByte(0),
                 )
                 NoArgumentGetterReturnKind.Int32 -> builder.irCall(platformAbiReadInt32).apply {
+                    arguments[0] = builder.irGetObject(platformAbi)
+                    arguments[1] = resultOut
+                }
+                NoArgumentGetterReturnKind.Int16 -> builder.irCall(platformAbiReadInt16).apply {
                     arguments[0] = builder.irGetObject(platformAbi)
                     arguments[1] = resultOut
                 }
@@ -1858,6 +1864,7 @@ class KotlinWinRtIrGenerationExtension(
         ): IrExpression? {
             val returnShape = call.arguments.getOrNull(3)?.stringConstantValue() ?: return null
             val returnKind = when (returnShape) {
+                "Int16" -> NoArgumentGetterReturnKind.Int16
                 "Int32" -> NoArgumentGetterReturnKind.Int32
                 "UInt32" -> NoArgumentGetterReturnKind.UInt32
                 "Int64" -> NoArgumentGetterReturnKind.Int64
@@ -2366,6 +2373,7 @@ class KotlinWinRtIrGenerationExtension(
         private enum class NoArgumentGetterReturnKind {
             String,
             Boolean,
+            Int16,
             Int32,
             UInt32,
             Int64,
@@ -2475,6 +2483,7 @@ class KotlinWinRtIrGenerationExtension(
                 val platformAbiAllocateBytes = platformAbi.functionNamedWithRegularParameterCount("allocateBytes", 2) ?: return null
                 val platformAbiReadPointer = platformAbi.functionNamed("readPointer") ?: return null
                 val platformAbiReadInt8 = platformAbi.functionNamed("readInt8") ?: return null
+                val platformAbiReadInt16 = platformAbi.functionNamed("readInt16") ?: return null
                 val platformAbiReadInt32 = platformAbi.functionNamed("readInt32") ?: return null
                 val platformAbiReadInt64 = platformAbi.functionNamed("readInt64") ?: return null
                 val platformAbiReadFloat = platformAbi.functionNamed("readFloat") ?: return null
@@ -2555,6 +2564,7 @@ class KotlinWinRtIrGenerationExtension(
                     platformAbiAllocateBytes = platformAbiAllocateBytes,
                     platformAbiReadPointer = platformAbiReadPointer,
                     platformAbiReadInt8 = platformAbiReadInt8,
+                    platformAbiReadInt16 = platformAbiReadInt16,
                     platformAbiReadInt32 = platformAbiReadInt32,
                     platformAbiReadInt64 = platformAbiReadInt64,
                     platformAbiReadFloat = platformAbiReadFloat,
