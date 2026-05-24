@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -46,9 +47,7 @@ abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
         manifests.forEach { manifest ->
             val manifestRoot = manifest.toPath().parent ?: return@forEach
             readCompilerSupportRows(manifest).forEach { row ->
-                if (row.kind in REMOVED_REFLECTION_COMPILER_SUPPORT_KINDS) {
-                    return@forEach
-                }
+                row.rejectRetiredRuntimeDiscoveryKind(manifest)
                 val source = manifestRoot.resolve(row.sourceFile)
                 if (!Files.isRegularFile(source)) {
                     return@forEach
@@ -102,13 +101,24 @@ private data class CompilerSupportSourceKey(
     val sourceFile: String,
 )
 
-private val REMOVED_REFLECTION_COMPILER_SUPPORT_KINDS = setOf(
+private val RETIRED_RUNTIME_DISCOVERY_COMPILER_SUPPORT_KINDS = setOf(
     "event-source",
     "event-source-mapping",
     "interface-native",
     "interface-native-projection",
     "interface-native-projections",
 )
+
+private fun CompilerSupportManifestRow.rejectRetiredRuntimeDiscoveryKind(manifest: File) {
+    if (kind !in RETIRED_RUNTIME_DISCOVERY_COMPILER_SUPPORT_KINDS) {
+        return
+    }
+    throw GradleException(
+        "Compiler support manifest ${manifest.absolutePath} contains retired runtime-discovery support kind '$kind'. " +
+            "Regenerate WinRT projections with the current generator/compiler plugin so support is emitted as " +
+            "compile-time marker facts instead of classpath resource or fixed-registry runtime discovery.",
+    )
+}
 
 private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifestRow> =
     manifest.readLines()
