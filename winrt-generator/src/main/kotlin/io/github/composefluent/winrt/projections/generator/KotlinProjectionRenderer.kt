@@ -32,7 +32,6 @@ import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeRef
-import io.github.composefluent.winrt.metadata.WinRtTypeRefKind
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
@@ -48,7 +47,6 @@ import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
-import io.github.composefluent.winrt.runtime.Guid
 import io.github.composefluent.winrt.runtime.HResult
 import io.github.composefluent.winrt.runtime.HString
 import io.github.composefluent.winrt.runtime.IUnknownReference
@@ -850,139 +848,12 @@ class KotlinProjectionRenderer(
         typeName: String,
         typesByQualifiedName: Map<String, WinRtTypeDefinition> = emptyMap(),
         currentNamespace: String? = null,
-    ): KotlinProjectionAbiTypeBinding {
-        val binding = renderAbiTypeBinding(
-            WinRtTypeRef.fromDisplayName(typeName).normalized(),
-            typesByQualifiedName,
-            currentNamespace,
+    ): KotlinProjectionAbiTypeBinding =
+        KotlinProjectionPlanner().classifyAbiTypeBinding(
+            typeName = typeName,
+            currentNamespace = currentNamespace.orEmpty(),
+            typesByQualifiedName = typesByQualifiedName,
         )
-        if (!typeName.trim().endsWith("?")) {
-            return binding
-        }
-        return binding.copy(
-            typeName = binding.typeName.withNullableSuffix(),
-            resolvedTypeName = binding.resolvedTypeName.withNullableSuffix(),
-        )
-    }
-
-    private fun String.withNullableSuffix(): String =
-        if (trim().endsWith("?")) this else "$this?"
-
-    private fun renderAbiTypeBinding(
-        typeRef: WinRtTypeRef,
-        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
-        currentNamespace: String? = null,
-    ): KotlinProjectionAbiTypeBinding {
-        val normalizedType = typeRef.normalized()
-        val trimmed = normalizedType.typeName
-        val rawTypeName = when (normalizedType.kind) {
-            WinRtTypeRefKind.Named -> (normalizedType.qualifiedName ?: trimmed.substringBefore('<')).removeSuffix("?")
-            WinRtTypeRefKind.Array -> "Array"
-            else -> trimmed
-        }
-        val typeArguments = when (normalizedType.kind) {
-            WinRtTypeRefKind.Named -> normalizedType.typeArguments.map { renderAbiTypeBinding(it, typesByQualifiedName, currentNamespace) }
-            WinRtTypeRefKind.Array -> listOf(renderAbiTypeBinding(normalizedType.elementType ?: WinRtTypeRef.unknown(), typesByQualifiedName, currentNamespace))
-            else -> emptyList()
-        }
-        val mappedType = mappedTypeByAbiName(rawTypeName)
-        val resolvedQualifiedTypeName = typesByQualifiedName[rawTypeName]?.qualifiedName
-            ?: currentNamespace?.let { namespace -> typesByQualifiedName["$namespace.$rawTypeName"]?.qualifiedName }
-            ?: rawTypeName
-        val resolvedType = typesByQualifiedName[resolvedQualifiedTypeName]
-        val fundamentalType = winRtFundamentalTypeForName(rawTypeName)
-        val kind = if (isWinRtVoidTypeName(rawTypeName)) {
-            KotlinProjectionAbiValueKind.Unit
-        } else if (fundamentalType != null) {
-            fundamentalType.toProjectionAbiValueKind()
-        } else if (isWinRtGuidTypeName(rawTypeName)) {
-            KotlinProjectionAbiValueKind.GuidValue
-        } else when (trimmed) {
-            IUNKNOWN_REFERENCE_CLASS_NAME.simpleName,
-            "io.github.composefluent.winrt.runtime.IUnknownReference" -> KotlinProjectionAbiValueKind.UnknownReference
-            IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName,
-            "io.github.composefluent.winrt.runtime.IInspectableReference" -> KotlinProjectionAbiValueKind.InspectableReference
-            else -> when {
-                isWinRtObjectTypeName(rawTypeName) -> KotlinProjectionAbiValueKind.Object
-                normalizedType.kind == WinRtTypeRefKind.GenericTypeParameter ||
-                    normalizedType.kind == WinRtTypeRefKind.MethodTypeParameter -> KotlinProjectionAbiValueKind.GenericParameter
-                normalizedType.kind == WinRtTypeRefKind.Array -> KotlinProjectionAbiValueKind.Array
-                mappedType?.abiValueKind != null -> mappedType.abiValueKind
-                else -> when (resolvedType?.kind) {
-                    WinRtTypeKind.Interface -> KotlinProjectionAbiValueKind.ProjectedInterface
-                    WinRtTypeKind.RuntimeClass -> KotlinProjectionAbiValueKind.ProjectedRuntimeClass
-                    WinRtTypeKind.Enum -> KotlinProjectionAbiValueKind.Enum
-                    WinRtTypeKind.Struct -> KotlinProjectionAbiValueKind.Struct
-                    WinRtTypeKind.Delegate -> KotlinProjectionAbiValueKind.Delegate
-                    WinRtTypeKind.Unknown,
-                    null -> KotlinProjectionAbiValueKind.Unsupported
-                }
-            }
-        }
-        val delegateInvokeShape = if (kind == KotlinProjectionAbiValueKind.Delegate && resolvedType != null) {
-            val invokeMethod = requireDelegateInvokeMethod(resolvedType)
-            KotlinProjectionDelegateInvokeShape(
-                interfaceId = resolvedType.iid,
-                parameterBindings = invokeMethod.parameters.map { parameter ->
-                    KotlinProjectionAbiParameterBinding(
-                        name = parameter.name,
-                        typeBinding = renderAbiTypeBinding(
-                            WinRtTypeRef.fromDisplayName(parameter.typeName).normalized(),
-                            typesByQualifiedName,
-                            currentNamespace,
-                        ).withDelegateGenericArgumentProjection(typeArguments),
-                    )
-                },
-                returnBinding = renderAbiTypeBinding(
-                    WinRtTypeRef.fromDisplayName(invokeMethod.returnTypeName).normalized(),
-                    typesByQualifiedName,
-                    currentNamespace,
-                ).withDelegateGenericArgumentProjection(typeArguments),
-            )
-        } else {
-            null
-        }
-        val interfaceId = when (resolvedType?.kind) {
-            WinRtTypeKind.RuntimeClass -> resolvedType.defaultInterfaceName
-                ?.let { defaultInterfaceName ->
-                    typesByQualifiedName[defaultInterfaceName]
-                        ?: typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
-                }
-                ?.iid
-            else -> resolvedType?.iid
-        } ?: mappedReferenceGenericInterfaceId(kind)
-        return KotlinProjectionAbiTypeBinding(
-            kind = kind,
-            typeName = trimmed,
-            resolvedTypeName = resolvedQualifiedTypeName,
-            sourceTypeKind = resolvedType?.kind,
-            abiSize = resolvedType?.abiSize,
-            abiAlignment = resolvedType?.abiAlignment,
-            interfaceId = interfaceId,
-            enumUnderlyingType = resolvedType?.enumUnderlyingType,
-            delegateInvokeShape = delegateInvokeShape,
-            typeArguments = typeArguments,
-        )
-    }
-
-    private fun KotlinProjectionAbiTypeBinding.withDelegateGenericArgumentProjection(
-        genericArguments: List<KotlinProjectionAbiTypeBinding>,
-    ): KotlinProjectionAbiTypeBinding {
-        if (kind != KotlinProjectionAbiValueKind.GenericParameter || genericArguments.isEmpty()) {
-            return this
-        }
-        val index = resolvedTypeName.removePrefix("T").removePrefix("M").toIntOrNull()
-            ?: typeName.removePrefix("T").removePrefix("M").toIntOrNull()
-            ?: return this
-        return genericArguments.getOrNull(index) ?: this
-    }
-
-    private fun mappedReferenceGenericInterfaceId(kind: KotlinProjectionAbiValueKind): Guid? =
-        when (kind) {
-            KotlinProjectionAbiValueKind.Reference -> IREFERENCE_GENERIC_INTERFACE_ID
-            KotlinProjectionAbiValueKind.ReferenceArray -> IREFERENCE_ARRAY_GENERIC_INTERFACE_ID
-            else -> null
-        }
 
     internal fun renderClassShell(plan: KotlinTypeProjectionPlan): TypeSpec = when {
         KotlinProjectionSpecializationKind.AttributeClass in plan.specializationKinds -> renderAttributeClassShell(plan)
