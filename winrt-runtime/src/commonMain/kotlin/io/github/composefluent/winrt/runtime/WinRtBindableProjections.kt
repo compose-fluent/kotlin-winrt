@@ -107,31 +107,6 @@ internal object WinRtBindableObjectMarshaller {
     private fun findManagedValue(pointer: RawAddress): Any? =
         WinRtInspectableComObject.findManagedValue(pointer)
 
-    private fun borrowInspectableReference(value: Any?): IInspectableReference? =
-        when (value) {
-            null -> null
-            is WinRtBindableInspectableValue -> IInspectableReference(value.inspectableRef().getRefPointer(), IID.IInspectable)
-            is IInspectableReference -> IInspectableReference(value.getRefPointer(), IID.IInspectable)
-            is IUnknownReference -> value.asInspectable()
-            is ComObjectReference -> value.tryAsInspectable()
-            is IWinRTObject -> if (value.hasUnwrappableNativeObject) value.nativeObject.tryAsInspectable() else null
-            is RawAddress ->
-                if (PlatformAbi.isNull(value)) {
-                    null
-                } else {
-                    val borrowed = IUnknownReference(value.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
-                    try {
-                        borrowed.asInspectable()
-                    } finally {
-                        borrowed.close()
-                    }
-                }
-
-            else -> null
-        }
-
-    private fun WinRtBindableInspectableValue.inspectableRef(): IInspectableReference =
-        nativeObject as IInspectableReference
 }
 
 object WinRtBindableIterableProjection {
