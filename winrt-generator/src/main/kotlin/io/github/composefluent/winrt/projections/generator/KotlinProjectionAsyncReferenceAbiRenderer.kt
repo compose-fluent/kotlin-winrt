@@ -474,7 +474,12 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
         referenceReadbackExpression(resultBinding, WINRT_REFERENCE_PROJECTION_CLASS_NAME, "__operationResultOut")
     KotlinProjectionAbiValueKind.ReferenceArray ->
         referenceReadbackExpression(resultBinding, WINRT_REFERENCE_ARRAY_PROJECTION_CLASS_NAME, "__operationResultOut")
-    KotlinProjectionAbiValueKind.Object,
+    KotlinProjectionAbiValueKind.Object ->
+        CodeBlock.of(
+            "%T.fromAbi(%T.readPointer(__operationResultOut))",
+            WINRT_OBJECT_MARSHALLER_CLASS_NAME,
+            PLATFORM_ABI_CLASS_NAME,
+        )
     KotlinProjectionAbiValueKind.InspectableReference ->
         CodeBlock.of(
             "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n__operationInspectable\n}",

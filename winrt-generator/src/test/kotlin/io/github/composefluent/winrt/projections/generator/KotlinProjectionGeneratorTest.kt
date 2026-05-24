@@ -9638,6 +9638,29 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_reads_async_object_result_through_object_marshaller() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<System.Object>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.Object,
+                    typeName = "System.Object",
+                    resolvedTypeName = "System.Object",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("WinRtAsyncProjectionInterop.operation<kotlin.Any?>"))
+        assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRtObjectMarshaller.fromAbi(io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut))"))
+        assertFalse(expression, expression.contains("val __operationResultRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
+        assertFalse(expression, expression.contains("__operationResultRef.asInspectable()"))
+    }
+
+    @Test
     fun generator_routes_async_operation_calls_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
