@@ -244,7 +244,7 @@ class ValueBoxingTest {
     }
 
     @Test
-    fun runtime_hooks_project_uri_and_iclosable_like_cswinrt() {
+    fun runtime_hooks_project_uri_and_iclosable_like_reference_projection() {
         assumeTrue(PlatformRuntime.isWindows)
         ComWrappersSupport.clearRegistriesForTests()
 
