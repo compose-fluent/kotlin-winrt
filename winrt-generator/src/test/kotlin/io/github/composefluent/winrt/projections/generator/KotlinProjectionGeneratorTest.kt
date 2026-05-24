@@ -12493,6 +12493,74 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun mapped_collection_runtime_property_filter_keeps_row_id_only_unmapped_property() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Size",
+                                    typeName = "Int",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "INameVector",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Windows.Foundation.Collections.IVector<String>",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "NameVector",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                ),
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.INameVector",
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Size",
+                                    typeName = "Int",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("NameVector.kt")
+            .contents
+
+        assertTrue(contents, contents.contains("MutableList<String>,"))
+        assertTrue(contents, contents.contains("override val size: Int"))
+    }
+
+    @Test
     fun generator_routes_mutable_vector_unit_calls_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
