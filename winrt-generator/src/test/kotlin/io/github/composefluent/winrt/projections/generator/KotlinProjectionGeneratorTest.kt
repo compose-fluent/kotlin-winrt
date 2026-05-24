@@ -4152,6 +4152,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents, interfaceContents.contains("val child: IChild?"))
         assertTrue(interfaceContents, interfaceContents.contains("val items: MutableList<String>"))
         assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.getNullableProjectedInterface("))
+        assertTrue(interfaceContents, interfaceContents.contains("IChild.Metadata::wrap"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
         assertFalse(interfaceContents, interfaceContents.contains("wrapGeneratedInterfaceProjection(TYPE_HANDLE, instance) as IWidget"))
     }
 
