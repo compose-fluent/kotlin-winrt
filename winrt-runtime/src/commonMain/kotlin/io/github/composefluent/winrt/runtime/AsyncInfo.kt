@@ -640,25 +640,25 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
         )
 
     private fun complete(value: T) {
+        resultValue = value
+        errorValue = null
         if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Completed.ordinal)) {
-            resultValue = value
-            errorValue = null
             invokeCompletedHandlerOnce(WinRtAsyncStatus.Completed)
         }
     }
 
     private fun completeCanceled() {
+        resultValue = null
+        errorValue = null
         if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Canceled.ordinal)) {
-            resultValue = null
-            errorValue = null
             invokeCompletedHandlerOnce(WinRtAsyncStatus.Canceled)
         }
     }
 
     private fun completeError(error: Throwable) {
+        resultValue = null
+        errorValue = error
         if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Error.ordinal)) {
-            resultValue = null
-            errorValue = error
             invokeCompletedHandlerOnce(WinRtAsyncStatus.Error)
         }
     }

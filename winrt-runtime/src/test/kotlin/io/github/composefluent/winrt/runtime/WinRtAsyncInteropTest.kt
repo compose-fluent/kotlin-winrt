@@ -168,6 +168,36 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
+    fun task_to_async_completed_handler_can_read_terminal_result_when_set_after_completion() {
+        val resultSignature = WinRtTypeSignature.int32()
+        val operation = AsyncInfo.fromResult(
+            result = 42,
+            resultSignature = resultSignature,
+            resultWriter = WinRtAsyncResultWriter { value, resultOut ->
+                PlatformAbi.writeInt32(resultOut, value)
+            },
+        )
+        var capturedStatus: WinRtAsyncStatus? = null
+        var capturedResult: Int? = null
+        val completedHandler = WinRtDelegateBridge.createUnitDelegate(
+            iid = WinRtAsyncOperationReference.completedHandlerInterfaceId(resultSignature),
+            parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+        ) { args ->
+            capturedStatus = WinRtAsyncStatus.fromAbi(args[1] as Int)
+            capturedResult = operation.getResults()
+        }
+
+        operation.use { asyncOperation ->
+            completedHandler.use { handle ->
+                handle.createReference().use(asyncOperation::setCompletedHandler)
+            }
+        }
+
+        assertEquals(WinRtAsyncStatus.Completed, capturedStatus)
+        assertEquals(42, capturedResult)
+    }
+
+    @Test
     fun task_to_async_completed_handler_rejects_second_assignment() {
         val firstHandler = WinRtDelegateBridge.createUnitDelegate(
             iid = WinRtAsyncInterfaceIds.AsyncActionCompletedHandler,
