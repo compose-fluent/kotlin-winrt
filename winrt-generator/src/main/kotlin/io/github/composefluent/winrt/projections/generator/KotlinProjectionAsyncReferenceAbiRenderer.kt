@@ -591,16 +591,7 @@ internal fun KotlinProjectionRenderer.asyncEnumResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
     val enumType = resolvedReturnClassName(resultBinding) ?: return null
-    val readback = when (resultBinding.enumUnderlyingType ?: return null) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%T.readInt8(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.readInt8(__operationResultOut).toUByte()", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int16 -> CodeBlock.of("%T.readInt16(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.readInt16(__operationResultOut).toUShort()", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int32 -> CodeBlock.of("%T.readInt32(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.readInt32(__operationResultOut).toUInt()", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.Int64 -> CodeBlock.of("%T.readInt64(__operationResultOut)", PLATFORM_ABI_CLASS_NAME)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.readInt64(__operationResultOut).toULong()", PLATFORM_ABI_CLASS_NAME)
-    }
+    val readback = integralPlatformReadExpression(resultBinding.enumUnderlyingType ?: return null, CodeBlock.of("__operationResultOut"))
     return CodeBlock.of("%T.Metadata.fromAbi(%L)", enumType, readback)
 }
 
