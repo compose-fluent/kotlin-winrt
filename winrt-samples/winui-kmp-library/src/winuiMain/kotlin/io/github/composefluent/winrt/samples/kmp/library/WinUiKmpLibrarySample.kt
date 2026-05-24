@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.samples.kmp.library
 
 import io.github.composefluent.winrt.runtime.EventRegistrationToken
+import io.github.composefluent.winrt.runtime.Point
 import io.github.composefluent.winrt.runtime.RuntimeScope
 import io.github.composefluent.winrt.runtime.WinRtWindowsAppSdkBootstrap
 import io.github.composefluent.winrt.samples.kmp.base.WinUiKmpBaseLibrarySample
@@ -28,7 +29,6 @@ import microsoft.ui.xaml.controls.Panel
 import microsoft.ui.xaml.controls.TextBox
 import microsoft.ui.xaml.controls.XamlControlsResources
 import windows.system.display.DisplayRequest
-import windows.foundation.Point
 import kotlin.time.Duration.Companion.milliseconds
 import windows.foundation.TypedEventHandler
 
