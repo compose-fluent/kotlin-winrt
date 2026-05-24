@@ -4136,6 +4136,56 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_boolean_and_scalar_return_interface_methods_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ICompositionPropertySet",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555564"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "HasProperty",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("propertyName", "String"),
+                                    ),
+                                    methodRowId = 18,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetScalar",
+                                    returnTypeName = "Float",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("propertyName", "String"),
+                                    ),
+                                    methodRowId = 19,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val interfaceContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("ICompositionPropertySet.kt")
+            .contents
+
+        assertTrue(interfaceContents, interfaceContents.contains("private class NativeProjection("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callBoolean("))
+        assertTrue(interfaceContents, interfaceContents.contains("WinRtProjectionIntrinsic.callScalar("))
+        assertTrue(interfaceContents, interfaceContents.contains("\"String\","))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeArgs"))
+        assertFalse(interfaceContents, interfaceContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_string_projected_object_unit_interface_methods_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
