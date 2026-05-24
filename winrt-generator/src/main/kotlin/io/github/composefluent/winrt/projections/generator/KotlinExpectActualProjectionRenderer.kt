@@ -100,7 +100,7 @@ internal class KotlinExpectActualProjectionRenderer(
             type.properties.none(WinRtPropertyDefinition::isStatic) &&
             type.properties.all { it.getterMethodName != null } &&
             type.events.none(WinRtEventDefinition::isStatic) &&
-            type.events.all { event -> event.addMethodName != null || event.addMethodRowId != null } &&
+            type.events.all { event -> event.hasNativeProjectionAccessorPair() } &&
             type.methods
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .all { method ->
@@ -142,6 +142,10 @@ internal class KotlinExpectActualProjectionRenderer(
                             )
                         )
                 }
+
+    private fun WinRtEventDefinition.hasNativeProjectionAccessorPair(): Boolean =
+        (addMethodName != null || addMethodRowId != null) &&
+            (removeMethodName != null || removeMethodRowId != null)
 
     private fun canBuildJvmFfmCallPlan(
         returnTypeName: String,
