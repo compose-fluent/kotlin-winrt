@@ -526,9 +526,12 @@ internal data class KotlinProjectionCustomObjectAbi(
 
 internal data class KotlinProjectionIntegralAbiDescriptor(
     val kotlinTypeName: TypeName,
+    val abiValueKind: KotlinProjectionAbiValueKind,
+    val abiCarrierTypeName: TypeName,
     val abiSizeBytes: Int,
     val comArgumentKind: KotlinProjectionComArgumentKind,
     val argumentConversionSuffix: String = "",
+    val carrierToKotlinConversionSuffix: String = "",
     val literalRenderer: (ULong) -> CodeBlock,
 )
 
@@ -835,54 +838,74 @@ internal fun isRuntimeOwnedMappedTypeName(typeName: String): Boolean {
 internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIntegralAbiDescriptor> = mapOf(
     WinRtIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Byte::class.asClassName(),
+        abiValueKind = KotlinProjectionAbiValueKind.Int8,
+        abiCarrierTypeName = Byte::class.asClassName(),
         abiSizeBytes = 1,
         comArgumentKind = KotlinProjectionComArgumentKind.Int8,
         literalRenderer = { valueBits -> CodeBlock.of("%L.toByte()", valueBits.toByte()) },
     ),
     WinRtIntegralType.UInt8 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_UBYTE_CLASS_NAME,
+        abiValueKind = KotlinProjectionAbiValueKind.UInt8,
+        abiCarrierTypeName = Byte::class.asClassName(),
         abiSizeBytes = 1,
         comArgumentKind = KotlinProjectionComArgumentKind.Int8,
         argumentConversionSuffix = ".toByte()",
+        carrierToKotlinConversionSuffix = ".toUByte()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUByte()", valueBits.toUByte()) },
     ),
     WinRtIntegralType.Int16 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Short::class.asClassName(),
+        abiValueKind = KotlinProjectionAbiValueKind.Int16,
+        abiCarrierTypeName = Short::class.asClassName(),
         abiSizeBytes = 2,
         comArgumentKind = KotlinProjectionComArgumentKind.Int16,
         literalRenderer = { valueBits -> CodeBlock.of("%L.toShort()", valueBits.toShort()) },
     ),
     WinRtIntegralType.UInt16 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_USHORT_CLASS_NAME,
+        abiValueKind = KotlinProjectionAbiValueKind.UInt16,
+        abiCarrierTypeName = Short::class.asClassName(),
         abiSizeBytes = 2,
         comArgumentKind = KotlinProjectionComArgumentKind.Int16,
         argumentConversionSuffix = ".toShort()",
+        carrierToKotlinConversionSuffix = ".toUShort()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUShort()", valueBits.toUShort()) },
     ),
     WinRtIntegralType.Int32 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Int::class.asClassName(),
+        abiValueKind = KotlinProjectionAbiValueKind.Int32,
+        abiCarrierTypeName = Int::class.asClassName(),
         abiSizeBytes = 4,
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
         literalRenderer = { valueBits -> CodeBlock.of("%L", valueBits.toInt()) },
     ),
     WinRtIntegralType.UInt32 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_UINT_CLASS_NAME,
+        abiValueKind = KotlinProjectionAbiValueKind.UInt32,
+        abiCarrierTypeName = Int::class.asClassName(),
         abiSizeBytes = 4,
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
         argumentConversionSuffix = ".toInt()",
+        carrierToKotlinConversionSuffix = ".toUInt()",
         literalRenderer = { valueBits -> CodeBlock.of("%L.toUInt()", valueBits.toUInt()) },
     ),
     WinRtIntegralType.Int64 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Long::class.asClassName(),
+        abiValueKind = KotlinProjectionAbiValueKind.Int64,
+        abiCarrierTypeName = Long::class.asClassName(),
         abiSizeBytes = 8,
         comArgumentKind = KotlinProjectionComArgumentKind.Int64,
         literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits.toLong()}L") },
     ),
     WinRtIntegralType.UInt64 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_ULONG_CLASS_NAME,
+        abiValueKind = KotlinProjectionAbiValueKind.UInt64,
+        abiCarrierTypeName = Long::class.asClassName(),
         abiSizeBytes = 8,
         comArgumentKind = KotlinProjectionComArgumentKind.Int64,
         argumentConversionSuffix = ".toLong()",
+        carrierToKotlinConversionSuffix = ".toULong()",
         literalRenderer = { valueBits -> CodeBlock.of("%L", "${valueBits}uL") },
     ),
 )
@@ -897,8 +920,21 @@ internal fun mappedTypeByAbiKind(kind: KotlinProjectionAbiValueKind): KotlinProj
 internal fun integralAbiDescriptor(type: WinRtIntegralType): KotlinProjectionIntegralAbiDescriptor =
     INTEGRAL_ABI_DESCRIPTORS.getValue(type)
 
+internal fun integralComAbiValueKindCode(type: WinRtIntegralType): CodeBlock =
+    CodeBlock.of("%T.%L", COM_ABI_VALUE_KIND_CLASS_NAME, integralAbiDescriptor(type).comArgumentKind.name)
+
 internal fun integralAbiSizeExpression(type: WinRtIntegralType): CodeBlock =
     CodeBlock.of("%L", integralAbiDescriptor(type).abiSizeBytes)
+
+internal fun integralAbiCarrierExpression(type: WinRtIntegralType, expression: CodeBlock): CodeBlock {
+    val descriptor = integralAbiDescriptor(type)
+    val carrierExpression = CodeBlock.of("%L as %T", expression, descriptor.abiCarrierTypeName)
+    return if (descriptor.carrierToKotlinConversionSuffix.isEmpty()) {
+        carrierExpression
+    } else {
+        CodeBlock.of("(%L)%L", carrierExpression, descriptor.carrierToKotlinConversionSuffix)
+    }
+}
 
 internal fun integralResultSlotAllocation(type: WinRtIntegralType, scopeName: String): CodeBlock =
     when (integralAbiDescriptor(type).abiSizeBytes) {

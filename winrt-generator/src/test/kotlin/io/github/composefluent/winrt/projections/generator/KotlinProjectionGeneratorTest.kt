@@ -2994,6 +2994,71 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun authoring_ccw_decodes_and_writes_uint32_flags_enums_through_unsigned_carrier() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetFlags",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.UInt32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Enabled", 1u),
+                            ),
+                            customAttributes = listOf(WinRtCustomAttributeDefinition("System.FlagsAttribute")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555571"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "EchoFlags",
+                                    returnTypeName = "Sample.Foundation.WidgetFlags",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("flags", "Sample.Foundation.WidgetFlags"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.Foundation.IWidget",
+                                    isDefault = true,
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ccwFactories = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        )
+            .generate(model)
+            .single { it.relativePath.endsWith("WinRTAuthoringCcwFactories.kt") }
+            .contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("WidgetFlags.Metadata.fromAbi((rawArgs[0] as Int).toUInt())"))
+        assertTrue(ccwFactories, ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[1] as RawAddress,"))
+        assertTrue(ccwFactories, ccwFactories.contains("WidgetFlags.Metadata.toAbi(__result).toInt()"))
+        assertFalse(ccwFactories, ccwFactories.contains("WidgetFlags.Metadata.fromAbi(rawArgs[0] as Int)"))
+    }
+
+    @Test
     fun renderer_uses_visibility_modifiers_and_metadata_companion_shells() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
