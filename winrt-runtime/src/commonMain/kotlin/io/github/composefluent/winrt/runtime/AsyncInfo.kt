@@ -405,7 +405,11 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
             interfaceId = handlerInterfaceId,
             preventReleaseOnDispose = true,
         )
-        borrowed.addRef()
+        try {
+            borrowed.addRef()
+        } finally {
+            borrowed.close()
+        }
         return ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
     }
 
@@ -427,7 +431,11 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
                 interfaceId = handlerInterfaceId,
                 preventReleaseOnDispose = true,
             )
-            borrowed.addRef()
+            try {
+                borrowed.addRef()
+            } finally {
+                borrowed.close()
+            }
             progressHandler = ComObjectReference(handlerPointer.asRawComPtr(), handlerInterfaceId)
         }
     }

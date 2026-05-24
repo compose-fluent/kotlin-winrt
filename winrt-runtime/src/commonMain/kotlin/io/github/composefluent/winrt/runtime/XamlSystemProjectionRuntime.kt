@@ -1387,9 +1387,9 @@ private abstract class NativeAbiEventHandler<T>(
 }
 
 private fun cloneEventHandlerPointer(handlerPointer: RawAddress): RawAddress =
-    IUnknownReference(handlerPointer.asRawComPtr(), preventReleaseOnDispose = true)
-        .getRefPointer()
-        .asRawAddress()
+    IUnknownReference(handlerPointer.asRawComPtr(), preventReleaseOnDispose = true).use { handler ->
+        handler.getRefPointer().asRawAddress()
+    }
 
 private class NativeCommandChangedHandler(
     handlerPointer: RawAddress,
