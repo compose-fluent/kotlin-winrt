@@ -1161,8 +1161,8 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             }
             val methods = definition?.methods.orEmpty()
             definition?.properties.orEmpty().forEach { property ->
-                val getter = property.getterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
-                val setter = property.setterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
+                val getter = property.getterMethod(methods)
+                val setter = property.setterMethod(methods)
                 val propertyHasGeneric = property.type.containsGenericTypeParameter()
                 if (getter != null) {
                     if (projectedSignatureHasGenericParameters(getter.returnType, getter.parameters)) {
@@ -1212,6 +1212,14 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             initializationDependencies = dependencies.distinct().sorted(),
         )
     }
+
+    private fun WinRtPropertyDefinition.getterMethod(methods: List<WinRtMethodDefinition>): WinRtMethodDefinition? =
+        getterMethodRowId?.let { rowId -> methods.firstOrNull { it.methodRowId == rowId } }
+            ?: getterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
+
+    private fun WinRtPropertyDefinition.setterMethod(methods: List<WinRtMethodDefinition>): WinRtMethodDefinition? =
+        setterMethodRowId?.let { rowId -> methods.firstOrNull { it.methodRowId == rowId } }
+            ?: setterMethodName?.let { name -> methods.firstOrNull { it.name == name } }
 
     private fun genericTypeInstantiationDescriptorForDependency(typeName: String): WinRtGenericTypeInstantiationDescriptor? {
         val type = WinRtTypeRef.fromDisplayName(typeName).normalized()

@@ -2549,10 +2549,10 @@ class WinRtMetadataModelTest {
             genericParameterCount = 1,
             genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
             methods = listOf(
-                WinRtMethodDefinition("GetAt", "T0", parameters = listOf(WinRtParameterDefinition("index", "UInt"))),
+                WinRtMethodDefinition("GetAt", "T0", parameters = listOf(WinRtParameterDefinition("index", "UInt")), methodRowId = 6),
                 WinRtMethodDefinition("add_Changed", "Void", isSpecialName = true),
             ),
-            properties = listOf(WinRtPropertyDefinition("Current", "T0", getterMethodName = "GetAt")),
+            properties = listOf(WinRtPropertyDefinition("Current", "T0", getterMethodRowId = 6)),
             events = listOf(WinRtEventDefinition("Changed", "Windows.Foundation.EventHandler<T0>")),
         )
         val iWidget = WinRtTypeDefinition(
