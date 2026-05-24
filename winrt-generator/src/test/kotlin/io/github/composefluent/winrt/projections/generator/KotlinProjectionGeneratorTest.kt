@@ -560,6 +560,48 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun expect_actual_interface_slice_emits_row_id_only_property_accessors() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Title",
+                                    typeName = "String",
+                                    getterMethodRowId = 6,
+                                    setterMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByPath = KotlinProjectionGenerator(
+            generationLayout = KotlinProjectionGenerationLayout.ExpectActualJvm,
+        ).generate(model).associateBy(KotlinProjectionFile::relativePath)
+
+        val common = filesByPath.getValue("commonMain/kotlin/sample/foundation/IWidget.kt").contents
+        val jvm = filesByPath.getValue("jvmMain/kotlin/sample/foundation/IWidget.kt").contents
+        assertTrue(common, common.contains("public var title: String"))
+        assertTrue(common, common.contains("const val TITLE_GETTER_SLOT: Int = 6"))
+        assertTrue(common, common.contains("const val TITLE_SETTER_SLOT: Int = 7"))
+        assertTrue(jvm, jvm.contains("override var title: String"))
+        assertTrue(jvm, jvm.contains("IWidget.Metadata.TITLE_GETTER_SLOT"))
+        assertTrue(jvm, jvm.contains("IWidget.Metadata.TITLE_SETTER_SLOT"))
+        assertTrue(jvm, jvm.contains("WinRtProjectionIntrinsic.getString(") || jvm.contains("JvmAbi.invoke_"))
+        assertFalse(jvm, jvm.contains("ComVtableInvoker"))
+    }
+
+    @Test
     fun expect_actual_interface_slice_emits_jvm_projected_interface_abi_calls() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

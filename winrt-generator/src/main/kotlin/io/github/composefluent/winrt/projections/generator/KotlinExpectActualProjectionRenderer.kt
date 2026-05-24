@@ -220,7 +220,7 @@ internal class KotlinExpectActualProjectionRenderer(
         val interfaceProperties = interfaceTypes.flatMap { interfaceType ->
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
-                .filter { it.getterMethodName != null }
+                .filter { it.hasNativeProjectionGetterAccessor() }
                 .map { property ->
                     property.name.replaceFirstChar(Char::lowercase) to propertyCoverage(interfaceType.qualifiedName, property, plan.typesByQualifiedName)
                 }
@@ -235,7 +235,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .all { method -> interfaceMethods[projectedMethodSignatureKey(method)] == methodCoverage(method) }
         val classPropertiesCovered = plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
-            .filter { it.getterMethodName != null }
+            .filter { it.hasNativeProjectionGetterAccessor() }
             .all { property ->
                 interfaceProperties[property.name.replaceFirstChar(Char::lowercase)] ==
                     propertyCoverage(plan.type.qualifiedName, property, plan.typesByQualifiedName)
@@ -268,7 +268,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 }
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
-                .filter { it.getterMethodName != null }
+                .filter { it.hasNativeProjectionGetterAccessor() }
                 .forEach { property ->
                     val key = property.name.replaceFirstChar(Char::lowercase)
                     val coverage = propertyCoverage(interfaceType.qualifiedName, property, typesByQualifiedName)
@@ -352,7 +352,7 @@ internal class KotlinExpectActualProjectionRenderer(
             .forEach { method -> builder.addFunction(baseRenderer.renderInterfaceMethod(method)) }
         plan.type.properties
             .filterNot(WinRtPropertyDefinition::isStatic)
-            .filter { it.getterMethodName != null }
+            .filter { it.hasNativeProjectionGetterAccessor() }
             .forEach { property -> builder.addProperty(baseRenderer.renderInterfaceProperty(plan.type.qualifiedName, property, plan.typesByQualifiedName)) }
         plan.type.events.filterNot(WinRtEventDefinition::isStatic).forEach { event ->
             builder.addProperty(baseRenderer.renderEventProperty(event, eventInvokeDescriptor = null, abstract = true))
@@ -512,7 +512,7 @@ internal class KotlinExpectActualProjectionRenderer(
                 }
             interfaceType.properties
                 .filterNot(WinRtPropertyDefinition::isStatic)
-                .filter { it.getterMethodName != null }
+                .filter { it.hasNativeProjectionGetterAccessor() }
                 .forEach { property ->
                     val propertyName = property.name.replaceFirstChar(Char::lowercase)
                     if (emittedProperties.add(propertyName)) {

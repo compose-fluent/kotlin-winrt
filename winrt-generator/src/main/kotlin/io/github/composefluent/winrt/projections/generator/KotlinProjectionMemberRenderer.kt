@@ -1506,10 +1506,10 @@ internal fun KotlinProjectionRenderer.renderRequiredInterfaceForwardMembers(
                         ?: RequiredForwardProperty(
                             propertyName = propertyName,
                             propertyTypeName = propertyTypeName,
-                            getter = substitutedProperty.takeIf { it.getterMethodName != null }?.let {
+                            getter = substitutedProperty.takeIf { it.hasNativeProjectionGetterAccessor() }?.let {
                                 RequiredForwardPropertyAccessor(requiredInterface.interfaceName, interfaceType, it)
                             },
-                            setter = substitutedProperty.takeIf { !it.isReadOnly && it.setterMethodName != null }?.let {
+                            setter = substitutedProperty.takeIf { !it.isReadOnly && it.hasNativeProjectionSetterAccessor() }?.let {
                                 RequiredForwardPropertyAccessor(requiredInterface.interfaceName, interfaceType, it)
                             },
                         )
@@ -1588,10 +1588,10 @@ private data class RequiredForwardProperty(
             "Cannot merge required interface property '$propertyName' with incompatible types: $propertyTypeName vs $projectedTypeName"
         }
         return copy(
-            getter = getter ?: property.takeIf { it.getterMethodName != null }?.let {
+            getter = getter ?: property.takeIf { it.hasNativeProjectionGetterAccessor() }?.let {
                 RequiredForwardPropertyAccessor(ownerInterfaceName, slotInterfaceType, it)
             },
-            setter = setter ?: property.takeIf { !it.isReadOnly && it.setterMethodName != null }?.let {
+            setter = setter ?: property.takeIf { !it.isReadOnly && it.hasNativeProjectionSetterAccessor() }?.let {
                 RequiredForwardPropertyAccessor(ownerInterfaceName, slotInterfaceType, it)
             },
         )

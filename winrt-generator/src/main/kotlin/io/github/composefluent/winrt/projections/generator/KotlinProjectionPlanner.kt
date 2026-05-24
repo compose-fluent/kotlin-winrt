@@ -395,7 +395,7 @@ class KotlinProjectionPlanner(
             }
             type.properties.filterNot { it.isStatic }.forEach { property ->
                 val propertyTypeName = property.projectedPropertyTypeName(type.qualifiedName, typesByQualifiedName)
-                if (property.getterMethodName != null) {
+                if (property.hasNativeProjectionGetterAccessor()) {
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
@@ -404,13 +404,13 @@ class KotlinProjectionPlanner(
                         parameterBindings = emptyList(),
                         suppressHResultCheckResolver = { interfaceType ->
                             interfaceType.properties
-                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null }
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionGetterAccessor() }
                                 ?.let(semanticHelpers::isNoException)
                                 ?: semanticHelpers.isNoException(property)
                         },
                         signatureMatcher = { interfaceType ->
                             interfaceType.properties.any {
-                                it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null
+                                it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionGetterAccessor()
                             }
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
@@ -418,7 +418,7 @@ class KotlinProjectionPlanner(
                         },
                     )?.let(::add)
                 }
-                if (property.setterMethodName != null) {
+                if (property.hasNativeProjectionSetterAccessor()) {
                     resolveInstanceMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
@@ -432,13 +432,13 @@ class KotlinProjectionPlanner(
                         ),
                         suppressHResultCheckResolver = { interfaceType ->
                             interfaceType.properties
-                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null }
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionSetterAccessor() }
                                 ?.let(semanticHelpers::isNoException)
                                 ?: semanticHelpers.isNoException(property)
                         },
                         signatureMatcher = { interfaceType ->
                             interfaceType.properties.any {
-                                it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null
+                                it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionSetterAccessor()
                             }
                         },
                         ownerCachePropertyNameResolver = { ownerInterface, slotInterface ->
@@ -560,7 +560,7 @@ class KotlinProjectionPlanner(
                 staticInterface.properties.map { property -> staticInterface to property.copy(isStatic = true) }
             }.forEach { (staticInterface, property) ->
                 val propertyTypeName = property.projectedPropertyTypeName(staticInterface.qualifiedName, typesByQualifiedName)
-                if (property.getterMethodName != null) {
+                if (property.hasNativeProjectionGetterAccessor()) {
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
@@ -570,7 +570,7 @@ class KotlinProjectionPlanner(
                         parameterBindings = emptyList(),
                         suppressHResultCheckResolver = { interfaceType ->
                             interfaceType.properties
-                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.getterMethodName != null }
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionGetterAccessor() }
                                 ?.let(semanticHelpers::isNoException)
                                 ?: semanticHelpers.isNoException(property)
                         },
@@ -579,7 +579,7 @@ class KotlinProjectionPlanner(
                         },
                     )?.let(::add)
                 }
-                if (property.setterMethodName != null) {
+                if (property.hasNativeProjectionSetterAccessor()) {
                     resolveStaticMemberBinding(
                         candidateInterfaces = candidateInterfaces,
                         typesByQualifiedName = typesByQualifiedName,
@@ -594,7 +594,7 @@ class KotlinProjectionPlanner(
                         ),
                         suppressHResultCheckResolver = { interfaceType ->
                             interfaceType.properties
-                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.setterMethodName != null }
+                                .firstOrNull { it.projectionSignatureKey() == property.projectionSignatureKey() && it.hasNativeProjectionSetterAccessor() }
                                 ?.let(semanticHelpers::isNoException)
                                 ?: semanticHelpers.isNoException(property)
                         },
