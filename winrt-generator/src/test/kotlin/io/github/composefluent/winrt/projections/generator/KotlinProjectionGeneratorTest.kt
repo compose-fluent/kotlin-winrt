@@ -125,6 +125,26 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_mode_vtable_invocation_fails_closed_without_descriptor_or_direct_overload() {
+        val error = runCatching {
+            KotlinProjectionRenderer(useProjectionIntrinsics = true).renderComVtableInvocation(
+                invokeTargetExpression = "nativeObject",
+                slotExpression = CodeBlock.of("6"),
+                abiArguments = listOf(
+                    KotlinProjectionComArgument(
+                        expression = CodeBlock.of("0.toByte()"),
+                        kind = KotlinProjectionComArgumentKind.Int8,
+                    ),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error!!.message.orEmpty().contains("No descriptor intrinsic or direct vtable invocation overload"))
+        assertTrue(error.message.orEmpty().contains("[Int8]"))
+    }
+
+    @Test
     fun generator_emits_projection_registrar_compiler_input() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
