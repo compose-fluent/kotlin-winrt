@@ -49,6 +49,56 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     private val winRtObjectMarshallerType = ClassName("io.github.composefluent.winrt.runtime", "WinRtObjectMarshaller")
     private val winRtReadOnlyListProjectionType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReadOnlyListProjection")
     private val winRtReferenceValueAdaptersType = ClassName("io.github.composefluent.winrt.runtime", "WinRtReferenceValueAdapters")
+    private val enumIntegralAbiDescriptors = mapOf(
+        WinRtIntegralType.Int8 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Byte::class.asClassName(),
+            abiKindName = "Int8",
+            writeFunctionName = "writeInt8",
+        ),
+        WinRtIntegralType.UInt8 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Byte::class.asClassName(),
+            abiKindName = "Int8",
+            rawCarrierConversionSuffix = ".toUByte()",
+            writeFunctionName = "writeInt8",
+            abiWriteConversionSuffix = ".toByte()",
+        ),
+        WinRtIntegralType.Int16 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Short::class.asClassName(),
+            abiKindName = "Int16",
+            writeFunctionName = "writeInt16",
+        ),
+        WinRtIntegralType.UInt16 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Short::class.asClassName(),
+            abiKindName = "Int16",
+            rawCarrierConversionSuffix = ".toUShort()",
+            writeFunctionName = "writeInt16",
+            abiWriteConversionSuffix = ".toShort()",
+        ),
+        WinRtIntegralType.Int32 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Int::class.asClassName(),
+            abiKindName = "Int32",
+            writeFunctionName = "writeInt32",
+        ),
+        WinRtIntegralType.UInt32 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Int::class.asClassName(),
+            abiKindName = "Int32",
+            rawCarrierConversionSuffix = ".toUInt()",
+            writeFunctionName = "writeInt32",
+            abiWriteConversionSuffix = ".toInt()",
+        ),
+        WinRtIntegralType.Int64 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Long::class.asClassName(),
+            abiKindName = "Int64",
+            writeFunctionName = "writeInt64",
+        ),
+        WinRtIntegralType.UInt64 to AuthoringEnumIntegralAbiDescriptor(
+            carrierTypeName = Long::class.asClassName(),
+            abiKindName = "Int64",
+            rawCarrierConversionSuffix = ".toULong()",
+            writeFunctionName = "writeInt64",
+            abiWriteConversionSuffix = ".toLong()",
+        ),
+    )
 
     fun renderTo(
         candidates: List<KotlinWinRtAuthoredTypeCandidate>,
@@ -318,16 +368,13 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     }
 
     private fun renderEnumRawArgument(rawArg: CodeBlock, type: WinRtTypeDefinition): CodeBlock =
-        when (type.enumUnderlyingType) {
-            WinRtIntegralType.Int8 -> CodeBlock.of("%L as %T", rawArg, Byte::class.asClassName())
-            WinRtIntegralType.UInt8 -> CodeBlock.of("(%L as %T).toUByte()", rawArg, Byte::class.asClassName())
-            WinRtIntegralType.Int16 -> CodeBlock.of("%L as %T", rawArg, Short::class.asClassName())
-            WinRtIntegralType.UInt16 -> CodeBlock.of("(%L as %T).toUShort()", rawArg, Short::class.asClassName())
-            WinRtIntegralType.Int64 -> CodeBlock.of("%L as %T", rawArg, Long::class.asClassName())
-            WinRtIntegralType.UInt64 -> CodeBlock.of("(%L as %T).toULong()", rawArg, Long::class.asClassName())
-            WinRtIntegralType.Int32,
-            WinRtIntegralType.UInt32,
-            null -> CodeBlock.of("%L as %T", rawArg, Int::class.asClassName())
+        enumIntegralAbiDescriptor(type).let { descriptor ->
+            val carrier = CodeBlock.of("%L as %T", rawArg, descriptor.carrierTypeName)
+            if (descriptor.rawCarrierConversionSuffix.isEmpty()) {
+                carrier
+            } else {
+                CodeBlock.of("(%L)%L", carrier, descriptor.rawCarrierConversionSuffix)
+            }
         }
 
     private fun renderFundamentalParameterProjection(
@@ -417,17 +464,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
 
     private fun enumAbiKindName(type: WinRtTypeDefinition): String =
-        when (type.enumUnderlyingType) {
-            WinRtIntegralType.Int8,
-            WinRtIntegralType.UInt8 -> "Int8"
-            WinRtIntegralType.Int16,
-            WinRtIntegralType.UInt16 -> "Int16"
-            WinRtIntegralType.Int64,
-            WinRtIntegralType.UInt64 -> "Int64"
-            WinRtIntegralType.Int32,
-            WinRtIntegralType.UInt32,
-            null -> "Int32"
-        }
+        enumIntegralAbiDescriptor(type).abiKindName
 
     private fun renderReturnProjection(
         method: WinRtMethodDefinition,
@@ -591,18 +628,14 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         outExpression: CodeBlock,
         valueExpression: String,
     ): CodeBlock {
+        val descriptor = enumIntegralAbiDescriptor(type)
         val abiValue = CodeBlock.of("%T.Metadata.toAbi(%L as %T)", projectionClassName(typeName), valueExpression, projectionClassName(typeName))
-        return when (type.enumUnderlyingType) {
-            WinRtIntegralType.Int8 -> CodeBlock.of("%T.writeInt8(%L, %L)", platformAbiType, outExpression, abiValue)
-            WinRtIntegralType.UInt8 -> CodeBlock.of("%T.writeInt8(%L, %L.toByte())", platformAbiType, outExpression, abiValue)
-            WinRtIntegralType.Int16 -> CodeBlock.of("%T.writeInt16(%L, %L)", platformAbiType, outExpression, abiValue)
-            WinRtIntegralType.UInt16 -> CodeBlock.of("%T.writeInt16(%L, %L.toShort())", platformAbiType, outExpression, abiValue)
-            WinRtIntegralType.Int64 -> CodeBlock.of("%T.writeInt64(%L, %L)", platformAbiType, outExpression, abiValue)
-            WinRtIntegralType.UInt64 -> CodeBlock.of("%T.writeInt64(%L, %L.toLong())", platformAbiType, outExpression, abiValue)
-            WinRtIntegralType.Int32,
-            WinRtIntegralType.UInt32,
-            null -> CodeBlock.of("%T.writeInt32(%L, %L)", platformAbiType, outExpression, abiValue)
+        val writeValue = if (descriptor.abiWriteConversionSuffix.isEmpty()) {
+            abiValue
+        } else {
+            CodeBlock.of("%L%L", abiValue, descriptor.abiWriteConversionSuffix)
         }
+        return CodeBlock.of("%T.%L(%L, %L)", platformAbiType, descriptor.writeFunctionName, outExpression, writeValue)
     }
 
     private fun isVoidReturn(method: WinRtMethodDefinition): Boolean =
@@ -613,6 +646,17 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
 
     private fun detailsObjectName(candidate: KotlinWinRtAuthoredTypeCandidate): String =
         "WinRT_${candidate.className.replace('$', '_')}_TypeDetails"
+
+    private fun enumIntegralAbiDescriptor(type: WinRtTypeDefinition): AuthoringEnumIntegralAbiDescriptor =
+        enumIntegralAbiDescriptors.getValue(type.enumUnderlyingType ?: WinRtIntegralType.Int32)
+
+    private data class AuthoringEnumIntegralAbiDescriptor(
+        val carrierTypeName: ClassName,
+        val abiKindName: String,
+        val rawCarrierConversionSuffix: String = "",
+        val writeFunctionName: String,
+        val abiWriteConversionSuffix: String = "",
+    )
 
     private fun sourceClassName(candidate: KotlinWinRtAuthoredTypeCandidate): ClassName {
         val names = candidate.className.split('$').filter(String::isNotBlank)

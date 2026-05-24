@@ -3,6 +3,8 @@ package io.github.composefluent.winrt.gradle
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeDefinition
 import io.github.composefluent.winrt.metadata.WinRtCustomAttributeValue
+import io.github.composefluent.winrt.metadata.WinRtEnumMemberDefinition
+import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMetadataModel
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
@@ -316,6 +318,82 @@ class KotlinWinRtAuthoringSourceScannerTest {
         assertTrue(generated.contains("Char).code.toShort()"))
         assertTrue(generated.contains("(__result as UInt).toInt()"))
         assertTrue(generated.contains("PlatformAbi.writeFloat("))
+    }
+
+    @Test
+    fun renders_uint32_flags_enum_override_parameters_and_returns_through_unsigned_abi_carrier() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-enum-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalFlags",
+            sourceTypeName = "sample.LocalFlags",
+            winRtBaseClassName = "Sample.FlagsBase",
+            winRtInterfaceNames = listOf("Sample.IFlagsOverrides"),
+            overridableInterfaceNames = listOf("Sample.IFlagsOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "WidgetFlags",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.UInt32,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("None", 0u),
+                                WinRtEnumMemberDefinition("Enabled", 1u),
+                            ),
+                            customAttributes = listOf(WinRtCustomAttributeDefinition("System.FlagsAttribute")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "FlagsBase",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    interfaceName = "Sample.IFlagsOverrides",
+                                    isOverridable = true,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IFlagsOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("99999999-1111-2222-3333-444444444445"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetFlags",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("flags", "Sample.WidgetFlags")),
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "GetFlags",
+                                    returnTypeName = "Sample.WidgetFlags",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalFlags_TypeDetails.kt").readText()
+        assertTrue(generated, generated.contains("ComMethodSignature.of(ComAbiValueKind.Int32)"))
+        assertTrue(generated, generated.contains("val __arg0 = WidgetFlags.Metadata.fromAbi((rawArgs[0] as Int).toUInt())"))
+        assertTrue(generated, generated.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress,"))
+        assertTrue(generated, generated.contains("WidgetFlags.Metadata.toAbi(__result"))
+        assertTrue(generated, generated.contains("as WidgetFlags).toInt()"))
+        assertTrue(generated, !generated.contains("WidgetFlags.Metadata.fromAbi(rawArgs[0] as Int)"))
     }
 
     @Test
