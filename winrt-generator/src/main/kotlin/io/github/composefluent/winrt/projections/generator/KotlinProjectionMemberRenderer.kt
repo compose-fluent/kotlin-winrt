@@ -832,6 +832,7 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
     includeStruct: Boolean = false,
 ): DescriptorIntrinsicArgument? {
     val binding = parameter.typeBinding
+    descriptorCollectionIntrinsicArgument(parameter)?.let { return it }
     val shape = if (includeStruct) {
         descriptorStructCapableArgumentShape(binding)
     } else {
@@ -877,6 +878,38 @@ internal fun KotlinProjectionRenderer.descriptorIntrinsicArgument(
             expressions = listOf(CodeBlock.of("%L", parameter.name)),
         )
     }
+}
+
+private fun KotlinProjectionRenderer.descriptorCollectionIntrinsicArgument(
+    parameter: KotlinProjectionAbiParameterBinding,
+): DescriptorIntrinsicArgument? {
+    val marshaler = when (parameter.typeBinding.kind) {
+        KotlinProjectionAbiValueKind.MappedBindableIterable,
+        KotlinProjectionAbiValueKind.MappedBindableVector,
+        KotlinProjectionAbiValueKind.MappedBindableVectorView -> bindableCollectionParameterMarshaler(parameter)
+        KotlinProjectionAbiValueKind.MappedIterable,
+        KotlinProjectionAbiValueKind.MappedVector,
+        KotlinProjectionAbiValueKind.MappedMap,
+        KotlinProjectionAbiValueKind.MappedVectorView,
+        KotlinProjectionAbiValueKind.MappedMapView -> mappedCollectionParameterMarshaler(parameter)
+        else -> return null
+    } ?: return null
+    if (
+        marshaler.abiArgumentKind != KotlinProjectionComArgumentKind.Pointer ||
+        marshaler.extraAbiArgumentExpressions.isNotEmpty() ||
+        marshaler.postCallStatements.isNotEmpty() ||
+        marshaler.finallyStatements.isNotEmpty() ||
+        marshaler.resultAllocation != null ||
+        marshaler.resultLocalDeclarations != null ||
+        marshaler.readbackStatement != null
+    ) {
+        return null
+    }
+    return DescriptorIntrinsicArgument(
+        shape = "RawAddress",
+        expressions = listOf(marshaler.abiArgumentExpression),
+        scopeOpeners = marshaler.scopeOpeners,
+    )
 }
 
 internal fun CodeBlock.Builder.openDescriptorIntrinsicArgumentScopes(
