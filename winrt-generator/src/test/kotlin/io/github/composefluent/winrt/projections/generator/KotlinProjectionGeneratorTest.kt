@@ -9609,6 +9609,35 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_reads_async_runtime_collection_result_from_abi_pointer_once() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<Windows.Foundation.Collections.IVectorView<String>>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.MappedVectorView,
+                    typeName = "Windows.Foundation.Collections.IVectorView<String>",
+                    resolvedTypeName = "Windows.Foundation.Collections.IVectorView",
+                    typeArguments = listOf(
+                        KotlinProjectionAbiTypeBinding(
+                            kind = KotlinProjectionAbiValueKind.String,
+                            typeName = "String",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("val __collectionPointer = io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)"))
+        assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection.fromAbi(__collectionPointer, io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters.string)"))
+        assertFalse(expression, expression.contains("val __collectionRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
+        assertFalse(expression, expression.contains("fromRawComPtr(__collectionRef.pointer)"))
+    }
+
+    @Test
     fun generator_routes_async_operation_calls_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

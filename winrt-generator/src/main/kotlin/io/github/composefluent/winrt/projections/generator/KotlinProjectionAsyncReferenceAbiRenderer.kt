@@ -559,6 +559,7 @@ internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpress
     resultBinding: KotlinProjectionAbiTypeBinding,
 ): CodeBlock? {
     readOnlyCollectionBindingForReturn(resultBinding)?.let { binding ->
+        asyncRuntimeReadOnlyCollectionResultReadback(binding)?.let { return it }
         return CodeBlock.of(
             "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -568,6 +569,7 @@ internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpress
         )
     }
     mutableCollectionBindingForReturn(resultBinding)?.let { binding ->
+        asyncRuntimeMutableCollectionResultReadback(binding)?.let { return it }
         return CodeBlock.of(
             "run {\nval __collectionRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\n%L}\n",
             IUNKNOWN_REFERENCE_CLASS_NAME,
@@ -578,6 +580,72 @@ internal fun KotlinProjectionRenderer.asyncMappedCollectionResultReadbackExpress
     }
     return null
 }
+
+private fun KotlinProjectionRenderer.asyncRuntimeReadOnlyCollectionResultReadback(
+    binding: KotlinProjectionReadOnlyCollectionBinding,
+): CodeBlock? =
+    when (binding.kind) {
+        KotlinProjectionReadOnlyCollectionKind.Iterable -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of(
+                "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L) ?: error(%S)\n}",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_ITERABLE_PROJECTION_CLASS_NAME,
+                elementAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+        KotlinProjectionReadOnlyCollectionKind.VectorView -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of(
+                "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L) ?: error(%S)\n}",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_READ_ONLY_LIST_PROJECTION_CLASS_NAME,
+                elementAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+        KotlinProjectionReadOnlyCollectionKind.MapView -> {
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            CodeBlock.of(
+                "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L, %L) ?: error(%S)\n}",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_READ_ONLY_DICTIONARY_PROJECTION_CLASS_NAME,
+                keyAdapter,
+                valueAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+    }
+
+private fun KotlinProjectionRenderer.asyncRuntimeMutableCollectionResultReadback(
+    binding: KotlinProjectionMutableCollectionBinding,
+): CodeBlock? =
+    when (binding.kind) {
+        KotlinProjectionMutableCollectionKind.Vector -> {
+            val elementAdapter = collectionReferenceAdapterCode(requireNotNull(binding.elementBinding)) ?: return null
+            CodeBlock.of(
+                "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L) ?: error(%S)\n}",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_LIST_PROJECTION_CLASS_NAME,
+                elementAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+        KotlinProjectionMutableCollectionKind.Map -> {
+            val keyAdapter = collectionReferenceAdapterCode(requireNotNull(binding.keyBinding)) ?: return null
+            val valueAdapter = collectionReferenceAdapterCode(requireNotNull(binding.valueBinding)) ?: return null
+            CodeBlock.of(
+                "run {\nval __collectionPointer = %T.readPointer(__operationResultOut)\n%T.fromAbi(__collectionPointer, %L, %L) ?: error(%S)\n}",
+                PLATFORM_ABI_CLASS_NAME,
+                WINRT_DICTIONARY_PROJECTION_CLASS_NAME,
+                keyAdapter,
+                valueAdapter,
+                "WINRT_E_NULL_ABI_RETURN",
+            )
+        }
+    }
 
 internal fun KotlinProjectionRenderer.asyncEnumResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
