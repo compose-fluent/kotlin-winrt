@@ -62,7 +62,7 @@ internal class KotlinExpectActualProjectionRenderer(
             plan.type.baseTypeName?.let { !isWinRtObjectTypeName(it) } == true ||
             plan.type.methods.any(WinRtMethodDefinition::isStatic) ||
             plan.type.properties.any(WinRtPropertyDefinition::isStatic) ||
-            plan.type.properties.any { it.getterMethodName == null } ||
+            plan.type.properties.any { !it.hasNativeProjectionGetterAccessor() } ||
             plan.type.events.any(WinRtEventDefinition::isStatic) ||
             plan.staticInterfaceNames.isNotEmpty() ||
             plan.activatableFactoryInterfaceName != null ||
