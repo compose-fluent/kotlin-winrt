@@ -878,8 +878,10 @@ object WinRtReadOnlyDictionaryProjection {
                         ) { rawArgs ->
                             val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
                             val resultOut = rawArgs[1] as RawAddress
-                            val value = managed[key]
-                                ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            if (!managed.containsKey(key)) {
+                                return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            }
+                            val value = managed.getValue(key)
                             resultOut.writeManagedValue(value, valueAdapter)
                             KnownHResults.S_OK.value
                         },
@@ -1033,8 +1035,10 @@ object WinRtDictionaryProjection {
                         ) { rawArgs ->
                             val key = decodeBorrowedValue(rawArgs[0] as RawAddress, keyAdapter)
                             val resultOut = rawArgs[1] as RawAddress
-                            val value = managed[key]
-                                ?: return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            if (!managed.containsKey(key)) {
+                                return@WinRtInspectableMethodDefinition KnownHResults.E_BOUNDS.value
+                            }
+                            val value = managed.getValue(key)
                             resultOut.writeManagedValue(value, valueAdapter)
                             KnownHResults.S_OK.value
                         },
