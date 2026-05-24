@@ -100,7 +100,7 @@ class ValueBoxingTest {
     }
 
     @Test
-    fun boxed_ccw_inspectable_get_iids_matches_cswinrt_order() {
+    fun boxed_ccw_inspectable_get_iids_matches_reference_order() {
         ComWrappersSupport.clearRegistriesForTests()
 
         val scalarPointer = ComWrappersSupport.createCCWForObject(123, IID.IInspectable).useAndGetRef()
@@ -148,7 +148,7 @@ class ValueBoxingTest {
     }
 
     @Test
-    fun value_reference_projection_hosts_get_iids_matches_cswinrt_order() {
+    fun value_reference_projection_hosts_get_iids_matches_reference_order() {
         ComWrappersSupport.clearRegistriesForTests()
 
         val referencePointer = WinRtReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
@@ -193,7 +193,7 @@ class ValueBoxingTest {
     }
 
     @Test
-    fun reference_projection_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+    fun reference_projection_hosts_expose_reference_ccw_suffix_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
 
         val pointer = WinRtReferenceProjection.fromManaged("projection-runtime", IID.NullableString)
@@ -219,7 +219,7 @@ class ValueBoxingTest {
     }
 
     @Test
-    fun property_value_projection_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+    fun property_value_projection_hosts_expose_reference_ccw_suffix_interfaces() {
         ComWrappersSupport.clearRegistriesForTests()
 
         val pointer = WinRtPropertyValueProjection.fromManaged("projection-runtime")

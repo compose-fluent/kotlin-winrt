@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 
 class WinRtTypeSignatureTest {
     @Test
-    fun builds_primitive_signatures_using_cswinrt_tokens() {
+    fun builds_primitive_signatures_using_reference_tokens() {
         assertEquals("i1", WinRtTypeSignature.int8().render())
         assertEquals("u1", WinRtTypeSignature.uint8().render())
         assertEquals("i2", WinRtTypeSignature.int16().render())

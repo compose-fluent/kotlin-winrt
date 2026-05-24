@@ -242,7 +242,7 @@ class WinRtAsyncInteropTest {
     }
 
     @Test
-    fun async_info_factory_exposes_cswinrt_ccw_suffix_interfaces() {
+    fun async_info_factory_exposes_reference_ccw_suffix_interfaces() {
         AsyncInfo.completedAction().use { action ->
             listOf(
                 IID.IStringable,

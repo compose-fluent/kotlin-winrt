@@ -130,7 +130,7 @@ class WinRtCollectionProjectionTest {
     }
 
     @Test
-    fun vector_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+    fun vector_hosts_expose_reference_ccw_suffix_interfaces() {
         val allocated = mutableListOf<AutoCloseable>()
         val adapter = labelAdapter(allocated)
         val abi = WinRtListProjection.fromManaged(mutableListOf("one"), adapter)

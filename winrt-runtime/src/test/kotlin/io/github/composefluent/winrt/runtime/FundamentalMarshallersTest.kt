@@ -69,7 +69,7 @@ class FundamentalMarshallersTest {
     }
 
     @Test
-    fun string_marshaler_matches_cswinrt_empty_and_non_empty_rules_on_windows() {
+    fun string_marshaler_matches_reference_empty_and_non_empty_rules_on_windows() {
         assumeTrue(PlatformRuntime.isWindows)
 
         assertNull(StringMarshaller.createMarshaler(null))

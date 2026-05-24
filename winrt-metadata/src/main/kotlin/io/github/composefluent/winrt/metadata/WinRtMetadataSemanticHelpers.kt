@@ -567,8 +567,8 @@ data class WinRtAuxiliaryTableSemanticBoundaryDescriptor(
 )
 
 data class WinRtMetadataParityAuditEntry(
-    val cswinrtArea: String,
-    val cswinrtEntryPoint: String,
+    val referenceArea: String,
+    val referenceEntryPoint: String,
     val kotlinOwner: String,
     val closed: Boolean,
 )
@@ -2015,7 +2015,7 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             }
             .sortedBy(WinRtAuxiliaryTableSemanticBoundaryDescriptor::tableName)
 
-    fun cswinrtMetadataParityAudit(): List<WinRtMetadataParityAuditEntry> =
+    fun referenceMetadataParityAudit(): List<WinRtMetadataParityAuditEntry> =
         listOf(
             WinRtMetadataParityAuditEntry("helpers.h", "get_exclusive_to_type", "WinRtMetadataSemanticHelpers.getExclusiveToType", true),
             WinRtMetadataParityAuditEntry("helpers.h", "is_ptype", "WinRtMetadataSemanticHelpers.isPType", true),

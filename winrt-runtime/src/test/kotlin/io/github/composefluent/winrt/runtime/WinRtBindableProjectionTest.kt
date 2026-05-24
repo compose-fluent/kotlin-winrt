@@ -51,7 +51,7 @@ class WinRtBindableProjectionTest {
     }
 
     @Test
-    fun bindable_vector_hosts_expose_cswinrt_ccw_suffix_interfaces() {
+    fun bindable_vector_hosts_expose_reference_ccw_suffix_interfaces() {
         val abi = WinRtBindableVectorProjection.fromManaged(mutableListOf<Any?>("one"))
         try {
             ComObjectReference(
