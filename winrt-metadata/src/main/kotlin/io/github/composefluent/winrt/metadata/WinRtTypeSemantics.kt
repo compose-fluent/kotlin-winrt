@@ -85,7 +85,7 @@ val WinRtFundamentalType.blittableAbiSizeBytes: Int?
 val WinRtFundamentalType.blittableAbiAlignmentBytes: Int?
     get() = blittableAbiSizeBytes
 
-fun WinRtFundamentalType.toCsWinRtAbiTypeName(): String =
+fun WinRtFundamentalType.toNativeAbiTypeName(): String =
     when (this) {
         WinRtFundamentalType.String -> "IntPtr"
         WinRtFundamentalType.Boolean -> "byte"
