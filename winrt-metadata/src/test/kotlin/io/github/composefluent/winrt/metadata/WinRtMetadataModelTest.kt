@@ -44,6 +44,34 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun interface_signature_new_properties_use_accessor_identity() {
+        val type = WinRtTypeDefinition(
+            namespace = "Sample.Foundation",
+            name = "IWidget2",
+            kind = WinRtTypeKind.Interface,
+            properties = listOf(
+                WinRtPropertyDefinition(
+                    name = "Title",
+                    typeName = "String",
+                    getterMethodRowId = 6,
+                    setterMethodRowId = 7,
+                ),
+                WinRtPropertyDefinition(
+                    name = "Subtitle",
+                    typeName = "String",
+                    setterMethodRowId = 8,
+                ),
+            ),
+        )
+
+        val descriptor = WinRtMetadataModel(
+            namespaces = listOf(WinRtNamespace("Sample.Foundation", types = listOf(type))),
+        ).semanticHelpers().interfaceMemberSignatureSetDescriptor(type)
+
+        assertEquals(listOf("Subtitle"), descriptor.newPropertyNames)
+    }
+
+    @Test
     fun normalizes_namespace_and_type_order_deterministically() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
