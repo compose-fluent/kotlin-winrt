@@ -9548,7 +9548,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(interfaceContents.contains("__operationResultString.use { value -> value.toKString() }"))
         assertTrue(interfaceContents.contains("fun fetchStreamAsync(): WinRtAsyncOperationReference<IStream>"))
         assertTrue(interfaceContents.contains("WinRtTypeSignature.guid(IStream.Metadata.IID)"))
-        assertTrue(interfaceContents.contains("IStream.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(PlatformAbi.readPointer(__operationResultOut))))"))
+        assertTrue(interfaceContents.contains("val __operationResultPointer = PlatformAbi.readPointer(__operationResultOut)"))
+        assertTrue(interfaceContents.contains("if (PlatformAbi.isNull(__operationResultPointer))"))
+        assertTrue(interfaceContents.contains("error(\"WINRT_E_NULL_ABI_RETURN\")"))
+        assertTrue(interfaceContents.contains("IStream.Metadata.wrap(IUnknownReference(PlatformAbi.toRawComPtr(__operationResultPointer)))"))
         assertTrue(interfaceContents.contains("fun fetchCommandAsync(): WinRtAsyncOperationReference<WinRtCommand>"))
         assertTrue(interfaceContents.contains("WinRtSystemProjectionMarshalers.objectFromAbi(__operationResultPointer,"))
         assertTrue(interfaceContents.contains("WinRtTypeHandle(\"io.github.composefluent.winrt.runtime.WinRtCommand\""))
@@ -9658,6 +9661,51 @@ class KotlinProjectionGeneratorTest {
         assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRtObjectMarshaller.fromAbi(io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut))"))
         assertFalse(expression, expression.contains("val __operationResultRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
         assertFalse(expression, expression.contains("__operationResultRef.asInspectable()"))
+    }
+
+    @Test
+    fun generator_preserves_nullable_async_projected_interface_result() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.IWidget?>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.ProjectedInterface,
+                    typeName = "Sample.Foundation.IWidget?",
+                    resolvedTypeName = "Sample.Foundation.IWidget?",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("WinRtAsyncProjectionInterop.operation<sample.foundation.IWidget?>"))
+        assertTrue(expression, expression.contains("val __operationResultPointer = io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)"))
+        assertTrue(expression, expression.contains("if (io.github.composefluent.winrt.runtime.PlatformAbi.isNull(__operationResultPointer)) null else sample.foundation.IWidget.Metadata.wrap("))
+        assertFalse(expression, expression.contains("IWidget.Metadata.wrap(io.github.composefluent.winrt.runtime.IUnknownReference(io.github.composefluent.winrt.runtime.PlatformAbi.toRawComPtr(io.github.composefluent.winrt.runtime.PlatformAbi.readPointer(__operationResultOut)))"))
+    }
+
+    @Test
+    fun generator_fails_closed_for_null_nonnullable_async_projected_runtime_class_result() {
+        val renderer = KotlinProjectionRenderer()
+        val returnBinding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.MappedAsyncOperation,
+            typeName = "Windows.Foundation.IAsyncOperation<Sample.Foundation.WidgetResult>",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                    typeName = "Sample.Foundation.WidgetResult",
+                    resolvedTypeName = "Sample.Foundation.WidgetResult",
+                ),
+            ),
+        )
+
+        val expression = renderer.asyncReferenceExpression(returnBinding, CodeBlock.of("__pointer")).toString()
+
+        assertTrue(expression, expression.contains("if (io.github.composefluent.winrt.runtime.PlatformAbi.isNull(__operationResultPointer)) error(\"WINRT_E_NULL_ABI_RETURN\") else {"))
+        assertTrue(expression, expression.contains("val __operationResultRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
+        assertTrue(expression, expression.contains("sample.foundation.WidgetResult.Metadata.wrap(__operationInspectable)"))
     }
 
     @Test

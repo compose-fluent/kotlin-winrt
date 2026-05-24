@@ -496,26 +496,55 @@ internal fun KotlinProjectionRenderer.asyncOperationResultReadbackExpression(
         )
     KotlinProjectionAbiValueKind.ProjectedInterface ->
         resolvedReturnClassName(resultBinding)?.let { resultType ->
+            val nullReadback = asyncNullResultReadbackExpression(resultBinding, "__operationResultPointer")
             CodeBlock.of(
-                "%T.Metadata.wrap(%T(%T.toRawComPtr(%T.readPointer(__operationResultOut))))",
+                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\n%L%T.Metadata.wrap(%T(%T.toRawComPtr(__operationResultPointer)))\n}",
+                PLATFORM_ABI_CLASS_NAME,
+                nullReadback,
                 resultType,
                 IUNKNOWN_REFERENCE_CLASS_NAME,
-                PLATFORM_ABI_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
             )
         }
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
         resolvedReturnClassName(resultBinding)?.let { resultType ->
+            val nullReadback = asyncNullResultBranchExpression(resultBinding)
             CodeBlock.of(
-                "run {\nval __operationResultRef = %T(%T.toRawComPtr(%T.readPointer(__operationResultOut)))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n%T.Metadata.wrap(__operationInspectable)\n}",
-                IUNKNOWN_REFERENCE_CLASS_NAME,
+                "run {\nval __operationResultPointer = %T.readPointer(__operationResultOut)\nif (%T.isNull(__operationResultPointer)) %L else {\nval __operationResultRef = %T(%T.toRawComPtr(__operationResultPointer))\nval __operationInspectable = __operationResultRef.asInspectable()\n__operationResultRef.close()\n%T.Metadata.wrap(__operationInspectable)\n}\n}",
                 PLATFORM_ABI_CLASS_NAME,
+                PLATFORM_ABI_CLASS_NAME,
+                nullReadback,
+                IUNKNOWN_REFERENCE_CLASS_NAME,
                 PLATFORM_ABI_CLASS_NAME,
                 resultType,
             )
         }
     else -> null
-}
+    }
+
+private fun asyncNullResultBranchExpression(
+    binding: KotlinProjectionAbiTypeBinding,
+): CodeBlock =
+    if (binding.isNullableAbiReturn) {
+        CodeBlock.of("null")
+    } else {
+        CodeBlock.of("error(%S)", "WINRT_E_NULL_ABI_RETURN")
+    }
+
+private fun asyncNullResultReadbackExpression(
+    binding: KotlinProjectionAbiTypeBinding,
+    pointerName: String,
+): CodeBlock =
+    if (binding.isNullableAbiReturn) {
+        CodeBlock.of("if (%T.isNull(%L)) null else ", PLATFORM_ABI_CLASS_NAME, pointerName)
+    } else {
+        CodeBlock.of(
+            "if (%T.isNull(%L)) error(%S) else ",
+            PLATFORM_ABI_CLASS_NAME,
+            pointerName,
+            "WINRT_E_NULL_ABI_RETURN",
+        )
+    }
 
 internal fun KotlinProjectionRenderer.customObjectAsyncOperationResultReadbackExpression(
     resultBinding: KotlinProjectionAbiTypeBinding,
