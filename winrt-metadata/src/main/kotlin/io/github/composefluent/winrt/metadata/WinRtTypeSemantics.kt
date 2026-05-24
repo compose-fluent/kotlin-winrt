@@ -119,6 +119,23 @@ fun WinRtFundamentalType.toKotlinProjectionTypeName(): String =
         WinRtFundamentalType.String -> "String"
     }
 
+fun WinRtFundamentalType.toIntegralType(): WinRtIntegralType? =
+    when (this) {
+        WinRtFundamentalType.Int8 -> WinRtIntegralType.Int8
+        WinRtFundamentalType.UInt8 -> WinRtIntegralType.UInt8
+        WinRtFundamentalType.Int16 -> WinRtIntegralType.Int16
+        WinRtFundamentalType.UInt16 -> WinRtIntegralType.UInt16
+        WinRtFundamentalType.Int32 -> WinRtIntegralType.Int32
+        WinRtFundamentalType.UInt32 -> WinRtIntegralType.UInt32
+        WinRtFundamentalType.Int64 -> WinRtIntegralType.Int64
+        WinRtFundamentalType.UInt64 -> WinRtIntegralType.UInt64
+        WinRtFundamentalType.Boolean,
+        WinRtFundamentalType.Char,
+        WinRtFundamentalType.Float,
+        WinRtFundamentalType.Double,
+        WinRtFundamentalType.String -> null
+    }
+
 fun winRtTypeKindForSystemBaseTypeName(typeName: String?): WinRtTypeKind? =
     when (typeName?.trim()) {
         "System.Enum" -> WinRtTypeKind.Enum

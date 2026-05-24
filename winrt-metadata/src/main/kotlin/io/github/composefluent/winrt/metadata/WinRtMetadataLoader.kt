@@ -807,7 +807,7 @@ private class MetadataTables private constructor(
             .firstOrNull { it.second.name == "value__" }
             ?: return null
         val signature = readFieldSignature(valueField.second.signatureBlobIndex, typeDefNames, typeRefNames, typeSpecTypes)
-        return signature.typeName.toIntegralType()
+        return winRtFundamentalTypeForName(signature.typeName)?.toIntegralType()
     }
 
     private fun readEnumMembers(
@@ -2820,18 +2820,6 @@ private fun normalizeSignatureTypeName(typeName: String?): String =
 private fun normalizeSignatureTypeReferenceName(typeName: String?): String {
     val normalized = normalizeSignatureTypeName(typeName)
     return splitGenericArity(normalized).first
-}
-
-private fun String.toIntegralType(): WinRtIntegralType? = when (this) {
-    "Byte" -> WinRtIntegralType.Int8
-    "UByte" -> WinRtIntegralType.UInt8
-    "Short" -> WinRtIntegralType.Int16
-    "UShort" -> WinRtIntegralType.UInt16
-    "Int" -> WinRtIntegralType.Int32
-    "UInt" -> WinRtIntegralType.UInt32
-    "Long" -> WinRtIntegralType.Int64
-    "ULong" -> WinRtIntegralType.UInt64
-    else -> null
 }
 
 private fun ByteBuffer.byteAt(offset: Int): Byte = get(offset)

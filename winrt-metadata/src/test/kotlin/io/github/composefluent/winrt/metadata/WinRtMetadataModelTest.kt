@@ -1193,6 +1193,18 @@ class WinRtMetadataModelTest {
         aliases.forEach { (alias, projectionTypeName) ->
             assertEquals(projectionTypeName, winRtFundamentalTypeForName(alias)?.toKotlinProjectionTypeName())
         }
+
+        assertEquals(WinRtIntegralType.Int8, winRtFundamentalTypeForName("System.SByte")?.toIntegralType())
+        assertEquals(WinRtIntegralType.UInt8, winRtFundamentalTypeForName("System.Byte")?.toIntegralType())
+        assertEquals(WinRtIntegralType.Int16, winRtFundamentalTypeForName("System.Int16")?.toIntegralType())
+        assertEquals(WinRtIntegralType.UInt16, winRtFundamentalTypeForName("System.UInt16")?.toIntegralType())
+        assertEquals(WinRtIntegralType.Int32, winRtFundamentalTypeForName("System.Int32")?.toIntegralType())
+        assertEquals(WinRtIntegralType.UInt32, winRtFundamentalTypeForName("System.UInt32")?.toIntegralType())
+        assertEquals(WinRtIntegralType.Int64, winRtFundamentalTypeForName("System.Int64")?.toIntegralType())
+        assertEquals(WinRtIntegralType.UInt64, winRtFundamentalTypeForName("System.UInt64")?.toIntegralType())
+        assertEquals(null, winRtFundamentalTypeForName("System.Boolean")?.toIntegralType())
+        assertEquals(null, winRtFundamentalTypeForName("System.Char")?.toIntegralType())
+        assertEquals(null, winRtFundamentalTypeForName("System.String")?.toIntegralType())
     }
 
     @Test
