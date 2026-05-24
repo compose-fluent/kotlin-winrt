@@ -12,10 +12,10 @@ import io.github.composefluent.winrt.runtime.PlatformRuntime
 import io.github.composefluent.winrt.runtime.RawAddress
 import io.github.composefluent.winrt.runtime.WinRtPlatformApi
 import java.net.JarURLConnection
-import java.net.URLClassLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.extension
 import kotlin.io.path.isRegularFile
 
@@ -28,12 +28,17 @@ data class WinRtAuthoringHostManifest(
     val sourceDirectory: Path? = null,
 )
 
+interface WinRtAuthoringHostExports {
+    fun registerActivationFactories()
+    fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int
+}
+
 object WinRtAuthoringHostManifestLoader {
     private const val RUNTIME_ASSETS_RESOURCE_DIRECTORY = "kotlin-winrt-runtime-assets"
+    private val hostExportsByClassName = ConcurrentHashMap<String, WinRtAuthoringHostExports>()
 
     private data class HostExportEntry(
-        val hostExportsClass: String,
-        val classLoader: ClassLoader?,
+        val exports: WinRtAuthoringHostExports,
     )
 
     fun read(path: Path): WinRtAuthoringHostManifest {
@@ -67,6 +72,14 @@ object WinRtAuthoringHostManifestLoader {
                 resource.protocol.equals("jar", ignoreCase = true) -> install(readJarDirectory(resource))
             }
         }
+    }
+
+    fun registerHostExports(
+        hostExportsClass: String,
+        exports: WinRtAuthoringHostExports,
+    ) {
+        require(hostExportsClass.isNotBlank()) { "Host exports class name must not be blank." }
+        hostExportsByClassName[hostExportsClass] = exports
     }
 
     fun install(manifests: List<WinRtAuthoringHostManifest>) {
@@ -122,22 +135,11 @@ object WinRtAuthoringHostManifestLoader {
         if (!PlatformRuntime.isWindows) {
             return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
         }
-        // Bounded host-shim parity path: CsWinRT's
-        // `.cswinrt/src/Authoring/WinRT.Host.Shim/Module.cs` loads the target
-        // assembly and invokes its generated activation-factory entrypoint by
-        // reflection. Generated/native Kotlin hosts still enter the fixed
-        // `WinRTAuthoringHostExports` JNI path; do not expand this into a
-        // general projection-runtime discovery mechanism.
-        val exportsClass = Class.forName(entry.hostExportsClass, true, entry.classLoader ?: defaultHostClassLoader())
-        runCatching {
-            exportsClass.getMethod("registerActivationFactories").invoke(exportsInstance(exportsClass))
-        }
+        runCatching { entry.exports.registerActivationFactories() }
         PlatformAbi.confinedScope().use { scope ->
             HString.createReference(runtimeClassName).use { classId ->
                 val factoryOut = PlatformAbi.allocatePointerSlot(scope)
-                val hResult = exportsClass
-                    .getMethod("dllGetActivationFactoryAddress", java.lang.Long.TYPE, java.lang.Long.TYPE)
-                    .invoke(exportsInstance(exportsClass), classId.handle.value, factoryOut.value) as Int
+                val hResult = entry.exports.dllGetActivationFactory(classId.handle, factoryOut)
                 if (hResult < 0) {
                     return ActivationResult(KnownHResults.REGDB_E_CLASSNOTREG, PlatformAbi.nullPointer)
                 }
@@ -155,27 +157,14 @@ object WinRtAuthoringHostManifestLoader {
         }
     }
 
-    private fun exportsInstance(exportsClass: Class<*>): Any? =
-        runCatching { exportsClass.getField("INSTANCE").get(null) }.getOrNull()
-
     private fun WinRtAuthoringHostManifest.hostExportEntry(): HostExportEntry =
         HostExportEntry(
-            hostExportsClass = hostExportsClass,
-            classLoader = targetArtifactClassLoader(),
+            exports = hostExportsByClassName[hostExportsClass]
+                ?: error(
+                    "WinRT authoring host exports '$hostExportsClass' are not registered. " +
+                        "Initialize the generated host exports support before installing authoring manifests.",
+                ),
         )
-
-    private fun WinRtAuthoringHostManifest.targetArtifactClassLoader(): ClassLoader? {
-        val directory = sourceDirectory ?: return defaultHostClassLoader()
-        val artifactName = targetArtifact.takeIf { it.isNotBlank() } ?: return defaultHostClassLoader()
-        val artifact = directory.resolve(artifactName)
-        if (!artifact.isRegularFile()) {
-            return defaultHostClassLoader()
-        }
-        return URLClassLoader(arrayOf(artifact.toUri().toURL()), defaultHostClassLoader())
-    }
-
-    private fun defaultHostClassLoader(): ClassLoader? =
-        Thread.currentThread().contextClassLoader ?: WinRtAuthoringHostManifestLoader::class.java.classLoader
 
     private fun readJsonString(content: String, name: String): String? =
         Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
@@ -206,4 +195,8 @@ object WinRtAuthoringHostManifestLoader {
 
     private fun WinRtAuthoringHostManifest.runtimeClassNames(): List<String> =
         (activatableClasses + activatableClassTargets.keys).distinct()
+
+    internal fun clearRegisteredHostExportsForTests() {
+        hostExportsByClassName.clear()
+    }
 }

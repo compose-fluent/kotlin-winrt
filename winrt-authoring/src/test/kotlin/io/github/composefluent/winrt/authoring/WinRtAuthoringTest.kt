@@ -327,6 +327,8 @@ class WinRtAuthoringTest {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
         WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
+        WinRtAuthoringHostManifestLoader.registerHostExports(HostManifestExports::class.java.name, HostManifestExports)
 
         val directory = Files.createTempDirectory("kotlin-winrt-authoring-host-")
         Files.writeString(
@@ -361,6 +363,8 @@ class WinRtAuthoringTest {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
         WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
+        WinRtAuthoringHostManifestLoader.registerHostExports(RuntimeAssetsHostExports::class.java.name, RuntimeAssetsHostExports)
 
         val root = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-")
         val assets = root.resolve("kotlin-winrt-runtime-assets")
@@ -402,6 +406,8 @@ class WinRtAuthoringTest {
         ComWrappersSupport.clearRegistriesForTests()
         ComWrappersSupport.clearAuthoringActivationFactoryFallbacksForTests()
         WinRtAuthoring.clearActivationFactoryFallbacksForTests()
+        WinRtAuthoringHostManifestLoader.clearRegisteredHostExportsForTests()
+        WinRtAuthoringHostManifestLoader.registerHostExports(RuntimeAssetsHostExports::class.java.name, RuntimeAssetsHostExports)
 
         val jarPath = Files.createTempDirectory("kotlin-winrt-authoring-runtime-assets-").resolve("runtime-assets.jar")
         JarOutputStream(Files.newOutputStream(jarPath)).use { jar ->
@@ -630,9 +636,8 @@ class WinRtAuthoringTest {
 
     private class RuntimeAssetsHostComponent
 
-    object HostManifestExports {
-        @JvmStatic
-        fun registerActivationFactories() {
+    object HostManifestExports : WinRtAuthoringHostExports {
+        override fun registerActivationFactories() {
             val interfaceId = Guid("88888888-1111-2222-3333-444444444444")
             WinRtAuthoring.registerType<HostManifestComponent>(
                 WinRtAuthoredTypeDefinition(
@@ -653,14 +658,12 @@ class WinRtAuthoringTest {
             )
         }
 
-        @JvmStatic
-        fun dllGetActivationFactoryAddress(activatableClassId: Long, factoryOut: Long): Int =
-            WinRtAuthoringHostBridge.dllGetActivationFactory(RawAddress(activatableClassId), RawAddress(factoryOut))
+        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
+            WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)
     }
 
-    object RuntimeAssetsHostExports {
-        @JvmStatic
-        fun registerActivationFactories() {
+    object RuntimeAssetsHostExports : WinRtAuthoringHostExports {
+        override fun registerActivationFactories() {
             val interfaceId = Guid("99999999-1111-2222-3333-444444444444")
             WinRtAuthoring.registerType<RuntimeAssetsHostComponent>(
                 WinRtAuthoredTypeDefinition(
@@ -681,8 +684,7 @@ class WinRtAuthoringTest {
             )
         }
 
-        @JvmStatic
-        fun dllGetActivationFactoryAddress(activatableClassId: Long, factoryOut: Long): Int =
-            WinRtAuthoringHostBridge.dllGetActivationFactory(RawAddress(activatableClassId), RawAddress(factoryOut))
+        override fun dllGetActivationFactory(activatableClassId: RawAddress, factoryOut: RawAddress): Int =
+            WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)
     }
 }

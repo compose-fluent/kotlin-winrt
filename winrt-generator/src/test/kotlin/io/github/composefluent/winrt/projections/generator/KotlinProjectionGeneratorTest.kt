@@ -11511,8 +11511,12 @@ class KotlinProjectionGeneratorTest {
         assertTrue(serverActivationFactories.contains("IID.IActivationFactory"))
         val hostExports = filesByName.getValue("WinRTAuthoringHostExports.kt").contents
         assertTrue(hostExports.contains("object WinRTAuthoringHostExports"))
+        assertTrue(hostExports.contains("WinRtAuthoringHostExports"))
+        assertTrue(hostExports.contains("WinRtAuthoringHostManifestLoader.registerHostExports"))
+        assertTrue(hostExports.contains("\"io.github.composefluent.winrt.projections.support.WinRTAuthoringHostExports\""))
         assertTrue(hostExports.contains("WinRTAuthoringServerActivationFactories.register()"))
         assertTrue(hostExports.contains("fun dllGetActivationFactory("))
+        assertTrue(hostExports.contains("override fun dllGetActivationFactory("))
         assertTrue(hostExports.contains("registerActivationFactories()"))
         assertTrue(hostExports.contains("WinRtAuthoringHostBridge.dllGetActivationFactory(activatableClassId, factoryOut)"))
         assertTrue(hostExports.contains("@JvmStatic") || hostExports.contains("@kotlin.jvm.JvmStatic"))
