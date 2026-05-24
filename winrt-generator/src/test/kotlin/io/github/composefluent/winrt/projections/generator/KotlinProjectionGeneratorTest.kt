@@ -9281,7 +9281,7 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
-    fun generator_keeps_legacy_short_abi_argument_lists_on_generic_fallback_after_overload_shrink() {
+    fun generator_routes_short_abi_argument_lists_through_descriptor_marker() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
@@ -9379,9 +9379,11 @@ class KotlinProjectionGeneratorTest {
             assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.setOpacity(opacity)"))
             assertTrue(shapeContents, shapeContents.contains("_iShapeProjection.configure(enabled, offset, opacity)"))
         } else {
-            assertTrue(shapeContents, shapeContents.contains("invokeGenericArgs(instance = _defaultInterface.pointer"))
+            assertTrue(shapeContents, shapeContents.contains("WinRtProjectionIntrinsic.callUnit("))
             assertTrue(shapeContents, shapeContents.contains("if (enabled) 1.toByte() else"))
             assertTrue(shapeContents, shapeContents.contains("0.toByte()"))
+            assertTrue(shapeContents, shapeContents.contains("\"Int16\","))
+            assertTrue(shapeContents, shapeContents.contains("\"Byte,Int16,Float\","))
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOFFSET_SLOT"))
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT"))
             assertTrue(shapeContents, shapeContents.contains("Metadata.CONFIGURE_SLOT"))
@@ -9389,6 +9391,7 @@ class KotlinProjectionGeneratorTest {
             assertTrue(shapeContents, shapeContents.contains("Metadata.SETOPACITY_SLOT, opacity"))
             assertTrue(shapeContents, shapeContents.contains("offset, opacity"))
             assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeArgs(instance = _defaultInterface.pointer"))
+            assertFalse(shapeContents, shapeContents.contains("ComVtableInvoker.invokeGenericArgs(instance = _defaultInterface.pointer"))
         }
     }
 
