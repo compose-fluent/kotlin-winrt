@@ -272,7 +272,7 @@ class WinRtMetadataValidator private constructor(
         event: WinRtEventDefinition,
         diagnostics: MutableList<WinRtMetadataDiagnostic>,
     ) {
-        if (!event.hasValidAccessors) {
+        if (!event.hasValidAccessors || !event.hasAddRemoveAccessorPair()) {
             diagnostics += error(
                 code = WinRtMetadataDiagnosticCode.InvalidEventAccessors,
                 typeName = type.qualifiedName,
@@ -283,6 +283,10 @@ class WinRtMetadataValidator private constructor(
         }
         validateSignatureType(event.delegateType, type.namespace, type.qualifiedName, event.name, "event delegate type", diagnostics, event.rowId())
     }
+
+    private fun WinRtEventDefinition.hasAddRemoveAccessorPair(): Boolean =
+        (addMethodName != null || addMethodRowId != null) &&
+            (removeMethodName != null || removeMethodRowId != null)
 
     private fun validateSignatureType(
         type: WinRtTypeRef,
