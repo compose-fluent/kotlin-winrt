@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.metadata.WinRtEventDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.metadataParameterCategoryFor
 import io.github.composefluent.winrt.metadata.projectedPropertyTypeName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.ClassName
@@ -104,8 +105,14 @@ internal class KotlinExpectActualProjectionRenderer(
                 .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
                 .all { method ->
                     canBuildJvmFfmCallPlan(
-                        returnTypeName = method.returnTypeName,
-                        parameters = method.parameters.map { it.name to it.typeName },
+                        returnTypeName = method.projectedKotlinReturnTypeName(),
+                        parameters = method.projectedKotlinParameters().map { parameter ->
+                            KotlinProjectionAbiParameterBinding(
+                                name = parameter.name,
+                                typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, type.namespace),
+                                category = metadataParameterCategoryFor(parameter),
+                            )
+                        },
                         typesByQualifiedName = plan.typesByQualifiedName,
                         currentNamespace = type.namespace,
                     )
@@ -124,7 +131,12 @@ internal class KotlinExpectActualProjectionRenderer(
                         property.isReadOnly ||
                             canBuildJvmFfmCallPlan(
                                 returnTypeName = "Unit",
-                                parameters = listOf("value" to propertyTypeName),
+                                parameters = listOf(
+                                    KotlinProjectionAbiParameterBinding(
+                                        "value",
+                                        baseRenderer.renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName, type.namespace),
+                                    ),
+                                ),
                                 typesByQualifiedName = plan.typesByQualifiedName,
                                 currentNamespace = type.namespace,
                             )
@@ -133,18 +145,13 @@ internal class KotlinExpectActualProjectionRenderer(
 
     private fun canBuildJvmFfmCallPlan(
         returnTypeName: String,
-        parameters: List<Pair<String, String>>,
+        parameters: List<KotlinProjectionAbiParameterBinding>,
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
         currentNamespace: String? = null,
     ): Boolean =
         runCatching {
             val returnBinding = baseRenderer.renderAbiTypeBinding(returnTypeName, typesByQualifiedName, currentNamespace)
-            val parameterBindings = parameters.map { (name, typeName) ->
-                KotlinProjectionAbiParameterBinding(
-                    name = name,
-                    typeBinding = baseRenderer.renderAbiTypeBinding(typeName, typesByQualifiedName, currentNamespace),
-                )
-            }
+            val parameterBindings = parameters
             if (
                 !returnBinding.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) ||
                 parameterBindings.any { !it.typeBinding.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) }
@@ -687,11 +694,12 @@ internal class KotlinExpectActualProjectionRenderer(
         typesByQualifiedName: Map<String, io.github.composefluent.winrt.metadata.WinRtTypeDefinition>,
         abiShapes: MutableSet<List<KotlinProjectionComArgumentKind>>,
     ): FunSpec {
-        val returnBinding = baseRenderer.renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName, slotInterfaceType.namespace)
-        val parameterBindings = method.parameters.map { parameter ->
+        val returnBinding = baseRenderer.renderAbiTypeBinding(method.projectedKotlinReturnTypeName(), typesByQualifiedName, slotInterfaceType.namespace)
+        val parameterBindings = method.projectedKotlinParameters().map { parameter ->
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
                 typeBinding = baseRenderer.renderAbiTypeBinding(parameter.typeName, typesByQualifiedName, slotInterfaceType.namespace),
+                category = metadataParameterCategoryFor(parameter),
             )
         }
         val callPlan = buildJvmInterfaceAbiCallPlan(
@@ -710,8 +718,8 @@ internal class KotlinExpectActualProjectionRenderer(
         return FunSpec.builder(objectShape?.name ?: method.projectedMethodName())
             .addModifiers(KModifier.OVERRIDE)
             .addMethodGenericParameters(method, objectShape)
-            .addParameters(objectShape?.parameters ?: method.parameters.map { ParameterSpec.builder(it.name, baseRenderer.resolveTypeName(it.typeName)).build() })
-            .returns(objectShape?.returnType ?: baseRenderer.resolveTypeName(method.returnTypeName))
+            .addParameters(objectShape?.parameters ?: method.projectedKotlinParameters().map { ParameterSpec.builder(it.name, baseRenderer.resolveTypeName(it.typeName)).build() })
+            .returns(objectShape?.returnType ?: baseRenderer.resolveTypeName(method.projectedKotlinReturnTypeName()))
             .addCode("%L\n", invocation)
             .build()
     }
@@ -1052,6 +1060,8 @@ private fun KotlinProjectionAbiTypeBinding.isSupportedExpectActualJvmMemberAbiKi
                     type.genericParameterCount == 0 &&
                     typeArguments.isEmpty()
             }
+            KotlinProjectionAbiValueKind.Array ->
+                typeArguments.singleOrNull()?.isSupportedExpectActualJvmMemberAbiKind(typesByQualifiedName) == true
             else -> true
         }
 
@@ -1074,6 +1084,7 @@ private val supportedExpectActualJvmMemberAbiKinds = setOf(
     KotlinProjectionAbiValueKind.Double,
     KotlinProjectionAbiValueKind.Char16,
     KotlinProjectionAbiValueKind.GuidValue,
+    KotlinProjectionAbiValueKind.Array,
     KotlinProjectionAbiValueKind.Enum,
     KotlinProjectionAbiValueKind.ProjectedInterface,
     KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
