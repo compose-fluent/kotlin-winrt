@@ -15,7 +15,6 @@ import io.github.composefluent.winrt.metadata.WinRtGenericInstantiationWriterDes
 import io.github.composefluent.winrt.metadata.WinRtGuidSignatureDescriptor
 import io.github.composefluent.winrt.metadata.WinRtInterfaceImplementationDefinition
 import io.github.composefluent.winrt.metadata.WinRtInterfaceMemberSignatureSetDescriptor
-import io.github.composefluent.winrt.metadata.WinRtIntegralType
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionContext
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventory
 import io.github.composefluent.winrt.metadata.WinRtMetadataProjectionInventoryBuilder
@@ -928,11 +927,7 @@ internal fun descriptorIntrinsicArgumentShape(binding: KotlinProjectionAbiTypeBi
         KotlinProjectionAbiValueKind.Boolean ->
             if (binding.typeName.endsWith("?")) null else "Boolean"
         KotlinProjectionAbiValueKind.Enum ->
-            when (binding.enumUnderlyingType) {
-                WinRtIntegralType.Int32 -> "Int32"
-                WinRtIntegralType.UInt32 -> "UInt32"
-                else -> null
-            }
+            binding.enumUnderlyingType?.let(::integralProjectionIntrinsicShapeName)
         KotlinProjectionAbiValueKind.String ->
             if (binding.typeName.endsWith("?")) null else "String"
         KotlinProjectionAbiValueKind.ProjectedInterface,
@@ -1238,13 +1233,10 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumResultIntrinsicInvocatio
         return null
     }
     val enumType = resolvedReturnClassName(returnBinding) ?: return null
-    val helperFunction = when (returnBinding.enumUnderlyingType) {
-        WinRtIntegralType.Int32 -> "getInt32"
-        WinRtIntegralType.UInt32 -> "getUInt32"
-        else -> return null
-    }
+    val integralType = returnBinding.enumUnderlyingType ?: return null
+    val helperFunction = integralProjectionIntrinsicGetterName(integralType) ?: return null
     if (parameterBindings.isNotEmpty()) {
-        val returnShape = if (helperFunction == "getInt32") "Int32" else "UInt32"
+        val returnShape = integralProjectionIntrinsicShapeName(integralType) ?: return null
         val arguments = parameterBindings.map { parameter ->
             if (parameter.category != WinRtMetadataParameterCategory.In) {
                 return null
@@ -1329,11 +1321,9 @@ internal fun KotlinProjectionRenderer.renderInstanceEnumOneArgUnitIntrinsicInvoc
     }
     val parameter = parameterBindings.single()
     val helperFunction = when (parameter.typeBinding.kind) {
-        KotlinProjectionAbiValueKind.Enum -> when (parameter.typeBinding.enumUnderlyingType) {
-            WinRtIntegralType.Int32 -> "setInt32"
-            WinRtIntegralType.UInt32 -> "setUInt32"
-            else -> return null
-        }
+        KotlinProjectionAbiValueKind.Enum ->
+            parameter.typeBinding.enumUnderlyingType?.let(::integralProjectionIntrinsicSetterName)
+                ?: return null
         else -> return null
     }
     return CodeBlock.builder()
