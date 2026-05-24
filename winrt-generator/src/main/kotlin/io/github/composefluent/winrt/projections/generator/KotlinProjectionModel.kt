@@ -527,6 +527,7 @@ internal data class KotlinProjectionCustomObjectAbi(
 internal data class KotlinProjectionIntegralAbiDescriptor(
     val kotlinTypeName: TypeName,
     val abiValueKind: KotlinProjectionAbiValueKind,
+    val delegateValueKindName: String,
     val abiCarrierTypeName: TypeName,
     val abiSizeBytes: Int,
     val comArgumentKind: KotlinProjectionComArgumentKind,
@@ -839,6 +840,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.Int8 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Byte::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int8,
+        delegateValueKindName = "INT8",
         abiCarrierTypeName = Byte::class.asClassName(),
         abiSizeBytes = 1,
         comArgumentKind = KotlinProjectionComArgumentKind.Int8,
@@ -847,6 +849,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.UInt8 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_UBYTE_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt8,
+        delegateValueKindName = "UINT8",
         abiCarrierTypeName = Byte::class.asClassName(),
         abiSizeBytes = 1,
         comArgumentKind = KotlinProjectionComArgumentKind.Int8,
@@ -857,6 +860,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.Int16 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Short::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int16,
+        delegateValueKindName = "INT16",
         abiCarrierTypeName = Short::class.asClassName(),
         abiSizeBytes = 2,
         comArgumentKind = KotlinProjectionComArgumentKind.Int16,
@@ -865,6 +869,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.UInt16 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_USHORT_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt16,
+        delegateValueKindName = "UINT16",
         abiCarrierTypeName = Short::class.asClassName(),
         abiSizeBytes = 2,
         comArgumentKind = KotlinProjectionComArgumentKind.Int16,
@@ -875,6 +880,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.Int32 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Int::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int32,
+        delegateValueKindName = "INT32",
         abiCarrierTypeName = Int::class.asClassName(),
         abiSizeBytes = 4,
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
@@ -883,6 +889,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.UInt32 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_UINT_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt32,
+        delegateValueKindName = "UINT32",
         abiCarrierTypeName = Int::class.asClassName(),
         abiSizeBytes = 4,
         comArgumentKind = KotlinProjectionComArgumentKind.Int32,
@@ -893,6 +900,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.Int64 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = Long::class.asClassName(),
         abiValueKind = KotlinProjectionAbiValueKind.Int64,
+        delegateValueKindName = "INT64",
         abiCarrierTypeName = Long::class.asClassName(),
         abiSizeBytes = 8,
         comArgumentKind = KotlinProjectionComArgumentKind.Int64,
@@ -901,6 +909,7 @@ internal val INTEGRAL_ABI_DESCRIPTORS: Map<WinRtIntegralType, KotlinProjectionIn
     WinRtIntegralType.UInt64 to KotlinProjectionIntegralAbiDescriptor(
         kotlinTypeName = KOTLIN_ULONG_CLASS_NAME,
         abiValueKind = KotlinProjectionAbiValueKind.UInt64,
+        delegateValueKindName = "UINT64",
         abiCarrierTypeName = Long::class.asClassName(),
         abiSizeBytes = 8,
         comArgumentKind = KotlinProjectionComArgumentKind.Int64,
@@ -923,8 +932,14 @@ internal fun integralAbiDescriptor(type: WinRtIntegralType): KotlinProjectionInt
 internal fun integralComAbiValueKindCode(type: WinRtIntegralType): CodeBlock =
     CodeBlock.of("%T.%L", COM_ABI_VALUE_KIND_CLASS_NAME, integralAbiDescriptor(type).comArgumentKind.name)
 
+internal fun integralDelegateValueKindCode(type: WinRtIntegralType): CodeBlock =
+    CodeBlock.of("%T.%L", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME, integralAbiDescriptor(type).delegateValueKindName)
+
 internal fun integralAbiSizeExpression(type: WinRtIntegralType): CodeBlock =
     CodeBlock.of("%L", integralAbiDescriptor(type).abiSizeBytes)
+
+internal fun integralKotlinCastExpression(type: WinRtIntegralType, expression: CodeBlock): CodeBlock =
+    CodeBlock.of("%L as %T", expression, integralAbiDescriptor(type).kotlinTypeName)
 
 internal fun integralAbiCarrierExpression(type: WinRtIntegralType, expression: CodeBlock): CodeBlock {
     val descriptor = integralAbiDescriptor(type)

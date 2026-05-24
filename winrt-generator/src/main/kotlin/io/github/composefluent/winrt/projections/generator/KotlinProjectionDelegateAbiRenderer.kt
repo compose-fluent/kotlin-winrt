@@ -386,17 +386,8 @@ internal fun KotlinProjectionRenderer.delegateValueKindCode(typeBinding: KotlinP
 }
 
 internal fun KotlinProjectionRenderer.delegateEnumValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock =
-    when (typeBinding.enumUnderlyingType) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%T.INT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.UINT8", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.Int16 -> CodeBlock.of("%T.INT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.UINT16", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.Int32 -> CodeBlock.of("%T.INT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.UINT32", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.Int64 -> CodeBlock.of("%T.INT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.UINT64", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
-        null -> error("Delegate enum ABI kind requires enum underlying type for ${typeBinding.resolvedTypeName}")
-    }
+    typeBinding.enumUnderlyingType?.let(::integralDelegateValueKindCode)
+        ?: error("Delegate enum ABI kind requires enum underlying type for ${typeBinding.resolvedTypeName}")
 
 internal fun KotlinProjectionRenderer.delegateInvokeValueKindCode(typeBinding: KotlinProjectionAbiTypeBinding): CodeBlock = when (typeBinding.kind) {
     KotlinProjectionAbiValueKind.Unit -> CodeBlock.of("%T.UNIT", WINRT_DELEGATE_VALUE_KIND_CLASS_NAME)
@@ -563,17 +554,9 @@ internal fun KotlinProjectionRenderer.delegateInvokeReturnCode(
     }
     KotlinProjectionAbiValueKind.Enum -> {
         val enumType = resolveTypeName(returnBinding.resolvedTypeName)
-        when (returnBinding.enumUnderlyingType) {
-            WinRtIntegralType.Int8 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Byte)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.UInt8 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UByte)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.Int16 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Short)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.UInt16 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UShort)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.Int32 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Int)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.UInt32 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as UInt)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.Int64 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as Long)\n", enumType, nativeInvokeExpression)
-            WinRtIntegralType.UInt64 -> CodeBlock.of("return %T.Metadata.fromAbi(%L as ULong)\n", enumType, nativeInvokeExpression)
-            null -> error("Delegate enum return binding requires enum underlying type for ${returnBinding.resolvedTypeName}")
-        }
+        val integralType = returnBinding.enumUnderlyingType
+            ?: error("Delegate enum return binding requires enum underlying type for ${returnBinding.resolvedTypeName}")
+        CodeBlock.of("return %T.Metadata.fromAbi(%L)\n", enumType, integralKotlinCastExpression(integralType, nativeInvokeExpression))
     }
     KotlinProjectionAbiValueKind.ProjectedInterface -> {
         val projectedType = resolveTypeName(returnBinding.resolvedTypeName)
@@ -795,16 +778,7 @@ internal fun KotlinProjectionRenderer.delegateEnumCallbackArgumentCode(
     val integralType = typeBinding.enumUnderlyingType
         ?: error("Delegate enum callback binding requires enum underlying type for ${typeBinding.resolvedTypeName}")
     val enumType = resolveTypeName(typeBinding.resolvedTypeName)
-    return when (integralType) {
-        WinRtIntegralType.Int8 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Byte)", enumType, index)
-        WinRtIntegralType.UInt8 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as UByte)", enumType, index)
-        WinRtIntegralType.Int16 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Short)", enumType, index)
-        WinRtIntegralType.UInt16 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as UShort)", enumType, index)
-        WinRtIntegralType.Int32 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Int)", enumType, index)
-        WinRtIntegralType.UInt32 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as UInt)", enumType, index)
-        WinRtIntegralType.Int64 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as Long)", enumType, index)
-        WinRtIntegralType.UInt64 -> CodeBlock.of("%T.Metadata.fromAbi(__args[%L] as ULong)", enumType, index)
-    }
+    return CodeBlock.of("%T.Metadata.fromAbi(%L)", enumType, integralKotlinCastExpression(integralType, CodeBlock.of("__args[%L]", index)))
 }
 
 internal fun KotlinProjectionRenderer.delegateParameterStructAdaptersCode(

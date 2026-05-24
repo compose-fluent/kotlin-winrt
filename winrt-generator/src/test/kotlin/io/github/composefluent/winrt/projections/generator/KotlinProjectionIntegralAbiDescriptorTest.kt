@@ -9,14 +9,14 @@ class KotlinProjectionIntegralAbiDescriptorTest {
     @Test
     fun integral_abi_descriptor_owns_width_and_com_carrier_kind() {
         val expected = mapOf(
-            WinRtIntegralType.Int8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.Int8, "rawArgs[0] as kotlin.Byte"),
-            WinRtIntegralType.UInt8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.UInt8, "(rawArgs[0] as kotlin.Byte).toUByte()"),
-            WinRtIntegralType.Int16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.Int16, "rawArgs[0] as kotlin.Short"),
-            WinRtIntegralType.UInt16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.UInt16, "(rawArgs[0] as kotlin.Short).toUShort()"),
-            WinRtIntegralType.Int32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.Int32, "rawArgs[0] as kotlin.Int"),
-            WinRtIntegralType.UInt32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.UInt32, "(rawArgs[0] as kotlin.Int).toUInt()"),
-            WinRtIntegralType.Int64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.Int64, "rawArgs[0] as kotlin.Long"),
-            WinRtIntegralType.UInt64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.UInt64, "(rawArgs[0] as kotlin.Long).toULong()"),
+            WinRtIntegralType.Int8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.Int8, "INT8", "rawArgs[0] as kotlin.Byte"),
+            WinRtIntegralType.UInt8 to ExpectedIntegralAbi(1, KotlinProjectionComArgumentKind.Int8, KotlinProjectionAbiValueKind.UInt8, "UINT8", "(rawArgs[0] as kotlin.Byte).toUByte()"),
+            WinRtIntegralType.Int16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.Int16, "INT16", "rawArgs[0] as kotlin.Short"),
+            WinRtIntegralType.UInt16 to ExpectedIntegralAbi(2, KotlinProjectionComArgumentKind.Int16, KotlinProjectionAbiValueKind.UInt16, "UINT16", "(rawArgs[0] as kotlin.Short).toUShort()"),
+            WinRtIntegralType.Int32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.Int32, "INT32", "rawArgs[0] as kotlin.Int"),
+            WinRtIntegralType.UInt32 to ExpectedIntegralAbi(4, KotlinProjectionComArgumentKind.Int32, KotlinProjectionAbiValueKind.UInt32, "UINT32", "(rawArgs[0] as kotlin.Int).toUInt()"),
+            WinRtIntegralType.Int64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.Int64, "INT64", "rawArgs[0] as kotlin.Long"),
+            WinRtIntegralType.UInt64 to ExpectedIntegralAbi(8, KotlinProjectionComArgumentKind.Int64, KotlinProjectionAbiValueKind.UInt64, "UINT64", "(rawArgs[0] as kotlin.Long).toULong()"),
         )
 
         expected.forEach { (type, expectedAbi) ->
@@ -24,9 +24,11 @@ class KotlinProjectionIntegralAbiDescriptorTest {
             assertEquals("ABI width for $type", expectedAbi.sizeBytes, descriptor.abiSizeBytes)
             assertEquals("COM argument kind for $type", expectedAbi.argumentKind, descriptor.comArgumentKind)
             assertEquals("ABI value kind for $type", expectedAbi.abiValueKind, descriptor.abiValueKind)
+            assertEquals("delegate value kind for $type", expectedAbi.delegateValueKindName, descriptor.delegateValueKindName)
             assertEquals("array element width for $type", expectedAbi.sizeBytes.toString(), integralAbiSizeExpression(type).toString())
             assertEquals("delegate argument kind for $type", expectedAbi.argumentKind, abiArgumentKindForIntegralType(type))
             assertEquals("raw carrier expression for $type", expectedAbi.rawCarrierExpression, integralAbiCarrierExpression(type, CodeBlock.of("rawArgs[0]")).toString())
+            assertEquals("delegate enum cast for $type", "rawArgs[0] as ${descriptor.kotlinTypeName}", integralKotlinCastExpression(type, CodeBlock.of("rawArgs[0]")).toString())
         }
     }
 
@@ -34,6 +36,7 @@ class KotlinProjectionIntegralAbiDescriptorTest {
         val sizeBytes: Int,
         val argumentKind: KotlinProjectionComArgumentKind,
         val abiValueKind: KotlinProjectionAbiValueKind,
+        val delegateValueKindName: String,
         val rawCarrierExpression: String,
     )
 }
