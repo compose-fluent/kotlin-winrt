@@ -3,7 +3,7 @@ package io.github.composefluent.winrt.runtime
 import kotlin.reflect.KClass
 
 /**
- * Shared reflection/type-descriptor helpers corresponding to `.cswinrt/src/WinRT.Runtime/TypeExtensions.cs`.
+ * Shared registry-backed type-descriptor helpers corresponding to `.cswinrt/src/WinRT.Runtime/TypeExtensions.cs`.
  */
 object TypeExtensions {
     private val helperTypeCache = ConcurrentCacheMap<KClass<*>, KClass<*>?>()
