@@ -577,7 +577,7 @@ internal fun KotlinProjectionRenderer.buildAbiReturnMarshaler(
         KotlinProjectionAbiValueKind.ProjectedRuntimeClass ->
             resolvedReturnClassName(returnBinding)?.let { returnType ->
                 CodeBlock.of(
-                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __resultRef = %T(%T.toRawComPtr(__resultPointer))\nval __result = %T.Metadata.wrap(__resultRef.asInspectable())\nreturn __result\n",
+                    "val __resultPointer = %T.readPointer(__resultOut)\n%Lval __resultRef = %T(%T.toRawComPtr(__resultPointer))\nval __resultInspectable = try {\n__resultRef.asInspectable()\n} finally {\n__resultRef.close()\n}\nval __result = %T.Metadata.wrap(__resultInspectable)\nreturn __result\n",
                     PLATFORM_ABI_CLASS_NAME,
                     abiNullReturnReadback(returnBinding),
                     IUNKNOWN_REFERENCE_CLASS_NAME,
