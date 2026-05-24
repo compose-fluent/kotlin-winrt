@@ -632,11 +632,14 @@ internal object ValueBoxingInterop {
         WinRtPropertyValueReference(pointer).use { it.getValue() }
 
     fun tryProjectBorrowedPropertyValue(pointer: RawAddress): Any? {
-        val propertyValue = runCatching {
-            IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
-                .queryInterface(IID.IPropertyValue)
-                .getOrThrow()
-        }.getOrNull() ?: return null
+        val borrowed = IUnknownReference(pointer.asRawComPtr(), IID.IInspectable, preventReleaseOnDispose = true)
+        val propertyValue = try {
+            borrowed.queryInterface(IID.IPropertyValue).getOrThrow()
+        } catch (_: Throwable) {
+            null
+        } finally {
+            borrowed.close()
+        } ?: return null
         return propertyValue.use { reference ->
             WinRtPropertyValueReference(reference.pointer.asRawAddress(), preventReleaseOnDispose = true).getValue()
         }
