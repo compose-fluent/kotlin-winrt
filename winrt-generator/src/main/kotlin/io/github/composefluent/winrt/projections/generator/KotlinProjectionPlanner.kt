@@ -1116,7 +1116,7 @@ class KotlinProjectionPlanner(
         }
         val resolvedTypeName = qualifyTypeName(rawTypeName, currentNamespace, typesByQualifiedName) ?: rawTypeName
         val resolvedType = typesByQualifiedName[resolvedTypeName]
-        val mappedType = mappedTypeByAbiName(rawTypeName)
+        val mappedType = mappedTypeByAbiName(resolvedTypeName) ?: mappedTypeByAbiName(rawTypeName)
         val isProjectedKeyValuePair = rawTypeName == "Map.Entry" || rawTypeName == "kotlin.collections.Map.Entry"
         val fundamentalType = winRtFundamentalTypeForName(rawTypeName)
         val kind = if (isWinRtVoidTypeName(rawTypeName)) {
