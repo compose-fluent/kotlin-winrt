@@ -372,9 +372,25 @@ class KotlinProjectionGeneratorTest {
                         ),
                         WinRtTypeDefinition(
                             namespace = "Sample.Foundation",
+                            name = "IBase",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-2222-3333-4444-555555555556"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Reset",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("IBase"),
+                            ),
                             methods = listOf(
                                 WinRtMethodDefinition(
                                     name = "GetChild",
@@ -413,6 +429,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(jvm, jvm.contains("PlatformAbi.fromRawComPtr("))
         assertTrue(jvm, jvm.contains("nativeObject.pointer"))
         assertTrue(jvm, jvm.contains("JvmAbi.invoke_p"))
+        assertTrue(jvm, jvm.contains("override fun reset()"))
+        assertTrue(jvm, jvm.contains("IBase.Metadata.RESET_SLOT"))
         assertFalse(jvm, jvm.contains("IChild.Metadata.wrap"))
         assertFalse(jvm, jvm.contains("ComVtableInvoker.invokeArgs"))
     }
