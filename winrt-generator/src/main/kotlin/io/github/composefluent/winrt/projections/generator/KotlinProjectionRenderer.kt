@@ -341,11 +341,11 @@ class KotlinProjectionRenderer(
         method: WinRtMethodDefinition,
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): FunSpec {
-        val returnBinding = renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName)
+        val returnBinding = renderAbiTypeBinding(method.returnTypeName, typesByQualifiedName, slotInterfaceType.namespace)
         val parameterBindings = method.parameters.map { parameter ->
             KotlinProjectionAbiParameterBinding(
                 name = parameter.name,
-                typeBinding = renderAbiTypeBinding(parameter.typeName, typesByQualifiedName),
+                typeBinding = renderAbiTypeBinding(parameter.typeName, typesByQualifiedName, slotInterfaceType.namespace),
             )
         }
         val callPlan = requireAbiCallPlan(
@@ -451,7 +451,7 @@ class KotlinProjectionRenderer(
         )
             .mutable(!property.isReadOnly)
             .addModifiers(KModifier.OVERRIDE)
-        val getterReturnBinding = renderAbiTypeBinding(propertyTypeName, typesByQualifiedName)
+        val getterReturnBinding = renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace)
         val getterCallPlan = requireAbiCallPlan(
             bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.get",
             returnBinding = getterReturnBinding,
@@ -508,7 +508,7 @@ class KotlinProjectionRenderer(
             val setterCallPlan = requireAbiCallPlan(
                 bindingName = "${slotInterfaceType.qualifiedName}.${property.name}.set",
                 returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
+                parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace))),
                 suppressHResultCheck = property.isNoException,
             )
             val setterSlotExpression = metadataSlotExpression(slotInterfaceType, "${property.name.uppercase()}_SETTER_SLOT")
@@ -520,20 +520,20 @@ class KotlinProjectionRenderer(
                         interfaceProxyOneArgUnitIntrinsicInvocation(
                             slotExpression = setterSlotExpression,
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
+                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace))),
                             suppressHResultCheck = property.isNoException,
                         ) ?: renderInstanceStructOneArgUnitIntrinsicInvocation(
                             referenceExpression = "nativeObject",
                             slotExpression = setterSlotExpression,
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
+                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace))),
                             suppressHResultCheck = property.isNoException,
                             argumentExpression = "value",
                         ) ?: renderInstanceEnumOneArgUnitIntrinsicInvocation(
                             referenceExpression = "nativeObject",
                             slotExpression = setterSlotExpression,
                             returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName))),
+                            parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, typesByQualifiedName, slotInterfaceType.namespace))),
                             suppressHResultCheck = property.isNoException,
                             argumentExpression = "value",
                         ) ?: renderInlineAbiInvocation(
@@ -739,9 +739,9 @@ class KotlinProjectionRenderer(
             interfaceType.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedMethod).all { method ->
                 runCatching {
                     buildAbiCallPlan(
-                        returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName),
+                        returnBinding = renderAbiTypeBinding(method.returnTypeName, plan.typesByQualifiedName, interfaceType.namespace),
                         parameterBindings = method.parameters.map { parameter ->
-                            KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName))
+                            KotlinProjectionAbiParameterBinding(parameter.name, renderAbiTypeBinding(parameter.typeName, plan.typesByQualifiedName, interfaceType.namespace))
                         },
                     ) != null
                 }.getOrDefault(false)
@@ -750,7 +750,7 @@ class KotlinProjectionRenderer(
                     val propertyTypeName = property.projectedPropertyTypeName(interfaceType.qualifiedName, plan.typesByQualifiedName)
                     runCatching {
                         buildAbiCallPlan(
-                            returnBinding = renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName),
+                            returnBinding = renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName, interfaceType.namespace),
                             parameterBindings = emptyList(),
                         ) != null
                     }.getOrDefault(false) &&
@@ -759,7 +759,7 @@ class KotlinProjectionRenderer(
                                 runCatching {
                                     buildAbiCallPlan(
                                         returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
-                                        parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName))),
+                                        parameterBindings = listOf(KotlinProjectionAbiParameterBinding("value", renderAbiTypeBinding(propertyTypeName, plan.typesByQualifiedName, interfaceType.namespace))),
                                     ) != null
                                 }.getOrDefault(false)
                             )
