@@ -1,9 +1,12 @@
 package io.github.composefluent.winrt.runtime
 
 import java.lang.foreign.Arena
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -328,6 +331,54 @@ class WinRtAsyncInteropTest {
                 action.cancel()
                 kotlinx.coroutines.yield()
                 assertEquals(WinRtAsyncStatus.Canceled, action.status())
+            }
+        }
+    }
+
+    @Test
+    fun task_to_async_cancel_waits_for_terminal_job_completion_before_invoking_completed() {
+        runBlocking {
+            val enteredJob = CompletableDeferred<Unit>()
+            val releaseJob = CompletableDeferred<Unit>()
+            var capturedStatus: WinRtAsyncStatus? = null
+            val completedHandler = WinRtDelegateBridge.createUnitDelegate(
+                iid = WinRtAsyncInterfaceIds.AsyncActionCompletedHandler,
+                parameterKinds = listOf(WinRtDelegateValueKind.OBJECT, WinRtDelegateValueKind.INT32),
+            ) { args ->
+                capturedStatus = WinRtAsyncStatus.fromAbi(args[1] as Int)
+            }
+
+            completedHandler.use { handle ->
+                AsyncInfo.runAction(this) {
+                    enteredJob.complete(Unit)
+                    try {
+                        kotlinx.coroutines.awaitCancellation()
+                    } finally {
+                        withContext(NonCancellable) {
+                            releaseJob.await()
+                        }
+                    }
+                }.use { action ->
+                    handle.createReference().use(action::setCompletedHandler)
+                    enteredJob.await()
+
+                    action.cancel()
+                    kotlinx.coroutines.yield()
+                    assertEquals(WinRtAsyncStatus.Canceled, action.status())
+                    assertEquals(null, capturedStatus)
+
+                    val closeWhileCancellationRequestedHr = ComVtableInvoker.invoke(action.pointer, WinRtAsyncInfoVftblSlots.Close)
+                    assertEquals(KnownHResults.E_ILLEGAL_STATE_CHANGE.value, closeWhileCancellationRequestedHr)
+
+                    val resultsWhileCancellationRequestedHr =
+                        ComVtableInvoker.invoke(action.pointer, WinRtAsyncActionVftblSlots.GetResults)
+                    assertEquals(KnownHResults.E_ILLEGAL_METHOD_CALL.value, resultsWhileCancellationRequestedHr)
+
+                    releaseJob.complete(Unit)
+                    kotlinx.coroutines.yield()
+                    assertEquals(WinRtAsyncStatus.Canceled, action.status())
+                    assertEquals(WinRtAsyncStatus.Canceled, capturedStatus)
+                }
             }
         }
     }

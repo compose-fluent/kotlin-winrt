@@ -316,6 +316,7 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
     initialError: Throwable?,
 ) {
     private val state = AtomicInt(initialStatus.ordinal)
+    private val terminalReached = AtomicInt(if (initialStatus == WinRtAsyncStatus.Started) 0 else 1)
     private val completedInvoked = AtomicInt(0)
     private val completedHandlerAssigned = AtomicInt(0)
     private val closed = AtomicInt(0)
@@ -347,11 +348,8 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
         if (closed.load() != 0) {
             return
         }
-        val current = currentStatus()
-        if (current == WinRtAsyncStatus.Started) {
-            state.store(WinRtAsyncStatus.Canceled.ordinal)
+        if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Canceled.ordinal)) {
             job?.cancel()
-            invokeCompletedHandlerOnce(WinRtAsyncStatus.Canceled)
         }
     }
 
@@ -359,7 +357,7 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
         if (closed.load() != 0) {
             return
         }
-        if (currentStatus() == WinRtAsyncStatus.Started) {
+        if (!isTerminalForClose()) {
             throw WinRtIllegalStateException(
                 "Cannot close a non-terminal WinRT async operation.",
                 KnownHResults.E_ILLEGAL_STATE_CHANGE,
@@ -396,7 +394,9 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
             )
         }
         completedHandler = newHandler
-        currentStatus().takeIf { it != WinRtAsyncStatus.Started }?.let(::invokeCompletedHandlerOnce)
+        if (terminalReached.load() != 0) {
+            invokeCompletedHandlerOnce(currentStatus())
+        }
     }
 
     private fun cloneCompletedHandler(handlerPointer: RawAddress, handlerInterfaceId: Guid): ComObjectReference {
@@ -442,7 +442,7 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
 
     fun reportProgress(value: Any?, progressValueKind: WinRtDelegateValueKind) {
         val handler = progressHandler ?: return
-        if (closed.load() != 0 || currentStatus() != WinRtAsyncStatus.Started) {
+        if (closed.load() != 0 || !isRunningForProgress()) {
             return
         }
         val self = selfReference?.invoke()
@@ -470,7 +470,14 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
             WinRtAsyncStatus.Started ->
                 throw WinRtIllegalStateException("Cannot get results from an incomplete async operation.", KnownHResults.E_ILLEGAL_METHOD_CALL)
             WinRtAsyncStatus.Canceled ->
-                throw WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED)
+                if (terminalReached.load() == 0) {
+                    throw WinRtIllegalStateException(
+                        "Cannot get results from an incomplete async operation.",
+                        KnownHResults.E_ILLEGAL_METHOD_CALL,
+                    )
+                } else {
+                    throw WinRtCancelledException("WinRT async operation was canceled.", KnownHResults.ERROR_CANCELLED)
+                }
             WinRtAsyncStatus.Error ->
                 throw errorValue ?: ExceptionHelpers.exceptionFor(errorCode(), "WinRT async operation")
             WinRtAsyncStatus.Completed ->
@@ -480,6 +487,19 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
     }
 
     private fun currentStatus(): WinRtAsyncStatus = WinRtAsyncStatus.entries[state.load()]
+
+    private fun isTerminalForClose(): Boolean =
+        when (currentStatus()) {
+            WinRtAsyncStatus.Started -> false
+            WinRtAsyncStatus.Canceled -> terminalReached.load() != 0
+            WinRtAsyncStatus.Completed,
+            WinRtAsyncStatus.Error,
+            -> true
+        }
+
+    private fun isRunningForProgress(): Boolean =
+        currentStatus() == WinRtAsyncStatus.Started ||
+            (currentStatus() == WinRtAsyncStatus.Canceled && terminalReached.load() == 0)
 
     private fun ensureNotClosed() {
         if (closed.load() != 0) {
@@ -640,25 +660,28 @@ internal class WinRtTaskToAsyncInfoAdapter<T> private constructor(
         )
 
     private fun complete(value: T) {
-        resultValue = value
-        errorValue = null
-        if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Completed.ordinal)) {
+        if (terminalReached.compareAndSet(0, 1)) {
+            resultValue = value
+            errorValue = null
+            state.store(WinRtAsyncStatus.Completed.ordinal)
             invokeCompletedHandlerOnce(WinRtAsyncStatus.Completed)
         }
     }
 
     private fun completeCanceled() {
-        resultValue = null
-        errorValue = null
-        if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Canceled.ordinal)) {
+        if (terminalReached.compareAndSet(0, 1)) {
+            resultValue = null
+            errorValue = null
+            state.store(WinRtAsyncStatus.Canceled.ordinal)
             invokeCompletedHandlerOnce(WinRtAsyncStatus.Canceled)
         }
     }
 
     private fun completeError(error: Throwable) {
-        resultValue = null
-        errorValue = error
-        if (state.compareAndSet(WinRtAsyncStatus.Started.ordinal, WinRtAsyncStatus.Error.ordinal)) {
+        if (terminalReached.compareAndSet(0, 1)) {
+            resultValue = null
+            errorValue = error
+            state.store(WinRtAsyncStatus.Error.ordinal)
             invokeCompletedHandlerOnce(WinRtAsyncStatus.Error)
         }
     }
