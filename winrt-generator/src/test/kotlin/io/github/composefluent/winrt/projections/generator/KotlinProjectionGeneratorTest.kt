@@ -11343,6 +11343,19 @@ class KotlinProjectionGeneratorTest {
                                     ),
                                 ),
                                 WinRtMethodDefinition(
+                                    name = "ReceiveNamesForPrefix",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("prefix", "String"),
+                                        WinRtParameterDefinition(
+                                            "names",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                ),
+                                WinRtMethodDefinition(
                                     name = "RoundTripGeneric",
                                     returnTypeName = "M0",
                                     genericParameterCount = 1,
@@ -11920,6 +11933,10 @@ class KotlinProjectionGeneratorTest {
         assertTrue(ccwFactories.contains("val __result = value.receiveNames()"))
         assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[0] as RawAddress, __returnArray?.length ?: 0)"))
         assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[1] as RawAddress"))
+        assertTrue(ccwFactories.contains("val prefix = NativeStringMarshaller.fromAbi(rawArgs[0] as RawAddress)"))
+        assertTrue(ccwFactories.contains("val __result = value.receiveNamesForPrefix(prefix)"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writeInt32(rawArgs[1] as RawAddress, __returnArray?.length ?: 0)"))
+        assertTrue(ccwFactories.contains("PlatformAbi.writePointer(rawArgs[2] as RawAddress"))
         assertFalse(ccwFactories.contains("Authored ReceiveArray parameter"))
         assertTrue(ccwFactories.contains("WinRtGenericParameterProjection.fromAbi<M0>(rawArgs[0] as RawAddress)"))
         assertTrue(ccwFactories.contains("value.roundTripGeneric(value)"))
