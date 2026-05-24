@@ -143,10 +143,6 @@ internal class KotlinExpectActualProjectionRenderer(
                         )
                 }
 
-    private fun WinRtEventDefinition.hasNativeProjectionAccessorPair(): Boolean =
-        (addMethodName != null || addMethodRowId != null) &&
-            (removeMethodName != null || removeMethodRowId != null)
-
     private fun canBuildJvmFfmCallPlan(
         returnTypeName: String,
         parameters: List<KotlinProjectionAbiParameterBinding>,
