@@ -16064,6 +16064,57 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_instance_method_with_unrenderable_abi_call_plan() {
+        val returnTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetPair",
+                                    returnTypeName = returnTypeName,
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetPair",
+                                    returnTypeName = returnTypeName,
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("Generator ABI marshaler parity does not yet support GETPAIR_SLOT for Array("),
+        )
+    }
+
+    @Test
     fun generator_rejects_instance_property_setter_without_setter_binding() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
