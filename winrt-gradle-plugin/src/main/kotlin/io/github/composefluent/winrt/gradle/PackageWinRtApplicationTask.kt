@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
@@ -51,16 +52,15 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
             return
         }
         if (!packageRoot.resolve("AppxManifest.xml").isRegularFile()) {
-            logger.warn("Skipping application package creation because AppxManifest.xml was not staged.")
-            return
+            throw GradleException("Cannot create appx/msix package because AppxManifest.xml was not staged in $packageRoot.")
         }
         val makeAppx = discoverMakeAppxExecutable() ?: run {
-            logger.warn("Skipping application package creation because makeappx.exe was not found.")
-            return
+            throw GradleException("Cannot create appx/msix package because makeappx.exe was not found.")
         }
         target.parent?.let(Files::createDirectories)
         if (!MakeAppxRunner.pack(makeAppx, packageRoot, target, logger)) {
             Files.deleteIfExists(target)
+            throw GradleException("Failed to create appx/msix package at $target.")
         }
     }
 
