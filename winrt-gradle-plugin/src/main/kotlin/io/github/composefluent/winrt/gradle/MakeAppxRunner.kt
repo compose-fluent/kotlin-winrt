@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.logging.Logger
+import java.io.IOException
 import java.nio.file.Path
 
 internal object MakeAppxRunner {
@@ -18,10 +19,15 @@ internal object MakeAppxRunner {
             outputFile.toString(),
             "/o",
         )
-        val process = ProcessBuilder(listOf(makeAppx.toString()) + arguments)
-            .directory(packageRoot.toFile())
-            .redirectErrorStream(true)
-            .start()
+        val process = try {
+            ProcessBuilder(listOf(makeAppx.toString()) + arguments)
+                .directory(packageRoot.toFile())
+                .redirectErrorStream(true)
+                .start()
+        } catch (exception: IOException) {
+            logger.warn("Skipping application package creation because makeappx could not be started: ${exception.message}")
+            return false
+        }
         val output = decodeProcessOutput(process.inputStream.readBytes())
         val exitCode = process.waitFor()
         return if (exitCode == 0) {
@@ -46,10 +52,15 @@ internal object MakeAppxRunner {
             outputDirectory.toString(),
             "/o",
         )
-        val process = ProcessBuilder(listOf(makeAppx.toString()) + arguments)
-            .directory(outputDirectory.parent.toFile())
-            .redirectErrorStream(true)
-            .start()
+        val process = try {
+            ProcessBuilder(listOf(makeAppx.toString()) + arguments)
+                .directory(outputDirectory.parent.toFile())
+                .redirectErrorStream(true)
+                .start()
+        } catch (exception: IOException) {
+            logger.warn("Skipping application package verification because makeappx could not be started: ${exception.message}")
+            return false
+        }
         val output = decodeProcessOutput(process.inputStream.readBytes())
         val exitCode = process.waitFor()
         return if (exitCode == 0) {
