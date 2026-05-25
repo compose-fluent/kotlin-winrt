@@ -8,6 +8,7 @@ import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFiles
@@ -25,6 +26,7 @@ import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
+@CacheableTask
 abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -116,6 +118,16 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
 
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
+
+    @Input
+    fun getDefaultProjectPriResourceRootPath(): String =
+        defaultProjectPriResourceRoot.orNull
+            ?.asFile
+            ?.toPath()
+            ?.toAbsolutePath()
+            ?.normalize()
+            ?.toString()
+            .orEmpty()
 
     init {
         generateProjectPri.convention(true)
