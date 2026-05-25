@@ -13756,6 +13756,74 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_mapped_vector_owner_unsupported_element_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IHandles",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555557"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<Sample.Foundation.NativeHandle>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator mutable collection parity does not yet support IVector owner element Unsupported(Sample.Foundation.NativeHandle) on Sample.Foundation.IHandles.",
+            ),
+        )
+    }
+
+    @Test
+    fun generator_rejects_mapped_map_owner_unsupported_key_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IHandleMap",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555558"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IMap<Sample.Foundation.NativeHandle, Int>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator mutable collection parity does not yet support IMap owner key Unsupported(Sample.Foundation.NativeHandle) on Sample.Foundation.IHandleMap.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_marshals_projected_interface_collection_parameters() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
