@@ -48,6 +48,39 @@ internal object ProjectPriManifestSupport {
         )
     }
 
+    fun validatePackageManifest(manifest: Path): List<String> {
+        if (!manifest.isRegularFile()) {
+            return listOf("manifest file does not exist: $manifest")
+        }
+        val document = readXmlDocument(manifest) ?: return listOf("manifest XML could not be parsed: $manifest")
+        val errors = mutableListOf<String>()
+        val root = document.documentElement
+        if (root == null || !root.localName.equals("Package", ignoreCase = true)) {
+            errors += "manifest root element must be Package"
+        }
+        val identity = document.getElementsByTagNameNS("*", "Identity").item(0)
+        if (identity == null) {
+            errors += "manifest must contain an Identity element"
+        } else {
+            val attributes = identity.attributes
+            val name = attributes?.getNamedItem("Name")?.nodeValue?.trim().orEmpty()
+            val publisher = attributes?.getNamedItem("Publisher")?.nodeValue?.trim().orEmpty()
+            val version = attributes?.getNamedItem("Version")?.nodeValue?.trim().orEmpty()
+            if (name.isBlank()) {
+                errors += "manifest Identity must declare Name"
+            }
+            if (publisher.isBlank()) {
+                errors += "manifest Identity must declare Publisher"
+            }
+            if (version.isBlank()) {
+                errors += "manifest Identity must declare Version"
+            } else if (!APPX_VERSION.matches(version)) {
+                errors += "manifest Identity Version must use four numeric components"
+            }
+        }
+        return errors
+    }
+
     private fun readManifestDefaultLanguage(manifest: Path): String? {
         if (!manifest.isRegularFile()) return null
         val document = readXmlDocument(manifest) ?: return null
@@ -75,3 +108,5 @@ internal object ProjectPriManifestSupport {
         }.newDocumentBuilder().parse(path.toFile())
     }.getOrNull()
 }
+
+private val APPX_VERSION = Regex("""\d+\.\d+\.\d+\.\d+""")

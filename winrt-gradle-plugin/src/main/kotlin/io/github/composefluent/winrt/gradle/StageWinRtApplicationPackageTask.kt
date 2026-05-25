@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.ListProperty
@@ -148,6 +149,13 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             .filter { it.isRegularFile() }
             .sorted()
             .firstOrNull() ?: return
+        val manifestErrors = ProjectPriManifestSupport.validatePackageManifest(manifest)
+        if (manifestErrors.isNotEmpty()) {
+            throw GradleException(
+                "Invalid AppX manifest ${manifest.toAbsolutePath().normalize()}:\n" +
+                    manifestErrors.joinToString(separator = "\n") { "- $it" },
+            )
+        }
         GradleFileOperations.copyFile(manifest, outputRoot.resolve("AppxManifest.xml"))
     }
 
