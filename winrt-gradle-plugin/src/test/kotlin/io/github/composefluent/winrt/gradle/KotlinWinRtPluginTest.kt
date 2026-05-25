@@ -2678,7 +2678,10 @@ class KotlinWinRtPluginTest {
         task.verify()
 
         assertTrue(Files.isRegularFile(markerFile))
-        assertEquals("verified=true", Files.readString(markerFile))
+        val marker = Files.readString(markerFile)
+        assertTrue(marker.contains("verified=true"))
+        assertTrue(marker.contains("packageName=Contoso.msix"))
+        assertTrue(marker.contains("packageSha256=a1788eec2ed752ba57ac08832710129e67b47ef2704c83466bb6fa12eb855dbe"))
         assertTrue(Files.isRegularFile(unpackRoot.resolve("AppxManifest.xml")))
         val makeAppxCalls = Files.readString(makeAppxLog).replace("\\", "/")
         assertTrue(makeAppxCalls.contains("unpack"))

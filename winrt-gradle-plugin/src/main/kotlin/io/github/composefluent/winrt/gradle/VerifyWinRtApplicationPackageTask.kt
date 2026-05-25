@@ -15,6 +15,7 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.io.path.isRegularFile
 
 @CacheableTask
@@ -81,7 +82,14 @@ abstract class VerifyWinRtApplicationPackageTask : DefaultTask() {
             )
         }
         marker.parent?.let(Files::createDirectories)
-        Files.writeString(marker, "verified=true")
+        Files.writeString(
+            marker,
+            listOf(
+                "verified=true",
+                "packageName=${source.fileName}",
+                "packageSha256=${sha256(source)}",
+            ).joinToString(separator = System.lineSeparator(), postfix = System.lineSeparator()),
+        )
     }
 
     private fun discoverMakeAppxExecutable(): Path? =
@@ -90,4 +98,19 @@ abstract class VerifyWinRtApplicationPackageTask : DefaultTask() {
             windowsSdkVersion.get(),
             runtimeIdentifier.get(),
         )
+
+    private fun sha256(path: Path): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) {
+                    break
+                }
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
 }
