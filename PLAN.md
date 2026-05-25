@@ -17,7 +17,7 @@
 
 ## Current Focus
 
-- [ ] Kotlin appx/msix packaging closure 正在做: finish application package/resource/PRI/MRT/MSIX logic using CsWinRT/MSBuild behavior as evidence while keeping the Kotlin Gradle plugin as the owner; current slice adds manifest staging plus makeappx-backed package output while preserving Gradle configuration/build cache.
+- [ ] Kotlin appx/msix packaging closure 正在做: finish application package/resource/PRI/MRT/MSIX logic using CsWinRT/MSBuild behavior as evidence while keeping the Kotlin Gradle plugin as the owner; current slice adds manifest staging, makeappx-backed package output, and signtool signing hooks while preserving Gradle configuration/build cache.
 - [ ] Generator projection matrix closure: finish activation/static/factory surfaces, delegates/events, async/collection helpers, mapped types, ABI array/struct/member shapes, and unsupported-shape diagnostics before broadening checked-in projection output.
 - [ ] Metadata input expansion and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
 - [ ] Interface native projection IR migration: continue descriptor-backed compiler-plugin lowering only where it closes functional projection behavior; do not treat source-count reduction as the reason for this slice.

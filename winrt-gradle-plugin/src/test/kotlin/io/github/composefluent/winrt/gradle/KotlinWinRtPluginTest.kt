@@ -204,6 +204,10 @@ class KotlinWinRtPluginTest {
             "packageWinRtApplication",
             applicationProject.extensions.extraProperties["kotlinWinRtPackageTask"],
         )
+        assertEquals(
+            "signWinRtApplicationPackage",
+            applicationProject.extensions.extraProperties["kotlinWinRtSignPackageTask"],
+        )
     }
 
     @Test
@@ -659,10 +663,16 @@ class KotlinWinRtPluginTest {
 
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
         val packageOutput = project.layout.buildDirectory.file("custom/Contoso.msix")
+        val signedPackageOutput = project.layout.buildDirectory.file("custom/Contoso-signed.msix")
         project.extensions.getByType(WinRtExtension::class.java).application { application ->
             application.packageOutputFile.set(packageOutput)
             application.makeAppxExecutable.set("C:/Windows Kits/10/bin/makeappx.exe")
             application.generatePackage.set(false)
+            application.signedPackageOutputFile.set(signedPackageOutput)
+            application.signPackage.set(true)
+            application.signToolExecutable.set("C:/Windows Kits/10/bin/signtool.exe")
+            application.signingCertificateThumbprint.set("ABCDEF")
+            application.signingTimestampUrl.set("http://timestamp.example.test")
         }
         project.pluginManager.apply("application")
 
@@ -672,6 +682,13 @@ class KotlinWinRtPluginTest {
         assertEquals(packageOutput.get().asFile, packageTask.outputFile.get().asFile)
         assertEquals("C:/Windows Kits/10/bin/makeappx.exe", packageTask.makeAppxExecutable.get())
         assertEquals(false, packageTask.generatePackage.get())
+        val signTask = project.tasks.named("signWinRtApplicationPackage", SignWinRtApplicationPackageTask::class.java).get()
+        assertEquals(packageOutput.get().asFile, signTask.inputPackageFile.get().asFile)
+        assertEquals(signedPackageOutput.get().asFile, signTask.outputFile.get().asFile)
+        assertEquals(true, signTask.signPackage.get())
+        assertEquals("C:/Windows Kits/10/bin/signtool.exe", signTask.signToolExecutable.get())
+        assertEquals("ABCDEF", signTask.signingCertificateThumbprint.get())
+        assertEquals("http://timestamp.example.test", signTask.signingTimestampUrl.get())
         project.extensions.getByType(org.gradle.api.distribution.DistributionContainer::class.java).getByName("main")
     }
 
@@ -1647,6 +1664,50 @@ class KotlinWinRtPluginTest {
         assertTrue(makeAppxCalls.contains("/p"))
         assertTrue(makeAppxCalls.contains("Contoso.msix"))
         assertTrue(makeAppxCalls.contains("/o"))
+    }
+
+    @Test
+    fun sign_application_package_task_invokes_signtool_for_packaged_msix() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/Contoso.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val signToolLog = project.layout.buildDirectory.file("signtool.log").get().asFile.toPath()
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool.cmd").get().asFile.toPath(),
+            signToolLog,
+        )
+        val signedPackage = project.layout.buildDirectory.file("packages/Contoso-signed.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "signApplicationPackage",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("http://timestamp.example.test")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        task.sign()
+
+        assertTrue(Files.isRegularFile(signedPackage))
+        assertEquals("unsigned-msix", Files.readString(signedPackage))
+        val signToolCalls = Files.readString(signToolLog).replace("\\", "/")
+        assertTrue(signToolCalls.contains("sign"))
+        assertTrue(signToolCalls.contains("/fd SHA256"))
+        assertTrue(signToolCalls.contains("/tr http://timestamp.example.test"))
+        assertTrue(signToolCalls.contains("/td SHA256"))
+        assertTrue(signToolCalls.contains("/sha1 ABCDEF123456"))
+        assertTrue(signToolCalls.contains("Contoso-signed.msix"))
     }
 
     @Test
@@ -2940,6 +3001,19 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
         if not "%output%"=="" (
           echo fake-msix>"%output%"
         )
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakeSignTool(path: Path, log: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        echo %*>>"${log.toString()}"
         exit /b 0
         """.trimIndent(),
     )
