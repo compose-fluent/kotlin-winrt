@@ -5,6 +5,7 @@ import org.gradle.api.Project
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.Named
 import org.gradle.api.NamedDomainObjectContainer
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
@@ -169,6 +170,9 @@ abstract class WinRtApplicationOptions @Inject constructor(
         objects.mapProperty(String::class.java, String::class.java).convention(emptyMap())
     val projectPriExcludedFromBuildPaths: SetProperty<String> =
         objects.setProperty(String::class.java).convention(emptySet())
+    val generatePackage: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+    val packageOutputFile: RegularFileProperty = objects.fileProperty()
+    val makeAppxExecutable: Property<String> = objects.property(String::class.java).convention("")
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)

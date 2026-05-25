@@ -445,6 +445,25 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn(stageRuntimeAssetsTask)
         },
     )
+    val packageApplicationTask = project.tasks.register(
+        "packageWinRtApplication",
+        PackageWinRtApplicationTask::class.java,
+        Action<PackageWinRtApplicationTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Packages the staged WinRT application payload into an appx/msix package."
+            task.packageDirectory.set(stageApplicationPackageTask.flatMap { it.outputDirectory })
+            task.outputFile.set(
+                extension.application.packageOutputFile.orElse(
+                    project.layout.buildDirectory.file("kotlin-winrt/packages/${project.name}.msix"),
+                ),
+            )
+            task.generatePackage.set(extension.application.generatePackage)
+            task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.dependsOn(stageApplicationPackageTask)
+        },
+    )
     project.plugins.withId("java") {
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             task.dependsOn(stageApplicationPackageTask)
@@ -470,6 +489,7 @@ private fun configureWinRtApplicationTasks(
     project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
     project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
     project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
+    project.extensions.extraProperties["kotlinWinRtPackageTask"] = packageApplicationTask.name
 }
 
 private fun configureWinRtGeneration(

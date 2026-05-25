@@ -138,7 +138,17 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                     .forEach { source -> GradleFileOperations.copyFile(source, outputRoot.resolve(source.relativeTo(runtimeAssetsRoot))) }
             }
         }
+        stageAppxManifest(outputRoot)
         generateProjectPri(outputRoot)
+    }
+
+    private fun stageAppxManifest(outputRoot: Path) {
+        val manifest = appxManifestFiles.files
+            .map { it.toPath() }
+            .filter { it.isRegularFile() }
+            .sorted()
+            .firstOrNull() ?: return
+        GradleFileOperations.copyFile(manifest, outputRoot.resolve("AppxManifest.xml"))
     }
 
     private fun generateProjectPri(outputRoot: Path) {
