@@ -1851,6 +1851,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-payload").get().asFile.toPath()
         Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
         val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
         Files.writeString(
             manifest,
@@ -1894,10 +1895,93 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_missing_manifest_payload_references() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-missing-manifest-payload").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val task = project.tasks.register(
+            "stageMissingManifestPayloadApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-manifest-payload"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        val message = failure?.message.orEmpty()
+        assertTrue(message.contains("Invalid AppX manifest payload references"))
+        assertTrue(message.contains("Executable references missing package file: App/Contoso.exe"))
+        assertTrue(message.contains("VisualElements Square150x150Logo references missing package file: Assets/Square150x150Logo.png"))
+        assertTrue(message.contains("VisualElements Square44x44Logo references missing package file: Assets/Square44x44Logo.png"))
+    }
+
+    @Test
+    fun application_package_task_accepts_qualified_manifest_visual_asset_candidates() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-qualified-visual-assets").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets.resolve("App"))
+        Files.createDirectories(runtimeAssets.resolve("Assets"))
+        Files.writeString(runtimeAssets.resolve("App/Contoso.exe"), "exe")
+        Files.write(runtimeAssets.resolve("Assets/Square150x150Logo.scale-200.png"), byteArrayOf(0x50, 0x4e, 0x47))
+        Files.write(runtimeAssets.resolve("Assets/Square44x44Logo.targetsize-256.png"), byteArrayOf(0x50, 0x4e, 0x47))
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val task = project.tasks.register(
+            "stageQualifiedVisualAssetsApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-qualified-visual-assets"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("App/Contoso.exe")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Assets/Square150x150Logo.scale-200.png")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("Assets/Square44x44Logo.targetsize-256.png")))
+    }
+
+    @Test
     fun application_package_task_default_payload_targets_depend_on_project_resource_root() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-rooted-payload").get().asFile.toPath()
         Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
         val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
         Files.writeString(
             manifest,
@@ -3859,6 +3943,14 @@ private fun appxManifestXml(
       $resources
     </Package>
     """.trimIndent()
+
+private fun writeManifestPayloadReferences(root: Path) {
+    Files.createDirectories(root.resolve("App"))
+    Files.createDirectories(root.resolve("Assets"))
+    Files.writeString(root.resolve("App/Contoso.exe"), "exe")
+    Files.write(root.resolve("Assets/Square150x150Logo.png"), byteArrayOf(0x50, 0x4e, 0x47))
+    Files.write(root.resolve("Assets/Square44x44Logo.png"), byteArrayOf(0x50, 0x4e, 0x47))
+}
 
 private fun writeWindowsAppSdkPackage(
     nugetRoot: Path,
