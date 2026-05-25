@@ -2205,6 +2205,7 @@ class KotlinWinRtPluginTest {
         task.verify()
 
         assertTrue(Files.isRegularFile(markerFile))
+        assertEquals("verified=true", Files.readString(markerFile))
         assertTrue(Files.isRegularFile(unpackRoot.resolve("AppxManifest.xml")))
         val makeAppxCalls = Files.readString(makeAppxLog).replace("\\", "/")
         assertTrue(makeAppxCalls.contains("unpack"))

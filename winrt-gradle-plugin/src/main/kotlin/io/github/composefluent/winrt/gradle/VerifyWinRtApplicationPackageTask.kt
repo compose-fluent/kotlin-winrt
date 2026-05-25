@@ -71,7 +71,7 @@ abstract class VerifyWinRtApplicationPackageTask : DefaultTask() {
             throw GradleException("Verified appx/msix package did not unpack an AppxManifest.xml from $source.")
         }
         marker.parent?.let(Files::createDirectories)
-        Files.writeString(marker, "verified=${source.toAbsolutePath().normalize()}")
+        Files.writeString(marker, "verified=true")
     }
 
     private fun discoverMakeAppxExecutable(): Path? =
