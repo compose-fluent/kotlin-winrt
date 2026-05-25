@@ -2752,6 +2752,53 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_uses_configured_certificate_file() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/CertificateFile.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val certificate = project.layout.buildDirectory.file("certificates/test-signing.pfx").get().asFile.toPath()
+        Files.createDirectories(certificate.parent)
+        Files.writeString(certificate, "pfx")
+        val signToolLog = project.layout.buildDirectory.file("signtool-certificate-file.log").get().asFile.toPath()
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool-certificate-file.cmd").get().asFile.toPath(),
+            signToolLog,
+        )
+        val signedPackage = project.layout.buildDirectory.file("packages/CertificateFile-signed.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "signApplicationPackageWithCertificateFile",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateFile.set(project.layout.file(project.provider { certificate.toFile() }))
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("secret")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        task.sign()
+
+        assertTrue(Files.isRegularFile(signedPackage))
+        assertEquals("unsigned-msix", Files.readString(signedPackage))
+        val signToolCalls = Files.readString(signToolLog).replace("\\", "/")
+        assertTrue(signToolCalls.contains("/f"))
+        assertTrue(signToolCalls.contains("test-signing.pfx"))
+        assertTrue(signToolCalls.contains("/p secret"))
+        assertFalse(signToolCalls.contains("/sha1 ABCDEF123456"))
+        assertFalse(signToolCalls.contains("/a"))
+    }
+
+    @Test
     fun sign_application_package_task_does_not_delete_output_when_signing_is_disabled() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
