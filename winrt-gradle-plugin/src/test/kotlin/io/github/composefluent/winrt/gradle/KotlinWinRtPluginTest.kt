@@ -2823,6 +2823,45 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_rejects_non_appx_msix_output_extension() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/Unsigned.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val signedPackage = project.layout.buildDirectory.file("packages/Unsigned-signed.zip").get().asFile.toPath()
+        val signToolLog = project.layout.buildDirectory.file("signtool-invalid-output-extension.log").get().asFile.toPath()
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool-invalid-output-extension.cmd").get().asFile.toPath(),
+            signToolLog,
+        )
+        val task = project.tasks.register(
+            "signApplicationPackageWithInvalidOutputExtension",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file must end with .appx or .msix"))
+        assertFalse(Files.exists(signedPackage))
+        assertFalse(Files.exists(signToolLog))
+    }
+
+    @Test
     fun sign_application_package_task_rejects_same_input_and_output_package() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
