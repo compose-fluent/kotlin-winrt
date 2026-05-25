@@ -2157,6 +2157,75 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_fails_when_signtool_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/MissingSignTool.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val signedPackage = project.layout.buildDirectory.file("packages/MissingSignTool-signed.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "signApplicationPackageWithoutSignTool",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(project.projectDir.toPath().resolve("missing-signtool.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("signtool.exe was not found"))
+        assertFalse(Files.exists(signedPackage))
+    }
+
+    @Test
+    fun sign_application_package_task_fails_when_signtool_returns_error() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/FailedSign.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val signTool = writeFailingFakeSignTool(
+            project.layout.buildDirectory.file("fake-failing-signtool.cmd").get().asFile.toPath(),
+        )
+        val signedPackage = project.layout.buildDirectory.file("packages/FailedSign-signed.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "signApplicationPackageWithFailingSignTool",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to sign appx/msix package"))
+        assertFalse(Files.exists(signedPackage))
+    }
+
+    @Test
     fun install_application_package_task_invokes_add_appx_package() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -3530,6 +3599,18 @@ private fun writeFakeSignTool(path: Path, log: Path): Path {
         @echo off
         echo %*>>"${log.toString()}"
         exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFailingFakeSignTool(path: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        exit /b 1
         """.trimIndent(),
     )
     return path

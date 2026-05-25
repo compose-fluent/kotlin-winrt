@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
@@ -71,8 +72,7 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
             return
         }
         val signTool = discoverSignToolExecutable() ?: run {
-            logger.warn("Skipping application package signing because signtool.exe was not found.")
-            return
+            throw GradleException("Cannot sign appx/msix package because signtool.exe was not found.")
         }
         target.parent?.let(Files::createDirectories)
         Files.copy(source, target)
@@ -88,6 +88,7 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
         )
         if (!signed) {
             Files.deleteIfExists(target)
+            throw GradleException("Failed to sign appx/msix package at $target.")
         }
     }
 
