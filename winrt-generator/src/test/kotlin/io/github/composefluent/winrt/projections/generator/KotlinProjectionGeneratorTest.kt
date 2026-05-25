@@ -14815,6 +14815,60 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_activatable_factory_create_interface_unsupported_parameter_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("handle", "Sample.Foundation.NativeHandle"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains("requires interface Sample.Foundation.IWidgetFactory ABI binding CREATEINSTANCE_SLOT parameter handle to use supported ABI metadata before projection rendering; found Unsupported(Sample.Foundation.NativeHandle)"),
+        )
+    }
+
+    @Test
     fun generator_rejects_instance_runtime_surface_without_default_interface_definition() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -16494,6 +16548,62 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             error!!.message.orEmpty()
                 .contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to carry metadata IID for composable projection"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_composable_factory_create_interface_unsupported_user_parameter_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("handle", "Sample.Foundation.NativeHandle"),
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains("requires interface Sample.Foundation.IWidgetFactory ABI binding CREATEINSTANCE_SLOT parameter handle to use supported ABI metadata before projection rendering; found Unsupported(Sample.Foundation.NativeHandle)"),
         )
     }
 
