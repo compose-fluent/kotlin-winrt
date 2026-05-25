@@ -82,7 +82,7 @@
 - [x] Package output safety: reject package outputs that alias signing inputs or are placed where they can be self-included in staged package payloads.
 - [x] Package file type safety: reject non-`.appx` / non-`.msix` package inputs and outputs before package, verify, sign, or install tasks invoke external Windows tools.
 - [ ] Package verification closure: keep `verifyWinRtApplicationPackage` cache-compatible and fail closed when package output is missing, malformed, cannot be unpacked, or fails current manifest/payload smoke validation.
-- [ ] Payload/resource closure 正在做: keep explicit package payload staging, resource inventories, PRI/MRT generation, dependency layout, makepri inputs, and package-root path sensitivity deterministic and owned by the Kotlin Gradle plugin.
+- [ ] Payload/resource closure 正在做: keep explicit package payload staging, resource inventories, PRI/MRT generation, dependency layout, makepri inputs, package-root path sensitivity, and caller-specific relative-path diagnostics deterministic and owned by the Kotlin Gradle plugin.
 - [ ] Signing and install closure: keep signtool and PowerShell install/test-install inputs provider-modeled, fail closed on missing tools or invalid packages, and preserve disabled task outputs without deleting previous artifacts.
 - [x] Signing certificate input safety: fail closed when an explicit signing certificate file is configured but missing, and pass existing certificate files through signtool `/f` and `/p` instead of falling back to thumbprint or automatic certificate selection.
 - [ ] Representative Windows validation: validate touched runtime, metadata, generator, compiler-plugin, authoring, packaging, and JVM slices on Windows; samples remain validation surfaces, not design sources.

@@ -2177,6 +2177,49 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_invalid_explicit_package_payload_target_path() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-invalid-payload-target").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val payload = project.layout.buildDirectory.file("libs/app.jar").get().asFile.toPath()
+        Files.createDirectories(payload.parent)
+        Files.writeString(payload, "jar")
+        val task = project.tasks.register(
+            "stageInvalidPackagePayloadTargetApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-invalid-payload-target"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.packagePayloadFiles.from(payload)
+            registeredTask.projectPriTargetPaths.put(payload.toAbsolutePath().normalize().toString(), "../escape.jar")
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("packagePayload target path must be a relative path inside the package root"))
+        assertFalse(Files.exists(task.outputDirectory.get().asFile.toPath().resolve("escape.jar")))
+    }
+
+    @Test
     fun application_package_task_rejects_missing_explicit_project_pri_inputs() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-missing-pri-input").get().asFile.toPath()

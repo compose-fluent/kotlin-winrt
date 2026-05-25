@@ -196,8 +196,8 @@ internal object ProjectPriManifestSupport {
         allowResourceCandidates: Boolean,
         errors: MutableList<String>,
     ) {
-        val relative = runCatching { reference.toSafeRelativePath() }.getOrElse {
-            errors += "$label must be a relative package file path: $reference"
+        val relative = runCatching { reference.toSafeRelativePath(label) }.getOrElse { exception ->
+            errors += exception.message ?: "$label must be a relative package file path: $reference"
             return
         }
         val target = packageRoot.resolve(relative).normalize()

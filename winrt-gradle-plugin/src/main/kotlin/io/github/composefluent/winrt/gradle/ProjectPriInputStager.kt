@@ -16,7 +16,7 @@ internal class ProjectPriInputStager(
     private val targetPaths: Map<String, String>,
     private val excludedFromBuildPaths: Set<String>,
 ) {
-    private val initialPath = projectPriInitialPath.toSafeRelativePath()
+    private val initialPath = projectPriInitialPath.toSafeRelativePath("projectPriInitialPath")
     private val projectResourceRoot = defaultProjectResourceRoot?.toAbsolutePath()?.normalize()
 
     fun stage(
@@ -191,7 +191,7 @@ internal class ProjectPriInputStager(
 
     private fun Path.explicitTargetPath(): Path? {
         val configured = targetPaths[toAbsolutePath().normalize().toString()] ?: return null
-        return configured.toSafeRelativePath()
+        return configured.toSafeRelativePath("projectPriTargetPaths")
     }
 
     private fun Path.isExcludedFromBuild(): Boolean =
@@ -223,12 +223,12 @@ internal class ProjectPriInputStager(
     private data class ProjectPriLayoutInput(val source: Path, val target: Path)
 }
 
-internal fun String.toSafeRelativePath(): Path {
+internal fun String.toSafeRelativePath(label: String): Path {
     val normalized = replace('\\', '/').trim('/')
     if (normalized.isBlank()) return Path.of("")
     val path = Path.of(normalized).normalize()
     require(!path.isAbsolute && !path.startsWith("..")) {
-        "AppxPriInitialPath must be a relative path inside the PRI input root: $this"
+        "$label must be a relative path inside the package root: $this"
     }
     return path
 }
