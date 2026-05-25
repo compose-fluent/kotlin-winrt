@@ -587,6 +587,41 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_plugin_snapshots_existing_nuget_package_content_roots_for_runtime_staging() {
+        val project = ProjectBuilder.builder().build()
+        val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
+        val packageRoot = globalPackagesRoot.resolve("sample.package").resolve("1.0.0")
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("Sample.Package.nuspec"),
+            """
+            <package>
+              <metadata>
+                <id>Sample.Package</id>
+                <version>1.0.0</version>
+              </metadata>
+            </package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("Sample.Package.dll"), "dll")
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).apply {
+            application {}
+            nugetGlobalPackagesRoots.add(globalPackagesRoot.toString())
+            nugetPackage("Sample.Package", "1.0.0")
+        }
+
+        val task = project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+
+        assertTrue(
+            task.nugetPackageContentFiles.files.any {
+                it.toPath().toAbsolutePath().normalize() == packageRoot.toAbsolutePath().normalize()
+            },
+        )
+    }
+
+    @Test
     fun plugin_registers_compiler_plugin_dependency_for_late_kmp_compiler_plugin_classpath_configurations() {
         val project = ProjectBuilder.builder().build()
 

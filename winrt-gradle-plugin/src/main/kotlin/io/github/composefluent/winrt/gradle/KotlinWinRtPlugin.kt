@@ -2,6 +2,7 @@ package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.compiler.KotlinWinRtCommandLineProcessor
 import io.github.composefluent.winrt.metadata.WinRtMetadataSource
+import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -17,6 +18,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.io.File
+import java.nio.file.Path
 import org.gradle.jvm.tasks.Jar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -265,6 +267,19 @@ private fun configureWinRtApplicationTasks(
             task.dependencyRuntimeAssetFiles.from(
                 identityDependencies.elements.map { elements ->
                     elements.map { it.asFile }.flatMap(::readRuntimeAssets)
+                },
+            )
+            val dependencyNuGetPackages = identityDependencies.elements.map { elements ->
+                elements.map { it.asFile }.flatMap(::readNuGetPackages)
+            }
+            task.nugetPackageContentFiles.from(
+                task.nugetPackages.zip(task.nugetGlobalPackagesRoots) { packageSpecs, explicitGlobalPackagesRoots ->
+                    packageSpecs to explicitGlobalPackagesRoots
+                }.zip(dependencyNuGetPackages) { packageInput, dependencyPackageSpecs ->
+                    existingNuGetPackageContentRoots(
+                        packageSpecs = packageInput.first + dependencyPackageSpecs,
+                        explicitGlobalPackagesRoots = packageInput.second,
+                    )
                 },
             )
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
@@ -971,6 +986,26 @@ private fun kotlinMainSourceDirs(project: Project): List<File> {
     }
     val kotlinExtension = project.extensions.findByType(KotlinProjectExtension::class.java) ?: return emptyList()
     return kotlinExtension.sourceSets.findByName("main")?.kotlin?.srcDirs.orEmpty().toList()
+}
+
+private fun existingNuGetPackageContentRoots(
+    packageSpecs: List<String>,
+    explicitGlobalPackagesRoots: List<String>,
+): List<File> {
+    val roots = WinRtNuGetPackageResolver.globalPackagesRoots(
+        explicitRoots = explicitGlobalPackagesRoots.map(Path::of),
+    )
+    return packageSpecs
+        .map(::parseNuGetPackageIdentity)
+        .flatMap { identity ->
+            runCatching {
+                WinRtNuGetPackageResolver.resolveClosure(identity, roots)
+            }.getOrElse {
+                emptyList()
+            }
+        }
+        .map { resolved -> resolved.packageRoot.toFile() }
+        .distinctBy { it.toPath().toAbsolutePath().normalize().toString().lowercase() }
 }
 
 private fun Project.hasKotlinWinRtIdentityMetadata(): Boolean =
