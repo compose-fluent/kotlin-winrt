@@ -15220,6 +15220,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_abi_member_unsupported_parameter_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandle",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("handle", "Sample.Foundation.NativeHandle")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding SETHANDLE_SLOT parameter handle to use supported ABI metadata before projection rendering; found Unsupported(Sample.Foundation.NativeHandle)"),
+        )
+    }
+
+    @Test
     fun generator_rejects_composable_runtime_surface_without_default_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
