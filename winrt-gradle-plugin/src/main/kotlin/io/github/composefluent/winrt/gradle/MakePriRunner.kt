@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.logging.Logger
+import java.io.IOException
 import java.nio.file.Path
 
 internal object MakePriRunner {
@@ -11,10 +12,15 @@ internal object MakePriRunner {
         description: String,
         logger: Logger,
     ): String? {
-        val process = ProcessBuilder(listOf(makePri.toString()) + arguments)
-            .directory(workingDirectory.toFile())
-            .redirectErrorStream(true)
-            .start()
+        val process = try {
+            ProcessBuilder(listOf(makePri.toString()) + arguments)
+                .directory(workingDirectory.toFile())
+                .redirectErrorStream(true)
+                .start()
+        } catch (exception: IOException) {
+            logger.warn("Skipping application PRI generation because makepri could not be started for $description: ${exception.message}")
+            return null
+        }
         val output = decodeProcessOutput(process.inputStream.readBytes())
         val exitCode = process.waitFor()
         return if (exitCode == 0) {
