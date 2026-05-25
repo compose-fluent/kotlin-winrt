@@ -659,6 +659,7 @@ class KotlinProjectionGenerator(
             }
         }
         validateMappedAsyncTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
+        validateMappedCollectionTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         if (typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
             require(typeBinding.typeArguments.size == 1) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole array ${typeBinding.resolvedTypeName} to carry exactly one element ABI binding before projection rendering."
@@ -689,6 +690,25 @@ class KotlinProjectionGenerator(
         }
         typeBinding.typeArguments.forEach { argument ->
             validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument, delegateInvokeContext)
+        }
+    }
+
+    private fun validateMappedCollectionTypeBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        bindingName: String,
+        bindingRole: String,
+        typeBinding: KotlinProjectionAbiTypeBinding,
+    ) {
+        val expectedArgumentCount = when (typeBinding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedVectorView -> 1
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedMapView -> 2
+            else -> return
+        }
+        require(typeBinding.typeArguments.size == expectedArgumentCount) {
+            "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole collection ${typeBinding.resolvedTypeName} to carry $expectedArgumentCount type argument(s) before projection rendering; found ${typeBinding.typeArguments.size}."
         }
     }
 

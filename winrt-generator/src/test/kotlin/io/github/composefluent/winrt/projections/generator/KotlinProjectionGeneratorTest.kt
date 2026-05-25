@@ -13824,6 +13824,79 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_mapped_vector_owner_without_element_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IHandles",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555561"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator mutable collection parity requires IVector owner binding on Sample.Foundation.IHandles to carry 1 type argument before projection rendering; found 0.",
+            ),
+        )
+    }
+
+    @Test
+    fun generator_rejects_mapped_map_view_return_without_value_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IMapProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555562"),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Items",
+                                    typeName = "Windows.Foundation.Collections.IMapView<String>",
+                                    getterMethodName = "get_Items",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IMapProvider ABI binding ITEMS_GETTER_SLOT return collection Windows.Foundation.Collections.IMapView to carry 2 type argument(s) before projection rendering; found 1.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_async_operation_without_result_type_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

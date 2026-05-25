@@ -1495,8 +1495,13 @@ internal fun createReadOnlyCollectionBindingPlan(
     when (collectionKind) {
         KotlinProjectionReadOnlyCollectionKind.Iterable,
         KotlinProjectionReadOnlyCollectionKind.VectorView -> {
-            val elementBinding = typeArguments.singleOrNull() ?: return null
             val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(typeArguments.size == 1) {
+                    "Generator read-only collection parity requires ${collectionKind.abiName()} ${bindingTargetPrefix}binding on $errorContext to carry 1 type argument before projection rendering; found ${typeArguments.size}."
+                }
+            }
+            val elementBinding = typeArguments.singleOrNull() ?: return null
             if (requireSupportedBinding) {
                 require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
                     "Generator read-only collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}element ${elementBinding.describeAbiKind()} on $errorContext."
@@ -1515,9 +1520,14 @@ internal fun createReadOnlyCollectionBindingPlan(
         }
 
         KotlinProjectionReadOnlyCollectionKind.MapView -> {
+            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(typeArguments.size == 2) {
+                    "Generator read-only collection parity requires ${collectionKind.abiName()} ${bindingTargetPrefix}binding on $errorContext to carry 2 type arguments before projection rendering; found ${typeArguments.size}."
+                }
+            }
             val keyBinding = typeArguments.getOrNull(0) ?: return null
             val valueBinding = typeArguments.getOrNull(1) ?: return null
-            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
             if (requireSupportedBinding) {
                 require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
                     "Generator read-only collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}key ${keyBinding.describeAbiKind()} on $errorContext."
@@ -1553,8 +1563,13 @@ internal fun createMutableCollectionBindingPlan(
 ): KotlinProjectionMutableCollectionBinding? =
     when (collectionKind) {
         KotlinProjectionMutableCollectionKind.Vector -> {
-            val elementBinding = typeArguments.singleOrNull() ?: return null
             val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(typeArguments.size == 1) {
+                    "Generator mutable collection parity requires ${collectionKind.abiName()} ${bindingTargetPrefix}binding on $errorContext to carry 1 type argument before projection rendering; found ${typeArguments.size}."
+                }
+            }
+            val elementBinding = typeArguments.singleOrNull() ?: return null
             if (requireSupportedBinding) {
                 require(elementBinding.isSupportedReadOnlyCollectionElementBinding()) {
                     "Generator mutable collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}element ${elementBinding.describeAbiKind()} on $errorContext."
@@ -1573,9 +1588,14 @@ internal fun createMutableCollectionBindingPlan(
         }
 
         KotlinProjectionMutableCollectionKind.Map -> {
+            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
+            if (requireSupportedBinding) {
+                require(typeArguments.size == 2) {
+                    "Generator mutable collection parity requires ${collectionKind.abiName()} ${bindingTargetPrefix}binding on $errorContext to carry 2 type arguments before projection rendering; found ${typeArguments.size}."
+                }
+            }
             val keyBinding = typeArguments.getOrNull(0) ?: return null
             val valueBinding = typeArguments.getOrNull(1) ?: return null
-            val bindingTargetPrefix = if (bindingLocationLabel.isBlank()) "" else "$bindingLocationLabel "
             if (requireSupportedBinding) {
                 require(keyBinding.isSupportedReadOnlyCollectionKeyBinding()) {
                     "Generator mutable collection parity does not yet support ${collectionKind.abiName()} ${bindingTargetPrefix}key ${keyBinding.describeAbiKind()} on $errorContext."
