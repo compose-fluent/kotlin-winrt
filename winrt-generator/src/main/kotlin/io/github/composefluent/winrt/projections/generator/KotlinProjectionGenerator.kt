@@ -24,6 +24,7 @@ import io.github.composefluent.winrt.metadata.WinRtMethodVtableDescriptor
 import io.github.composefluent.winrt.metadata.WinRtMethodDefinition
 import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
+import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
@@ -36,6 +37,7 @@ import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
 import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
+import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
@@ -187,6 +189,7 @@ class KotlinProjectionGenerator(
                     require(plan.activatableFactoryInterfaceIid != null) {
                         "Generator requires runtime class ${plan.type.qualifiedName} activatable factory interface $factoryName to carry metadata IID before projection rendering."
                     }
+                    validateFactoryCreateBindingContracts(plan, factoryType)
                 }
             }
             if (KotlinProjectionCompanionKind.StaticInterfaces in plan.companionKinds) {
@@ -282,8 +285,85 @@ class KotlinProjectionGenerator(
                 require(plan.defaultInterfaceIid != null) {
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID for composable projection."
                 }
+                validateComposableFactoryCreateBindingContracts(plan, factoryType)
             }
         }
+    }
+
+    private fun validateFactoryCreateBindingContracts(
+        plan: KotlinTypeProjectionPlan,
+        factoryType: WinRtTypeDefinition,
+    ) {
+        factoryType.methods
+            .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+            .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+            .forEach { method ->
+                validateFactoryCreateAbiBindingContract(
+                    plan = plan,
+                    factoryType = factoryType,
+                    method = method,
+                    returnBinding = KotlinProjectionAbiTypeBinding(
+                        kind = KotlinProjectionAbiValueKind.InspectableReference,
+                        typeName = IINSPECTABLE_REFERENCE_CLASS_NAME.canonicalName,
+                    ),
+                    parameters = method.parameters,
+                )
+            }
+    }
+
+    private fun validateComposableFactoryCreateBindingContracts(
+        plan: KotlinTypeProjectionPlan,
+        factoryType: WinRtTypeDefinition,
+    ) {
+        factoryType.methods
+            .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+            .mapNotNull(::composableFactoryUserParameters)
+            .forEach { (method, userParameters) ->
+                validateFactoryCreateAbiBindingContract(
+                    plan = plan,
+                    factoryType = factoryType,
+                    method = method,
+                    returnBinding = KotlinProjectionAbiTypeBinding(KotlinProjectionAbiValueKind.Unit, "Unit"),
+                    parameters = userParameters,
+                )
+            }
+    }
+
+    private fun validateFactoryCreateAbiBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        factoryType: WinRtTypeDefinition,
+        method: WinRtMethodDefinition,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameters: List<WinRtParameterDefinition>,
+    ) {
+        validateProjectedAbiBindingContract(
+            plan = plan,
+            bindingName = "${factoryType.qualifiedName}.${method.name}",
+            returnBinding = returnBinding,
+            parameterBindings = parameters.map { parameter ->
+                KotlinProjectionAbiParameterBinding(
+                    name = parameter.name,
+                    typeBinding = KotlinProjectionPlanner().classifyAbiTypeBinding(
+                        typeName = parameter.typeName,
+                        currentNamespace = factoryType.namespace,
+                        typesByQualifiedName = plan.typesByQualifiedName,
+                    ),
+                )
+            },
+        )
+    }
+
+    private fun composableFactoryUserParameters(
+        method: WinRtMethodDefinition,
+    ): Pair<WinRtMethodDefinition, List<WinRtParameterDefinition>>? {
+        if (isWinRtVoidTypeName(method.returnType.typeName) || method.parameters.size < 2) {
+            return null
+        }
+        val trailing = method.parameters.takeLast(2)
+        if (trailing.any { parameter -> !isWinRtObjectTypeName(parameter.type.typeName) }) {
+            return null
+        }
+        return method to method.parameters.dropLast(2)
     }
 
     private fun validateInstanceMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
