@@ -460,8 +460,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
         ?: renderStaticDescriptorBooleanIntrinsicInvocation(binding)
         ?: renderStaticDescriptorScalarIntrinsicInvocation(binding)
         ?: renderStaticDescriptorProjectedObjectIntrinsicInvocation(binding)
-        ?: renderBoundStaticInvocationOrNull(binding)
-        ?: return null
+        ?: renderBoundStaticInvocation(binding)
     return FunSpec.builder(method.projectedMethodName())
         .addProjectedAttributeAnnotations(binding.projectedAttributes)
         .addMethodGenericParameters(method)
