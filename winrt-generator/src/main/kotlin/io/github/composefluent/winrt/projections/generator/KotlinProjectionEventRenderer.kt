@@ -1024,6 +1024,7 @@ internal fun KotlinProjectionRenderer.renderComposableConstructors(plan: KotlinT
     val factoryType = plan.composableFactoryInterfaceName?.let(plan.typesByQualifiedName::get) ?: return emptyList()
     return factoryType.methods
         .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
             val constructor = FunSpec.constructorBuilder()
@@ -1151,6 +1152,7 @@ internal fun KotlinProjectionRenderer.renderComposableFactoryCreateFunctions(pla
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
         .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
             FunSpec.builder(factoryCreateFunctionName(method))
@@ -1173,6 +1175,7 @@ private fun KotlinProjectionRenderer.renderDerivedComposableFactoryCreateFunctio
     val factoryClassName = resolveTypeName(factoryType.qualifiedName)
     return factoryType.methods
         .filter(WinRtMethodDefinition::isProjectedCallableMethod)
+        .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
         .mapNotNull(::composableUserParameters)
         .map { (method, userParameters) ->
             FunSpec.builder("${factoryCreateFunctionName(method)}ForSubclass")

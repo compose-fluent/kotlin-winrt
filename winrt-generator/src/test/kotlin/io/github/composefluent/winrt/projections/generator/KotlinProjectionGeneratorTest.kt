@@ -11107,6 +11107,92 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_ignores_composable_factory_methods_returning_other_runtime_classes() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.UI",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555593"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IOtherWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555594"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "OtherWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.UI.IOtherWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.UI.IOtherWidget", isDefault = true),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555595"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.UI.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                    methodRowId = 26,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "CreateOther",
+                                    returnTypeName = "Sample.UI.OtherWidget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Object"),
+                                    ),
+                                    methodRowId = 27,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.UI",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            isSealedType = true,
+                            defaultInterfaceName = "Sample.UI.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.UI.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                composableFactoryInterfaceName = "Sample.UI.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val contents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Widget.kt")
+            .contents
+
+        assertTrue(contents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
+        assertTrue(contents.contains("internal fun createInstance()"))
+        assertFalse(contents.contains("ComposableFactory.createOther"))
+        assertFalse(contents.contains("internal fun createOther()"))
+        assertFalse(contents.contains("public constructor() : this(ComposableFactory.createOther(), kotlin.Unit)"))
+    }
+
+    @Test
     fun generator_routes_derived_composable_factory_calls_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
