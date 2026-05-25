@@ -2127,6 +2127,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val packageRoot = project.layout.buildDirectory.dir("staged-appx").get().asFile.toPath()
         Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
             appxManifestXml(),
@@ -2191,6 +2192,46 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_fails_when_manifest_payload_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-missing-payload").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            appxManifestXml(),
+        )
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx-missing-payload.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx-missing-payload.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/MissingPayload.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithMissingManifestPayload",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        val message = failure?.message.orEmpty()
+        assertTrue(message.contains("AppxManifest.xml is invalid"))
+        assertTrue(message.contains("Executable references missing package file: App/Contoso.exe"))
+        assertFalse(Files.exists(outputFile))
+        assertFalse(Files.exists(makeAppxLog))
+    }
+
+    @Test
     fun package_application_task_fails_when_makeappx_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -2198,6 +2239,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val packageRoot = project.layout.buildDirectory.dir("staged-appx-missing-makeappx").get().asFile.toPath()
         Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
             appxManifestXml(),
@@ -2230,6 +2272,7 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
         val packageRoot = project.layout.buildDirectory.dir("staged-appx-empty-makeappx").get().asFile.toPath()
         Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
             appxManifestXml(),

@@ -54,6 +54,15 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
         if (!packageRoot.resolve("AppxManifest.xml").isRegularFile()) {
             throw GradleException("Cannot create appx/msix package because AppxManifest.xml was not staged in $packageRoot.")
         }
+        val manifest = packageRoot.resolve("AppxManifest.xml")
+        val manifestErrors = ProjectPriManifestSupport.validatePackageManifest(manifest) +
+            ProjectPriManifestSupport.validatePackageManifestPayload(manifest, packageRoot)
+        if (manifestErrors.isNotEmpty()) {
+            throw GradleException(
+                "Cannot create appx/msix package because AppxManifest.xml is invalid in $packageRoot:\n" +
+                    manifestErrors.joinToString(separator = "\n") { "- $it" },
+            )
+        }
         val makeAppx = discoverMakeAppxExecutable() ?: run {
             throw GradleException("Cannot create appx/msix package because makeappx.exe was not found.")
         }
