@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.logging.Logger
+import java.io.IOException
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
 
@@ -46,7 +47,12 @@ internal object SignToolRunner {
         val processBuilder = ProcessBuilder(listOf(signTool.toString()) + arguments)
             .redirectErrorStream(true)
         packageFile.parent?.let { processBuilder.directory(it.toFile()) }
-        val process = processBuilder.start()
+        val process = try {
+            processBuilder.start()
+        } catch (exception: IOException) {
+            logger.warn("Skipping application package signing because signtool could not be started: ${exception.message}")
+            return false
+        }
         val output = decodeProcessOutput(process.inputStream.readBytes())
         val exitCode = process.waitFor()
         return if (exitCode == 0) {
