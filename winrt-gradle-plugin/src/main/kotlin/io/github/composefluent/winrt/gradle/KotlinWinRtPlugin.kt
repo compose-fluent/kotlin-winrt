@@ -592,18 +592,15 @@ private fun configureWinRtApplicationTasks(
         Action<InstallWinRtApplicationPackageTask> { task ->
             task.group = "kotlin-winrt"
             task.description = "Installs the WinRT application appx/msix package for local test runs."
+            val defaultInstallPackageFile = extension.application.signPackage.flatMap { signPackage ->
+                if (signPackage) {
+                    signPackageTask.flatMap { it.outputFile }
+                } else {
+                    packageApplicationTask.flatMap { it.outputFile }
+                }
+            }
             task.packageFile.set(
-                extension.application.installPackageFile.orElse(
-                    project.layout.file(
-                        project.provider {
-                            if (extension.application.signPackage.get()) {
-                                signPackageTask.get().outputFile.get().asFile
-                            } else {
-                                packageApplicationTask.get().outputFile.get().asFile
-                            }
-                        },
-                    ),
-                ),
+                extension.application.installPackageFile.orElse(defaultInstallPackageFile),
             )
             task.installPackage.set(extension.application.installPackage)
             task.powerShellExecutable.set(extension.application.installPowerShellExecutable)
