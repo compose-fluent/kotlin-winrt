@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
@@ -9,6 +10,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
+import java.nio.file.Files
 
 @DisableCachingByDefault(because = "Installing app packages mutates the local Windows user profile.")
 abstract class InstallWinRtApplicationPackageTask : DefaultTask() {
@@ -36,11 +38,17 @@ abstract class InstallWinRtApplicationPackageTask : DefaultTask() {
         if (!installPackage.get() || !isWindowsHost()) {
             return
         }
-        PowerShellAppxInstaller.install(
+        val source = packageFile.get().asFile.toPath()
+        if (!Files.isRegularFile(source)) {
+            throw GradleException("Cannot install appx/msix package because package file does not exist: $source.")
+        }
+        if (!PowerShellAppxInstaller.install(
             powerShellExecutable = powerShellExecutable.get(),
-            packageFile = packageFile.get().asFile.toPath(),
+            packageFile = source,
             forceApplicationShutdown = forceApplicationShutdown.get(),
             logger = logger,
-        )
+        )) {
+            throw GradleException("Failed to install appx/msix package at $source.")
+        }
     }
 }
