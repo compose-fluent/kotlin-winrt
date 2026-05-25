@@ -246,6 +246,7 @@ class KotlinProjectionGenerator(
             plan.type.events.forEach { event ->
                 validateEventDelegateContract(plan, event)
             }
+            validateDelegateInvokeBindingContracts(plan)
             validateInstanceMethodBindingContracts(plan)
             validateInstancePropertyBindingContracts(plan)
             validateEventAccessorBindingContracts(plan)
@@ -325,6 +326,22 @@ class KotlinProjectionGenerator(
                 "Generator requires runtime class ${plan.type.qualifiedName} static method ${method.name} binding $bindingName to be present before projection rendering."
             }
         }
+    }
+
+    private fun validateDelegateInvokeBindingContracts(plan: KotlinTypeProjectionPlan) {
+        if (plan.type.kind != WinRtTypeKind.Delegate) {
+            return
+        }
+        val invokeShape = plan.delegateInvokeShape ?: return
+        require(invokeShape.interfaceId != null) {
+            "Generator requires delegate ${plan.type.qualifiedName} Invoke to carry metadata IID before projection rendering."
+        }
+        validateProjectedAbiBindingContract(
+            plan = plan,
+            bindingName = "Invoke",
+            returnBinding = invokeShape.returnBinding,
+            parameterBindings = invokeShape.parameterBindings,
+        )
     }
 
     private fun validateInstancePropertyBindingContracts(plan: KotlinTypeProjectionPlan) {
