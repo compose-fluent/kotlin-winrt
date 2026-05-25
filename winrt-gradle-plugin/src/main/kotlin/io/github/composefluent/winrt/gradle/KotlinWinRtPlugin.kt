@@ -261,6 +261,7 @@ private fun configureWinRtApplicationTasks(
                 },
             )
             task.runtimeAssets.set(extension.runtimeAssets)
+            task.runtimeAssetFiles.from(extension.runtimeAssets)
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
             task.nugetExecutable.set(extension.nugetExecutable)
