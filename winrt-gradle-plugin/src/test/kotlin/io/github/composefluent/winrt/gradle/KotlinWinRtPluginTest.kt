@@ -2240,6 +2240,45 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_manifest_payload_absolute_path_with_field_context() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-absolute-manifest-payload").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("AbsolutePayloadPackage.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(propertiesLogo = "/Assets/StoreLogo.png"),
+        )
+        val task = project.tasks.register(
+            "stageAbsoluteManifestPayloadApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-manifest-payload"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        val message = failure?.message.orEmpty()
+        assertTrue(message.contains("Invalid AppX manifest payload references"))
+        assertTrue(message.contains("Properties Logo must be a relative path inside the package root: /Assets/StoreLogo.png"))
+    }
+
+    @Test
     fun application_package_task_accepts_qualified_manifest_visual_asset_candidates() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-qualified-visual-assets").get().asFile.toPath()
@@ -2428,6 +2467,49 @@ class KotlinWinRtPluginTest {
         assertTrue(failure is IllegalArgumentException)
         assertTrue(failure?.message.orEmpty().contains("packagePayload target path must be a relative path inside the package root"))
         assertFalse(Files.exists(task.outputDirectory.get().asFile.toPath().resolve("escape.jar")))
+    }
+
+    @Test
+    fun application_package_task_rejects_absolute_explicit_package_payload_target_path() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-absolute-payload-target").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        writeManifestPayloadReferences(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val payload = project.layout.buildDirectory.file("libs/app.jar").get().asFile.toPath()
+        Files.createDirectories(payload.parent)
+        Files.writeString(payload, "jar")
+        val task = project.tasks.register(
+            "stageAbsolutePackagePayloadTargetApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-payload-target"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.packagePayloadFiles.from(payload)
+            registeredTask.projectPriTargetPaths.put(payload.toAbsolutePath().normalize().toString(), "/App/app.jar")
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("packagePayload target path must be a relative path inside the package root: /App/app.jar"))
+        assertFalse(Files.exists(task.outputDirectory.get().asFile.toPath().resolve("App/app.jar")))
     }
 
     @Test
@@ -5049,6 +5131,7 @@ private fun appxManifestXml(
     identityName: String = "Contoso.App",
     executable: String = "App/Contoso.exe",
     entryPoint: String = "Contoso.App",
+    propertiesLogo: String = "Assets/StoreLogo.png",
     resources: String = "",
 ): String =
     """
@@ -5059,7 +5142,7 @@ private fun appxManifestXml(
       <Properties>
         <DisplayName>Contoso</DisplayName>
         <PublisherDisplayName>Contoso</PublisherDisplayName>
-        <Logo>Assets/StoreLogo.png</Logo>
+        <Logo>$propertiesLogo</Logo>
       </Properties>
       <Applications>
         <Application Id="App" Executable="$executable" EntryPoint="$entryPoint">
