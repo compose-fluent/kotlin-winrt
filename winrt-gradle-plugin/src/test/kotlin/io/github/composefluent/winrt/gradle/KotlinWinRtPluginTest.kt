@@ -2334,6 +2334,42 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun verify_application_package_task_fails_when_unpacked_manifest_payload_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/MissingPayload.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val makeAppx = writeFakeMakeAppxUnpackWithoutPayload(
+            project.layout.buildDirectory.file("fake-makeappx-unpack-no-payload.cmd").get().asFile.toPath(),
+        )
+        val markerFile = project.layout.buildDirectory.file("packages/MissingPayload.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-no-payload").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyApplicationPackageWithoutUnpackedPayload",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.verify() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        val message = failure?.message.orEmpty()
+        assertTrue(message.contains("contains an invalid AppxManifest.xml"))
+        assertTrue(message.contains("Executable references missing package file: App/Contoso.exe"))
+        assertFalse(Files.exists(markerFile))
+    }
+
+    @Test
     fun sign_application_package_task_invokes_signtool_for_packaged_msix() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -3837,7 +3873,16 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
         )
         if /I "%command%"=="unpack" if not "%directory%"=="" (
           mkdir "%directory%" 2>nul
-          echo fake-manifest>"%directory%\AppxManifest.xml"
+          mkdir "%directory%\App" 2>nul
+          echo fake-exe>"%directory%\App\Contoso.exe"
+          (
+            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"^>
+            echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
+            echo   ^<Applications^>
+            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App" /^>
+            echo   ^</Applications^>
+            echo ^</Package^>
+          )>"%directory%\AppxManifest.xml"
         )
         exit /b 0
         """.trimIndent(),
@@ -3851,6 +3896,39 @@ private fun writeFakeMakeAppxUnpackWithoutManifest(path: Path): Path {
         path,
         """
         @echo off
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakeMakeAppxUnpackWithoutPayload(path: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        set directory=
+        :next
+        if "%~1"=="" goto done
+        if /I "%~1"=="/d" (
+          set directory=%~2
+          shift
+        )
+        shift
+        goto next
+        :done
+        if not "%directory%"=="" (
+          mkdir "%directory%" 2>nul
+          (
+            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"^>
+            echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
+            echo   ^<Applications^>
+            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App" /^>
+            echo   ^</Applications^>
+            echo ^</Package^>
+          )>"%directory%\AppxManifest.xml"
+        )
         exit /b 0
         """.trimIndent(),
     )

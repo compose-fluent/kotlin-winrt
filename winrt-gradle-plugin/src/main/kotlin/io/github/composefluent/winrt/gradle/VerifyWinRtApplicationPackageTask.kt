@@ -70,6 +70,15 @@ abstract class VerifyWinRtApplicationPackageTask : DefaultTask() {
         if (!unpackRoot.resolve("AppxManifest.xml").isRegularFile()) {
             throw GradleException("Verified appx/msix package did not unpack an AppxManifest.xml from $source.")
         }
+        val manifest = unpackRoot.resolve("AppxManifest.xml")
+        val manifestErrors = ProjectPriManifestSupport.validatePackageManifest(manifest) +
+            ProjectPriManifestSupport.validatePackageManifestPayload(manifest, unpackRoot)
+        if (manifestErrors.isNotEmpty()) {
+            throw GradleException(
+                "Verified appx/msix package contains an invalid AppxManifest.xml from $source:\n" +
+                    manifestErrors.joinToString(separator = "\n") { "- $it" },
+            )
+        }
         marker.parent?.let(Files::createDirectories)
         Files.writeString(marker, "verified=true")
     }
