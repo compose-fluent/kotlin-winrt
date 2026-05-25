@@ -2490,6 +2490,43 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_fails_when_input_package_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/MissingInput.msix").get().asFile.toPath()
+        val signToolLog = project.layout.buildDirectory.file("signtool-missing-input.log").get().asFile.toPath()
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool-missing-input.cmd").get().asFile.toPath(),
+            signToolLog,
+        )
+        val signedPackage = project.layout.buildDirectory.file("packages/MissingInput-signed.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "signMissingApplicationPackage",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file does not exist"))
+        assertFalse(Files.exists(signedPackage))
+        assertFalse(Files.exists(signToolLog))
+    }
+
+    @Test
     fun sign_application_package_task_fails_when_signtool_returns_error() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
