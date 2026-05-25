@@ -2791,6 +2791,7 @@ class KotlinWinRtPluginTest {
         assertTrue(failure is GradleException)
         val message = failure?.message.orEmpty()
         assertTrue(message.contains("AppxManifest.xml is invalid"))
+        assertTrue(message.contains("Properties Logo references missing package file: Assets/StoreLogo.png"))
         assertTrue(message.contains("Executable references missing package file: App/Contoso.exe"))
         assertFalse(Files.exists(outputFile))
         assertFalse(Files.exists(makeAppxLog))
@@ -3145,6 +3146,7 @@ class KotlinWinRtPluginTest {
         assertTrue(failure is GradleException)
         val message = failure?.message.orEmpty()
         assertTrue(message.contains("contains an invalid AppxManifest.xml"))
+        assertTrue(message.contains("Properties Logo references missing package file: Assets/StoreLogo.png"))
         assertTrue(message.contains("Executable references missing package file: App/Contoso.exe"))
         assertFalse(Files.exists(markerFile))
     }
