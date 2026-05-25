@@ -122,6 +122,7 @@ class KotlinProjectionGenerator(
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
+        validateGeneratorContracts(plans)
         val projectionRenderer = projectionFileRenderer()
         val projectionFiles = plans
             .filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
@@ -135,6 +136,7 @@ class KotlinProjectionGenerator(
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
+        validateGeneratorContracts(plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
         val projectionRenderer = projectionFileRenderer()
         var rendered = 0
@@ -170,6 +172,36 @@ class KotlinProjectionGenerator(
                 .authoredMetadataTypeMappings
                 .mapTo(suppressedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
         }
+
+    private fun validateGeneratorContracts(plans: List<KotlinTypeProjectionPlan>) {
+        plans.forEach { plan ->
+            if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
+                val factoryName = plan.composableFactoryInterfaceName
+                    ?: throw IllegalArgumentException(
+                        "Generator requires runtime class ${plan.type.qualifiedName} to carry composable factory interface metadata before projection rendering.",
+                    )
+                val factoryType = plan.typesByQualifiedName[factoryName]
+                require(factoryType?.kind == WinRtTypeKind.Interface) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface $factoryName to be present in the metadata model."
+                }
+                require(plan.composableFactoryInterfaceIid != null) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface $factoryName to carry metadata IID before projection rendering."
+                }
+                val defaultInterfaceName = plan.defaultInterfaceName
+                    ?: throw IllegalArgumentException(
+                        "Generator requires runtime class ${plan.type.qualifiedName} composable projection to carry default interface metadata before projection rendering.",
+                    )
+                val defaultInterfaceType = plan.typesByQualifiedName[defaultInterfaceName]
+                    ?: plan.typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                require(defaultInterfaceType?.kind == WinRtTypeKind.Interface) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to be present in the metadata model for composable projection."
+                }
+                require(plan.defaultInterfaceIid != null) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID for composable projection."
+                }
+            }
+        }
+    }
 
     private fun projectionFileRenderer(): KotlinProjectionFileRenderer =
         when (generationLayout) {
