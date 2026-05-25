@@ -2578,6 +2578,74 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_does_not_delete_output_when_signing_is_disabled() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/UnsignedDisabled.msix").get().asFile.toPath()
+        val signedPackage = project.layout.buildDirectory.file("packages/UnsignedDisabled-signed.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        Files.writeString(signedPackage, "existing-signed-msix")
+        val task = project.tasks.register(
+            "skipDisabledApplicationPackageSigning",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(false)
+            registeredTask.signToolExecutable.set(project.projectDir.toPath().resolve("missing-signtool.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        task.sign()
+
+        assertEquals("existing-signed-msix", Files.readString(signedPackage))
+    }
+
+    @Test
+    fun sign_application_package_task_rejects_same_input_and_output_package() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/SamePackage.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool-same-package.cmd").get().asFile.toPath(),
+            project.layout.buildDirectory.file("signtool-same-package.log").get().asFile.toPath(),
+        )
+        val task = project.tasks.register(
+            "signApplicationPackageSameInputOutput",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("signed output file must be different"))
+        assertEquals("unsigned-msix", Files.readString(inputPackage))
+    }
+
+    @Test
     fun sign_application_package_task_fails_when_signtool_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
