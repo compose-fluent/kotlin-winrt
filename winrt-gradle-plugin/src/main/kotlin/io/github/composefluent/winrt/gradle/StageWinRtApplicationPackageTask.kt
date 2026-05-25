@@ -159,6 +159,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         stageAppxManifest(outputRoot)
         stagePackagePayloads(outputRoot)
         generateProjectPri(outputRoot)
+        validateStagedManifestPayload(outputRoot)
     }
 
     private fun stageAppxManifest(outputRoot: Path) {
@@ -175,6 +176,18 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             )
         }
         GradleFileOperations.copyFile(manifest, outputRoot.resolve("AppxManifest.xml"))
+    }
+
+    private fun validateStagedManifestPayload(outputRoot: Path) {
+        val manifest = outputRoot.resolve("AppxManifest.xml")
+        if (!manifest.isRegularFile()) return
+        val payloadErrors = ProjectPriManifestSupport.validatePackageManifestPayload(manifest, outputRoot)
+        if (payloadErrors.isNotEmpty()) {
+            throw GradleException(
+                "Invalid AppX manifest payload references in ${manifest.toAbsolutePath().normalize()}:\n" +
+                    payloadErrors.joinToString(separator = "\n") { "- $it" },
+            )
+        }
     }
 
     private fun stagePackagePayloads(outputRoot: Path) {
