@@ -1860,7 +1860,7 @@ class KotlinWinRtPluginTest {
                 xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
               <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
               <Applications>
-                <Application Id="App">
+                <Application>
                   <uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" />
                 </Application>
               </Applications>
@@ -1891,6 +1891,7 @@ class KotlinWinRtPluginTest {
 
         assertTrue(failure is GradleException)
         val message = failure?.message.orEmpty()
+        assertTrue(message.contains("Application[0] must declare Id"))
         assertTrue(message.contains("Application[0] must declare Executable"))
         assertTrue(message.contains("Application[0] must declare EntryPoint"))
         assertTrue(message.contains("VisualElements must declare Square150x150Logo"))
