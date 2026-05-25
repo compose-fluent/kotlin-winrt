@@ -175,6 +175,28 @@ class KotlinProjectionGenerator(
 
     private fun validateGeneratorContracts(plans: List<KotlinTypeProjectionPlan>) {
         plans.forEach { plan ->
+            if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
+                plan.activatableFactoryInterfaceName?.let { factoryName ->
+                    val factoryType = plan.typesByQualifiedName[factoryName]
+                    require(factoryType?.kind == WinRtTypeKind.Interface) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} activatable factory interface $factoryName to be present in the metadata model."
+                    }
+                    require(plan.activatableFactoryInterfaceIid != null) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} activatable factory interface $factoryName to carry metadata IID before projection rendering."
+                    }
+                }
+            }
+            if (KotlinProjectionCompanionKind.StaticInterfaces in plan.companionKinds) {
+                plan.staticInterfaceBindings.forEach { binding ->
+                    val staticType = plan.typesByQualifiedName[binding.qualifiedName]
+                    require(staticType?.kind == WinRtTypeKind.Interface) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} static interface ${binding.qualifiedName} to be present in the metadata model."
+                    }
+                    require(binding.iid != null) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} static interface ${binding.qualifiedName} to carry metadata IID before projection rendering."
+                    }
+                }
+            }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
