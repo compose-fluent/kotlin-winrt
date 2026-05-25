@@ -240,6 +240,9 @@ class KotlinProjectionGenerator(
                         "Generator requires ${plan.projectionContractSubject()} required interface $requiredInterfaceName to carry metadata IID before projection rendering."
                     }
                 }
+            plan.type.events.forEach { event ->
+                validateEventDelegateContract(plan, event)
+            }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
@@ -266,6 +269,35 @@ class KotlinProjectionGenerator(
                 }
             }
         }
+    }
+
+    private fun validateEventDelegateContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+    ) {
+        val delegateTypeName = event.delegateTypeName
+        val rawDelegateTypeName = delegateTypeName.substringBefore('<').removeSuffix("?")
+        if (mappedTypeByAbiName(rawDelegateTypeName) != null) {
+            return
+        }
+        val delegateType = eventDelegateType(delegateTypeName, plan)
+        require(delegateType?.kind == WinRtTypeKind.Delegate) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} delegate $delegateTypeName to be present in the metadata model."
+        }
+        require(delegateType.iid != null) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} delegate $delegateTypeName to carry metadata IID before projection rendering."
+        }
+        requireDelegateInvokeMethod(delegateType)
+    }
+
+    private fun eventDelegateType(
+        delegateTypeName: String,
+        plan: KotlinTypeProjectionPlan,
+    ): WinRtTypeDefinition? {
+        val rawName = delegateTypeName.substringBefore('<').removeSuffix("?")
+        return plan.typesByQualifiedName[delegateTypeName]
+            ?: plan.typesByQualifiedName[rawName]
+            ?: plan.typesByQualifiedName["${plan.type.namespace}.$rawName"]
     }
 
     private fun requiredInterfaceType(
