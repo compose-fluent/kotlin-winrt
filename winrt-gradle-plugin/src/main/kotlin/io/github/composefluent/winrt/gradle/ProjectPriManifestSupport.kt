@@ -81,6 +81,17 @@ internal object ProjectPriManifestSupport {
                 errors += "manifest Identity Version must use four numeric components"
             }
         }
+        val properties = document.getElementsByTagNameNS("*", "Properties").item(0)
+        if (properties == null) {
+            errors += "manifest must contain a Properties element"
+        } else {
+            val propertyElement = properties as? Element
+            listOf("DisplayName", "PublisherDisplayName", "Logo").forEach { elementName ->
+                if (propertyElement?.childElements(elementName)?.firstOrNull()?.textContent?.trim().isNullOrBlank()) {
+                    errors += "manifest Properties must declare $elementName"
+                }
+            }
+        }
         val applications = document.getElementsByTagNameNS("*", "Applications").item(0)
         if (applications == null) {
             errors += "manifest must contain an Applications element"
@@ -122,8 +133,19 @@ internal object ProjectPriManifestSupport {
 
     fun validatePackageManifestPayload(manifest: Path, packageRoot: Path): List<String> {
         val document = readXmlDocument(manifest) ?: return listOf("manifest XML could not be parsed: $manifest")
-        val applications = document.getElementsByTagNameNS("*", "Applications").item(0) ?: return emptyList()
         val errors = mutableListOf<String>()
+        val properties = document.getElementsByTagNameNS("*", "Properties").item(0) as? Element
+        val logo = properties?.childElements("Logo")?.firstOrNull()?.textContent?.trim().orEmpty()
+        if (logo.isNotBlank()) {
+            validatePackageFileReference(
+                packageRoot = packageRoot,
+                reference = logo,
+                label = "manifest Properties Logo",
+                allowResourceCandidates = true,
+                errors = errors,
+            )
+        }
+        val applications = document.getElementsByTagNameNS("*", "Applications").item(0) ?: return errors
         applications.childElements("Application").forEachIndexed { index, application ->
             val prefix = "manifest Application[$index]"
             val executable = application.getAttribute("Executable").trim()

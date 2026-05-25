@@ -1870,7 +1870,65 @@ class KotlinWinRtPluginTest {
         assertTrue(message.contains("Invalid AppX manifest"))
         assertTrue(message.contains("Identity must declare Publisher"))
         assertTrue(message.contains("Version must use four numeric components"))
+        assertTrue(message.contains("manifest must contain a Properties element"))
         assertTrue(message.contains("manifest must contain an Applications element"))
+    }
+
+    @Test
+    fun application_package_task_rejects_incomplete_appx_properties_manifest() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-incomplete-properties-manifest").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("IncompletePropertiesPackage.appxmanifest")
+        Files.writeString(
+            manifest,
+            """
+            <Package
+                xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+                xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+              <Properties>
+                <DisplayName>Contoso</DisplayName>
+              </Properties>
+              <Applications>
+                <Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App">
+                  <uap:VisualElements
+                      DisplayName="Contoso"
+                      Description="Contoso app"
+                      BackgroundColor="transparent"
+                      Square150x150Logo="Assets/Square150x150Logo.png"
+                      Square44x44Logo="Assets/Square44x44Logo.png" />
+                </Application>
+              </Applications>
+            </Package>
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "stageIncompletePropertiesManifestPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-incomplete-properties-manifest"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        val message = failure?.message.orEmpty()
+        assertTrue(message.contains("Properties must declare PublisherDisplayName"))
+        assertTrue(message.contains("Properties must declare Logo"))
     }
 
     @Test
@@ -1886,6 +1944,11 @@ class KotlinWinRtPluginTest {
                 xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
                 xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
               <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+              <Properties>
+                <DisplayName>Contoso</DisplayName>
+                <PublisherDisplayName>Contoso</PublisherDisplayName>
+                <Logo>Assets/StoreLogo.png</Logo>
+              </Properties>
               <Applications>
                 <Application>
                   <uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" />
@@ -1936,6 +1999,11 @@ class KotlinWinRtPluginTest {
             """
             <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
               <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+              <Properties>
+                <DisplayName>Contoso</DisplayName>
+                <PublisherDisplayName>Contoso</PublisherDisplayName>
+                <Logo>Assets/StoreLogo.png</Logo>
+              </Properties>
               <Applications>
                 <Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App" />
               </Applications>
@@ -2051,6 +2119,7 @@ class KotlinWinRtPluginTest {
         assertTrue(failure is GradleException)
         val message = failure?.message.orEmpty()
         assertTrue(message.contains("Invalid AppX manifest payload references"))
+        assertTrue(message.contains("Properties Logo references missing package file: Assets/StoreLogo.png"))
         assertTrue(message.contains("Executable references missing package file: App/Contoso.exe"))
         assertTrue(message.contains("VisualElements Square150x150Logo references missing package file: Assets/Square150x150Logo.png"))
         assertTrue(message.contains("VisualElements Square44x44Logo references missing package file: Assets/Square44x44Logo.png"))
@@ -2102,6 +2171,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(runtimeAssets.resolve("App"))
         Files.createDirectories(runtimeAssets.resolve("Assets"))
         Files.writeString(runtimeAssets.resolve("App/Contoso.exe"), "exe")
+        Files.write(runtimeAssets.resolve("Assets/StoreLogo.png"), byteArrayOf(0x50, 0x4e, 0x47))
         Files.write(runtimeAssets.resolve("Assets/Square150x150Logo.scale-200.png"), byteArrayOf(0x50, 0x4e, 0x47))
         Files.write(runtimeAssets.resolve("Assets/Square44x44Logo.targetsize-256.png"), byteArrayOf(0x50, 0x4e, 0x47))
         val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
@@ -4761,11 +4831,17 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
           mkdir "%directory%\App" 2>nul
           mkdir "%directory%\Assets" 2>nul
           echo fake-exe>"%directory%\App\Contoso.exe"
+          echo fake-logo>"%directory%\Assets\StoreLogo.png"
           echo fake-logo>"%directory%\Assets\Square150x150Logo.png"
           echo fake-logo>"%directory%\Assets\Square44x44Logo.png"
           (
             echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"^>
             echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
+            echo   ^<Properties^>
+            echo     ^<DisplayName^>Contoso^</DisplayName^>
+            echo     ^<PublisherDisplayName^>Contoso^</PublisherDisplayName^>
+            echo     ^<Logo^>Assets/StoreLogo.png^</Logo^>
+            echo   ^</Properties^>
             echo   ^<Applications^>
             echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App"^>
             echo       ^<uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" Square150x150Logo="Assets/Square150x150Logo.png" Square44x44Logo="Assets/Square44x44Logo.png" /^>
@@ -4813,6 +4889,11 @@ private fun writeFakeMakeAppxUnpackWithoutPayload(path: Path): Path {
           (
             echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"^>
             echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
+            echo   ^<Properties^>
+            echo     ^<DisplayName^>Contoso^</DisplayName^>
+            echo     ^<PublisherDisplayName^>Contoso^</PublisherDisplayName^>
+            echo     ^<Logo^>Assets/StoreLogo.png^</Logo^>
+            echo   ^</Properties^>
             echo   ^<Applications^>
             echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App"^>
             echo       ^<uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" Square150x150Logo="Assets/Square150x150Logo.png" Square44x44Logo="Assets/Square44x44Logo.png" /^>
@@ -4900,6 +4981,11 @@ private fun appxManifestXml(
         xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
       <Identity Name="$identityName" Publisher="CN=Contoso" Version="1.0.0.0" />
+      <Properties>
+        <DisplayName>Contoso</DisplayName>
+        <PublisherDisplayName>Contoso</PublisherDisplayName>
+        <Logo>Assets/StoreLogo.png</Logo>
+      </Properties>
       <Applications>
         <Application Id="App" Executable="$executable" EntryPoint="$entryPoint">
           <uap:VisualElements
@@ -4918,6 +5004,7 @@ private fun writeManifestPayloadReferences(root: Path) {
     Files.createDirectories(root.resolve("App"))
     Files.createDirectories(root.resolve("Assets"))
     Files.writeString(root.resolve("App/Contoso.exe"), "exe")
+    Files.write(root.resolve("Assets/StoreLogo.png"), byteArrayOf(0x50, 0x4e, 0x47))
     Files.write(root.resolve("Assets/Square150x150Logo.png"), byteArrayOf(0x50, 0x4e, 0x47))
     Files.write(root.resolve("Assets/Square44x44Logo.png"), byteArrayOf(0x50, 0x4e, 0x47))
 }

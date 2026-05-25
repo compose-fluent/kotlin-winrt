@@ -78,7 +78,7 @@
 ## Phase 6 Packaging And Validation
 
 - [ ] Kotlin appx/msix packaging completeness 正在做: finish Kotlin-owned manifest generation/validation, appx/msix layout, dependency payload resolution, resources/PRI/MRT, signing/test-install hooks, packaged/unpackaged modes, and Gradle DSL ergonomics without cloning full MSBuild.
-- [ ] Manifest closure 正在做: validate packaged-mode `Applications/Application` presence, application id, executable/entry-point consistency, identity, required visual elements, manifest payload references, and fail-closed diagnostics before package creation and verification.
+- [ ] Manifest closure 正在做: validate packaged-mode package `Properties`, `Applications/Application` presence, application id, executable/entry-point consistency, identity, required visual elements, manifest payload references, and fail-closed diagnostics before package creation and verification.
 - [x] Package output safety: reject package outputs that alias signing inputs or are placed where they can be self-included in staged package payloads.
 - [x] Package file type safety: reject non-`.appx` / non-`.msix` package inputs and outputs before package, verify, sign, or install tasks invoke external Windows tools.
 - [ ] Package verification closure 正在做: keep `verifyWinRtApplicationPackage` cache-compatible, bind verification markers to the verified package name/content hash, and fail closed when package output is missing, malformed, cannot be unpacked, or fails current manifest/payload smoke validation.
