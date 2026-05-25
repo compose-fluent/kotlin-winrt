@@ -71,6 +71,9 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
         if (!signPackage.get() || !isWindowsHost()) {
             return
         }
+        if (!Files.isRegularFile(source)) {
+            throw GradleException("Cannot sign appx/msix package because package file does not exist: $source.")
+        }
         val signTool = discoverSignToolExecutable() ?: run {
             throw GradleException("Cannot sign appx/msix package because signtool.exe was not found.")
         }
