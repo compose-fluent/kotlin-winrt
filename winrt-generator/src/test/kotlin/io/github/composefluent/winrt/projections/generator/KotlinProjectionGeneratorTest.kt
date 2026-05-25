@@ -15839,6 +15839,49 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_instance_method_without_method_binding() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Refresh",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires runtime class Sample.Foundation.Widget method Refresh binding REFRESH_SLOT to be present before projection rendering"),
+        )
+    }
+
+    @Test
     fun generator_rejects_instance_property_setter_without_setter_binding() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
