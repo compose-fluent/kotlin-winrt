@@ -5,6 +5,7 @@ import java.nio.file.Path
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.isRegularFile
+import org.w3c.dom.Element
 
 internal object ProjectPriManifestSupport {
     fun defaultLanguage(explicitLanguage: String, manifests: Iterable<File>): String =
@@ -78,6 +79,34 @@ internal object ProjectPriManifestSupport {
                 errors += "manifest Identity Version must use four numeric components"
             }
         }
+        val applications = document.getElementsByTagNameNS("*", "Applications").item(0)
+        if (applications == null) {
+            errors += "manifest must contain an Applications element"
+        } else {
+            val applicationElements = applications.childElements("Application")
+            if (applicationElements.isEmpty()) {
+                errors += "manifest Applications must contain at least one Application element"
+            }
+            applicationElements.forEachIndexed { index, application ->
+                val prefix = "manifest Application[$index]"
+                val executable = application.getAttribute("Executable").trim()
+                val entryPoint = application.getAttribute("EntryPoint").trim()
+                if (executable.isBlank()) {
+                    errors += "$prefix must declare Executable"
+                }
+                if (entryPoint.isBlank()) {
+                    errors += "$prefix must declare EntryPoint"
+                }
+                application.childElements("VisualElements").forEach { visualElements ->
+                    listOf("DisplayName", "Description", "BackgroundColor", "Square150x150Logo", "Square44x44Logo")
+                        .forEach { attribute ->
+                            if (visualElements.getAttribute(attribute).trim().isBlank()) {
+                                errors += "$prefix VisualElements must declare $attribute"
+                            }
+                        }
+                }
+            }
+        }
         return errors
     }
 
@@ -107,6 +136,14 @@ internal object ProjectPriManifestSupport {
             runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
         }.newDocumentBuilder().parse(path.toFile())
     }.getOrNull()
+
+    private fun org.w3c.dom.Node.childElements(localName: String): List<Element> =
+        (0 until childNodes.length)
+            .asSequence()
+            .map { childNodes.item(it) }
+            .filterIsInstance<Element>()
+            .filter { it.localName.equals(localName, ignoreCase = true) }
+            .toList()
 }
 
 private val APPX_VERSION = Regex("""\d+\.\d+\.\d+\.\d+""")
