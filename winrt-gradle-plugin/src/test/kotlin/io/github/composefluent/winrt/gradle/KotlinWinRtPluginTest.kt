@@ -2929,6 +2929,47 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_fails_when_certificate_file_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/MissingCertificate.msix").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned-msix")
+        val signToolLog = project.layout.buildDirectory.file("signtool-missing-certificate.log").get().asFile.toPath()
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool-missing-certificate.cmd").get().asFile.toPath(),
+            signToolLog,
+        )
+        val missingCertificate = project.layout.buildDirectory.file("certificates/missing.pfx").get().asFile.toPath()
+        val signedPackage = project.layout.buildDirectory.file("packages/MissingCertificate-signed.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "signApplicationPackageWithMissingCertificate",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateFile.set(project.layout.file(project.provider { missingCertificate.toFile() }))
+            registeredTask.signingCertificateThumbprint.set("")
+            registeredTask.signingCertificatePassword.set("secret")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("signing certificate file does not exist"))
+        assertFalse(Files.exists(signedPackage))
+        assertFalse(Files.exists(signToolLog))
+    }
+
+    @Test
     fun sign_application_package_task_fails_when_signtool_cannot_start() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

@@ -78,6 +78,10 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
         if (source.toAbsolutePath().normalize() == target.toAbsolutePath().normalize()) {
             throw GradleException("Cannot sign appx/msix package because signed output file must be different from input package file: $target.")
         }
+        val certificateFile = signingCertificateFile.orNull?.asFile?.toPath()
+        if (certificateFile != null && !Files.isRegularFile(certificateFile)) {
+            throw GradleException("Cannot sign appx/msix package because signing certificate file does not exist: $certificateFile.")
+        }
         val signTool = discoverSignToolExecutable() ?: run {
             throw GradleException("Cannot sign appx/msix package because signtool.exe was not found.")
         }
@@ -88,7 +92,7 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
             signTool = signTool,
             packageFile = target,
             certificateThumbprint = signingCertificateThumbprint.get(),
-            certificateFile = signingCertificateFile.orNull?.asFile?.toPath(),
+            certificateFile = certificateFile,
             certificatePassword = signingCertificatePassword.get(),
             timestampUrl = signingTimestampUrl.get(),
             hashAlgorithm = signingHashAlgorithm.get(),
