@@ -67,16 +67,19 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
     fun sign() {
         val source = inputPackageFile.get().asFile.toPath()
         val target = outputFile.get().asFile.toPath()
-        Files.deleteIfExists(target)
         if (!signPackage.get() || !isWindowsHost()) {
             return
         }
         if (!Files.isRegularFile(source)) {
             throw GradleException("Cannot sign appx/msix package because package file does not exist: $source.")
         }
+        if (source.toAbsolutePath().normalize() == target.toAbsolutePath().normalize()) {
+            throw GradleException("Cannot sign appx/msix package because signed output file must be different from input package file: $target.")
+        }
         val signTool = discoverSignToolExecutable() ?: run {
             throw GradleException("Cannot sign appx/msix package because signtool.exe was not found.")
         }
+        Files.deleteIfExists(target)
         target.parent?.let(Files::createDirectories)
         Files.copy(source, target)
         val signed = SignToolRunner.sign(
