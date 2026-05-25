@@ -193,6 +193,10 @@ class KotlinWinRtPluginTest {
             applicationProject.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"],
         )
         assertEquals(
+            "resolveWinRtRuntimeNuGetPackages",
+            applicationProject.extensions.extraProperties["kotlinWinRtRuntimeNuGetPackagesTask"],
+        )
+        assertEquals(
             "stageWinRtRuntimeAssets",
             applicationProject.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"],
         )
@@ -619,6 +623,28 @@ class KotlinWinRtPluginTest {
                 it.toPath().toAbsolutePath().normalize() == packageRoot.toAbsolutePath().normalize()
             },
         )
+    }
+
+    @Test
+    fun application_plugin_wires_runtime_nuget_resolution_manifest_into_runtime_staging() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).apply {
+            application {}
+            nugetPackage("Sample.Package", "1.0.0")
+        }
+
+        val resolveTask = project.tasks.named(
+            "resolveWinRtRuntimeNuGetPackages",
+            ResolveWinRtRuntimeNuGetPackagesTask::class.java,
+        ).get()
+        val stageTask = project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+
+        assertTrue(
+            stageTask.taskDependencies.getDependencies(stageTask).any { it.name == "resolveWinRtRuntimeNuGetPackages" },
+        )
+        assertTrue(stageTask.resolvedNuGetPackageManifestFiles.files.contains(resolveTask.outputFile.get().asFile))
     }
 
     @Test
