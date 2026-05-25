@@ -210,17 +210,34 @@ class KotlinProjectionGenerator(
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID before projection rendering."
                 }
             }
-            plan.implementedInterfaceBindings
-                .filterNot { isMappedCollectionInterfaceName(it.qualifiedName) }
-                .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
-                .forEach { binding ->
-                    val interfaceType = plan.typesByQualifiedName[binding.qualifiedName]
-                        ?: plan.typesByQualifiedName[binding.qualifiedName.substringBefore('<').removeSuffix("?")]
-                    require(interfaceType?.kind == WinRtTypeKind.Interface) {
-                        "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to be present in the metadata model."
+            if (plan.type.kind == WinRtTypeKind.RuntimeClass) {
+                plan.implementedInterfaceBindings
+                    .filterNot { isMappedCollectionInterfaceName(it.qualifiedName) }
+                    .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
+                    .forEach { binding ->
+                        val interfaceType = plan.typesByQualifiedName[binding.qualifiedName]
+                            ?: plan.typesByQualifiedName[binding.qualifiedName.substringBefore('<').removeSuffix("?")]
+                        require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                            "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to be present in the metadata model."
+                        }
+                        require(binding.iid != null) {
+                            "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to carry metadata IID before projection rendering."
+                        }
                     }
-                    require(binding.iid != null) {
-                        "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to carry metadata IID before projection rendering."
+            }
+            plan.requiredInterfaceAugmentationDescriptor
+                ?.requiredInterfaceNames
+                .orEmpty()
+                .asSequence()
+                .filterNot(::isMappedCollectionInterfaceName)
+                .filterNot(::isRuntimeOwnedMappedTypeName)
+                .forEach { requiredInterfaceName ->
+                    val interfaceType = requiredInterfaceType(requiredInterfaceName, plan)
+                    require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                        "Generator requires ${plan.projectionContractSubject()} required interface $requiredInterfaceName to be present in the metadata model."
+                    }
+                    require(interfaceType.iid != null) {
+                        "Generator requires ${plan.projectionContractSubject()} required interface $requiredInterfaceName to carry metadata IID before projection rendering."
                     }
                 }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
@@ -249,6 +266,28 @@ class KotlinProjectionGenerator(
                 }
             }
         }
+    }
+
+    private fun requiredInterfaceType(
+        requiredInterfaceName: String,
+        plan: KotlinTypeProjectionPlan,
+    ): WinRtTypeDefinition? {
+        val rawName = requiredInterfaceName.substringBefore('<').removeSuffix("?")
+        return plan.typesByQualifiedName[requiredInterfaceName]
+            ?: plan.typesByQualifiedName[rawName]
+            ?: plan.typesByQualifiedName["${plan.type.namespace}.$rawName"]
+    }
+
+    private fun KotlinTypeProjectionPlan.projectionContractSubject(): String {
+        val kind = when (type.kind) {
+            WinRtTypeKind.RuntimeClass -> "runtime class"
+            WinRtTypeKind.Interface -> "interface"
+            WinRtTypeKind.Delegate -> "delegate"
+            WinRtTypeKind.Struct -> "struct"
+            WinRtTypeKind.Enum -> "enum"
+            WinRtTypeKind.Unknown -> "type"
+        }
+        return "$kind ${type.qualifiedName}"
     }
 
     private fun KotlinTypeProjectionPlan.requiresDefaultInterfaceContract(): Boolean {
