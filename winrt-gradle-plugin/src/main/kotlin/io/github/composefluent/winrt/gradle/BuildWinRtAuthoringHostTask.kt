@@ -6,6 +6,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
@@ -38,6 +39,9 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
 
     @get:Input
     abstract val runtimeIdentifier: Property<String>
+
+    @get:Internal
+    abstract val commandWorkingDirectory: DirectoryProperty
 
     @TaskAction
     fun build() {
@@ -147,7 +151,7 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
             return path
         }
         return runCatching {
-            val result = runProcess(listOf("cmd.exe", "/c", "where", name), project.projectDir.toPath())
+            val result = runProcess(listOf("cmd.exe", "/c", "where", name), commandWorkingDirectory.get().asFile.toPath())
             result.output
                 .lineSequence()
                 .map { it.trim() }

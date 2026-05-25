@@ -5,6 +5,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
@@ -16,6 +17,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
 
+@CacheableTask
 abstract class MergeWinRtCompilerSupportTask : DefaultTask() {
     @get:InputFiles
     @get:Optional

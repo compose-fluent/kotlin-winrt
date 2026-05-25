@@ -235,6 +235,7 @@ private fun configureWinRtApplicationTasks(
             task.generatedSourceDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/authoring-host/src"))
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
             task.javaHome.set(project.provider { System.getProperty("java.home") })
+            task.commandWorkingDirectory.set(project.layout.projectDirectory)
             task.dependencyIdentityFiles.from(identityDependencies)
             task.authoredHostManifestFiles.from(
                 project.layout.buildDirectory.file(
