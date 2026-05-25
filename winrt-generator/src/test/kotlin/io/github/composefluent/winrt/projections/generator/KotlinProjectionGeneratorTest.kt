@@ -14642,6 +14642,67 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_static_runtime_surface_without_static_interface_definition() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty()
+                .contains("requires runtime class Sample.Foundation.Widget static interface Sample.Foundation.IWidgetStatics to be present in the metadata model"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_activatable_runtime_surface_without_factory_interface_definition() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                activatableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty()
+                .contains("requires runtime class Sample.Foundation.Widget activatable factory interface Sample.Foundation.IWidgetFactory to be present in the metadata model"),
+        )
+    }
+
+    @Test
     fun generator_rejects_activatable_runtime_surface_without_factory_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
