@@ -7394,6 +7394,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_delegate_invoke_unsupported_array_parameter_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("values", "Array<Int>"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains("requires delegate Sample.Foundation.WidgetHandler ABI binding Invoke parameter values delegate array Array to use supported delegate array ABI metadata before projection rendering; found Array(Int32)"),
+        )
+    }
+
+    @Test
     fun generator_emits_interface_abi_slots_after_inherited_interface_segments() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
