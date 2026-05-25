@@ -13,13 +13,14 @@
 - [ ] Kotlin has no runtime reflection equivalent for CsWinRT's attribute/source-generator discovery path; any equivalent annotation, metadata, registration, or source-generator behavior must be implemented through `winrt-generator` and `winrt-compiler-plugin`, with runtime discovery paths kept fail-closed.
 - [ ] WinMD ingestion targets native WinMD metadata only. Do not add `cswinmd`-specific compatibility as a projection goal.
 - [ ] Packaging target is complete Kotlin `appx` / `msix` application packaging, PRI/MRT/resource indexing, manifest processing, dependency payload staging, and runtime asset layout. CsWinRT/MSBuild targets are implementation evidence, not a requirement to clone full MSBuild.
-- [ ] Current sizing concern is real: keep new slices generator/compiler-plugin-owned, reduce checked-in/generated source bulk where behavior can move to deterministic metadata or compiler artifacts, and track codebase slimming separately from projection-behavior parity.
+- [ ] Current sizing concern is real, but slimming is not an active implementation target until projection behavior is functionally complete enough to avoid deleting surfaces that later need to return. New functional slices should still avoid unnecessary source growth, duplicated branch tables, and handwritten generated-output expansion.
 
 ## Current Focus
 
-- [ ] Interface native projection IR migration 正在做: continue reducing live generated `NativeProjection` bodies toward descriptor-backed compiler-plugin IR lowering without adding runtime reflection/proxy helpers; projected-object/event exclusions must stay explicit until the matching `.cswinrt` responsibility slice is mapped.
-- [ ] Compile-surface/codebase slimming: stop broad source growth, keep support data in compiler inputs/artifacts where possible, and use generated-output audits to decide which source bodies can be eliminated without losing CsWinRT behavior.
-- [ ] Kotlin appx/msix packaging closure: finish application package/resource/PRI/MRT/MSIX logic using CsWinRT/MSBuild behavior as evidence while keeping the Kotlin Gradle plugin as the owner.
+- [ ] Kotlin appx/msix packaging closure 正在做: finish application package/resource/PRI/MRT/MSIX logic using CsWinRT/MSBuild behavior as evidence while keeping the Kotlin Gradle plugin as the owner.
+- [ ] Generator projection matrix closure: finish activation/static/factory surfaces, delegates/events, async/collection helpers, mapped types, ABI array/struct/member shapes, and unsupported-shape diagnostics before broadening checked-in projection output.
+- [ ] Metadata input expansion and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
+- [ ] Interface native projection IR migration: continue descriptor-backed compiler-plugin lowering only where it closes functional projection behavior; do not treat source-count reduction as the reason for this slice.
 
 ## Completed Baseline Summary
 
@@ -43,13 +44,13 @@
 - [ ] Authoring completeness: extend beyond the current JVM WinUI happy path to full factories/activation/hosting/metadata/receive-array shapes, inherited/overridable interfaces, ABI marshaling combinations, and later native host support.
 - [ ] Kotlin appx/msix packaging completeness: finish manifest generation/validation, appx/msix layout, dependency payload resolution, resources/PRI/MRT, signing/test-install hooks, unpackaged vs packaged modes, and Gradle DSL ergonomics without attempting full MSBuild parity.
 - [ ] Validation sweep: run generated-output audits and representative Windows validation for runtime, metadata, generator, compiler-plugin, authoring, packaging, JVM, and native slices; samples remain validation surfaces, not sources of truth.
-- [ ] Slimming execution: identify duplicated type/category branch tables, dead generated/runtime registries, oversized generated source bodies, stale tests/fixtures, and plan concrete deletions in the untracked `SLIMMING_PLAN.md` before touching behavior.
+- [ ] Future slimming execution: after functional closure, identify duplicated type/category branch tables, dead generated/runtime registries, oversized generated source bodies, stale tests/fixtures, and plan concrete deletions in the untracked `SLIMMING_PLAN.md` before touching behavior.
 
 ## Implementation Plan By Phase
 
 ### Phase 1 Runtime And ABI
 
-- [ ] Interface native projection IR migration 正在做: keep public projection behavior source-compatible while moving eligible JVM vtable calls into descriptor-backed compiler-plugin lowering; do not add runtime reflection, JVM Proxy, or classpath discovery paths.
+- [ ] Interface native projection IR migration: keep public projection behavior source-compatible while moving eligible JVM vtable calls into descriptor-backed compiler-plugin lowering only where it is needed to close projection behavior; do not add runtime reflection, JVM Proxy, or classpath discovery paths.
 - [ ] Native runtime actuals for mingwX64: implement real COM initialization, WinRT initialization, HRESULT/error-info translation, dynamic library loading, vtable invocation, callback/upcall plumbing, and pointer ownership in winrt-runtime target source sets.
 - [ ] Native object identity and activation: implement IUnknown/IInspectable identity, QueryInterface, runtime-class-name lookup, activation factory lookup/cache, manifest-free fallback, and COM reference ownership for mingwX64.
 - [ ] Native delegates, events, collections, and async: port the JVM-validated ownership rules to native after the native ABI primitives and object identity layer are complete.
@@ -65,7 +66,7 @@
 - [ ] Generator projection matrix closure: finish Kotlin-relevant activation, static, factory, custom mapped type, nullable reference, required/default interface, generic instantiation, collection, async, delegate/event, struct, array, and attribute behavior.
 - [ ] Compiler-plugin authoring/annotation transformation: move semantic authored type discovery and annotation/source-generator-equivalent behavior onto K2/IR symbols and generated/lowered support artifacts; Kotlin runtime must not discover this by reflection.
 - [ ] Expect/actual closure: remove common fallback gates for async, collections, custom mapped types, static members, events, setter-only properties, and unsupported ABI shapes only after both JVM and mingwX64 contracts exist.
-- [ ] Projection source slimming: move non-public support tables and repetitive generated bodies into deterministic compiler inputs/artifacts where behavior remains equivalent, and keep public generated APIs reproducible from metadata.
+- [ ] Functional compiler-plugin closure: finish K2/IR lowering paths needed for generated projection and authoring behavior, including descriptor handoffs, annotation/source-generator equivalents, and fail-closed diagnostics.
 
 ### Phase 4 Projections
 
@@ -84,16 +85,17 @@
 - [ ] Gradle cache contract: keep configuration cache and build cache enabled for WinRT generation and packaging tasks; cache failures are issues to fix, not flags to bypass.
 - [ ] Representative Windows validation: validate touched runtime, metadata, generator, compiler-plugin, authoring, packaging, JVM, and native slices on Windows; samples remain validation surfaces, not design sources.
 
-### Slimming Workstream
+### Deferred Slimming Workstream
 
-- [ ] Codebase size audit: identify duplicated type/category branch tables, stale tests/fixtures, dead generated/runtime registries, oversized generated source bodies, and removable compatibility paths.
-- [ ] Slimming plan execution: keep detailed deletion candidates in untracked SLIMMING_PLAN.md; only move an item into PLAN.md when it becomes an active implementation task.
+- [ ] Codebase size audit: after functional closure, identify duplicated type/category branch tables, stale tests/fixtures, dead generated/runtime registries, oversized generated source bodies, and removable compatibility paths.
+- [ ] Slimming plan execution: keep detailed deletion candidates in untracked SLIMMING_PLAN.md; only move an item into PLAN.md when it becomes an active implementation task after parity-critical behavior is complete.
 
 ## Frozen
 
 - [ ] `winrt-samples`: only validate completed runtime/generator/authoring slices; no sample-local runtime workarounds.
 - [ ] `winrt-projections`: avoid broad checked-in projection growth; prefer plugin-generated output.
-- [ ] `mingwX64`: full native runtime/projection parity is deliberately deferred for the current work queue; keep shared contracts native-viable, but do not implement native actuals until the JVM/generator/slimming focus items are closed.
+- [ ] `mingwX64`: full native runtime/projection parity is deliberately deferred for the current work queue; keep shared contracts native-viable, but do not implement native actuals until the JVM/generator/packaging focus items are closed.
+- [ ] Codebase slimming: do not execute deletion-oriented slimming before functional projection, generator, authoring, and packaging gaps are closed enough that removals can be judged against a stable behavior target.
 
 ## Validation Plan
 
