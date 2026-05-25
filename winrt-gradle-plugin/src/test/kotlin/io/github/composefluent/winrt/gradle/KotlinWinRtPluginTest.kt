@@ -2627,6 +2627,31 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun install_application_package_task_fails_when_powershell_cannot_start() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/MissingPowerShell.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val task = project.tasks.register(
+            "installApplicationPackageWithoutPowerShell",
+            InstallWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.installPackage.set(true)
+            registeredTask.powerShellExecutable.set(project.projectDir.toPath().resolve("missing-powershell.exe").toString())
+            registeredTask.forceApplicationShutdown.set(true)
+        }.get()
+
+        val failure = runCatching { task.install() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to install appx/msix package"))
+    }
+
+    @Test
     fun install_application_package_task_fails_when_add_appx_package_fails() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

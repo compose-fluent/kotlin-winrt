@@ -1,6 +1,7 @@
 package io.github.composefluent.winrt.gradle
 
 import org.gradle.api.logging.Logger
+import java.io.IOException
 import java.nio.file.Path
 
 internal object PowerShellAppxInstaller {
@@ -18,7 +19,8 @@ internal object PowerShellAppxInstaller {
                 append(" -ForceApplicationShutdown")
             }
         }
-        val process = ProcessBuilder(
+        val process = try {
+            ProcessBuilder(
             powerShellExecutable,
             "-NoLogo",
             "-NoProfile",
@@ -27,9 +29,13 @@ internal object PowerShellAppxInstaller {
             "Bypass",
             "-Command",
             command,
-        )
-            .redirectErrorStream(true)
-            .start()
+            )
+                .redirectErrorStream(true)
+                .start()
+        } catch (exception: IOException) {
+            logger.warn("Skipping application package install because PowerShell could not be started: ${exception.message}")
+            return false
+        }
         val output = decodeProcessOutput(process.inputStream.readBytes())
         val exitCode = process.waitFor()
         return if (exitCode == 0) {
