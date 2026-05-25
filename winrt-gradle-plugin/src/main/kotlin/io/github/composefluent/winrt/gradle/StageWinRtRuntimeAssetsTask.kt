@@ -50,6 +50,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val nugetPackageContentFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val resolvedNuGetPackageManifestFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
 
@@ -242,7 +247,10 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val resolvedPackages = resolveNuGetPackages(
             identities = identities,
             roots = roots,
-            modeledPackageRoots = nugetPackageContentFiles.files.map { it.toPath() },
+            modeledPackageRoots = (
+                resolvedNuGetPackageManifestFiles.files.flatMap(::readResolvedRuntimeNuGetPackageRoots).map(Path::of) +
+                    nugetPackageContentFiles.files.map { it.toPath() }
+                ),
         )
         val rid = runtimeIdentifier.get()
         resolvedPackages.forEach { resolved ->
@@ -287,39 +295,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
         return (resolvedFromRoots + restoredPackages)
             .distinctBy { it.packageRoot.toAbsolutePath().normalize().toString().lowercase() }
-    }
-
-    private fun resolveNuGetPackagesFromModeledInputs(
-        identities: List<WinRtNuGetPackageIdentity>,
-        modeledPackageRoots: List<Path>,
-    ): List<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage>? {
-        if (identities.isEmpty() || modeledPackageRoots.isEmpty()) {
-            return null
-        }
-        val packagesByIdentity = modeledPackageRoots
-            .asSequence()
-            .filter { it.isDirectory() }
-            .mapNotNull { root ->
-                runCatching { WinRtNuGetPackageResolver.resolvePackageRoot(root) }.getOrNull()
-            }
-            .associateBy { "${it.identity.normalizedPackageId.lowercase()}:${it.identity.normalizedVersion.lowercase()}" }
-        if (packagesByIdentity.isEmpty()) {
-            return null
-        }
-        val queue = ArrayDeque(identities)
-        val visited = linkedSetOf<String>()
-        val resolved = mutableListOf<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage>()
-        while (queue.isNotEmpty()) {
-            val identity = queue.removeFirst()
-            val key = "${identity.normalizedPackageId.lowercase()}:${identity.normalizedVersion.lowercase()}"
-            if (!visited.add(key)) {
-                continue
-            }
-            val resolvedPackage = packagesByIdentity[key] ?: return null
-            resolved += resolvedPackage
-            resolvedPackage.dependencies.forEach(queue::add)
-        }
-        return resolved
     }
 
     private fun restoreNuGetPackages(
@@ -499,7 +474,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
         val targetArtifact = readJsonString(content, "targetArtifact").orEmpty()
         val explicitTargets = readJsonStringMap(content, "activatableClassTargets")
-        val defaultTargets = readJsonStringArray(content, "activatableClasses")
+        val defaultTargets = readJsonStringArrayField(content, "activatableClasses")
             .filter { it.isNotBlank() && targetArtifact.isNotBlank() }
             .associateWith { targetArtifact }
         val activatableClasses = defaultTargets + explicitTargets
@@ -625,7 +600,7 @@ private fun readJsonStringMap(content: String, name: String): Map<String, String
         .associate { it.groupValues[1].decodeJsonString() to it.groupValues[2].decodeJsonString() }
 }
 
-private fun readJsonStringArray(content: String, name: String): List<String> {
+internal fun readJsonStringArrayField(content: String, name: String): List<String> {
     val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
         .find(content) ?: return emptyList()
     return readJsonStringArray(match.groupValues[1])

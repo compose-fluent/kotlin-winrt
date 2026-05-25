@@ -248,6 +248,52 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn("generateWinRtProjections")
         },
     )
+    val resolveRuntimeNuGetPackagesTask = project.tasks.register(
+        "resolveWinRtRuntimeNuGetPackages",
+        ResolveWinRtRuntimeNuGetPackagesTask::class.java,
+        Action<ResolveWinRtRuntimeNuGetPackagesTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Resolves WinRT NuGet runtime package roots for application asset staging."
+            task.outputFile.set(
+                project.layout.buildDirectory.file(
+                    "generated/kotlin-winrt/runtime-nuget-packages/kotlin-winrt-runtime-nuget-packages.json",
+                ),
+            )
+            task.nugetPackages.set(
+                project.provider {
+                    extension.nugetPackages.map { pkg ->
+                        "${pkg.packageId}@${pkg.version.get()}"
+                    }
+                },
+            )
+            task.dependencyIdentityFiles.from(identityDependencies)
+            val dependencyNuGetPackages = identityDependencies.elements.map { elements ->
+                elements.map { it.asFile }.flatMap(::readNuGetPackages)
+            }
+            task.existingPackageContentFiles.from(
+                task.nugetPackages.zip(extension.nugetGlobalPackagesRoots) { packageSpecs, explicitGlobalPackagesRoots ->
+                    packageSpecs to explicitGlobalPackagesRoots
+                }.zip(dependencyNuGetPackages) { packageInput, dependencyPackageSpecs ->
+                    existingNuGetPackageContentRoots(
+                        packageSpecs = packageInput.first + dependencyPackageSpecs,
+                        explicitGlobalPackagesRoots = packageInput.second,
+                    )
+                },
+            )
+            task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
+            task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
+            task.nugetExecutable.set(extension.nugetExecutable)
+            task.nugetCliVersion.set(extension.nugetCliVersion)
+            task.nugetCliCacheDirectory.set(
+                project.layout.dir(
+                    project.provider {
+                        project.gradle.gradleUserHomeDir.resolve("caches/kotlin-winrt/nuget-cli")
+                    },
+                ),
+            )
+            task.restoreNuGetPackages.set(extension.restoreNuGetPackages)
+        },
+    )
     val stageRuntimeAssetsTask = project.tasks.register(
         "stageWinRtRuntimeAssets",
         StageWinRtRuntimeAssetsTask::class.java,
@@ -282,6 +328,7 @@ private fun configureWinRtApplicationTasks(
                     )
                 },
             )
+            task.resolvedNuGetPackageManifestFiles.from(resolveRuntimeNuGetPackagesTask.flatMap { it.outputFile })
             task.nugetGlobalPackagesRoots.set(extension.nugetGlobalPackagesRoots)
             task.useNuGetCliGlobalPackages.set(extension.useNuGetCliGlobalPackages)
             task.nugetExecutable.set(extension.nugetExecutable)
@@ -384,6 +431,7 @@ private fun configureWinRtApplicationTasks(
             })
             task.dependsOn("generateWinRtProjections")
             task.dependsOn(buildAuthoringHostTask)
+            task.dependsOn(resolveRuntimeNuGetPackagesTask)
         },
     )
     val stageApplicationPackageTask = project.tasks.register(
@@ -598,6 +646,7 @@ private fun configureWinRtApplicationTasks(
     }
     project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
     project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
+    project.extensions.extraProperties["kotlinWinRtRuntimeNuGetPackagesTask"] = resolveRuntimeNuGetPackagesTask.name
     project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
     project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
     project.extensions.extraProperties["kotlinWinRtPackageTask"] = packageApplicationTask.name
