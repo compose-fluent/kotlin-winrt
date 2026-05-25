@@ -91,8 +91,12 @@ internal object ProjectPriManifestSupport {
             }
             applicationElements.forEachIndexed { index, application ->
                 val prefix = "manifest Application[$index]"
+                val id = application.getAttribute("Id").trim()
                 val executable = application.getAttribute("Executable").trim()
                 val entryPoint = application.getAttribute("EntryPoint").trim()
+                if (id.isBlank()) {
+                    errors += "$prefix must declare Id"
+                }
                 if (executable.isBlank()) {
                     errors += "$prefix must declare Executable"
                 }
