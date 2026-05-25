@@ -3289,6 +3289,34 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun install_application_package_task_skips_missing_inputs_when_install_is_disabled() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/InstallDisabled.msix").get().asFile.toPath()
+        val powershellLog = project.layout.buildDirectory.file("powershell-install-disabled.log").get().asFile.toPath()
+        val powershell = writeFakePowerShell(
+            project.layout.buildDirectory.file("fake-powershell-install-disabled.cmd").get().asFile.toPath(),
+            powershellLog,
+        )
+        val task = project.tasks.register(
+            "installApplicationPackageDisabled",
+            InstallWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.installPackage.set(false)
+            registeredTask.powerShellExecutable.set(powershell.toString())
+            registeredTask.forceApplicationShutdown.set(true)
+        }.get()
+
+        task.install()
+
+        assertFalse(Files.exists(packageFile))
+        assertFalse(Files.exists(powershellLog))
+    }
+
+    @Test
     fun install_application_package_task_fails_when_package_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
