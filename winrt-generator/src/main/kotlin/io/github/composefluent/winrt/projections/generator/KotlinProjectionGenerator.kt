@@ -197,6 +197,19 @@ class KotlinProjectionGenerator(
                     }
                 }
             }
+            if (plan.requiresDefaultInterfaceContract()) {
+                val defaultInterfaceName = requireNotNull(plan.defaultInterfaceName) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} to carry default interface metadata before projection rendering."
+                }
+                val defaultInterfaceType = plan.typesByQualifiedName[defaultInterfaceName]
+                    ?: plan.typesByQualifiedName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                require(defaultInterfaceType?.kind == WinRtTypeKind.Interface) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to be present in the metadata model."
+                }
+                require(plan.defaultInterfaceIid != null) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID before projection rendering."
+                }
+            }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
@@ -224,6 +237,21 @@ class KotlinProjectionGenerator(
             }
         }
     }
+
+    private fun KotlinTypeProjectionPlan.requiresDefaultInterfaceContract(): Boolean {
+        if (type.kind != WinRtTypeKind.RuntimeClass || type.isStaticType || type.isAttributeType) {
+            return false
+        }
+        val defaultInterfaceName = defaultInterfaceName ?: return false
+        return hasInstanceProjectionSurface() ||
+            instanceMemberBindings.isNotEmpty() ||
+            implementedInterfaceBindings.any { it.qualifiedName == defaultInterfaceName }
+    }
+
+    private fun KotlinTypeProjectionPlan.hasInstanceProjectionSurface(): Boolean =
+        type.methods.any { !it.isStatic } ||
+            type.properties.any { !it.isStatic } ||
+            type.events.any { !it.isStatic }
 
     private fun projectionFileRenderer(): KotlinProjectionFileRenderer =
         when (generationLayout) {

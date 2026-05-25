@@ -2864,12 +2864,19 @@ class KotlinProjectionGeneratorTest {
                                 ),
                             ),
                         ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Data.Json",
+                            name = "IJsonObjectStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
                     ),
                 ),
             ),
         )
 
-        val file = KotlinProjectionGenerator().generate(model).single()
+        val file = KotlinProjectionGenerator().generate(model)
+            .single { it.relativePath.endsWith("JsonObject.kt") }
 
         assertEquals("windows/data/json/JsonObject.kt", file.relativePath)
         assertTrue(file.contents.contains("package windows.`data`.json"))
@@ -14735,6 +14742,73 @@ class KotlinProjectionGeneratorTest {
         assertTrue(
             error!!.message.orEmpty()
                 .contains("requires runtime class Sample.Foundation.Widget activatable factory interface Sample.Foundation.IWidgetFactory to carry metadata IID before projection rendering"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_instance_runtime_surface_without_default_interface_definition() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "getTitle", returnTypeName = "String"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty()
+                .contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to be present in the metadata model"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_instance_runtime_surface_without_default_interface_iid() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "getTitle", returnTypeName = "String"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty()
+                .contains("requires runtime class Sample.Foundation.Widget default interface Sample.Foundation.IWidget to carry metadata IID before projection rendering"),
         )
     }
 
