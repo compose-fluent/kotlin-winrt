@@ -680,6 +680,7 @@ class KotlinWinRtPluginTest {
             application.installPackage.set(true)
             application.installPowerShellExecutable.set("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
             application.installForceApplicationShutdown.set(false)
+            application.packagePayload("build/libs/app.jar", "App/app.jar")
         }
         project.pluginManager.apply("application")
 
@@ -689,6 +690,10 @@ class KotlinWinRtPluginTest {
         assertEquals(packageOutput.get().asFile, packageTask.outputFile.get().asFile)
         assertEquals("C:/Windows Kits/10/bin/makeappx.exe", packageTask.makeAppxExecutable.get())
         assertEquals(false, packageTask.generatePackage.get())
+        val stagePackageTask =
+            project.tasks.named("stageWinRtApplicationPackage", StageWinRtApplicationPackageTask::class.java).get()
+        assertTrue(stagePackageTask.packagePayloadFiles.files.any { it.path.replace("\\", "/").endsWith("build/libs/app.jar") })
+        assertTrue(stagePackageTask.projectPriTargetPaths.get().values.contains("App/app.jar"))
         val signTask = project.tasks.named("signWinRtApplicationPackage", SignWinRtApplicationPackageTask::class.java).get()
         assertEquals(packageOutput.get().asFile, signTask.inputPackageFile.get().asFile)
         assertEquals(signedPackageOutput.get().asFile, signTask.outputFile.get().asFile)
@@ -1676,6 +1681,57 @@ class KotlinWinRtPluginTest {
         assertTrue(message.contains("Invalid AppX manifest"))
         assertTrue(message.contains("Identity must declare Publisher"))
         assertTrue(message.contains("Version must use four numeric components"))
+    }
+
+    @Test
+    fun application_package_task_stages_explicit_package_payloads() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-payload").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
+        val appJar = project.layout.buildDirectory.file("libs/app.jar").get().asFile.toPath()
+        val nativePayload = project.projectDir.toPath().resolve("native/x64/component.dll")
+        Files.createDirectories(appJar.parent)
+        Files.createDirectories(nativePayload.parent)
+        Files.writeString(appJar, "jar")
+        Files.writeString(nativePayload, "dll")
+        val task = project.tasks.register(
+            "stageExplicitPayloadApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-explicit-payload"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.packagePayloadFiles.from(appJar, nativePayload.parent)
+            registeredTask.projectPriTargetPaths.put(appJar.toAbsolutePath().normalize().toString(), "App/app.jar")
+            registeredTask.projectPriTargetPaths.put(nativePayload.parent.toAbsolutePath().normalize().toString(), "App/native")
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.stage()
+
+        val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppxManifest.xml")))
+        assertEquals("jar", Files.readString(outputRoot.resolve("App/app.jar")))
+        assertEquals("dll", Files.readString(outputRoot.resolve("App/native/component.dll")))
     }
 
     @Test

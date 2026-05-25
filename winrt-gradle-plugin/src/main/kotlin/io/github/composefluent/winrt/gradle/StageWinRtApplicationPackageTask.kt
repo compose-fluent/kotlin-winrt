@@ -97,6 +97,11 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val packagePayloadFiles: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val defaultProjectPriResourceFiles: ConfigurableFileCollection
 
     @get:InputFiles
@@ -140,6 +145,7 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             }
         }
         stageAppxManifest(outputRoot)
+        stagePackagePayloads(outputRoot)
         generateProjectPri(outputRoot)
     }
 
@@ -157,6 +163,35 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             )
         }
         GradleFileOperations.copyFile(manifest, outputRoot.resolve("AppxManifest.xml"))
+    }
+
+    private fun stagePackagePayloads(outputRoot: Path) {
+        val projectRoot = defaultProjectPriResourceRoot.orNull?.asFile?.toPath()?.toAbsolutePath()?.normalize()
+        val targetPaths = projectPriTargetPaths.get()
+        val excludedPaths = projectPriExcludedFromBuildPaths.get()
+        packagePayloadFiles.files.asSequence()
+            .map { it.toPath() }
+            .filter { Files.exists(it) && it.toAbsolutePath().normalize().toString() !in excludedPaths }
+            .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                val explicitTarget = targetPaths[source.toAbsolutePath().normalize().toString()]?.toSafeRelativePath()
+                if (source.isDirectory()) {
+                    Files.walk(source).use { stream ->
+                        stream.asSequence()
+                            .filter { it.isRegularFile() }
+                            .filter { it.toAbsolutePath().normalize().toString() !in excludedPaths }
+                            .sorted()
+                            .forEach { child ->
+                                val relativeTarget = explicitTarget?.resolve(child.relativeTo(source))
+                                    ?: child.defaultPackagePayloadTarget(source, projectRoot)
+                                GradleFileOperations.copyFile(child, outputRoot.resolve(relativeTarget))
+                            }
+                    }
+                } else if (source.isRegularFile()) {
+                    val relativeTarget = explicitTarget ?: source.defaultPackagePayloadTarget(source.parent, projectRoot)
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(relativeTarget))
+                }
+            }
     }
 
     private fun generateProjectPri(outputRoot: Path) {
@@ -226,4 +261,13 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         return ProjectPriToolResolver.makePriExecutable(makePriExecutable.get(), windowsSdkVersion.get(), runtimeIdentifier.get())
     }
 
+}
+
+private fun Path.defaultPackagePayloadTarget(fallbackRoot: Path, projectRoot: Path?): Path {
+    val normalized = toAbsolutePath().normalize()
+    return if (projectRoot != null && normalized.startsWith(projectRoot)) {
+        normalized.relativeTo(projectRoot)
+    } else {
+        normalized.relativeTo(fallbackRoot)
+    }
 }
