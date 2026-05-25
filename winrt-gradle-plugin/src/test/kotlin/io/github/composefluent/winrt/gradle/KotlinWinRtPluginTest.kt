@@ -1887,6 +1887,45 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_fails_when_makeappx_does_not_write_output() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-empty-makeappx").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
+        val makeAppx = writeFakeMakeAppxWithoutOutput(
+            project.layout.buildDirectory.file("fake-makeappx-no-output.cmd").get().asFile.toPath(),
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/NoOutput.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithoutMakeAppxOutput",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("did not create appx/msix package"))
+        assertFalse(Files.exists(outputFile))
+    }
+
+    @Test
     fun sign_application_package_task_invokes_signtool_for_packaged_msix() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -3256,6 +3295,18 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
         if not "%output%"=="" (
           echo fake-msix>"%output%"
         )
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakeMakeAppxWithoutOutput(path: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
         exit /b 0
         """.trimIndent(),
     )
