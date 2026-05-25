@@ -103,7 +103,11 @@ internal object ProjectPriManifestSupport {
                 if (entryPoint.isBlank()) {
                     errors += "$prefix must declare EntryPoint"
                 }
-                application.childElements("VisualElements").forEach { visualElements ->
+                val visualElementList = application.childElements("VisualElements")
+                if (visualElementList.isEmpty()) {
+                    errors += "$prefix must contain a VisualElements element"
+                }
+                visualElementList.forEach { visualElements ->
                     listOf("DisplayName", "Description", "BackgroundColor", "Square150x150Logo", "Square44x44Logo")
                         .forEach { attribute ->
                             if (visualElements.getAttribute(attribute).trim().isBlank()) {

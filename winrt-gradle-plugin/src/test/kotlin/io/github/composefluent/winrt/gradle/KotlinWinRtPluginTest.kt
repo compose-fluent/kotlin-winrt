@@ -1899,6 +1899,49 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_application_manifest_without_visual_elements() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-no-visual-elements-manifest").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("NoVisualElementsPackage.appxmanifest")
+        Files.writeString(
+            manifest,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+              <Applications>
+                <Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App" />
+              </Applications>
+            </Package>
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "stageNoVisualElementsApplicationManifestPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-no-visual-elements-manifest"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Application[0] must contain a VisualElements element"))
+    }
+
+    @Test
     fun application_package_task_stages_explicit_package_payloads() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-payload").get().asFile.toPath()
@@ -4576,12 +4619,17 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
         if /I "%command%"=="unpack" if not "%directory%"=="" (
           mkdir "%directory%" 2>nul
           mkdir "%directory%\App" 2>nul
+          mkdir "%directory%\Assets" 2>nul
           echo fake-exe>"%directory%\App\Contoso.exe"
+          echo fake-logo>"%directory%\Assets\Square150x150Logo.png"
+          echo fake-logo>"%directory%\Assets\Square44x44Logo.png"
           (
-            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"^>
+            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"^>
             echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
             echo   ^<Applications^>
-            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App" /^>
+            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App"^>
+            echo       ^<uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" Square150x150Logo="Assets/Square150x150Logo.png" Square44x44Logo="Assets/Square44x44Logo.png" /^>
+            echo     ^</Application^>
             echo   ^</Applications^>
             echo ^</Package^>
           )>"%directory%\AppxManifest.xml"
@@ -4623,10 +4671,12 @@ private fun writeFakeMakeAppxUnpackWithoutPayload(path: Path): Path {
         if not "%directory%"=="" (
           mkdir "%directory%" 2>nul
           (
-            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"^>
+            echo ^<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"^>
             echo   ^<Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" /^>
             echo   ^<Applications^>
-            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App" /^>
+            echo     ^<Application Id="App" Executable="App/Contoso.exe" EntryPoint="Contoso.App"^>
+            echo       ^<uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" Square150x150Logo="Assets/Square150x150Logo.png" Square44x44Logo="Assets/Square44x44Logo.png" /^>
+            echo     ^</Application^>
             echo   ^</Applications^>
             echo ^</Package^>
           )>"%directory%\AppxManifest.xml"
