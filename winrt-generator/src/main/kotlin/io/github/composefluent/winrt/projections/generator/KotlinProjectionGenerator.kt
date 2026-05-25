@@ -374,6 +374,11 @@ class KotlinProjectionGenerator(
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole interface ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
             }
         }
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
+            require(typeBinding.typeArguments.size == 1) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole array ${typeBinding.resolvedTypeName} to carry exactly one element ABI binding before projection rendering."
+            }
+        }
         require(typeBinding.kind != KotlinProjectionAbiValueKind.Unsupported) {
             "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole to use supported ABI metadata before projection rendering; found ${typeBinding.describeAbiKind()}."
         }
