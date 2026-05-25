@@ -286,11 +286,13 @@ class KotlinProjectionGenerator(
     }
 
     private fun validateInstanceMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
-        if (plan.type.kind != WinRtTypeKind.RuntimeClass || plan.hasMappedRuntimeMethodAugmentation()) {
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
             return
         }
+        val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filterNot { method -> method.hasKotlinOwnedRuntimeMethodProjection(plan, mappedCollectionMemberNames) }
             .forEach { method ->
                 val bindingName = method.abiSlotConstantName(plan.type.methods)
                 require(plan.instanceMemberBindings.any { it.bindingName == bindingName }) {
@@ -299,11 +301,14 @@ class KotlinProjectionGenerator(
             }
     }
 
-    private fun KotlinTypeProjectionPlan.hasMappedRuntimeMethodAugmentation(): Boolean =
-        readOnlyCollectionBindings.isNotEmpty() ||
-            mutableCollectionBindings.isNotEmpty() ||
-            requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().any {
-                it == "IDisposable" || it == "INotifyDataErrorInfo"
+    private fun WinRtMethodDefinition.hasKotlinOwnedRuntimeMethodProjection(
+        plan: KotlinTypeProjectionPlan,
+        mappedCollectionMemberNames: Set<String>,
+    ): Boolean =
+        isMappedCollectionRuntimeMethod(plan, mappedCollectionMemberNames) ||
+            plan.requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().let { augmentations ->
+                augmentations.contains("IDisposable") && name == "Close" ||
+                    augmentations.contains("INotifyDataErrorInfo") && name == "GetErrors"
             }
 
     private fun validateStaticMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
