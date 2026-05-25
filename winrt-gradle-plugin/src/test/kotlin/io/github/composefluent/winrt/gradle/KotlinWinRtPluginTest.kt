@@ -803,6 +803,33 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_install_task_uses_unsigned_package_when_signing_is_disabled() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val packageOutput = project.layout.buildDirectory.file("custom/UnsignedInstall.msix")
+        val signedPackageOutput = project.layout.buildDirectory.file("custom/UnsignedInstall-signed.msix")
+        project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.packaged()
+            application.packageOutputFile.set(packageOutput)
+            application.signedPackageOutputFile.set(signedPackageOutput)
+            application.signPackage.set(false)
+            application.installPackage.set(true)
+        }
+        project.pluginManager.apply("application")
+
+        val signTask = project.tasks.named("signWinRtApplicationPackage", SignWinRtApplicationPackageTask::class.java).get()
+        val installTask =
+            project.tasks.named("installWinRtApplicationPackage", InstallWinRtApplicationPackageTask::class.java).get()
+
+        assertEquals(false, signTask.signPackage.get())
+        assertFalse(signTask.onlyIf.isSatisfiedBy(signTask))
+        assertEquals(packageOutput.get().asFile, installTask.packageFile.get().asFile)
+        assertEquals(true, installTask.installPackage.get())
+        assertTrue(installTask.onlyIf.isSatisfiedBy(installTask))
+    }
+
+    @Test
     fun application_packaging_tasks_are_skipped_in_default_unpackaged_mode() {
         val project = ProjectBuilder.builder().build()
 
