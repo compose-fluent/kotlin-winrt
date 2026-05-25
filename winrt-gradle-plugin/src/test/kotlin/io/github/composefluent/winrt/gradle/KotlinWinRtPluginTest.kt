@@ -1752,6 +1752,57 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_fails_when_makepri_cannot_start_for_project_pri() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-bad-makepri").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val page = project.projectDir.toPath().resolve("Views/MainPage.xaml")
+        val image = project.projectDir.toPath().resolve("Assets/Logo.png")
+        Files.createDirectories(page.parent)
+        Files.createDirectories(image.parent)
+        Files.writeString(page, "<Page />")
+        Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val makePri = project.layout.buildDirectory.file("fake-bad-makepri.exe").get().asFile.toPath()
+        Files.createDirectories(makePri.parent)
+        Files.writeString(makePri, "not an executable")
+        val task = project.tasks.register(
+            "stagePayloadWithBadMakePriApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-bad-makepri"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.projectPriLayoutFiles.from(page)
+            registeredTask.projectPriContentFiles.from(image)
+            registeredTask.makePriExecutable.set(makePri.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to generate application PRI"))
+        assertFalse(Files.exists(task.outputDirectory.get().asFile.toPath().resolve("resources.pri")))
+    }
+
+    @Test
     fun application_package_task_rejects_invalid_appx_manifest() {
         val project = ProjectBuilder.builder().build()
         val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-invalid-manifest").get().asFile.toPath()
