@@ -1643,11 +1643,7 @@ class KotlinWinRtPluginTest {
         val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
         Files.writeString(
             manifest,
-            """
-            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
-              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
-            </Package>
-            """.trimIndent(),
+            appxManifestXml(),
         )
         val task = project.tasks.register(
             "stagePayloadWithoutMakePriApplicationPackage",
@@ -1722,6 +1718,58 @@ class KotlinWinRtPluginTest {
         assertTrue(message.contains("Invalid AppX manifest"))
         assertTrue(message.contains("Identity must declare Publisher"))
         assertTrue(message.contains("Version must use four numeric components"))
+        assertTrue(message.contains("manifest must contain an Applications element"))
+    }
+
+    @Test
+    fun application_package_task_rejects_incomplete_appx_application_manifest() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-incomplete-application-manifest").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("IncompleteApplicationPackage.appxmanifest")
+        Files.writeString(
+            manifest,
+            """
+            <Package
+                xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+                xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+              <Applications>
+                <Application Id="App">
+                  <uap:VisualElements DisplayName="Contoso" Description="Contoso app" BackgroundColor="transparent" />
+                </Application>
+              </Applications>
+            </Package>
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "stageIncompleteApplicationManifestPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-incomplete-application-manifest"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        val message = failure?.message.orEmpty()
+        assertTrue(message.contains("Application[0] must declare Executable"))
+        assertTrue(message.contains("Application[0] must declare EntryPoint"))
+        assertTrue(message.contains("VisualElements must declare Square150x150Logo"))
+        assertTrue(message.contains("VisualElements must declare Square44x44Logo"))
     }
 
     @Test
@@ -1732,11 +1780,7 @@ class KotlinWinRtPluginTest {
         val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
         Files.writeString(
             manifest,
-            """
-            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
-              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
-            </Package>
-            """.trimIndent(),
+            appxManifestXml(),
         )
         val appJar = project.layout.buildDirectory.file("libs/app.jar").get().asFile.toPath()
         val nativePayload = project.projectDir.toPath().resolve("native/x64/component.dll")
@@ -1785,11 +1829,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(packageRoot)
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
-            """
-            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
-              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
-            </Package>
-            """.trimIndent(),
+            appxManifestXml(),
         )
         Files.writeString(packageRoot.resolve("resources.pri"), "pri")
         val makeAppxLog = project.layout.buildDirectory.file("makeappx.log").get().asFile.toPath()
@@ -1860,11 +1900,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(packageRoot)
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
-            """
-            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
-              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
-            </Package>
-            """.trimIndent(),
+            appxManifestXml(),
         )
         val outputFile = project.layout.buildDirectory.file("packages/MissingMakeAppx.msix").get().asFile.toPath()
         val task = project.tasks.register(
@@ -1896,11 +1932,7 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(packageRoot)
         Files.writeString(
             packageRoot.resolve("AppxManifest.xml"),
-            """
-            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
-              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
-            </Package>
-            """.trimIndent(),
+            appxManifestXml(),
         )
         val makeAppx = writeFakeMakeAppxWithoutOutput(
             project.layout.buildDirectory.file("fake-makeappx-no-output.cmd").get().asFile.toPath(),
@@ -3338,6 +3370,31 @@ private fun writeFakePowerShell(path: Path, log: Path): Path {
     )
     return path
 }
+
+private fun appxManifestXml(
+    identityName: String = "Contoso.App",
+    executable: String = "App/Contoso.exe",
+    entryPoint: String = "Contoso.App",
+    resources: String = "",
+): String =
+    """
+    <Package
+        xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+        xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10">
+      <Identity Name="$identityName" Publisher="CN=Contoso" Version="1.0.0.0" />
+      <Applications>
+        <Application Id="App" Executable="$executable" EntryPoint="$entryPoint">
+          <uap:VisualElements
+              DisplayName="Contoso"
+              Description="Contoso app"
+              BackgroundColor="transparent"
+              Square150x150Logo="Assets/Square150x150Logo.png"
+              Square44x44Logo="Assets/Square44x44Logo.png" />
+        </Application>
+      </Applications>
+      $resources
+    </Package>
+    """.trimIndent()
 
 private fun writeWindowsAppSdkPackage(
     nugetRoot: Path,
