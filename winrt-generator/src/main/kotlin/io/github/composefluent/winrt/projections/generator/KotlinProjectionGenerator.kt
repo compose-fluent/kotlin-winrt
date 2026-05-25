@@ -243,6 +243,12 @@ class KotlinProjectionGenerator(
             plan.type.events.forEach { event ->
                 validateEventDelegateContract(plan, event)
             }
+            plan.instanceMemberBindings.forEach { binding ->
+                validateDelegateAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
+            }
+            plan.staticMemberBindings.forEach { binding ->
+                validateDelegateAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
+            }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
@@ -288,6 +294,35 @@ class KotlinProjectionGenerator(
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} delegate $delegateTypeName to carry metadata IID before projection rendering."
         }
         requireDelegateInvokeMethod(delegateType)
+    }
+
+    private fun validateDelegateAbiBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        bindingName: String,
+        returnBinding: KotlinProjectionAbiTypeBinding,
+        parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+    ) {
+        validateDelegateAbiTypeBindingContract(plan, bindingName, "return", returnBinding)
+        parameterBindings.forEach { parameter ->
+            validateDelegateAbiTypeBindingContract(plan, bindingName, "parameter ${parameter.name}", parameter.typeBinding)
+        }
+    }
+
+    private fun validateDelegateAbiTypeBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        bindingName: String,
+        bindingRole: String,
+        typeBinding: KotlinProjectionAbiTypeBinding,
+    ) {
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.Delegate) {
+            val invokeShape = typeBinding.delegateInvokeShape
+            require(invokeShape?.interfaceId != null) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole delegate ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
+            }
+        }
+        typeBinding.typeArguments.forEach { argument ->
+            validateDelegateAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
+        }
     }
 
     private fun eventDelegateType(
