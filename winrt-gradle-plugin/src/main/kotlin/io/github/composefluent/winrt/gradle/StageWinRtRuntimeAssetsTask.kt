@@ -1,7 +1,6 @@
 package io.github.composefluent.winrt.gradle
 
 import io.github.composefluent.winrt.metadata.WinRtNuGetPackageIdentity
-import io.github.composefluent.winrt.metadata.WinRtNuGetPackageResolver
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -14,6 +13,7 @@ import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -25,6 +25,7 @@ import kotlin.io.path.name
 import kotlin.io.path.relativeTo
 import kotlin.streams.asSequence
 
+@CacheableTask
 abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
@@ -156,6 +157,16 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Internal
     abstract val defaultProjectPriResourceRoot: DirectoryProperty
 
+    @Input
+    fun getDefaultProjectPriResourceRootPath(): String =
+        defaultProjectPriResourceRoot.orNull
+            ?.asFile
+            ?.toPath()
+            ?.toAbsolutePath()
+            ?.normalize()
+            ?.toString()
+            .orEmpty()
+
     @get:InputFiles
     @get:Optional
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -240,13 +251,8 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val identities = (nugetPackages.get() + dependencyIdentityFiles.files.flatMap(::readNuGetPackages))
             .map(::parseNuGetPackageIdentity)
             .distinctBy { "${it.normalizedPackageId.lowercase()}:${it.normalizedVersion.lowercase()}" }
-        val roots = WinRtNuGetPackageResolver.globalPackagesRoots(
-            explicitRoots = nugetGlobalPackagesRoots.get().map(Path::of),
-            nugetLocalsOutput = nugetCliGlobalPackagesOutput(),
-        )
         val resolvedPackages = resolveNuGetPackages(
             identities = identities,
-            roots = roots,
             modeledPackageRoots = (
                 resolvedNuGetPackageManifestFiles.files.flatMap(::readResolvedRuntimeNuGetPackageRoots).map(Path::of) +
                     nugetPackageContentFiles.files.map { it.toPath() }
@@ -270,59 +276,19 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
 
     private fun resolveNuGetPackages(
         identities: List<WinRtNuGetPackageIdentity>,
-        roots: List<Path>,
         modeledPackageRoots: List<Path>,
     ): List<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage> {
+        if (identities.isEmpty()) {
+            return emptyList()
+        }
         val resolvedFromModeledInputs = resolveNuGetPackagesFromModeledInputs(identities, modeledPackageRoots)
         if (resolvedFromModeledInputs != null) {
             return resolvedFromModeledInputs
         }
-        val resolvedFromRoots = mutableListOf<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage>()
-        val missingIdentities = mutableListOf<WinRtNuGetPackageIdentity>()
-        identities.forEach { identity ->
-            runCatching {
-                WinRtNuGetPackageResolver.resolveClosure(identity, roots)
-            }.onSuccess { resolvedFromRoots += it }
-                .onFailure { missingIdentities += identity }
-        }
-        val restoredPackages = if (restoreNuGetPackages.get() && missingIdentities.isNotEmpty()) {
-            restoreNuGetPackages(missingIdentities).map(WinRtNuGetPackageResolver::resolvePackageRoot)
-        } else {
-            emptyList()
-        }
-        require(missingIdentities.isEmpty() || restoredPackages.isNotEmpty()) {
-            "NuGet packages are missing from the configured NuGet cache and restoreNuGetPackages is false: ${missingIdentities.joinToString()}"
-        }
-        return (resolvedFromRoots + restoredPackages)
-            .distinctBy { it.packageRoot.toAbsolutePath().normalize().toString().lowercase() }
-    }
-
-    private fun restoreNuGetPackages(
-        identities: List<WinRtNuGetPackageIdentity>,
-    ): List<Path> {
-        val installRoot = temporaryDir.toPath().resolve("nuget-install")
-        Files.createDirectories(installRoot)
-        identities.forEach { identity ->
-            nuGetCli().run(
-                arguments = listOf(
-                    "install",
-                    identity.normalizedPackageId,
-                    "-Version",
-                    identity.normalizedVersion,
-                    "-NonInteractive",
-                    "-OutputDirectory",
-                    installRoot.toString(),
-                ),
-                workingDirectory = installRoot,
-                description = "install $identity",
-            )
-        }
-        return Files.list(installRoot).use { stream ->
-            stream.asSequence()
-                .filter { it.isDirectory() }
-                .sortedBy { it.name.lowercase() }
-                .toList()
-        }
+        error(
+            "Resolved WinRT runtime NuGet package inputs are incomplete for: ${identities.joinToString()}. " +
+                "Run resolveWinRtRuntimeNuGetPackages or provide nugetPackageContentFiles containing the full package closure.",
+        )
     }
 
     private fun stageTopLevelDlls(packageRoot: Path, outputRoot: Path) {
@@ -501,27 +467,6 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         )
     }
 
-    private fun nugetCliGlobalPackagesOutput(): String? {
-        if (!useNuGetCliGlobalPackages.get()) {
-            return null
-        }
-        return runCatching {
-            nuGetCli().run(
-                arguments = listOf("locals", "global-packages", "-list"),
-                description = "locate global-packages",
-            ).output
-        }.getOrElse { error ->
-            logger.info("NuGet CLI global-packages lookup failed: ${error.message}")
-            null
-        }
-    }
-
-    private fun nuGetCli(): NuGetCliSupport = NuGetCliSupport(
-        executable = nugetExecutable.get(),
-        cliVersion = nugetCliVersion.get(),
-        cliCacheDirectory = nugetCliCacheDirectory.get().asFile.toPath(),
-        logger = logger,
-    )
 }
 
 private data class AuthoringHostRuntimeConfig(
