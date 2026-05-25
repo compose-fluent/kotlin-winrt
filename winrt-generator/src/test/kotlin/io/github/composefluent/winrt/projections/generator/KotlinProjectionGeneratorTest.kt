@@ -14983,6 +14983,101 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_event_surface_without_delegate_definition() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Sample.Foundation.WidgetUpdatedHandler",
+                                    addMethodName = "add_Updated",
+                                    removeMethodName = "remove_Updated",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget event Updated delegate Sample.Foundation.WidgetUpdatedHandler to be present in the metadata model"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_event_surface_without_delegate_iid() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Sample.Foundation.WidgetUpdatedHandler",
+                                    addMethodName = "add_Updated",
+                                    removeMethodName = "remove_Updated",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetUpdatedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "Object"),
+                                        WinRtParameterDefinition("args", "Object"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget event Updated delegate Sample.Foundation.WidgetUpdatedHandler to carry metadata IID before projection rendering"),
+        )
+    }
+
+    @Test
     fun generator_rejects_composable_runtime_surface_without_default_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
