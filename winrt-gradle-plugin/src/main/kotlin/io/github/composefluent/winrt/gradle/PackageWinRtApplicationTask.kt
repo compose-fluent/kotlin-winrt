@@ -55,6 +55,7 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
                 "Cannot create appx/msix package at $target because the package output is inside the staged package root $packageRoot.",
             )
         }
+        AppPackageFileSupport.validatePackageExtension(target, "create")
         if (!packageRoot.resolve("AppxManifest.xml").isRegularFile()) {
             throw GradleException("Cannot create appx/msix package because AppxManifest.xml was not staged in $packageRoot.")
         }

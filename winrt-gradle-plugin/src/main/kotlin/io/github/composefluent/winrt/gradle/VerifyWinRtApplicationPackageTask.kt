@@ -58,6 +58,7 @@ abstract class VerifyWinRtApplicationPackageTask : DefaultTask() {
         if (!source.isRegularFile()) {
             throw GradleException("Cannot verify appx/msix package because package file does not exist: $source.")
         }
+        AppPackageFileSupport.validatePackageExtension(source, "verify")
         val makeAppx = discoverMakeAppxExecutable() ?: run {
             throw GradleException("Cannot verify appx/msix package because makeappx.exe was not found.")
         }

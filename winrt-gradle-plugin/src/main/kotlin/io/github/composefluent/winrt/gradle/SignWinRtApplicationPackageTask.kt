@@ -73,6 +73,8 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
         if (!Files.isRegularFile(source)) {
             throw GradleException("Cannot sign appx/msix package because package file does not exist: $source.")
         }
+        AppPackageFileSupport.validatePackageExtension(source, "sign")
+        AppPackageFileSupport.validatePackageExtension(target, "sign")
         if (source.toAbsolutePath().normalize() == target.toAbsolutePath().normalize()) {
             throw GradleException("Cannot sign appx/msix package because signed output file must be different from input package file: $target.")
         }

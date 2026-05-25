@@ -2254,6 +2254,45 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_rejects_non_appx_msix_output_extension() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-invalid-output-extension").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            appxManifestXml(),
+        )
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx-invalid-output-extension.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx-invalid-output-extension.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/Contoso.zip").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithInvalidOutputExtension",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file must end with .appx or .msix"))
+        assertFalse(Files.exists(outputFile))
+        assertFalse(Files.exists(makeAppxLog))
+    }
+
+    @Test
     fun package_application_task_does_not_delete_output_when_generation_is_disabled() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -2528,6 +2567,43 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun verify_application_package_task_rejects_non_appx_msix_input_extension() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/Contoso.zip").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "not-msix")
+        val markerFile = project.layout.buildDirectory.file("packages/Contoso.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-invalid-extension").get().asFile.toPath()
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx-verify-invalid-extension.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx-verify-invalid-extension.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val task = project.tasks.register(
+            "verifyApplicationPackageWithInvalidExtension",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.verify() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file must end with .appx or .msix"))
+        assertFalse(Files.exists(markerFile))
+        assertFalse(Files.exists(makeAppxLog))
+    }
+
+    @Test
     fun verify_application_package_task_fails_when_unpacked_manifest_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -2705,6 +2781,45 @@ class KotlinWinRtPluginTest {
         task.sign()
 
         assertEquals("existing-signed-msix", Files.readString(signedPackage))
+    }
+
+    @Test
+    fun sign_application_package_task_rejects_non_appx_msix_package_extension() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/Unsigned.zip").get().asFile.toPath()
+        Files.createDirectories(inputPackage.parent)
+        Files.writeString(inputPackage, "unsigned")
+        val signedPackage = project.layout.buildDirectory.file("packages/Unsigned-signed.msix").get().asFile.toPath()
+        val signToolLog = project.layout.buildDirectory.file("signtool-invalid-extension.log").get().asFile.toPath()
+        val signTool = writeFakeSignTool(
+            project.layout.buildDirectory.file("fake-signtool-invalid-extension.cmd").get().asFile.toPath(),
+            signToolLog,
+        )
+        val task = project.tasks.register(
+            "signApplicationPackageWithInvalidExtension",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(true)
+            registeredTask.signToolExecutable.set(signTool.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("ABCDEF123456")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        val failure = runCatching { task.sign() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file must end with .appx or .msix"))
+        assertFalse(Files.exists(signedPackage))
+        assertFalse(Files.exists(signToolLog))
     }
 
     @Test
@@ -2946,6 +3061,37 @@ class KotlinWinRtPluginTest {
 
         assertTrue(failure is GradleException)
         assertTrue(failure?.message.orEmpty().contains("package file does not exist"))
+        assertFalse(Files.exists(powershellLog))
+    }
+
+    @Test
+    fun install_application_package_task_rejects_non_appx_msix_package_extension() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/Contoso.zip").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "not-msix")
+        val powershellLog = project.layout.buildDirectory.file("powershell-install-invalid-extension.log").get().asFile.toPath()
+        val powershell = writeFakePowerShell(
+            project.layout.buildDirectory.file("fake-powershell-invalid-extension.cmd").get().asFile.toPath(),
+            powershellLog,
+        )
+        val task = project.tasks.register(
+            "installApplicationPackageWithInvalidExtension",
+            InstallWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.installPackage.set(true)
+            registeredTask.powerShellExecutable.set(powershell.toString())
+            registeredTask.forceApplicationShutdown.set(true)
+        }.get()
+
+        val failure = runCatching { task.install() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file must end with .appx or .msix"))
         assertFalse(Files.exists(powershellLog))
     }
 
