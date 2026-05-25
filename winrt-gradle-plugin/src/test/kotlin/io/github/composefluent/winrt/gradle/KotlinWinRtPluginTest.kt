@@ -1618,6 +1618,81 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_absolute_project_pri_initial_path() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-absolute-pri-initial-path").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val resource = project.projectDir.toPath().resolve("Resources/AppResources.resw")
+        Files.createDirectories(resource.parent)
+        Files.writeString(resource, "resw")
+        val task = project.tasks.register(
+            "stageAbsoluteProjectPriInitialPathApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-pri-initial-path"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("/Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriResourceFiles.from(resource)
+            registeredTask.makePriExecutable.set(project.projectDir.toPath().resolve("fake-makepri.cmd").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("projectPriInitialPath must be a relative path inside the package root: /Appx"))
+    }
+
+    @Test
+    fun application_package_task_rejects_absolute_project_pri_target_path() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-absolute-pri-target-path").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val resource = project.projectDir.toPath().resolve("Resources/AppResources.resw")
+        Files.createDirectories(resource.parent)
+        Files.writeString(resource, "resw")
+        val task = project.tasks.register(
+            "stageAbsoluteProjectPriTargetPathApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-absolute-pri-target-path"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("Appx")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.projectPriResourceFiles.from(resource)
+            registeredTask.projectPriTargetPaths.put(resource.toAbsolutePath().normalize().toString(), "/Strings/en-US/Resources.resw")
+            registeredTask.makePriExecutable.set(project.projectDir.toPath().resolve("fake-makepri.cmd").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("projectPriTargetPaths must be a relative path inside the package root: /Strings/en-US/Resources.resw"))
+    }
+
+    @Test
     fun application_package_task_honors_project_pri_excluded_from_build() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
