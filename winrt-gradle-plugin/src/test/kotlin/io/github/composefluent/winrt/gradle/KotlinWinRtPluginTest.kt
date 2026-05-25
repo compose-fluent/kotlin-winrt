@@ -3085,6 +3085,42 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun verify_application_package_task_fails_when_package_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/MissingVerify.msix").get().asFile.toPath()
+        val markerFile = project.layout.buildDirectory.file("packages/MissingVerify.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-missing").get().asFile.toPath()
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx-verify-missing.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx-verify-missing.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val task = project.tasks.register(
+            "verifyMissingApplicationPackage",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.verify() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file does not exist"))
+        assertFalse(Files.exists(markerFile))
+        assertFalse(Files.exists(unpackRoot))
+        assertFalse(Files.exists(makeAppxLog))
+    }
+
+    @Test
     fun verify_application_package_task_fails_when_unpacked_manifest_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
