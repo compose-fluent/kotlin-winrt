@@ -15338,6 +15338,142 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_abi_member_enum_parameter_without_underlying_type() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetKind",
+                            kind = WinRtTypeKind.Enum,
+                            enumMembers = listOf(WinRtEnumMemberDefinition("small", 0u)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setKind",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("kind", "Sample.Foundation.WidgetKind")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding SETKIND_SLOT parameter kind enum Sample.Foundation.WidgetKind to carry underlying type metadata before projection rendering"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_abi_member_enum_return_without_underlying_type() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetKind",
+                            kind = WinRtTypeKind.Enum,
+                            enumMembers = listOf(WinRtEnumMemberDefinition("small", 0u)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getKind",
+                                    returnTypeName = "Sample.Foundation.WidgetKind",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding GETKIND_SLOT return enum Sample.Foundation.WidgetKind to carry underlying type metadata before projection rendering"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_abi_member_nested_enum_generic_argument_without_underlying_type() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetKind",
+                            kind = WinRtTypeKind.Enum,
+                            enumMembers = listOf(WinRtEnumMemberDefinition("small", 0u)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setKinds",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "kinds",
+                                            "Windows.Foundation.Collections.IVector<Sample.Foundation.WidgetKind>",
+                                        ),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding SETKINDS_SLOT parameter kinds enum Sample.Foundation.WidgetKind to carry underlying type metadata before projection rendering"),
+        )
+    }
+
+    @Test
     fun generator_rejects_composable_runtime_surface_without_default_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
