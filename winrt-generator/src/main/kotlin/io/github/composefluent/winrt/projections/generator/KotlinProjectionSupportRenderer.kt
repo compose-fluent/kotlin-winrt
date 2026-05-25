@@ -1962,7 +1962,7 @@ class KotlinProjectionSupportRenderer {
         }
         return if (event != null) {
             authoringCcwEventHandlerCode(event, binding)
-        } else if (authoringCcwBindingIsSupported(interfacePlan.type, binding)) {
+        } else if (authoredCcwBindingIsSupported(typeRenderer, interfacePlan.type, binding)) {
             authoringCcwOrdinaryMemberHandlerCode(interfacePlan, binding)
         } else {
             authoringCcwUnsupportedMemberHandlerCode(binding)
@@ -2144,56 +2144,6 @@ class KotlinProjectionSupportRenderer {
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .firstOrNull { method -> binding.bindingName == method.abiSlotConstantName(interfaceType.methods) }
             ?.receiveArrayResultParameter()
-
-    private fun authoringCcwBindingIsSupported(
-        interfaceType: WinRtTypeDefinition,
-        binding: KotlinProjectionInstanceMemberBinding,
-    ): Boolean {
-        val receiveArrayParameterName = authoringCcwReceiveArrayReturnParameter(interfaceType, binding)?.name
-        return binding.parameterBindings.all { parameter ->
-            parameter.category != WinRtMetadataParameterCategory.ReceiveArray ||
-                parameter.name == receiveArrayParameterName
-        } && authoringCcwBindingIsSupported(binding)
-    }
-
-    private fun authoringCcwBindingIsSupported(binding: KotlinProjectionInstanceMemberBinding): Boolean =
-        binding.parameterBindings.all { authoringCcwAbiBindingIsSupported(it.typeBinding) } &&
-            authoringCcwAbiBindingIsSupported(binding.returnBinding)
-
-    private fun authoringCcwAbiBindingIsSupported(binding: KotlinProjectionAbiTypeBinding): Boolean = when (binding.kind) {
-        KotlinProjectionAbiValueKind.Unit,
-        KotlinProjectionAbiValueKind.String,
-        KotlinProjectionAbiValueKind.Boolean,
-        KotlinProjectionAbiValueKind.Int8,
-        KotlinProjectionAbiValueKind.UInt8,
-        KotlinProjectionAbiValueKind.Int16,
-        KotlinProjectionAbiValueKind.UInt16,
-        KotlinProjectionAbiValueKind.Int32,
-        KotlinProjectionAbiValueKind.UInt32,
-        KotlinProjectionAbiValueKind.Int64,
-        KotlinProjectionAbiValueKind.UInt64,
-        KotlinProjectionAbiValueKind.Float,
-        KotlinProjectionAbiValueKind.Double,
-        KotlinProjectionAbiValueKind.Char16,
-        KotlinProjectionAbiValueKind.GuidValue,
-        KotlinProjectionAbiValueKind.Enum,
-        KotlinProjectionAbiValueKind.Object,
-        KotlinProjectionAbiValueKind.ProjectedInterface,
-        KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
-        KotlinProjectionAbiValueKind.Delegate,
-        KotlinProjectionAbiValueKind.GenericParameter,
-        KotlinProjectionAbiValueKind.UnknownReference,
-        KotlinProjectionAbiValueKind.InspectableReference -> true
-        KotlinProjectionAbiValueKind.Array -> binding.typeArguments.singleOrNull()?.let(::authoringCcwArrayElementBindingIsSupported) == true
-        KotlinProjectionAbiValueKind.Struct ->
-            binding.resolvedTypeName == "Windows.Foundation.EventRegistrationToken" ||
-                typeRenderer.nativeStructClassName(binding) != null
-        else -> false
-    }
-
-    private fun authoringCcwArrayElementBindingIsSupported(binding: KotlinProjectionAbiTypeBinding): Boolean =
-        typeRenderer.nativeArrayElementReadCode(binding, CodeBlock.of("__data"), CodeBlock.of("__index")) != null ||
-            typeRenderer.nonBlittableArrayElementMarshalerExpression(binding) != null
 
     private fun authoringCcwAbiArgumentCount(parameters: List<KotlinProjectionAbiParameterBinding>): Int =
         parameters.sumOf(::authoringCcwAbiArgumentCount)

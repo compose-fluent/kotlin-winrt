@@ -16645,6 +16645,58 @@ class KotlinProjectionGeneratorTest {
         )
     }
 
+    @Test
+    fun generator_rejects_authored_ccw_unsupported_async_return_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "RefreshAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncAction",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            ).generate(model)
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires authored runtime class Sample.Foundation.Widget CCW binding Sample.Foundation.IWidget.REFRESHASYNC_SLOT to use supported authored ABI metadata before support rendering.",
+            ),
+        )
+    }
+
     private fun windowsDataJsonProjectionModel(): WinRtMetadataModel =
         WinRtMetadataModel(
             namespaces = listOf(
