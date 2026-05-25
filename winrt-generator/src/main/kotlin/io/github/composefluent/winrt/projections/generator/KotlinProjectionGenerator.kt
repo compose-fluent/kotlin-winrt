@@ -367,8 +367,9 @@ class KotlinProjectionGenerator(
     ) {
         factoryType.methods
             .filter(WinRtMethodDefinition::isProjectedCallableMethod)
-            .mapNotNull(::composableFactoryUserParameters)
-            .forEach { (method, userParameters) ->
+            .filter { method -> method.returnType.typeName == plan.type.qualifiedName }
+            .forEach { method ->
+                val userParameters = requireComposableFactoryUserParameters(plan, factoryType, method)
                 validateFactoryCreateAbiBindingContract(
                     plan = plan,
                     factoryType = factoryType,
@@ -377,6 +378,21 @@ class KotlinProjectionGenerator(
                     parameters = userParameters,
                 )
             }
+    }
+
+    private fun requireComposableFactoryUserParameters(
+        plan: KotlinTypeProjectionPlan,
+        factoryType: WinRtTypeDefinition,
+        method: WinRtMethodDefinition,
+    ): List<WinRtParameterDefinition> {
+        require(method.parameters.size >= 2) {
+            "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface ${factoryType.qualifiedName} method ${method.name} to end with baseInterface and innerInterface object parameters before projection rendering."
+        }
+        val trailing = method.parameters.takeLast(2)
+        require(trailing.all { parameter -> isWinRtObjectTypeName(parameter.type.typeName) }) {
+            "Generator requires runtime class ${plan.type.qualifiedName} composable factory interface ${factoryType.qualifiedName} method ${method.name} to end with baseInterface and innerInterface object parameters before projection rendering."
+        }
+        return method.parameters.dropLast(2)
     }
 
     private fun validateFactoryCreateAbiBindingContract(
