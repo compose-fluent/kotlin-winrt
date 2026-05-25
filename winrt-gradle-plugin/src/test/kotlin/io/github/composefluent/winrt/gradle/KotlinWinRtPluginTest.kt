@@ -662,6 +662,21 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun packaged_application_plugin_does_not_wire_appx_payload_into_java_resources() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.packaged()
+        }
+        project.pluginManager.apply("java")
+
+        val processResources = project.tasks.named("processResources").get()
+        val dependencies = processResources.taskDependencies.getDependencies(processResources).map { it.name }
+        assertFalse("stageWinRtApplicationPackage" in dependencies)
+    }
+
+    @Test
     fun application_plugin_accepts_gradle_application_distribution_model() {
         val project = ProjectBuilder.builder().build()
 
@@ -669,6 +684,7 @@ class KotlinWinRtPluginTest {
         val packageOutput = project.layout.buildDirectory.file("custom/Contoso.msix")
         val signedPackageOutput = project.layout.buildDirectory.file("custom/Contoso-signed.msix")
         project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.packaged()
             application.packageOutputFile.set(packageOutput)
             application.makeAppxExecutable.set("C:/Windows Kits/10/bin/makeappx.exe")
             application.generatePackage.set(false)
@@ -684,6 +700,10 @@ class KotlinWinRtPluginTest {
         }
         project.pluginManager.apply("application")
 
+        assertEquals(
+            WinRtApplicationPackageMode.Packaged,
+            project.extensions.getByType(WinRtExtension::class.java).application.packageMode.get(),
+        )
         project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
         project.tasks.named("stageWinRtApplicationPackage", StageWinRtApplicationPackageTask::class.java).get()
         val packageTask = project.tasks.named("packageWinRtApplication", PackageWinRtApplicationTask::class.java).get()
@@ -711,6 +731,27 @@ class KotlinWinRtPluginTest {
         )
         assertEquals(false, installTask.forceApplicationShutdown.get())
         project.extensions.getByType(org.gradle.api.distribution.DistributionContainer::class.java).getByName("main")
+    }
+
+    @Test
+    fun application_packaging_tasks_are_skipped_in_default_unpackaged_mode() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        project.extensions.getByType(WinRtExtension::class.java).application {
+            it.signPackage.set(true)
+            it.installPackage.set(true)
+        }
+
+        val packageTask = project.tasks.named("packageWinRtApplication", PackageWinRtApplicationTask::class.java).get()
+        val signTask = project.tasks.named("signWinRtApplicationPackage", SignWinRtApplicationPackageTask::class.java).get()
+        val installTask =
+            project.tasks.named("installWinRtApplicationPackage", InstallWinRtApplicationPackageTask::class.java).get()
+
+        assertEquals(WinRtApplicationPackageMode.Unpackaged, project.extensions.getByType(WinRtExtension::class.java).application.packageMode.get())
+        assertFalse(packageTask.onlyIf.isSatisfiedBy(packageTask))
+        assertFalse(signTask.onlyIf.isSatisfiedBy(signTask))
+        assertFalse(installTask.onlyIf.isSatisfiedBy(installTask))
     }
 
     @Test
