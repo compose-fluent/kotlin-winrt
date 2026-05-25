@@ -16055,6 +16055,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_static_method_without_static_method_binding() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetStatics",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                staticInterfaceNames = listOf("Sample.Foundation.IWidgetStatics"),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetCount",
+                                    returnTypeName = "Int",
+                                    isStatic = true,
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires runtime class Sample.Foundation.Widget static method GetCount binding STATIC_GETCOUNT_SLOT to be present before projection rendering"),
+        )
+    }
+
+    @Test
     fun generator_rejects_static_method_with_unrenderable_abi_call_plan() {
         val returnTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>"
         val model = WinRtMetadataModel(

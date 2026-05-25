@@ -254,6 +254,7 @@ class KotlinProjectionGenerator(
             plan.staticMemberBindings.forEach { binding ->
                 validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
+            validateStaticMethodBindingContracts(plan)
             validateStaticPropertyBindingContracts(plan)
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
@@ -279,6 +280,22 @@ class KotlinProjectionGenerator(
                 require(plan.defaultInterfaceIid != null) {
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID for composable projection."
                 }
+            }
+        }
+    }
+
+    private fun validateStaticMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+            return
+        }
+        val staticMethods = plan.type.methods.filter(WinRtMethodDefinition::isOrdinaryProjectedStaticMethod)
+        mergedStaticMethods(plan, staticMethods).forEach { method ->
+            if (isActivationFactoryCreateMethod(plan, method)) {
+                return@forEach
+            }
+            val bindingName = staticMethodBindingName(plan, method)
+            require(plan.staticMemberBindings.any { it.bindingName == bindingName }) {
+                "Generator requires runtime class ${plan.type.qualifiedName} static method ${method.name} binding $bindingName to be present before projection rendering."
             }
         }
     }
