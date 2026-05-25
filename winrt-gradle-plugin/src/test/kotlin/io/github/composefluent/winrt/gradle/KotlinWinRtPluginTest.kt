@@ -1823,6 +1823,70 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_fails_when_manifest_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-no-manifest").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        val outputFile = project.layout.buildDirectory.file("packages/NoManifest.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithoutManifest",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(project.projectDir.toPath().resolve("fake-makeappx.cmd").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("AppxManifest.xml was not staged"))
+        assertFalse(Files.exists(outputFile))
+    }
+
+    @Test
+    fun package_application_task_fails_when_makeappx_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-missing-makeappx").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/MissingMakeAppx.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithoutMakeAppx",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(project.projectDir.toPath().resolve("missing-makeappx.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("makeappx.exe was not found"))
+        assertFalse(Files.exists(outputFile))
+    }
+
+    @Test
     fun sign_application_package_task_invokes_signtool_for_packaged_msix() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
