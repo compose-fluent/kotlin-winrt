@@ -1826,6 +1826,45 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_missing_explicit_package_payloads() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-missing-payload").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val missingPayload = project.layout.buildDirectory.file("libs/missing-app.jar").get().asFile.toPath()
+        val task = project.tasks.register(
+            "stageMissingPayloadApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-payload"))
+            registeredTask.generateProjectPri.set(false)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.packagePayloadFiles.from(missingPayload)
+            registeredTask.projectPriTargetPaths.put(missingPayload.toAbsolutePath().normalize().toString(), "App/missing-app.jar")
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Declared package payload does not exist"))
+    }
+
+    @Test
     fun package_application_task_invokes_makeappx_for_staged_package_root() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

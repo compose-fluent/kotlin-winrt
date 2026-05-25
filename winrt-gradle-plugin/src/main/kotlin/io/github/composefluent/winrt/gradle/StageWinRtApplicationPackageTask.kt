@@ -171,9 +171,12 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         val excludedPaths = projectPriExcludedFromBuildPaths.get()
         packagePayloadFiles.files.asSequence()
             .map { it.toPath() }
-            .filter { Files.exists(it) && it.toAbsolutePath().normalize().toString() !in excludedPaths }
+            .filter { it.toAbsolutePath().normalize().toString() !in excludedPaths }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
+                if (!Files.exists(source)) {
+                    throw GradleException("Declared package payload does not exist: ${source.toAbsolutePath().normalize()}")
+                }
                 val explicitTarget = targetPaths[source.toAbsolutePath().normalize().toString()]?.toSafeRelativePath()
                 if (source.isDirectory()) {
                     Files.walk(source).use { stream ->
