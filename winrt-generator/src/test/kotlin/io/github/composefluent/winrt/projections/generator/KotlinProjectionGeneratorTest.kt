@@ -5323,6 +5323,69 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_routes_instance_boolean_methods_with_struct_arguments_through_projection_intrinsic() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Point",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("X", "Float"),
+                                WinRtFieldDefinition("Y", "Float"),
+                            ),
+                            abiSize = 8,
+                            abiAlignment = 4,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IGeometry",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111113"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "checkPoint",
+                                    returnTypeName = "Boolean",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("point", "Sample.Foundation.Point"),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Geometry",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IGeometry",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IGeometry", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val geometryContents = KotlinProjectionGenerator(emitSupportFiles = true)
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("Geometry.kt")
+            .contents
+
+        assertTrue(geometryContents.contains("fun checkPoint(point: Point): Boolean"))
+        assertTrue(geometryContents.contains("WinRtProjectionIntrinsic.callBoolean("))
+        assertTrue(geometryContents.contains("\"Struct8_4\""))
+        assertTrue(geometryContents.contains("point,"))
+        assertTrue(geometryContents.contains("Point.Metadata,"))
+        assertFalse(geometryContents.contains("PlatformAbi.allocateBytes"))
+        assertFalse(geometryContents.contains("ComVtableInvoker.invokeGenericArgs"))
+    }
+
+    @Test
     fun generator_routes_instance_descriptor_boolean_methods_through_projection_intrinsic() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

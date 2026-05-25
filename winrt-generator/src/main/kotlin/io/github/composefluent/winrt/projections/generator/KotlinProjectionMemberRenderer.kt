@@ -730,7 +730,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorBooleanIntrinsicIn
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorIntrinsicArgument(parameter) ?: return null
+        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
     return CodeBlock.builder()
         .openDescriptorIntrinsicArgumentScopes(arguments)
@@ -1671,27 +1671,35 @@ private fun KotlinProjectionRenderer.renderRequiredForwardMethod(
         )
     }
     val slotConstantName = method.abiSlotConstantName(slotInterfaceType.methods)
-    val invocation = renderInstanceDescriptorScalarIntrinsicInvocation(
-        referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
-        slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName),
+    val referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName)
+    val slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName)
+    val invocation = renderInstanceDescriptorBooleanIntrinsicInvocation(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
+        returnBinding = returnBinding,
+        parameterBindings = parameterBindings,
+        suppressHResultCheck = method.isNoException,
+    ) ?: renderInstanceDescriptorScalarIntrinsicInvocation(
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
         returnBinding = returnBinding,
         parameterBindings = parameterBindings,
         suppressHResultCheck = method.isNoException,
     ) ?: renderInstanceArrayResultIntrinsicInvocation(
-        referenceExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
-        slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName),
+        referenceExpression = referenceExpression,
+        slotExpression = slotExpression,
         returnBinding = returnBinding,
         parameterBindings = parameterBindings,
         suppressHResultCheck = method.isNoException,
     ) ?: renderInlineAbiInvocation(
-            invokeTargetExpression = requiredForwardOwnerCache(ownerInterfaceName, plan.defaultInterfaceName),
-            slotExpression = metadataSlotExpression(slotInterfaceType, slotConstantName),
-            callPlan = buildAbiCallPlan(
-                returnBinding = returnBinding,
-                parameterBindings = parameterBindings,
-                suppressHResultCheck = method.isNoException,
-            ) ?: return null,
-        ) ?: return null
+        invokeTargetExpression = referenceExpression,
+        slotExpression = slotExpression,
+        callPlan = buildAbiCallPlan(
+            returnBinding = returnBinding,
+            parameterBindings = parameterBindings,
+            suppressHResultCheck = method.isNoException,
+        ) ?: return null,
+    ) ?: return null
     val objectShape = closableMethodShape(slotInterfaceType, method)
     val projectedAttributes = slotInterfaceType.projectedAttributes()
         .filter(WinRtProjectedAttributeDescriptor::isPlatformAttribute)
