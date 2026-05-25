@@ -47,7 +47,6 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
     fun pack() {
         val packageRoot = packageDirectory.get().asFile.toPath()
         val target = outputFile.get().asFile.toPath()
-        Files.deleteIfExists(target)
         if (!generatePackage.get() || !isWindowsHost()) {
             return
         }
@@ -66,6 +65,7 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
         val makeAppx = discoverMakeAppxExecutable() ?: run {
             throw GradleException("Cannot create appx/msix package because makeappx.exe was not found.")
         }
+        Files.deleteIfExists(target)
         target.parent?.let(Files::createDirectories)
         if (!MakeAppxRunner.pack(makeAppx, packageRoot, target, logger)) {
             Files.deleteIfExists(target)
