@@ -127,7 +127,7 @@ class KotlinProjectionGenerator(
     fun generate(model: WinRtMetadataModel): List<KotlinProjectionFile> {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
-        validateGeneratorContracts(plans)
+        validateGeneratorContracts(normalizedModel, plans)
         val projectionRenderer = projectionFileRenderer()
         val projectionFiles = plans
             .filterNot { it.type.qualifiedName in authoredProjectedTypeNames(normalizedModel) }
@@ -141,7 +141,7 @@ class KotlinProjectionGenerator(
     fun generateTo(model: WinRtMetadataModel, outputRoot: Path): KotlinProjectionWriteSummary {
         val normalizedModel = model.normalized()
         val plans = planner.plan(normalizedModel)
-        validateGeneratorContracts(plans)
+        validateGeneratorContracts(normalizedModel, plans)
         val authoredTypeNames = authoredProjectedTypeNames(normalizedModel)
         val projectionRenderer = projectionFileRenderer()
         var rendered = 0
@@ -178,7 +178,11 @@ class KotlinProjectionGenerator(
                 .mapTo(suppressedProjectionTypeNames.toMutableSet()) { it.projectedTypeName }
         }
 
-    private fun validateGeneratorContracts(plans: List<KotlinTypeProjectionPlan>) {
+    private fun validateGeneratorContracts(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ) {
+        validateAuthoredCcwBindingContracts(model, plans)
         plans.forEach { plan ->
             if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
                 plan.activatableFactoryInterfaceName?.let { factoryName ->
@@ -286,6 +290,52 @@ class KotlinProjectionGenerator(
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID for composable projection."
                 }
                 validateComposableFactoryCreateBindingContracts(plan, factoryType)
+            }
+        }
+    }
+
+    private fun validateAuthoredCcwBindingContracts(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ) {
+        if (!projectionContext.component) {
+            return
+        }
+        val authoredTypeNames = model.projectionInventory(projectionContext)
+            .authoredMetadataTypeMappings
+            .mapTo(mutableSetOf()) { it.projectedTypeName }
+        if (authoredTypeNames.isEmpty()) {
+            return
+        }
+        val plansByQualifiedName = plans.associateBy { it.type.qualifiedName }
+        plans
+            .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
+            .forEach { authoredPlan ->
+                authoredPlan.type.implementedInterfaces
+                    .map { implementation -> implementation.interfaceName.substringBefore('<') }
+                    .distinct()
+                    .mapNotNull(plansByQualifiedName::get)
+                    .forEach { interfacePlan ->
+                        validateAuthoredCcwInterfaceBindingContracts(authoredPlan, interfacePlan)
+                    }
+            }
+    }
+
+    private fun validateAuthoredCcwInterfaceBindingContracts(
+        authoredPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+    ) {
+        val interfaceType = interfacePlan.type
+        interfacePlan.instanceMemberBindings.forEach { binding ->
+            val event = interfaceType.events.firstOrNull { event ->
+                binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
+                    binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
+            }
+            if (event != null) {
+                return@forEach
+            }
+            require(authoredCcwBindingIsSupported(renderer, interfaceType, binding)) {
+                "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.${binding.bindingName} to use supported authored ABI metadata before support rendering."
             }
         }
     }
