@@ -2215,6 +2215,45 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_rejects_output_inside_staged_package_root() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-self-output").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            appxManifestXml(),
+        )
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx-self-output.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx-self-output.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val outputFile = packageRoot.resolve("Contoso.msix")
+        val task = project.tasks.register(
+            "packageApplicationWithSelfIncludedOutput",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package output is inside the staged package root"))
+        assertFalse(Files.exists(outputFile))
+        assertFalse(Files.exists(makeAppxLog))
+    }
+
+    @Test
     fun package_application_task_does_not_delete_output_when_generation_is_disabled() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return

@@ -45,10 +45,15 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
 
     @TaskAction
     fun pack() {
-        val packageRoot = packageDirectory.get().asFile.toPath()
-        val target = outputFile.get().asFile.toPath()
+        val packageRoot = packageDirectory.get().asFile.toPath().toAbsolutePath().normalize()
+        val target = outputFile.get().asFile.toPath().toAbsolutePath().normalize()
         if (!generatePackage.get() || !isWindowsHost()) {
             return
+        }
+        if (target.startsWith(packageRoot)) {
+            throw GradleException(
+                "Cannot create appx/msix package at $target because the package output is inside the staged package root $packageRoot.",
+            )
         }
         if (!packageRoot.resolve("AppxManifest.xml").isRegularFile()) {
             throw GradleException("Cannot create appx/msix package because AppxManifest.xml was not staged in $packageRoot.")
