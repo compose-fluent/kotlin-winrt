@@ -849,6 +849,7 @@ class KotlinWinRtPluginTest {
             registeredTask.nugetPackages.set(emptyList())
             registeredTask.runtimeAssets.set(listOf(appDll.toString()))
             registeredTask.runtimeAssetFiles.from(appDll)
+            registeredTask.dependencyRuntimeAssetFiles.from(dependencyDll)
             registeredTask.authoredMetadataFiles.from(appWinmd)
             registeredTask.authoredHostManifestFiles.from(appHostManifest)
             registeredTask.authoredTargetArtifactFiles.from(appJar)
