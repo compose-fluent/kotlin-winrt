@@ -239,7 +239,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             explicitRoots = nugetGlobalPackagesRoots.get().map(Path::of),
             nugetLocalsOutput = nugetCliGlobalPackagesOutput(),
         )
-        val resolvedPackages = resolveNuGetPackages(identities, roots)
+        val resolvedPackages = resolveNuGetPackages(
+            identities = identities,
+            roots = roots,
+            modeledPackageRoots = nugetPackageContentFiles.files.map { it.toPath() },
+        )
         val rid = runtimeIdentifier.get()
         resolvedPackages.forEach { resolved ->
             stageTopLevelDlls(resolved.packageRoot, outputRoot)
@@ -259,7 +263,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     private fun resolveNuGetPackages(
         identities: List<WinRtNuGetPackageIdentity>,
         roots: List<Path>,
+        modeledPackageRoots: List<Path>,
     ): List<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage> {
+        val resolvedFromModeledInputs = resolveNuGetPackagesFromModeledInputs(identities, modeledPackageRoots)
+        if (resolvedFromModeledInputs != null) {
+            return resolvedFromModeledInputs
+        }
         val resolvedFromRoots = mutableListOf<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage>()
         val missingIdentities = mutableListOf<WinRtNuGetPackageIdentity>()
         identities.forEach { identity ->
@@ -278,6 +287,39 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         }
         return (resolvedFromRoots + restoredPackages)
             .distinctBy { it.packageRoot.toAbsolutePath().normalize().toString().lowercase() }
+    }
+
+    private fun resolveNuGetPackagesFromModeledInputs(
+        identities: List<WinRtNuGetPackageIdentity>,
+        modeledPackageRoots: List<Path>,
+    ): List<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage>? {
+        if (identities.isEmpty() || modeledPackageRoots.isEmpty()) {
+            return null
+        }
+        val packagesByIdentity = modeledPackageRoots
+            .asSequence()
+            .filter { it.isDirectory() }
+            .mapNotNull { root ->
+                runCatching { WinRtNuGetPackageResolver.resolvePackageRoot(root) }.getOrNull()
+            }
+            .associateBy { "${it.identity.normalizedPackageId.lowercase()}:${it.identity.normalizedVersion.lowercase()}" }
+        if (packagesByIdentity.isEmpty()) {
+            return null
+        }
+        val queue = ArrayDeque(identities)
+        val visited = linkedSetOf<String>()
+        val resolved = mutableListOf<io.github.composefluent.winrt.metadata.WinRtNuGetResolvedPackage>()
+        while (queue.isNotEmpty()) {
+            val identity = queue.removeFirst()
+            val key = "${identity.normalizedPackageId.lowercase()}:${identity.normalizedVersion.lowercase()}"
+            if (!visited.add(key)) {
+                continue
+            }
+            val resolvedPackage = packagesByIdentity[key] ?: return null
+            resolved += resolvedPackage
+            resolvedPackage.dependencies.forEach(queue::add)
+        }
+        return resolved
     }
 
     private fun restoreNuGetPackages(
