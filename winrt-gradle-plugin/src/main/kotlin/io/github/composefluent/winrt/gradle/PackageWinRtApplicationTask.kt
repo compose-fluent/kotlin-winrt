@@ -62,6 +62,9 @@ abstract class PackageWinRtApplicationTask : DefaultTask() {
             Files.deleteIfExists(target)
             throw GradleException("Failed to create appx/msix package at $target.")
         }
+        if (!target.isRegularFile()) {
+            throw GradleException("makeappx completed but did not create appx/msix package at $target.")
+        }
     }
 
     private fun discoverMakeAppxExecutable(): Path? =
