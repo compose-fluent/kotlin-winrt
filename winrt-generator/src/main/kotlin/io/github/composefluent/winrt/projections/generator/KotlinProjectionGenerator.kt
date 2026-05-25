@@ -252,6 +252,7 @@ class KotlinProjectionGenerator(
             plan.staticMemberBindings.forEach { binding ->
                 validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
+            validateStaticPropertyBindingContracts(plan)
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
@@ -278,6 +279,30 @@ class KotlinProjectionGenerator(
                 }
             }
         }
+    }
+
+    private fun validateStaticPropertyBindingContracts(plan: KotlinTypeProjectionPlan) {
+        val staticProperties = plan.type.properties.filter { it.isStatic }
+        mergedStaticProperties(plan, staticProperties)
+            .filter { it.hasNativeProjectionGetterAccessor() }
+            .forEach { property ->
+                val getterBindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT"
+                val getterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == getterBindingName }
+                    ?: return@forEach
+                if (property.hasNativeProjectionSetterAccessor()) {
+                    val setterBindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT"
+                    val setterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == setterBindingName }
+                    require(setterBinding != null) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} setter binding $setterBindingName to be present before projection rendering."
+                    }
+                    validateProjectedAbiTypeBindingContract(
+                        plan,
+                        setterBinding.bindingName,
+                        "static property ${property.name} setter value",
+                        setterBinding.parameterBindings.single().typeBinding,
+                    )
+                }
+            }
     }
 
     private fun validateEventDelegateContract(

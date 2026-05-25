@@ -386,7 +386,7 @@ private fun mergedStaticMethods(
     return merged.values.toList()
 }
 
-private fun mergedStaticProperties(
+internal fun mergedStaticProperties(
     plan: KotlinTypeProjectionPlan,
     staticProperties: List<WinRtPropertyDefinition>,
 ): List<WinRtPropertyDefinition> {
