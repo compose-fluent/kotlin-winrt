@@ -513,12 +513,13 @@ class KotlinProjectionGenerator(
     private fun validateStaticPropertyBindingContracts(plan: KotlinTypeProjectionPlan) {
         val staticProperties = plan.type.properties.filter { it.isStatic }
         mergedStaticProperties(plan, staticProperties)
-            .filter { it.hasNativeProjectionGetterAccessor() }
             .forEach { property ->
-                val getterBindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT"
-                val getterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == getterBindingName }
-                require(getterBinding != null) {
-                    "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} getter binding $getterBindingName to be present before projection rendering."
+                if (property.hasNativeProjectionGetterAccessor()) {
+                    val getterBindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT"
+                    val getterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == getterBindingName }
+                    require(getterBinding != null) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} getter binding $getterBindingName to be present before projection rendering."
+                    }
                 }
                 if (property.hasNativeProjectionSetterAccessor()) {
                     val setterBindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT"
