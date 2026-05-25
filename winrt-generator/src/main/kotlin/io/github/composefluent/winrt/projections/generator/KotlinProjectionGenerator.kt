@@ -34,8 +34,11 @@ import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.WinRtMetadataValidationOptions
 import io.github.composefluent.winrt.metadata.projectionInventory
 import io.github.composefluent.winrt.metadata.WinRtMetadataSemanticHelpers
+import io.github.composefluent.winrt.metadata.isWinRtGuidTypeName
+import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
+import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -338,9 +341,65 @@ class KotlinProjectionGenerator(
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole enum ${typeBinding.resolvedTypeName} to carry underlying type metadata before projection rendering."
             }
         }
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.Struct && customStructAbi(typeBinding) == null) {
+            val structType = plan.typesByQualifiedName[typeBinding.resolvedTypeName.removeSuffix("?")]
+            require(structType?.kind == WinRtTypeKind.Struct) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole struct ${typeBinding.resolvedTypeName} to be present in the metadata model before projection rendering."
+            }
+            require(canRenderNativeStructMetadata(structType, plan)) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole struct ${typeBinding.resolvedTypeName} to carry renderable native struct layout metadata before projection rendering."
+            }
+        }
         typeBinding.typeArguments.forEach { argument ->
             validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
         }
+    }
+
+    private fun canRenderNativeStructMetadata(
+        type: WinRtTypeDefinition,
+        plan: KotlinTypeProjectionPlan,
+    ): Boolean =
+        type.fields
+            .filterNot { it.isStatic || it.isLiteral }
+            .all { field -> canRenderNativeStructField(field, type.namespace, plan) }
+
+    private fun canRenderNativeStructField(
+        field: WinRtFieldDefinition,
+        currentNamespace: String,
+        plan: KotlinTypeProjectionPlan,
+    ): Boolean {
+        if (isWinRtGuidTypeName(field.typeName) || winRtFundamentalTypeForName(field.typeName) != null) {
+            return true
+        }
+        val rawTypeName = field.typeName.substringBefore('<').removeSuffix("?")
+        if (isWinRtObjectTypeName(rawTypeName)) {
+            return true
+        }
+        if (
+            rawTypeName == IINSPECTABLE_REFERENCE_CLASS_NAME.simpleName ||
+            rawTypeName == IUNKNOWN_REFERENCE_CLASS_NAME.simpleName ||
+            rawTypeName == "io.github.composefluent.winrt.runtime.IInspectableReference" ||
+            rawTypeName == "io.github.composefluent.winrt.runtime.IUnknownReference"
+        ) {
+            return true
+        }
+        val qualifiedName = when {
+            plan.typesByQualifiedName.containsKey(rawTypeName) -> rawTypeName
+            currentNamespace.isNotBlank() && plan.typesByQualifiedName.containsKey("$currentNamespace.$rawTypeName") -> "$currentNamespace.$rawTypeName"
+            else -> plan.typesByQualifiedName.keys.firstOrNull { it.endsWith(".$rawTypeName") }
+        }
+        val resolvedType = qualifiedName?.let(plan.typesByQualifiedName::get)
+        if (resolvedType?.kind == WinRtTypeKind.Interface || resolvedType?.kind == WinRtTypeKind.RuntimeClass) {
+            return true
+        }
+        if (resolvedType?.kind == WinRtTypeKind.Enum) {
+            return true
+        }
+        if (resolvedType?.kind == WinRtTypeKind.Struct) {
+            return canRenderNativeStructMetadata(resolvedType, plan)
+        }
+        val mappedType = mappedTypeByAbiName(rawTypeName)
+        return mappedType?.abiValueKind == KotlinProjectionAbiValueKind.Struct
     }
 
     private fun eventDelegateType(

@@ -15474,6 +15474,142 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_abi_member_struct_parameter_without_renderable_layout() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetPoint",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Handle", "Sample.Foundation.NativeHandle")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setPoint",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("point", "Sample.Foundation.WidgetPoint")),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding SETPOINT_SLOT parameter point struct Sample.Foundation.WidgetPoint to carry renderable native struct layout metadata before projection rendering"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_abi_member_struct_return_without_renderable_layout() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetPoint",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Handle", "Sample.Foundation.NativeHandle")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getPoint",
+                                    returnTypeName = "Sample.Foundation.WidgetPoint",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding GETPOINT_SLOT return struct Sample.Foundation.WidgetPoint to carry renderable native struct layout metadata before projection rendering"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_abi_member_nested_struct_generic_argument_without_renderable_layout() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetPoint",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(WinRtFieldDefinition("Handle", "Sample.Foundation.NativeHandle")),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setPoints",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "points",
+                                            "Windows.Foundation.Collections.IVector<Sample.Foundation.WidgetPoint>",
+                                        ),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires interface Sample.Foundation.IWidget ABI binding SETPOINTS_SLOT parameter points struct Sample.Foundation.WidgetPoint to carry renderable native struct layout metadata before projection rendering"),
+        )
+    }
+
+    @Test
     fun generator_rejects_composable_runtime_surface_without_default_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
