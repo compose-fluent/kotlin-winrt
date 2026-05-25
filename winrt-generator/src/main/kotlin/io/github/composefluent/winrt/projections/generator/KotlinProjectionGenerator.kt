@@ -289,7 +289,9 @@ class KotlinProjectionGenerator(
             .forEach { property ->
                 val getterBindingName = "STATIC_${property.name.uppercase()}_GETTER_SLOT"
                 val getterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == getterBindingName }
-                    ?: return@forEach
+                require(getterBinding != null) {
+                    "Generator requires runtime class ${plan.type.qualifiedName} static property ${property.name} getter binding $getterBindingName to be present before projection rendering."
+                }
                 if (property.hasNativeProjectionSetterAccessor()) {
                     val setterBindingName = "STATIC_${property.name.uppercase()}_SETTER_SLOT"
                     val setterBinding = plan.staticMemberBindings.firstOrNull { it.bindingName == setterBindingName }
