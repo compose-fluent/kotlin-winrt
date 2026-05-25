@@ -830,6 +830,32 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_install_task_uses_explicit_install_package_file() {
+        val project = ProjectBuilder.builder().build()
+
+        project.pluginManager.apply(KotlinWinRtPlugin::class.java)
+        val packageOutput = project.layout.buildDirectory.file("custom/Default.msix")
+        val signedPackageOutput = project.layout.buildDirectory.file("custom/Default-signed.msix")
+        val installPackageFile = project.layout.buildDirectory.file("custom/InstallOverride.msix")
+        project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.packaged()
+            application.packageOutputFile.set(packageOutput)
+            application.signedPackageOutputFile.set(signedPackageOutput)
+            application.installPackageFile.set(installPackageFile)
+            application.signPackage.set(true)
+            application.installPackage.set(true)
+        }
+        project.pluginManager.apply("application")
+
+        val installTask =
+            project.tasks.named("installWinRtApplicationPackage", InstallWinRtApplicationPackageTask::class.java).get()
+
+        assertEquals(installPackageFile.get().asFile, installTask.packageFile.get().asFile)
+        assertEquals(true, installTask.installPackage.get())
+        assertTrue(installTask.onlyIf.isSatisfiedBy(installTask))
+    }
+
+    @Test
     fun application_packaging_tasks_are_skipped_in_default_unpackaged_mode() {
         val project = ProjectBuilder.builder().build()
 
