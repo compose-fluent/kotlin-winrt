@@ -200,6 +200,10 @@ class KotlinWinRtPluginTest {
             "stageWinRtApplicationPackage",
             applicationProject.extensions.extraProperties["kotlinWinRtApplicationPackageTask"],
         )
+        assertEquals(
+            "packageWinRtApplication",
+            applicationProject.extensions.extraProperties["kotlinWinRtPackageTask"],
+        )
     }
 
     @Test
@@ -654,11 +658,20 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
-        project.extensions.getByType(WinRtExtension::class.java).application {}
+        val packageOutput = project.layout.buildDirectory.file("custom/Contoso.msix")
+        project.extensions.getByType(WinRtExtension::class.java).application { application ->
+            application.packageOutputFile.set(packageOutput)
+            application.makeAppxExecutable.set("C:/Windows Kits/10/bin/makeappx.exe")
+            application.generatePackage.set(false)
+        }
         project.pluginManager.apply("application")
 
         project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
         project.tasks.named("stageWinRtApplicationPackage", StageWinRtApplicationPackageTask::class.java).get()
+        val packageTask = project.tasks.named("packageWinRtApplication", PackageWinRtApplicationTask::class.java).get()
+        assertEquals(packageOutput.get().asFile, packageTask.outputFile.get().asFile)
+        assertEquals("C:/Windows Kits/10/bin/makeappx.exe", packageTask.makeAppxExecutable.get())
+        assertEquals(false, packageTask.generatePackage.get())
         project.extensions.getByType(org.gradle.api.distribution.DistributionContainer::class.java).getByName("main")
     }
 
@@ -1548,6 +1561,15 @@ class KotlinWinRtPluginTest {
         Files.createDirectories(image.parent)
         Files.writeString(page, "<Page />")
         Files.write(image, byteArrayOf(0x50, 0x4e, 0x47))
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
         val task = project.tasks.register(
             "stagePayloadWithoutMakePriApplicationPackage",
             StageWinRtApplicationPackageTask::class.java,
@@ -1562,6 +1584,7 @@ class KotlinWinRtPluginTest {
             registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
             registeredTask.enableDefaultProjectPriResources.set(false)
             registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
             registeredTask.projectPriLayoutFiles.from(page)
             registeredTask.projectPriContentFiles.from(image)
             registeredTask.makePriExecutable.set(project.projectDir.toPath().resolve("missing-makepri.exe").toString())
@@ -1572,9 +1595,58 @@ class KotlinWinRtPluginTest {
         task.stage()
 
         val outputRoot = task.outputDirectory.get().asFile.toPath()
+        assertTrue(Files.isRegularFile(outputRoot.resolve("AppxManifest.xml")))
+        assertTrue(Files.readString(outputRoot.resolve("AppxManifest.xml")).contains("Contoso.App"))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Views/MainPage.xaml")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Assets/Logo.png")))
         assertFalse(Files.exists(outputRoot.resolve("resources.pri")))
+    }
+
+    @Test
+    fun package_application_task_invokes_makeappx_for_staged_package_root() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            """
+            <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+              <Identity Name="Contoso.App" Publisher="CN=Contoso" Version="1.0.0.0" />
+            </Package>
+            """.trimIndent(),
+        )
+        Files.writeString(packageRoot.resolve("resources.pri"), "pri")
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val outputFile = project.layout.buildDirectory.file("packages/Contoso.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplication",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.pack()
+
+        assertTrue(Files.isRegularFile(outputFile))
+        val makeAppxCalls = Files.readString(makeAppxLog).replace("\\", "/")
+        assertTrue(makeAppxCalls.contains("pack"))
+        assertTrue(makeAppxCalls.contains("/d"))
+        assertTrue(makeAppxCalls.contains("staged-appx"))
+        assertTrue(makeAppxCalls.contains("/p"))
+        assertTrue(makeAppxCalls.contains("Contoso.msix"))
+        assertTrue(makeAppxCalls.contains("/o"))
     }
 
     @Test
@@ -2841,6 +2913,32 @@ private fun writeFakeMakePri(path: Path, log: Path): Path {
         :done
         if not "%output%"=="" (
           echo fake-pri>"%output%"
+        )
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakeMakeAppx(path: Path, log: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        echo %*>>"${log.toString()}"
+        set output=
+        :next
+        if "%~1"=="" goto done
+        if /I "%~1"=="/p" (
+          set output=%~2
+          shift
+        )
+        shift
+        goto next
+        :done
+        if not "%output%"=="" (
+          echo fake-msix>"%output%"
         )
         exit /b 0
         """.trimIndent(),
