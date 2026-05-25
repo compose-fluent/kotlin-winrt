@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.gradle
 
+import org.gradle.api.GradleException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
@@ -134,10 +135,13 @@ internal class ProjectPriInputStager(
         includeFile: (Path) -> Boolean = { true },
     ): Sequence<ProjectPriFileInput> =
         sources.asSequence()
-            .filter { Files.exists(it) }
             .sortedBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .flatMap { source ->
-                if (source.isDirectory() && !source.isExcludedFromBuild()) {
+                if (source.isExcludedFromBuild()) {
+                    emptySequence()
+                } else if (!Files.exists(source)) {
+                    throw GradleException("Declared project PRI input does not exist: ${source.toAbsolutePath().normalize()}")
+                } else if (source.isDirectory()) {
                     val explicitRootTarget = source.explicitTargetPath()
                     Files.walk(source).use { stream ->
                         stream.asSequence()
@@ -148,7 +152,7 @@ internal class ProjectPriInputStager(
                             .toList()
                             .asSequence()
                     }
-                } else if (source.isRegularFile() && includeFile(source) && !source.isExcludedFromBuild()) {
+                } else if (source.isRegularFile() && includeFile(source)) {
                     sequenceOf(ProjectPriFileInput(source, source.toSingleFileRelativeTarget()))
                 } else {
                     emptySequence()
