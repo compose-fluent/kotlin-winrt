@@ -368,7 +368,7 @@ internal fun KotlinProjectionRenderer.buildMetadataCompanionShell(
         }
         .build()
 
-private fun mergedStaticMethods(
+internal fun mergedStaticMethods(
     plan: KotlinTypeProjectionPlan,
     staticMethods: List<WinRtMethodDefinition>,
 ): List<WinRtMethodDefinition> {
@@ -439,12 +439,7 @@ internal fun KotlinProjectionRenderer.renderBoundStaticMethod(
     plan: KotlinTypeProjectionPlan,
     method: WinRtMethodDefinition,
 ): FunSpec? {
-    if (
-        method.name == "create" &&
-        method.parameters.isEmpty() &&
-        KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds &&
-        method.returnTypeName.let { it == plan.type.qualifiedName || it == plan.type.name }
-    ) {
+    if (isActivationFactoryCreateMethod(plan, method)) {
         return FunSpec.builder(method.projectedMethodName())
             .returns(resolveTypeName(method.returnTypeName))
             .addCode("return Metadata.wrap(ActivationFactory.activate())\n")
@@ -680,7 +675,7 @@ private fun KotlinProjectionRenderer.renderStaticDescriptorScalarIntrinsicInvoca
         .build()
 }
 
-private fun staticMethodBindingName(
+internal fun staticMethodBindingName(
     plan: KotlinTypeProjectionPlan,
     method: WinRtMethodDefinition,
 ): String {
@@ -698,6 +693,15 @@ private fun staticMethodBindingName(
         "STATIC_${method.abiSlotConstantName(plan.type.methods)}"
     }
 }
+
+internal fun isActivationFactoryCreateMethod(
+    plan: KotlinTypeProjectionPlan,
+    method: WinRtMethodDefinition,
+): Boolean =
+    method.name == "create" &&
+        method.parameters.isEmpty() &&
+        KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds &&
+        method.returnTypeName.let { it == plan.type.qualifiedName || it == plan.type.name }
 
 internal fun KotlinProjectionRenderer.renderBoundStaticProperty(
     plan: KotlinTypeProjectionPlan,
