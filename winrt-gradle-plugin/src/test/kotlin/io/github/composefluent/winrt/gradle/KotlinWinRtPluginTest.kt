@@ -3189,6 +3189,40 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun verify_application_package_task_fails_when_makeappx_unpack_returns_error() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/Malformed.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "malformed-msix")
+        val makeAppx = writeFailingFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-failing-makeappx-verify.cmd").get().asFile.toPath(),
+        )
+        val markerFile = project.layout.buildDirectory.file("packages/Malformed.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-malformed").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyMalformedApplicationPackage",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.verify() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to verify appx/msix package"))
+        assertFalse(Files.exists(markerFile))
+    }
+
+    @Test
     fun verify_application_package_task_fails_when_unpacked_manifest_payload_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -5242,6 +5276,18 @@ private fun writeFakeMakeAppxWithoutOutput(path: Path): Path {
         """
         @echo off
         exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFailingFakeMakeAppx(path: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        exit /b 1
         """.trimIndent(),
     )
     return path
