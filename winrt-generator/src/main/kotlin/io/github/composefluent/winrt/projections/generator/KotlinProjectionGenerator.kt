@@ -210,6 +210,19 @@ class KotlinProjectionGenerator(
                     "Generator requires runtime class ${plan.type.qualifiedName} default interface $defaultInterfaceName to carry metadata IID before projection rendering."
                 }
             }
+            plan.implementedInterfaceBindings
+                .filterNot { isMappedCollectionInterfaceName(it.qualifiedName) }
+                .filterNot { isRuntimeOwnedMappedTypeName(it.qualifiedName) }
+                .forEach { binding ->
+                    val interfaceType = plan.typesByQualifiedName[binding.qualifiedName]
+                        ?: plan.typesByQualifiedName[binding.qualifiedName.substringBefore('<').removeSuffix("?")]
+                    require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to be present in the metadata model."
+                    }
+                    require(binding.iid != null) {
+                        "Generator requires runtime class ${plan.type.qualifiedName} implemented interface ${binding.qualifiedName} to carry metadata IID before projection rendering."
+                    }
+                }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
