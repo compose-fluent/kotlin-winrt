@@ -1862,6 +1862,44 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun application_package_task_rejects_missing_explicit_project_pri_inputs() {
+        val project = ProjectBuilder.builder().build()
+        val runtimeAssets = project.layout.buildDirectory.dir("runtime-assets-missing-pri-input").get().asFile.toPath()
+        Files.createDirectories(runtimeAssets)
+        val manifest = project.projectDir.toPath().resolve("Package.appxmanifest")
+        Files.writeString(
+            manifest,
+            appxManifestXml(),
+        )
+        val missingResource = project.layout.buildDirectory.file("missing/Strings/en-US/Resources.resw").get().asFile.toPath()
+        val task = project.tasks.register(
+            "stageMissingProjectPriInputApplicationPackage",
+            StageWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-pri-input"))
+            registeredTask.generateProjectPri.set(true)
+            registeredTask.projectPriIndexName.set("Contoso.App")
+            registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
+            registeredTask.projectPriInitialPath.set("")
+            registeredTask.projectPriDefaultLanguage.set("en-US")
+            registeredTask.projectPriDefaultQualifiers.set(listOf("scale-100"))
+            registeredTask.enableDefaultProjectPriResources.set(false)
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.projectDirectory)
+            registeredTask.appxManifestFiles.from(manifest)
+            registeredTask.projectPriResourceFiles.from(missingResource)
+            registeredTask.makePriExecutable.set("")
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Declared project PRI input does not exist"))
+    }
+
+    @Test
     fun package_application_task_invokes_makeappx_for_staged_package_root() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
