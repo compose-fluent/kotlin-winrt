@@ -325,6 +325,11 @@ class KotlinProjectionGenerator(
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole runtime class ${typeBinding.resolvedTypeName} to carry default-interface metadata IID before projection rendering."
             }
         }
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedInterface) {
+            require(typeBinding.interfaceId != null) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole interface ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
+            }
+        }
         typeBinding.typeArguments.forEach { argument ->
             validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
         }
