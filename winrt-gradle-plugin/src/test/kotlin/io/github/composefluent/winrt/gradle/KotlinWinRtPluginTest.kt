@@ -208,6 +208,10 @@ class KotlinWinRtPluginTest {
             "signWinRtApplicationPackage",
             applicationProject.extensions.extraProperties["kotlinWinRtSignPackageTask"],
         )
+        assertEquals(
+            "installWinRtApplicationPackage",
+            applicationProject.extensions.extraProperties["kotlinWinRtInstallPackageTask"],
+        )
     }
 
     @Test
@@ -673,6 +677,9 @@ class KotlinWinRtPluginTest {
             application.signToolExecutable.set("C:/Windows Kits/10/bin/signtool.exe")
             application.signingCertificateThumbprint.set("ABCDEF")
             application.signingTimestampUrl.set("http://timestamp.example.test")
+            application.installPackage.set(true)
+            application.installPowerShellExecutable.set("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
+            application.installForceApplicationShutdown.set(false)
         }
         project.pluginManager.apply("application")
 
@@ -689,6 +696,15 @@ class KotlinWinRtPluginTest {
         assertEquals("C:/Windows Kits/10/bin/signtool.exe", signTask.signToolExecutable.get())
         assertEquals("ABCDEF", signTask.signingCertificateThumbprint.get())
         assertEquals("http://timestamp.example.test", signTask.signingTimestampUrl.get())
+        val installTask =
+            project.tasks.named("installWinRtApplicationPackage", InstallWinRtApplicationPackageTask::class.java).get()
+        assertEquals(signedPackageOutput.get().asFile, installTask.packageFile.get().asFile)
+        assertEquals(true, installTask.installPackage.get())
+        assertEquals(
+            "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+            installTask.powerShellExecutable.get(),
+        )
+        assertEquals(false, installTask.forceApplicationShutdown.get())
         project.extensions.getByType(org.gradle.api.distribution.DistributionContainer::class.java).getByName("main")
     }
 
@@ -1708,6 +1724,41 @@ class KotlinWinRtPluginTest {
         assertTrue(signToolCalls.contains("/td SHA256"))
         assertTrue(signToolCalls.contains("/sha1 ABCDEF123456"))
         assertTrue(signToolCalls.contains("Contoso-signed.msix"))
+    }
+
+    @Test
+    fun install_application_package_task_invokes_add_appx_package() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/Contoso.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val powershellLog = project.layout.buildDirectory.file("powershell-install.log").get().asFile.toPath()
+        val powershell = writeFakePowerShell(
+            project.layout.buildDirectory.file("fake-powershell.cmd").get().asFile.toPath(),
+            powershellLog,
+        )
+        val task = project.tasks.register(
+            "installApplicationPackage",
+            InstallWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.installPackage.set(true)
+            registeredTask.powerShellExecutable.set(powershell.toString())
+            registeredTask.forceApplicationShutdown.set(true)
+        }.get()
+
+        task.install()
+
+        val powershellCalls = Files.readString(powershellLog).replace("\\", "/")
+        assertTrue(powershellCalls.contains("-NoLogo"))
+        assertTrue(powershellCalls.contains("-NoProfile"))
+        assertTrue(powershellCalls.contains("-NonInteractive"))
+        assertTrue(powershellCalls.contains("Add-AppxPackage"))
+        assertTrue(powershellCalls.contains("Contoso.msix"))
+        assertTrue(powershellCalls.contains("-ForceApplicationShutdown"))
     }
 
     @Test
@@ -3008,6 +3059,19 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
 }
 
 private fun writeFakeSignTool(path: Path, log: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        echo %*>>"${log.toString()}"
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakePowerShell(path: Path, log: Path): Path {
     Files.createDirectories(path.parent)
     Files.writeString(
         path,

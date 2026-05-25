@@ -488,6 +488,32 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn(packageApplicationTask)
         },
     )
+    val installPackageTask = project.tasks.register(
+        "installWinRtApplicationPackage",
+        InstallWinRtApplicationPackageTask::class.java,
+        Action<InstallWinRtApplicationPackageTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Installs the WinRT application appx/msix package for local test runs."
+            task.packageFile.set(
+                extension.application.installPackageFile.orElse(
+                    project.layout.file(
+                        project.provider {
+                            if (extension.application.signPackage.get()) {
+                                signPackageTask.get().outputFile.get().asFile
+                            } else {
+                                packageApplicationTask.get().outputFile.get().asFile
+                            }
+                        },
+                    ),
+                ),
+            )
+            task.installPackage.set(extension.application.installPackage)
+            task.powerShellExecutable.set(extension.application.installPowerShellExecutable)
+            task.forceApplicationShutdown.set(extension.application.installForceApplicationShutdown)
+            task.dependsOn(packageApplicationTask)
+            task.dependsOn(signPackageTask)
+        },
+    )
     project.plugins.withId("java") {
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             task.dependsOn(stageApplicationPackageTask)
@@ -515,6 +541,7 @@ private fun configureWinRtApplicationTasks(
     project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
     project.extensions.extraProperties["kotlinWinRtPackageTask"] = packageApplicationTask.name
     project.extensions.extraProperties["kotlinWinRtSignPackageTask"] = signPackageTask.name
+    project.extensions.extraProperties["kotlinWinRtInstallPackageTask"] = installPackageTask.name
 }
 
 private fun configureWinRtGeneration(
