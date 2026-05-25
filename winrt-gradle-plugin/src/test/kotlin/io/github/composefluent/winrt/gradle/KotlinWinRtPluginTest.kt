@@ -2701,6 +2701,34 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_skips_missing_inputs_when_generation_is_disabled() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-generation-disabled-missing").get().asFile.toPath()
+        val outputFile = project.layout.buildDirectory.file("packages/GenerationDisabledMissing.msix").get().asFile.toPath()
+        Files.createDirectories(outputFile.parent)
+        Files.writeString(outputFile, "existing-msix")
+        val task = project.tasks.register(
+            "packageApplicationWithGenerationDisabledMissingInputs",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(false)
+            registeredTask.makeAppxExecutable.set(project.projectDir.toPath().resolve("missing-makeappx.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.pack()
+
+        assertFalse(Files.exists(packageRoot))
+        assertEquals("existing-msix", Files.readString(outputFile))
+    }
+
+    @Test
     fun package_application_task_fails_when_manifest_is_missing() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
