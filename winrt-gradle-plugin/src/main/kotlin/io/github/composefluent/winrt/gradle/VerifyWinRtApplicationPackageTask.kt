@@ -50,11 +50,11 @@ abstract class VerifyWinRtApplicationPackageTask : DefaultTask() {
 
     @TaskAction
     fun verify() {
-        val source = packageFile.get().asFile.toPath()
-        val marker = markerFile.get().asFile.toPath()
         if (!verifyPackage.get() || !isWindowsHost()) {
             return
         }
+        val source = packageFile.get().asFile.toPath()
+        val marker = markerFile.get().asFile.toPath()
         Files.deleteIfExists(marker)
         if (!source.isRegularFile()) {
             throw GradleException("Cannot verify appx/msix package because package file does not exist: $source.")
