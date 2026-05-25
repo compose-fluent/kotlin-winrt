@@ -694,7 +694,7 @@ internal fun KotlinProjectionRenderer.renderInstanceDescriptorScalarIntrinsicInv
         if (parameter.category != WinRtMetadataParameterCategory.In) {
             return null
         }
-        descriptorIntrinsicArgument(parameter) ?: return null
+        descriptorIntrinsicArgument(parameter, includeStruct = true) ?: return null
     }
     return CodeBlock.builder()
         .openDescriptorIntrinsicArgumentScopes(arguments)

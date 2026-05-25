@@ -2311,6 +2311,7 @@ class KotlinWinRtPluginTest {
                             package sample
 
                             import io.github.composefluent.winrt.runtime.ComObjectReference
+                            import io.github.composefluent.winrt.runtime.Point
                             import io.github.composefluent.winrt.runtime.RawAddress
                             import io.github.composefluent.winrt.runtime.WinRtProjectionIntrinsic
                             import io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic
@@ -2319,6 +2320,9 @@ class KotlinWinRtPluginTest {
                                 fun call(reference: ComObjectReference, value: RawAddress) {
                                     WinRtProjectionIntrinsic.callUnit(reference, 7, "RawAddress", value)
                                 }
+
+                                fun scalarWithStruct(reference: ComObjectReference, value: Point): Int =
+                                    WinRtProjectionIntrinsic.callScalar(reference, 8, "Int32", "Struct8_4", value, Point.Metadata)
 
                                 fun support() {
                                     WinRtProjectionSupportIntrinsic.ensureInitialized()
