@@ -173,6 +173,14 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val generatePackage: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val packageOutputFile: RegularFileProperty = objects.fileProperty()
     val makeAppxExecutable: Property<String> = objects.property(String::class.java).convention("")
+    val signPackage: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+    val signedPackageOutputFile: RegularFileProperty = objects.fileProperty()
+    val signToolExecutable: Property<String> = objects.property(String::class.java).convention("")
+    val signingCertificateThumbprint: Property<String> = objects.property(String::class.java).convention("")
+    val signingCertificateFile: RegularFileProperty = objects.fileProperty()
+    val signingCertificatePassword: Property<String> = objects.property(String::class.java).convention("")
+    val signingTimestampUrl: Property<String> = objects.property(String::class.java).convention("")
+    val signingHashAlgorithm: Property<String> = objects.property(String::class.java).convention("SHA256")
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)

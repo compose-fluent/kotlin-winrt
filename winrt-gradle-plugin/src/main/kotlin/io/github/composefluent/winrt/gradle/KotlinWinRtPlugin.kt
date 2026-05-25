@@ -464,6 +464,30 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn(stageApplicationPackageTask)
         },
     )
+    val signPackageTask = project.tasks.register(
+        "signWinRtApplicationPackage",
+        SignWinRtApplicationPackageTask::class.java,
+        Action<SignWinRtApplicationPackageTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Signs the WinRT application appx/msix package with signtool."
+            task.inputPackageFile.set(packageApplicationTask.flatMap { it.outputFile })
+            task.outputFile.set(
+                extension.application.signedPackageOutputFile.orElse(
+                    project.layout.buildDirectory.file("kotlin-winrt/packages/${project.name}-signed.msix"),
+                ),
+            )
+            task.signPackage.set(extension.application.signPackage)
+            task.signToolExecutable.set(extension.application.signToolExecutable)
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.signingCertificateThumbprint.set(extension.application.signingCertificateThumbprint)
+            task.signingCertificateFile.set(extension.application.signingCertificateFile)
+            task.signingCertificatePassword.set(extension.application.signingCertificatePassword)
+            task.signingTimestampUrl.set(extension.application.signingTimestampUrl)
+            task.signingHashAlgorithm.set(extension.application.signingHashAlgorithm)
+            task.dependsOn(packageApplicationTask)
+        },
+    )
     project.plugins.withId("java") {
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
             task.dependsOn(stageApplicationPackageTask)
@@ -490,6 +514,7 @@ private fun configureWinRtApplicationTasks(
     project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
     project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
     project.extensions.extraProperties["kotlinWinRtPackageTask"] = packageApplicationTask.name
+    project.extensions.extraProperties["kotlinWinRtSignPackageTask"] = signPackageTask.name
 }
 
 private fun configureWinRtGeneration(

@@ -1,0 +1,100 @@
+package io.github.composefluent.winrt.gradle
+
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
+import java.nio.file.Files
+import java.nio.file.Path
+
+@DisableCachingByDefault(because = "Authenticode signatures are time- and certificate-store-dependent.")
+abstract class SignWinRtApplicationPackageTask : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val inputPackageFile: RegularFileProperty
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @get:Input
+    abstract val signPackage: Property<Boolean>
+
+    @get:Input
+    abstract val signToolExecutable: Property<String>
+
+    @get:Input
+    abstract val windowsSdkVersion: Property<String>
+
+    @get:Input
+    abstract val runtimeIdentifier: Property<String>
+
+    @get:Input
+    abstract val signingCertificateThumbprint: Property<String>
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val signingCertificateFile: RegularFileProperty
+
+    @get:Input
+    abstract val signingCertificatePassword: Property<String>
+
+    @get:Input
+    abstract val signingTimestampUrl: Property<String>
+
+    @get:Input
+    abstract val signingHashAlgorithm: Property<String>
+
+    init {
+        signPackage.convention(false)
+        signToolExecutable.convention("")
+        windowsSdkVersion.convention("")
+        signingCertificateThumbprint.convention("")
+        signingCertificatePassword.convention("")
+        signingTimestampUrl.convention("")
+        signingHashAlgorithm.convention("SHA256")
+    }
+
+    @TaskAction
+    fun sign() {
+        val source = inputPackageFile.get().asFile.toPath()
+        val target = outputFile.get().asFile.toPath()
+        Files.deleteIfExists(target)
+        if (!signPackage.get() || !isWindowsHost()) {
+            return
+        }
+        val signTool = discoverSignToolExecutable() ?: run {
+            logger.warn("Skipping application package signing because signtool.exe was not found.")
+            return
+        }
+        target.parent?.let(Files::createDirectories)
+        Files.copy(source, target)
+        val signed = SignToolRunner.sign(
+            signTool = signTool,
+            packageFile = target,
+            certificateThumbprint = signingCertificateThumbprint.get(),
+            certificateFile = signingCertificateFile.orNull?.asFile?.toPath(),
+            certificatePassword = signingCertificatePassword.get(),
+            timestampUrl = signingTimestampUrl.get(),
+            hashAlgorithm = signingHashAlgorithm.get(),
+            logger = logger,
+        )
+        if (!signed) {
+            Files.deleteIfExists(target)
+        }
+    }
+
+    private fun discoverSignToolExecutable(): Path? =
+        ProjectPriToolResolver.signToolExecutable(
+            signToolExecutable.get(),
+            windowsSdkVersion.get(),
+            runtimeIdentifier.get(),
+        )
+}
