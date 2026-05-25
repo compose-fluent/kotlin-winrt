@@ -2301,6 +2301,42 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun package_application_task_fails_when_makeappx_cannot_start() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageRoot = project.layout.buildDirectory.dir("staged-appx-bad-makeappx").get().asFile.toPath()
+        Files.createDirectories(packageRoot)
+        writeManifestPayloadReferences(packageRoot)
+        Files.writeString(
+            packageRoot.resolve("AppxManifest.xml"),
+            appxManifestXml(),
+        )
+        val makeAppx = project.layout.buildDirectory.file("fake-bad-makeappx.exe").get().asFile.toPath()
+        Files.createDirectories(makeAppx.parent)
+        Files.writeString(makeAppx, "not an executable")
+        val outputFile = project.layout.buildDirectory.file("packages/BadMakeAppx.msix").get().asFile.toPath()
+        val task = project.tasks.register(
+            "packageApplicationWithBadMakeAppx",
+            PackageWinRtApplicationTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageDirectory.set(project.layout.dir(project.provider { packageRoot.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { outputFile.toFile() }))
+            registeredTask.generatePackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.pack() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to create appx/msix package"))
+        assertFalse(Files.exists(outputFile))
+    }
+
+    @Test
     fun verify_application_package_task_invokes_makeappx_unpack_for_msix() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -2373,6 +2409,40 @@ class KotlinWinRtPluginTest {
 
         assertTrue(failure is GradleException)
         assertTrue(failure?.message.orEmpty().contains("did not unpack an AppxManifest.xml"))
+        assertFalse(Files.exists(markerFile))
+    }
+
+    @Test
+    fun verify_application_package_task_fails_when_makeappx_cannot_start() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/BadMakeAppxVerify.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val makeAppx = project.layout.buildDirectory.file("fake-bad-makeappx-verify.exe").get().asFile.toPath()
+        Files.createDirectories(makeAppx.parent)
+        Files.writeString(makeAppx, "not an executable")
+        val markerFile = project.layout.buildDirectory.file("packages/BadMakeAppxVerify.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-bad-makeappx").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyApplicationPackageWithBadMakeAppx",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.verify() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to verify appx/msix package"))
         assertFalse(Files.exists(markerFile))
     }
 
