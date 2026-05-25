@@ -42,6 +42,7 @@ abstract class InstallWinRtApplicationPackageTask : DefaultTask() {
         if (!Files.isRegularFile(source)) {
             throw GradleException("Cannot install appx/msix package because package file does not exist: $source.")
         }
+        AppPackageFileSupport.validatePackageExtension(source, "install")
         if (!PowerShellAppxInstaller.install(
             powerShellExecutable = powerShellExecutable.get(),
             packageFile = source,
