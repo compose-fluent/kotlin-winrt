@@ -45,6 +45,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val dependencyRuntimeAssetFiles: ConfigurableFileCollection
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val nugetPackageContentFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
 
