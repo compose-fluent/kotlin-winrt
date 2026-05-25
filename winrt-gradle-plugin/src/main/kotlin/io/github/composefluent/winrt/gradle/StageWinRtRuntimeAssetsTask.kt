@@ -35,6 +35,11 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
     @get:Input
     abstract val runtimeAssets: ListProperty<String>
 
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val runtimeAssetFiles: ConfigurableFileCollection
+
     @get:Input
     abstract val nugetGlobalPackagesRoots: ListProperty<String>
 
@@ -175,8 +180,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
-        (runtimeAssets.get() + dependencyIdentityFiles.files.flatMap(::readRuntimeAssets))
-            .map(Path::of)
+        (runtimeAssetFiles.files.map { it.toPath() } + dependencyIdentityFiles.files.flatMap(::readRuntimeAssets).map(Path::of))
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 if (source.isRegularFile()) {

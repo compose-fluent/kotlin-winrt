@@ -551,7 +551,10 @@ class KotlinWinRtPluginTest {
         val project = ProjectBuilder.builder().build()
 
         project.pluginManager.apply(KotlinWinRtPlugin::class.java)
-        project.extensions.getByType(WinRtExtension::class.java).application {}
+        project.extensions.getByType(WinRtExtension::class.java).apply {
+            application {}
+            runtimeAsset(project.layout.projectDirectory.file("SimpleMathComponent.dll").asFile.absolutePath)
+        }
 
         val identityConfiguration = project.configurations.getByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION)
         assertFalse(identityConfiguration.isCanBeConsumed)
@@ -561,7 +564,8 @@ class KotlinWinRtPluginTest {
             identityConfiguration.attributes.getAttribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE)?.name,
         )
         project.tasks.named("generateWinRtApplicationIdentity", GenerateWinRtApplicationIdentityTask::class.java).get()
-        project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+        val stageRuntimeAssets = project.tasks.named("stageWinRtRuntimeAssets", StageWinRtRuntimeAssetsTask::class.java).get()
+        assertTrue(stageRuntimeAssets.runtimeAssetFiles.files.any { it.name == "SimpleMathComponent.dll" })
         project.tasks.named("buildWinRtAuthoringHost", BuildWinRtAuthoringHostTask::class.java).get()
     }
 
@@ -844,6 +848,7 @@ class KotlinWinRtPluginTest {
             registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
             registeredTask.nugetPackages.set(emptyList())
             registeredTask.runtimeAssets.set(listOf(appDll.toString()))
+            registeredTask.runtimeAssetFiles.from(appDll)
             registeredTask.authoredMetadataFiles.from(appWinmd)
             registeredTask.authoredHostManifestFiles.from(appHostManifest)
             registeredTask.authoredTargetArtifactFiles.from(appJar)
