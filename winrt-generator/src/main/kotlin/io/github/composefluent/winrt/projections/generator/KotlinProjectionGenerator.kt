@@ -244,10 +244,10 @@ class KotlinProjectionGenerator(
                 validateEventDelegateContract(plan, event)
             }
             plan.instanceMemberBindings.forEach { binding ->
-                validateDelegateAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
+                validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
             plan.staticMemberBindings.forEach { binding ->
-                validateDelegateAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
+                validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
@@ -296,19 +296,19 @@ class KotlinProjectionGenerator(
         requireDelegateInvokeMethod(delegateType)
     }
 
-    private fun validateDelegateAbiBindingContract(
+    private fun validateProjectedAbiBindingContract(
         plan: KotlinTypeProjectionPlan,
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
     ) {
-        validateDelegateAbiTypeBindingContract(plan, bindingName, "return", returnBinding)
+        validateProjectedAbiTypeBindingContract(plan, bindingName, "return", returnBinding)
         parameterBindings.forEach { parameter ->
-            validateDelegateAbiTypeBindingContract(plan, bindingName, "parameter ${parameter.name}", parameter.typeBinding)
+            validateProjectedAbiTypeBindingContract(plan, bindingName, "parameter ${parameter.name}", parameter.typeBinding)
         }
     }
 
-    private fun validateDelegateAbiTypeBindingContract(
+    private fun validateProjectedAbiTypeBindingContract(
         plan: KotlinTypeProjectionPlan,
         bindingName: String,
         bindingRole: String,
@@ -320,8 +320,13 @@ class KotlinProjectionGenerator(
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole delegate ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
             }
         }
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
+            require(typeBinding.interfaceId != null) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole runtime class ${typeBinding.resolvedTypeName} to carry default-interface metadata IID before projection rendering."
+            }
+        }
         typeBinding.typeArguments.forEach { argument ->
-            validateDelegateAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
+            validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
         }
     }
 
