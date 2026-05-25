@@ -246,6 +246,7 @@ class KotlinProjectionGenerator(
             plan.type.events.forEach { event ->
                 validateEventDelegateContract(plan, event)
             }
+            validateInstanceMethodBindingContracts(plan)
             validateInstancePropertyBindingContracts(plan)
             validateEventAccessorBindingContracts(plan)
             plan.instanceMemberBindings.forEach { binding ->
@@ -283,6 +284,27 @@ class KotlinProjectionGenerator(
             }
         }
     }
+
+    private fun validateInstanceMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass || plan.hasMappedRuntimeMethodAugmentation()) {
+            return
+        }
+        plan.type.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .forEach { method ->
+                val bindingName = method.abiSlotConstantName(plan.type.methods)
+                require(plan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+                    "Generator requires ${plan.projectionContractSubject()} method ${method.name} binding $bindingName to be present before projection rendering."
+                }
+            }
+    }
+
+    private fun KotlinTypeProjectionPlan.hasMappedRuntimeMethodAugmentation(): Boolean =
+        readOnlyCollectionBindings.isNotEmpty() ||
+            mutableCollectionBindings.isNotEmpty() ||
+            requiredInterfaceAugmentationDescriptor?.mappedAugmentationMembers.orEmpty().any {
+                it == "IDisposable" || it == "INotifyDataErrorInfo"
+            }
 
     private fun validateStaticMethodBindingContracts(plan: KotlinTypeProjectionPlan) {
         if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
