@@ -246,6 +246,7 @@ class KotlinProjectionGenerator(
             plan.type.events.forEach { event ->
                 validateEventDelegateContract(plan, event)
             }
+            validateEventAccessorBindingContracts(plan)
             plan.instanceMemberBindings.forEach { binding ->
                 validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
@@ -322,6 +323,65 @@ class KotlinProjectionGenerator(
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} delegate $delegateTypeName to carry metadata IID before projection rendering."
         }
         requireDelegateInvokeMethod(delegateType)
+    }
+
+    private fun validateEventAccessorBindingContracts(plan: KotlinTypeProjectionPlan) {
+        plan.type.events
+            .filterNot { it.isStatic }
+            .forEach { event ->
+                validateInstanceEventAccessorBindingContract(plan, event)
+            }
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+            return
+        }
+        buildList {
+            addAll(plan.type.events.filter(WinRtEventDefinition::isStatic))
+            plan.staticInterfaceNames
+                .mapNotNull(plan.typesByQualifiedName::get)
+                .forEach { staticInterface -> addAll(staticInterface.events) }
+        }
+            .asSequence()
+            .map { it.copy(isStatic = true) }
+            .distinctBy { "${it.name}|${it.delegateTypeName}" }
+            .forEach { event ->
+                validateStaticEventAccessorBindingContract(plan, event)
+            }
+    }
+
+    private fun validateInstanceEventAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+    ) {
+        if (event.hasNativeProjectionAddAccessor()) {
+            val bindingName = "${event.name.uppercase()}_ADD_SLOT"
+            require(plan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+                "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to be present before projection rendering."
+            }
+        }
+        if (event.hasNativeProjectionRemoveAccessor()) {
+            val bindingName = "${event.name.uppercase()}_REMOVE_SLOT"
+            require(plan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+                "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to be present before projection rendering."
+            }
+        }
+    }
+
+    private fun validateStaticEventAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+    ) {
+        if (event.hasNativeProjectionAddAccessor()) {
+            val bindingName = "STATIC_${event.name.uppercase()}_ADD_SLOT"
+            require(plan.staticMemberBindings.any { it.bindingName == bindingName }) {
+                "Generator requires runtime class ${plan.type.qualifiedName} static event ${event.name} add binding $bindingName to be present before projection rendering."
+            }
+        }
+        if (event.hasNativeProjectionRemoveAccessor()) {
+            val bindingName = "STATIC_${event.name.uppercase()}_REMOVE_SLOT"
+            require(plan.staticMemberBindings.any { it.bindingName == bindingName }) {
+                "Generator requires runtime class ${plan.type.qualifiedName} static event ${event.name} remove binding $bindingName to be present before projection rendering."
+            }
+        }
     }
 
     private fun validateProjectedAbiBindingContract(
