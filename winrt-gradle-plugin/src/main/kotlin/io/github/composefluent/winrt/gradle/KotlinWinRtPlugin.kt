@@ -467,6 +467,27 @@ private fun configureWinRtApplicationTasks(
             task.dependsOn(stageApplicationPackageTask)
         },
     )
+    val verifyPackageTask = project.tasks.register(
+        "verifyWinRtApplicationPackage",
+        VerifyWinRtApplicationPackageTask::class.java,
+        Action<VerifyWinRtApplicationPackageTask> { task ->
+            task.group = "kotlin-winrt"
+            task.description = "Verifies the WinRT application appx/msix package layout with makeappx."
+            task.packageFile.set(packageApplicationTask.flatMap { it.outputFile })
+            task.markerFile.set(project.layout.buildDirectory.file("kotlin-winrt/packages/${project.name}.verify.marker"))
+            task.unpackDirectory.set(project.layout.buildDirectory.dir("kotlin-winrt/package-verification/${project.name}"))
+            task.verifyPackage.set(extension.application.verifyPackage)
+            task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
+            task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
+            task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.onlyIf {
+                extension.application.packageMode.get() == WinRtApplicationPackageMode.Packaged &&
+                    extension.application.generatePackage.get() &&
+                    extension.application.verifyPackage.get()
+            }
+            task.dependsOn(packageApplicationTask)
+        },
+    )
     val signPackageTask = project.tasks.register(
         "signWinRtApplicationPackage",
         SignWinRtApplicationPackageTask::class.java,
@@ -493,6 +514,7 @@ private fun configureWinRtApplicationTasks(
                     extension.application.signPackage.get()
             }
             task.dependsOn(packageApplicationTask)
+            task.dependsOn(verifyPackageTask)
         },
     )
     val installPackageTask = project.tasks.register(
@@ -522,6 +544,7 @@ private fun configureWinRtApplicationTasks(
                     extension.application.installPackage.get()
             }
             task.dependsOn(packageApplicationTask)
+            task.dependsOn(verifyPackageTask)
             task.dependsOn(signPackageTask)
         },
     )
@@ -557,6 +580,7 @@ private fun configureWinRtApplicationTasks(
     project.extensions.extraProperties["kotlinWinRtRuntimeAssetsTask"] = stageRuntimeAssetsTask.name
     project.extensions.extraProperties["kotlinWinRtApplicationPackageTask"] = stageApplicationPackageTask.name
     project.extensions.extraProperties["kotlinWinRtPackageTask"] = packageApplicationTask.name
+    project.extensions.extraProperties["kotlinWinRtVerifyPackageTask"] = verifyPackageTask.name
     project.extensions.extraProperties["kotlinWinRtSignPackageTask"] = signPackageTask.name
     project.extensions.extraProperties["kotlinWinRtInstallPackageTask"] = installPackageTask.name
 }
