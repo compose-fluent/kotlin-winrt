@@ -65,11 +65,11 @@ abstract class SignWinRtApplicationPackageTask : DefaultTask() {
 
     @TaskAction
     fun sign() {
-        val source = inputPackageFile.get().asFile.toPath()
-        val target = outputFile.get().asFile.toPath()
         if (!signPackage.get() || !isWindowsHost()) {
             return
         }
+        val source = inputPackageFile.get().asFile.toPath()
+        val target = outputFile.get().asFile.toPath()
         if (!Files.isRegularFile(source)) {
             throw GradleException("Cannot sign appx/msix package because package file does not exist: $source.")
         }

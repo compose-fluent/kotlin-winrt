@@ -3214,6 +3214,38 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun sign_application_package_task_skips_missing_input_when_signing_is_disabled() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val inputPackage = project.layout.buildDirectory.file("packages/MissingUnsignedDisabled.msix").get().asFile.toPath()
+        val signedPackage = project.layout.buildDirectory.file("packages/MissingUnsignedDisabled-signed.msix").get().asFile.toPath()
+        Files.createDirectories(signedPackage.parent)
+        Files.writeString(signedPackage, "existing-signed-msix")
+        val task = project.tasks.register(
+            "skipDisabledMissingInputApplicationPackageSigning",
+            SignWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.inputPackageFile.set(project.layout.file(project.provider { inputPackage.toFile() }))
+            registeredTask.outputFile.set(project.layout.file(project.provider { signedPackage.toFile() }))
+            registeredTask.signPackage.set(false)
+            registeredTask.signToolExecutable.set(project.projectDir.toPath().resolve("missing-signtool.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.signingCertificateThumbprint.set("")
+            registeredTask.signingCertificatePassword.set("")
+            registeredTask.signingTimestampUrl.set("")
+            registeredTask.signingHashAlgorithm.set("SHA256")
+        }.get()
+
+        task.sign()
+
+        assertFalse(Files.exists(inputPackage))
+        assertEquals("existing-signed-msix", Files.readString(signedPackage))
+    }
+
+    @Test
     fun sign_application_package_task_rejects_non_appx_msix_package_extension() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
