@@ -202,7 +202,8 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
                 if (!Files.exists(source)) {
                     throw GradleException("Declared package payload does not exist: ${source.toAbsolutePath().normalize()}")
                 }
-                val explicitTarget = targetPaths[source.toAbsolutePath().normalize().toString()]?.toSafeRelativePath()
+                val explicitTarget = targetPaths[source.toAbsolutePath().normalize().toString()]
+                    ?.toSafeRelativePath("packagePayload target path")
                 if (source.isDirectory()) {
                     Files.walk(source).use { stream ->
                         stream.asSequence()
