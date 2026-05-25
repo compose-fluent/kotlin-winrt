@@ -2950,6 +2950,37 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun verify_application_package_task_skips_missing_input_when_verification_is_disabled() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/MissingVerifyDisabled.msix").get().asFile.toPath()
+        val markerFile = project.layout.buildDirectory.file("packages/MissingVerifyDisabled.verify.marker").get().asFile.toPath()
+        Files.createDirectories(markerFile.parent)
+        Files.writeString(markerFile, "existing-marker")
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-missing-disabled").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyMissingApplicationPackageDisabled",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(false)
+            registeredTask.makeAppxExecutable.set(project.projectDir.toPath().resolve("missing-makeappx.exe").toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.verify()
+
+        assertFalse(Files.exists(packageFile))
+        assertEquals("existing-marker", Files.readString(markerFile))
+        assertFalse(Files.exists(unpackRoot))
+    }
+
+    @Test
     fun verify_application_package_task_rejects_non_appx_msix_input_extension() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
