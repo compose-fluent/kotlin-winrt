@@ -224,14 +224,16 @@ internal class ProjectPriInputStager(
 }
 
 internal fun String.toSafeRelativePath(label: String): Path {
-    val normalized = replace('\\', '/').trim('/')
+    val normalized = trim().replace('\\', '/')
     if (normalized.isBlank()) return Path.of("")
     val path = Path.of(normalized).normalize()
-    require(!path.isAbsolute && !path.startsWith("..")) {
+    require(!normalized.startsWith("/") && !WINDOWS_DRIVE_PATH.matches(normalized) && !path.isAbsolute && !path.startsWith("..")) {
         "$label must be a relative path inside the package root: $this"
     }
     return path
 }
+
+private val WINDOWS_DRIVE_PATH = Regex("""^[A-Za-z]:($|/.*)""")
 
 private fun isProjectPriLayoutFile(path: Path): Boolean =
     path.name.endsWith(".xaml", ignoreCase = true) || path.name.endsWith(".xbf", ignoreCase = true)
