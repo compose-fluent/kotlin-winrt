@@ -29,9 +29,9 @@
 
 ## Current Focus Queue
 
-- [ ] Kotlin appx/msix packaging closure 正在做: close manifest, resource, package, signing, verification, install, and Gradle cache gaps in the Kotlin Gradle plugin while using CsWinRT/MSBuild behavior only as evidence.
-- [ ] Gradle cache contract 正在做: keep all touched generation and packaging tasks configuration-cache and build-cache compatible; every cache regression is a tracked implementation defect.
-- [ ] Generator projection matrix closure: finish activation/static/factory surfaces, delegates/events, async/collection helpers, mapped types, ABI array/struct/member shapes, and unsupported-shape diagnostics before broadening checked-in projection output.
+- [x] Kotlin appx/msix packaging closure: manifest, resource, package, signing, verification, install, and Gradle cache gaps in the Kotlin Gradle plugin are closed for the current JVM packaging surface while using CsWinRT/MSBuild behavior only as evidence.
+- [x] Gradle cache contract for completed packaging slices: touched packaging tasks and tests were validated with configuration cache and build cache enabled, including repeated runs that reused the configuration cache.
+- [ ] Generator projection matrix closure 正在做: finish activation/static/factory surfaces, delegates/events, async/collection helpers, mapped types, ABI array/struct/member shapes, and unsupported-shape diagnostics before broadening checked-in projection output.
 - [ ] Metadata input expansion and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
 - [ ] Interface native projection IR migration: continue descriptor-backed compiler-plugin lowering only where it closes functional projection behavior, not as a source-count reduction task.
 
@@ -77,7 +77,7 @@
 
 ## Phase 6 Packaging And Validation
 
-- [ ] Kotlin appx/msix packaging completeness 正在做: finish Kotlin-owned manifest generation/validation, appx/msix layout, dependency payload resolution, resources/PRI/MRT, signing/test-install hooks, packaged/unpackaged modes, disabled-generation input skipping/output preservation, and Gradle DSL ergonomics without cloning full MSBuild.
+- [x] Kotlin appx/msix packaging completeness: Kotlin-owned manifest generation/validation, appx/msix layout, dependency payload resolution, resources/PRI/MRT, signing/test-install hooks, packaged/unpackaged modes, disabled-generation input skipping/output preservation, and Gradle DSL ergonomics are complete for the current JVM packaging surface without cloning full MSBuild.
 - [x] Manifest closure: validate packaged-mode package `Properties`, `Applications/Application` presence, application id, executable/entry-point consistency, identity, required visual elements, package/verify manifest payload references, and fail-closed diagnostics before package creation and verification.
 - [x] Package output safety: reject package outputs that alias signing inputs or are placed where they can be self-included in staged package payloads.
 - [x] Package file type safety: reject non-`.appx` / non-`.msix` package inputs and outputs before package, verify, sign, or install tasks invoke external Windows tools.
