@@ -12304,14 +12304,15 @@ class KotlinProjectionGeneratorTest {
         )
 
         val genericAbiRegistry = filesByName.getValue("generic-abi-registry.tsv").contents
-        val genericAbiRegistrySource = filesByName.getValue("WinRTGenericAbiRegistry.kt").contents
+        val genericAbiSupportSource = filesByName.getValue("WinRTGenericAbiSupport.kt").contents
         assertTrue(genericAbiRegistry.contains("_get_Value_int"))
         assertTrue(genericAbiRegistry.contains("Windows.Foundation.IReference<Int>"))
-        assertTrue(genericAbiRegistrySource.contains("fun registerAbiDelegates"))
-        assertTrue(genericAbiRegistrySource.contains("WinRtGenericAbiSupportIntrinsic"))
-        assertFalse(genericAbiRegistrySource.contains("Class.forName"))
-        assertFalse(genericAbiRegistrySource.contains("_get_Value_Int"))
-        assertFalse(genericAbiRegistrySource.contains("GENERIC_ABI_DELEGATES"))
+        assertTrue(genericAbiSupportSource.contains("data class GenericAbiDelegateEntry"))
+        assertFalse(genericAbiSupportSource.contains("WinRTGenericAbiRegistry"))
+        assertFalse(genericAbiSupportSource.contains("WinRtGenericAbiSupportIntrinsic"))
+        assertFalse(genericAbiSupportSource.contains("Class.forName"))
+        assertFalse(genericAbiSupportSource.contains("_get_Value_Int"))
+        assertFalse(genericAbiSupportSource.contains("GENERIC_ABI_DELEGATES"))
         val genericTypeInstantiations = filesByName.getValue("WinRTGenericTypeInstantiations.kt").contents
         val genericInstantiations = filesByName.getValue("generic-instantiations.tsv").contents
         assertTrue(genericInstantiations.contains("className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies"))

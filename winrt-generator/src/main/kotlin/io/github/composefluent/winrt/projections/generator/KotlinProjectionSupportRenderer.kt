@@ -82,7 +82,6 @@ import io.github.composefluent.winrt.runtime.WinRtDelegateReference
 import io.github.composefluent.winrt.runtime.WinRtDelegateValueKind
 import io.github.composefluent.winrt.runtime.WinRtEvent
 import com.squareup.kotlinpoet.ANY
-import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
@@ -147,7 +146,7 @@ class KotlinProjectionSupportRenderer {
             renderTypeShapeDescriptorCompilerInput(plans),
             renderProjectionRegistrarCompilerInput(plans, inventory, excludedProjectionTypeNames).takeIf { emitProjectionRegistrar },
             renderGenericAbiRegistryCompilerInput(inventory.genericAbiInventory),
-            renderGenericAbiRegistry(inventory.genericAbiInventory),
+            renderGenericAbiSupportSource(inventory.genericAbiInventory),
             renderGenericTypeInstantiationCompilerInput(genericInstantiationWriters),
             renderGenericTypeInstantiations(genericInstantiationWriters),
             renderEventProjectionHelpers(model, plans),
@@ -475,12 +474,11 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
-    private fun renderGenericAbiRegistry(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
+    private fun renderGenericAbiSupportSource(inventory: WinRtGenericAbiInventory): KotlinProjectionFile? {
         if (inventory.genericAbiDelegates.isEmpty() && inventory.derivedGenericInterfaces.isEmpty()) {
             return null
         }
-        val entryClass = ClassName(SUPPORT_PACKAGE, "GenericAbiDelegateEntry")
-        val fileSpec = supportFileSpec("WinRTGenericAbiRegistry")
+        val fileSpec = supportFileSpec("WinRTGenericAbiSupport")
             .addType(
                 dataClass(
                     className = "GenericAbiDelegateEntry",
@@ -494,48 +492,8 @@ class KotlinProjectionSupportRenderer {
                     ),
                 ),
             )
-            .addType(
-                TypeSpec.objectBuilder("WinRTGenericAbiRegistry")
-                    .addModifiers(KModifier.INTERNAL)
-                    .addFunction(
-                        FunSpec.builder("delegateNamed")
-                            .addParameter("name", String::class)
-                            .returns(entryClass.copy(nullable = true))
-                            .addStatement("return %T.delegateNamed(name) as? %T", WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME, entryClass)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("delegatesForSourceType")
-                            .addParameter("sourceGenericType", String::class)
-                            .returns(List::class.asClassName().parameterizedBy(entryClass))
-                            .addAnnotation(Suppress::class.asClassName().let { AnnotationSpec.builder(it).addMember("%S", "UNCHECKED_CAST").build() })
-                            .addStatement(
-                                "return %T.delegatesForSourceType(sourceGenericType) as %T",
-                                WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME,
-                                List::class.asClassName().parameterizedBy(entryClass),
-                            )
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("isDerivedGenericInterface")
-                            .addParameter("typeName", String::class)
-                            .returns(Boolean::class)
-                            .addStatement("return %T.isDerivedGenericInterface(typeName)", WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME)
-                            .build(),
-                    )
-                    .addFunction(
-                        FunSpec.builder("registerAbiDelegates")
-                            .addParameter(
-                                "register",
-                                Function2::class.asClassName().parameterizedBy(stringListTypeName(), stringTypeName(), UNIT),
-                            )
-                            .addStatement("%T.registerAbiDelegates(register)", WINRT_GENERIC_ABI_SUPPORT_INTRINSIC_CLASS_NAME)
-                            .build(),
-                    )
-                    .build(),
-            )
             .build()
-        return supportFile("WinRTGenericAbiRegistry.kt", fileSpec)
+        return supportFile("WinRTGenericAbiSupport.kt", fileSpec)
     }
 
     private fun renderGenericTypeInstantiations(

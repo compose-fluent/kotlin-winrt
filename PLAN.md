@@ -18,8 +18,6 @@
 ## Current Focus
 
 - [ ] Interface native projection IR migration 正在做: continue reducing live generated `NativeProjection` bodies toward descriptor-backed compiler-plugin IR lowering without adding runtime reflection/proxy helpers; projected-object/event exclusions must stay explicit until the matching `.cswinrt` responsibility slice is mapped.
-- [ ] Native runtime actuals for `mingwX64`: replace TODO-heavy native seams with real ABI/platform actuals for `NativePlatformSeams.mingwX64.kt`, `ComVtableInvoker.mingwX64.kt`, and `PlatformInspectableInterop.mingwX64.kt` after the JVM call-shape contract is stable.
-- [ ] `mingwX64` actual projection generation: emit native actual projection implementations from the same metadata call-shape model as JVM instead of designing a separate public API.
 - [ ] Compile-surface/codebase slimming: stop broad source growth, keep support data in compiler inputs/artifacts where possible, and use generated-output audits to decide which source bodies can be eliminated without losing CsWinRT behavior.
 - [ ] Kotlin appx/msix packaging closure: finish application package/resource/PRI/MRT/MSIX logic using CsWinRT/MSBuild behavior as evidence while keeping the Kotlin Gradle plugin as the owner.
 
@@ -27,7 +25,7 @@
 
 - [x] Runtime/ABI JVM baseline: HRESULT/GUID/HSTRING, COM object references, activation, object identity, CCW/RCW ownership, delegate/event/collection/object marshaling, async bridges, WinUI bootstrap, and core vtable call lowering have representative JVM validation.
 - [x] Metadata baseline: native WinMD ingestion, deterministic model construction, signatures, semantic helpers, accessors, generic/default-interface metadata, custom attributes, mapped types, and writer-handoff descriptors have targeted coverage.
-- [x] Generator/compiler-plugin baseline: deterministic projection generation, support-file handoff, owner-local `NativeProjection` bodies, descriptor intrinsic lowering, compiler-support aggregation, reflection/proxy removal, and Gradle build/configuration cache compatibility are established.
+- [x] Generator/compiler-plugin baseline: deterministic projection generation, support-file handoff, owner-local `NativeProjection` bodies, descriptor intrinsic lowering, compiler-support aggregation, reflection/proxy removal, dead generic ABI registry wrapper removal, and Gradle build/configuration cache compatibility are established.
 - [x] Authoring JVM baseline: source scanning, generated TypeDetails, authored WinMD emission, CCW factories, host manifests, activation factory exports, composable WinUI subclasses, receive-array handling, and JVM host bridge slices have landed.
 - [x] WinUI/sample validation baseline: `winrt-samples` and the KMP WinUI library/application graph validate representative generated WinUI controls, resources, events, focus, AutomationPeer, dependency properties, authored subclasses, and app lifecycle.
 - [x] Packaging/resource baseline: Kotlin Gradle application staging now covers WindowsAppSDK payloads, application PRI/MRT generation, manifest-derived metadata, package item classification, resource inventories, component PRI aggregation, and makepri execution for the current JVM WinUI samples.
@@ -95,7 +93,7 @@
 
 - [ ] `winrt-samples`: only validate completed runtime/generator/authoring slices; no sample-local runtime workarounds.
 - [ ] `winrt-projections`: avoid broad checked-in projection growth; prefer plugin-generated output.
-- [ ] `mingwX64`: full native parity starts after JVM authoring and WinUI app-consumption validation are stable.
+- [ ] `mingwX64`: full native runtime/projection parity is deliberately deferred for the current work queue; keep shared contracts native-viable, but do not implement native actuals until the JVM/generator/slimming focus items are closed.
 
 ## Validation Plan
 
