@@ -1861,57 +1861,6 @@ class KotlinProjectionRenderer(
         )
     }
 
-    private fun mappedCollectionMemberNames(plan: KotlinTypeProjectionPlan): Set<String> =
-        if (plan.mutableCollectionBindings.isEmpty() && plan.readOnlyCollectionBindings.isEmpty() && requiredIteratorBinding(plan) == null) {
-            emptySet()
-        } else {
-            setOf(
-                "First",
-                "Current",
-                "HasCurrent",
-                "MoveNext",
-                "GetAt",
-                "Size",
-                "IndexOf",
-                "SetAt",
-                "InsertAt",
-                "RemoveAt",
-                "Append",
-                "RemoveAtEnd",
-                "Clear",
-                "GetMany",
-                "ReplaceAll",
-                "GetView",
-                "HasKey",
-                "Lookup",
-                "Insert",
-                "Remove",
-                "Split",
-                "Key",
-                "Value",
-                "Current",
-                "HasCurrent",
-                "MoveNext",
-            )
-        }
-
-    private fun WinRtMethodDefinition.isMappedCollectionRuntimeMethod(
-        plan: KotlinTypeProjectionPlan,
-        mappedCollectionMemberNames: Set<String>,
-    ): Boolean {
-        if (name !in mappedCollectionMemberNames) {
-            return false
-        }
-        val bindingName = abiSlotConstantName(plan.type.methods)
-        val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == bindingName }
-        if (binding != null) {
-            return binding.isMappedCollectionOrIteratorBinding
-        }
-        return plan.mutableCollectionBindings.isNotEmpty() ||
-            plan.readOnlyCollectionBindings.isNotEmpty() ||
-            requiredIteratorBinding(plan) != null
-    }
-
     private fun WinRtPropertyDefinition.isMappedCollectionRuntimeProperty(
         plan: KotlinTypeProjectionPlan,
         mappedCollectionMemberNames: Set<String>,
@@ -1938,13 +1887,6 @@ class KotlinProjectionRenderer(
                 ?.isMappedCollectionOrIteratorBinding == true
         return getterIsMapped && setterIsMapped
     }
-
-    private val KotlinProjectionInstanceMemberBinding.isMappedCollectionOrIteratorBinding: Boolean
-        get() = mappedTypeByAbiName(ownerInterfaceQualifiedName.substringBefore('<').removeSuffix("?"))?.let { mappedType ->
-            mappedType.readOnlyCollectionKind != null ||
-                mappedType.mutableCollectionKind != null ||
-                mappedType.descriptionName == "Iterator"
-        } == true
 
     private data class RequiredIteratorBinding(
         val elementBinding: KotlinProjectionAbiTypeBinding,

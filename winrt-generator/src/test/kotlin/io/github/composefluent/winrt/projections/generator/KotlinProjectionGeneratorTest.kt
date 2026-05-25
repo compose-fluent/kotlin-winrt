@@ -15882,6 +15882,69 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_instance_method_without_binding_on_mapped_augmentation_runtime_class() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IClosable",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("30d5a829-7fa4-4026-83bb-d75bae4ea99e"),
+                            methods = listOf(
+                                WinRtMethodDefinition(name = "Close", returnTypeName = "Unit", methodRowId = 6),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IClosableOwner",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.IClosable"),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "ClosableOwner",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IClosableOwner",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IClosableOwner", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Refresh",
+                                    returnTypeName = "Unit",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message
+                .contains("requires runtime class Sample.Foundation.ClosableOwner method Refresh binding REFRESH_SLOT to be present before projection rendering"),
+        )
+    }
+
+    @Test
     fun generator_rejects_instance_property_setter_without_setter_binding() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
