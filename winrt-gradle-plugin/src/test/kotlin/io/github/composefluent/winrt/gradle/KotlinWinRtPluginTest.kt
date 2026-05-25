@@ -2261,6 +2261,63 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun install_application_package_task_fails_when_package_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/MissingInstall.msix").get().asFile.toPath()
+        val powershellLog = project.layout.buildDirectory.file("powershell-missing-install.log").get().asFile.toPath()
+        val powershell = writeFakePowerShell(
+            project.layout.buildDirectory.file("fake-powershell-missing-install.cmd").get().asFile.toPath(),
+            powershellLog,
+        )
+        val task = project.tasks.register(
+            "installMissingApplicationPackage",
+            InstallWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.installPackage.set(true)
+            registeredTask.powerShellExecutable.set(powershell.toString())
+            registeredTask.forceApplicationShutdown.set(true)
+        }.get()
+
+        val failure = runCatching { task.install() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("package file does not exist"))
+        assertFalse(Files.exists(powershellLog))
+    }
+
+    @Test
+    fun install_application_package_task_fails_when_add_appx_package_fails() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/FailedInstall.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val powershell = writeFailingFakePowerShell(
+            project.layout.buildDirectory.file("fake-failing-powershell.cmd").get().asFile.toPath(),
+        )
+        val task = project.tasks.register(
+            "installFailingApplicationPackage",
+            InstallWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.installPackage.set(true)
+            registeredTask.powerShellExecutable.set(powershell.toString())
+            registeredTask.forceApplicationShutdown.set(true)
+        }.get()
+
+        val failure = runCatching { task.install() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("Failed to install appx/msix package"))
+    }
+
+    @Test
     fun application_package_task_writes_project_pri_configuration_input_resfiles() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
@@ -3624,6 +3681,18 @@ private fun writeFakePowerShell(path: Path, log: Path): Path {
         @echo off
         echo %*>>"${log.toString()}"
         exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFailingFakePowerShell(path: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
+        exit /b 1
         """.trimIndent(),
     )
     return path
