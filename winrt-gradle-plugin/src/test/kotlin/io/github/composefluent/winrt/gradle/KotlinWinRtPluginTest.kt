@@ -1168,7 +1168,11 @@ class KotlinWinRtPluginTest {
             """.trimIndent(),
         )
         val makePriLog = project.layout.buildDirectory.file("makepri.log").get().asFile.toPath()
-        val makePri = writeFakeMakePri(project.layout.buildDirectory.file("fake-makepri.cmd").get().asFile.toPath(), makePriLog)
+        val makePri = writeFakeMakePri(
+            project.layout.buildDirectory.file("fake-makepri.cmd").get().asFile.toPath(),
+            makePriLog,
+            languagePri = "fr-FR",
+        )
         val projectResources = project.layout.buildDirectory.dir("project-resources").get().asFile.toPath()
         Files.createDirectories(projectResources.resolve("Strings/en-US"))
         Files.writeString(projectResources.resolve("Strings/en-US/Resources.resw"), "resw")
@@ -1204,6 +1208,7 @@ class KotlinWinRtPluginTest {
         val outputRoot = task.outputDirectory.get().asFile.toPath()
         assertTrue(Files.isRegularFile(outputRoot.resolve("Component/Controls.pri")))
         assertTrue(Files.isRegularFile(outputRoot.resolve("resources.pri")))
+        assertTrue(Files.isRegularFile(outputRoot.resolve("resources.language-fr-FR.pri")))
         assertTrue(Files.isRegularFile(task.temporaryDir.toPath().resolve("project-pri/Appx/Strings/en-US/Resources.resw")))
         val priConfig = Files.readString(task.temporaryDir.toPath().resolve("project-pri-config/priconfig.xml"))
         assertTrue(priConfig.contains("Language"))
@@ -5024,7 +5029,7 @@ private fun commandExists(name: String): Boolean =
             .waitFor() == 0
     }.getOrDefault(false)
 
-private fun writeFakeMakePri(path: Path, log: Path): Path {
+private fun writeFakeMakePri(path: Path, log: Path, languagePri: String = ""): Path {
     Files.createDirectories(path.parent)
     Files.writeString(
         path,
@@ -5043,6 +5048,9 @@ private fun writeFakeMakePri(path: Path, log: Path): Path {
         :done
         if not "%output%"=="" (
           echo fake-pri>"%output%"
+          if not "${languagePri}"=="" (
+            for %%I in ("%output%") do echo fake-language-pri>"%%~dpIresources.language-${languagePri}.pri"
+          )
         )
         exit /b 0
         """.trimIndent(),
