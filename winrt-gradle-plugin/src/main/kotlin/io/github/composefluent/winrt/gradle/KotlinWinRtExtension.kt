@@ -181,6 +181,10 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val signingCertificatePassword: Property<String> = objects.property(String::class.java).convention("")
     val signingTimestampUrl: Property<String> = objects.property(String::class.java).convention("")
     val signingHashAlgorithm: Property<String> = objects.property(String::class.java).convention("SHA256")
+    val installPackage: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
+    val installPackageFile: RegularFileProperty = objects.fileProperty()
+    val installPowerShellExecutable: Property<String> = objects.property(String::class.java).convention("powershell.exe")
+    val installForceApplicationShutdown: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
