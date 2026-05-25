@@ -13,7 +13,7 @@
 - [ ] Kotlin has no runtime reflection equivalent for CsWinRT's attribute/source-generator discovery path; any equivalent annotation, metadata, registration, or source-generator behavior must be implemented through `winrt-generator` and `winrt-compiler-plugin`, with runtime discovery paths kept fail-closed.
 - [ ] WinMD ingestion targets native WinMD metadata only. Do not add `cswinmd`-specific compatibility as a projection goal.
 - [ ] Packaging target is complete Kotlin `appx` / `msix` application packaging, PRI/MRT/resource indexing, manifest processing, dependency payload staging, and runtime asset layout. CsWinRT/MSBuild targets are implementation evidence, not a requirement to clone full MSBuild.
-- [ ] Code size is a constraint, not a current workstream: do not execute slimming before runtime, metadata, generator, authoring, projection, and packaging behavior are functionally complete enough to judge removals against a stable target. New functional slices must still avoid duplicated branch tables, unnecessary generated source growth, and handwritten projection expansion.
+- [ ] Code size is a long-term constraint, not a current execution workstream: do not start slimming until runtime, metadata, generator, authoring, projection, and Kotlin appx/msix packaging are functionally complete enough to make removal decisions against a stable target. Until then, only prevent new avoidable bloat such as duplicated branch tables, unnecessary generated source growth, or handwritten projection expansion.
 
 ## Current Focus
 
@@ -92,7 +92,7 @@
 - [ ] `winrt-samples`: only validate completed runtime/generator/authoring slices; no sample-local runtime workarounds.
 - [ ] `winrt-projections`: avoid broad checked-in projection growth; prefer plugin-generated output.
 - [ ] `mingwX64`: full native runtime/projection parity is deliberately deferred for the current work queue; keep shared contracts native-viable, but do not implement native actuals until the JVM/generator/packaging focus items are closed.
-- [ ] Codebase slimming: frozen as an implementation target. Keep any deletion candidates out of `PLAN.md` and, if needed later, in the untracked `SLIMMING_PLAN.md` only after functional closure.
+- [ ] Codebase slimming: frozen as an implementation target until the feature-completeness gates above are closed. Do not spend current work on deletion/refactor-only slimming because incomplete runtime/generator/packaging behavior would make the code grow again. Keep any future deletion candidates out of `PLAN.md` and, if needed later, in the untracked `SLIMMING_PLAN.md` after functional closure.
 
 ## Validation Plan
 
