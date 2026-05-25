@@ -835,7 +835,8 @@ class KotlinProjectionPlanner(
             delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
             typeArguments = genericArguments,
             errorContext = ownerInterface,
-            requireSupportedBinding = false,
+            requireSupportedBinding = true,
+            bindingLocationLabel = "owner",
         )
     }
 
@@ -915,7 +916,8 @@ class KotlinProjectionPlanner(
             delegatePropertyName = collectionKind.ownerDelegatePropertyName(ownerInterface),
             typeArguments = genericArguments,
             errorContext = ownerInterface,
-            requireSupportedBinding = false,
+            requireSupportedBinding = true,
+            bindingLocationLabel = "owner",
         )
     }
 
