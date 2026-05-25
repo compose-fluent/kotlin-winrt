@@ -8,7 +8,7 @@
 - [ ] Keep `sample-jvm-winui3` legacy-only unless explicitly requested.
 - [ ] Keep Gradle configuration cache and build cache enabled; cache failures are implementation issues to fix, not flags to bypass.
 - [ ] Keep `mingwX64` implementation frozen for the current queue. Shared contracts must stay native-viable, but no native actual work starts until the JVM/generator/packaging focus items are closed.
-- [ ] Keep codebase slimming frozen until functional completeness is reached. Current work may prevent avoidable duplication while closing parity gaps, but must not run deletion-only refactors, source-count targets, or module-collapse work before projection behavior is complete.
+- [ ] Keep codebase slimming frozen until functional completeness is reached. Current work may remove duplication only when that is required to implement a parity slice; do not run deletion-only refactors, source-count targets, module-collapse work, or standalone slimming plans before projection behavior is complete.
 
 ## Reference Boundaries
 
@@ -24,14 +24,14 @@
 - [ ] Metadata input and native WinMD fidelity: finish Kotlin-needed SDK/file/directory/reference expansion and harden native WinMD parsing; do not add `cswinmd` compatibility.
 - [ ] Compiler-plugin authoring and projection lowering: continue descriptor-backed K2/IR lowering only where it closes functional projection or authoring behavior, not as a source-count reduction task.
 - [ ] Kotlin appx/msix packaging validation: keep completed packaging behavior cache-compatible while closing any remaining package/layout/resource gaps discovered by functional validation.
-- [ ] Functional completeness before slimming: close runtime, metadata, generator/compiler-plugin, projection, authoring, and Kotlin appx/msix packaging gaps in this plan before any source-count or structure-shrinking work becomes active.
+- [ ] Functional completeness before structure cleanup: close runtime, metadata, generator/compiler-plugin, projection, authoring, and Kotlin appx/msix packaging gaps in this plan before any source-count, module-shrinking, or deletion-driven cleanup becomes eligible.
 
 ## Current Completed Baseline
 
 - [x] Runtime JVM baseline: core ABI primitives, object references, activation, CCW/RCW ownership, delegate/event/collection/object marshaling, async bridges, WinUI bootstrap, and vtable-call lowering exist as a usable JVM validation base.
 - [x] Metadata baseline: native WinMD ingestion, deterministic model construction, signatures, accessors, generic/default-interface metadata, custom attributes, mapped types, and writer-handoff descriptors exist for the current generator path.
 - [x] Generator/compiler-plugin baseline: deterministic projection generation, support-file handoff, owner-local `NativeProjection` bodies, descriptor intrinsic lowering, compiler-support aggregation, reflection/proxy removal, generic ABI registry cleanup, and Gradle cache-compatible task modeling exist for current JVM work.
-- [x] Generator fail-closed baseline: missing or incomplete ABI metadata is rejected before rendering for the already-covered activation/static/factory, default/implemented/required interface, delegate/event, enum/struct/array, property, method, factory-create, authored CCW member, collection owner, mapped collection arity, mapped async arity, and ABI call-plan slices.
+- [x] Generator fail-closed baseline: missing or incomplete ABI metadata is rejected before rendering for the already-covered activation/static/factory, default/implemented/required interface, delegate/event, enum/struct/array, property, method, factory-create, composable factory shape, authored CCW member, collection owner, mapped collection arity, mapped async arity, and ABI call-plan slices.
 - [x] Authoring JVM baseline: generated TypeDetails, authored WinMD emission, CCW factories, host manifests, activation factory exports, composable WinUI subclasses, receive-array handling, and JVM host bridge slices exist for current validation.
 - [x] Packaging/resource baseline: Kotlin-owned appx/msix staging, manifest validation, dependency payloads, PRI/MRT/resource processing, signing/test-install hooks, and makeappx verification exist for the current JVM sample surface.
 
@@ -45,7 +45,7 @@
 - [ ] Authoring gaps: finish factories, activation/hosting, authored metadata, receive-array variants, inherited/overridable interfaces, ABI marshaling combinations, and validation beyond the current JVM happy path.
 - [ ] Packaging gaps: finish Kotlin appx/msix layout, manifest/resource/PRI/MRT details, dependency payload staging, signing/test-install flow, and runtime asset layout without cloning full MSBuild.
 - [ ] Validation gaps: keep Windows Gradle configuration cache and build cache enabled for every touched slice, then run representative runtime/metadata/generator/plugin/authoring/packaging/sample checks only after the owning contracts are implemented.
-- [ ] Post-completeness slimming: only after the functional gaps above are closed, audit source size, remove duplicate type/category tables, prune obsolete handwritten projections, and consolidate modules without deleting behavior that still needs parity work.
+- [ ] Post-completeness structure cleanup: frozen until the functional gaps above are closed. After completion, audit duplicate type/category tables, obsolete handwritten projections, and module boundaries only as a correctness-preserving cleanup pass, not as a current implementation objective.
 
 ## Phase 1 Runtime And ABI
 
@@ -75,6 +75,7 @@
 - [x] Collection owner fail-closed closure: reject mapped collection owner interfaces whose element, key, or value ABI shape cannot be projected before silently dropping the Kotlin collection bridge.
 - [x] Mapped collection arity fail-closed closure: reject malformed `IIterable`, `IVector`, `IVectorView`, `IMap`, and `IMapView` ABI bindings before collection projection rendering.
 - [x] Mapped async arity fail-closed closure: reject malformed `IAsyncActionWithProgress`, `IAsyncOperation`, and `IAsyncOperationWithProgress` ABI bindings before async projection rendering.
+- [x] Composable factory shape fail-closed closure: reject malformed composable factory create methods that do not end with `baseInterface` and `innerInterface` object ABI parameters before constructor/support rendering.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
@@ -115,7 +116,7 @@
 - [ ] `winrt-samples`: only validate completed runtime/generator/authoring slices; no sample-local runtime workarounds.
 - [ ] `winrt-projections`: avoid broad checked-in projection growth; prefer plugin-generated output gated by completed upstream contracts.
 - [ ] `mingwX64`: full native runtime/projection parity is deliberately deferred for the current work queue; shared contracts must remain native-viable.
-- [ ] Codebase slimming: frozen as an implementation target until runtime, metadata, generator/compiler-plugin, projection, authoring, and Kotlin appx/msix packaging are functionally complete. Do not spend current work on source-count reduction, deletion-only refactors, or module-collapse cleanup; premature slimming would hide missing behavior and will likely re-expand when the remaining parity gaps are implemented.
+- [ ] Codebase slimming and standalone structure reduction: frozen as an implementation target until runtime, metadata, generator/compiler-plugin, projection, authoring, and Kotlin appx/msix packaging are functionally complete. Current work must not spend effort on source-count reduction, deletion-only refactors, or module-collapse cleanup; premature slimming would hide missing behavior and will likely re-expand when the remaining parity gaps are implemented.
 
 ## Validation Gates
 

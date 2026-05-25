@@ -16863,6 +16863,63 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_composable_factory_create_without_trailing_object_parameters_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            activation = WinRtActivationShape(
+                                isActivatable = true,
+                                composableFactoryInterfaceName = "Sample.Foundation.IWidgetFactory",
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("baseInterface", "Object"),
+                                        WinRtParameterDefinition("innerInterface", "Int"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires runtime class Sample.Foundation.Widget composable factory interface Sample.Foundation.IWidgetFactory method CreateInstance to end with baseInterface and innerInterface object parameters before projection rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_authored_ccw_unsupported_async_return_before_support_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
