@@ -421,6 +421,7 @@ class KotlinProjectionGenerator(
             bindingName = "Invoke",
             returnBinding = invokeShape.returnBinding,
             parameterBindings = invokeShape.parameterBindings,
+            delegateInvokeContext = true,
         )
     }
 
@@ -552,10 +553,17 @@ class KotlinProjectionGenerator(
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        delegateInvokeContext: Boolean = false,
     ) {
-        validateProjectedAbiTypeBindingContract(plan, bindingName, "return", returnBinding)
+        validateProjectedAbiTypeBindingContract(plan, bindingName, "return", returnBinding, delegateInvokeContext)
         parameterBindings.forEach { parameter ->
-            validateProjectedAbiTypeBindingContract(plan, bindingName, "parameter ${parameter.name}", parameter.typeBinding)
+            validateProjectedAbiTypeBindingContract(
+                plan,
+                bindingName,
+                "parameter ${parameter.name}",
+                parameter.typeBinding,
+                delegateInvokeContext,
+            )
         }
     }
 
@@ -564,6 +572,7 @@ class KotlinProjectionGenerator(
         bindingName: String,
         bindingRole: String,
         typeBinding: KotlinProjectionAbiTypeBinding,
+        delegateInvokeContext: Boolean = false,
     ) {
         if (typeBinding.kind == KotlinProjectionAbiValueKind.Delegate) {
             val invokeShape = typeBinding.delegateInvokeShape
@@ -576,6 +585,7 @@ class KotlinProjectionGenerator(
                     bindingName,
                     "$bindingRole delegate ${typeBinding.resolvedTypeName} Invoke return",
                     shape.returnBinding,
+                    delegateInvokeContext = true,
                 )
                 shape.parameterBindings.forEach { parameter ->
                     validateProjectedAbiTypeBindingContract(
@@ -583,6 +593,7 @@ class KotlinProjectionGenerator(
                         bindingName,
                         "$bindingRole delegate ${typeBinding.resolvedTypeName} Invoke parameter ${parameter.name}",
                         parameter.typeBinding,
+                        delegateInvokeContext = true,
                     )
                 }
             }
@@ -600,6 +611,12 @@ class KotlinProjectionGenerator(
         if (typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
             require(typeBinding.typeArguments.size == 1) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole array ${typeBinding.resolvedTypeName} to carry exactly one element ABI binding before projection rendering."
+            }
+            if (delegateInvokeContext) {
+                val elementKind = typeBinding.typeArguments.single().kind
+                require(elementKind == KotlinProjectionAbiValueKind.UInt8) {
+                    "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole delegate array ${typeBinding.resolvedTypeName} to use supported delegate array ABI metadata before projection rendering; found ${typeBinding.describeAbiKind()}."
+                }
             }
         }
         require(typeBinding.kind != KotlinProjectionAbiValueKind.Unsupported) {
@@ -620,7 +637,7 @@ class KotlinProjectionGenerator(
             }
         }
         typeBinding.typeArguments.forEach { argument ->
-            validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
+            validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument, delegateInvokeContext)
         }
     }
 
