@@ -154,6 +154,8 @@ abstract class WinRtApplicationOptions @Inject constructor(
     objects: ObjectFactory,
     private val project: Project,
 ) {
+    val packageMode: Property<WinRtApplicationPackageMode> =
+        objects.property(WinRtApplicationPackageMode::class.java).convention(WinRtApplicationPackageMode.Unpackaged)
     val generateProjectPri: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val projectPriIndexName: Property<String> = objects.property(String::class.java).convention("")
     val projectPriInitialPath: Property<String> = objects.property(String::class.java).convention("")
@@ -189,6 +191,14 @@ abstract class WinRtApplicationOptions @Inject constructor(
 
     fun appxManifest(input: Any) {
         appxManifestFiles.from(input)
+    }
+
+    fun packaged() {
+        packageMode.set(WinRtApplicationPackageMode.Packaged)
+    }
+
+    fun unpackaged() {
+        packageMode.set(WinRtApplicationPackageMode.Unpackaged)
     }
 
     fun projectPriResource(input: Any) {
@@ -261,6 +271,11 @@ abstract class WinRtApplicationOptions @Inject constructor(
     fun projectPriDefaultQualifier(qualifier: String) {
         projectPriDefaultQualifiers.add(qualifier)
     }
+}
+
+enum class WinRtApplicationPackageMode {
+    Unpackaged,
+    Packaged,
 }
 
 abstract class KotlinWinRtNuGetPackage @Inject constructor(

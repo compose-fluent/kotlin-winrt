@@ -180,6 +180,7 @@ private fun configureWinRtApplicationTasks(
     if (project.configurations.findByName(KOTLIN_WINRT_IDENTITY_CONFIGURATION) != null) {
         return
     }
+    val packagedMode = extension.application.packageMode.get() == WinRtApplicationPackageMode.Packaged
     val identityDependencies = project.configurations.create(
         KOTLIN_WINRT_IDENTITY_CONFIGURATION,
         Action { configuration ->
@@ -462,6 +463,7 @@ private fun configureWinRtApplicationTasks(
             task.makeAppxExecutable.set(extension.application.makeAppxExecutable)
             task.windowsSdkVersion.set(project.provider { extension.windowsSdkVersion.orNull.orEmpty() })
             task.runtimeIdentifier.set(project.provider { currentWindowsRuntimeIdentifier() })
+            task.onlyIf { extension.application.packageMode.get() == WinRtApplicationPackageMode.Packaged }
             task.dependsOn(stageApplicationPackageTask)
         },
     )
@@ -486,6 +488,10 @@ private fun configureWinRtApplicationTasks(
             task.signingCertificatePassword.set(extension.application.signingCertificatePassword)
             task.signingTimestampUrl.set(extension.application.signingTimestampUrl)
             task.signingHashAlgorithm.set(extension.application.signingHashAlgorithm)
+            task.onlyIf {
+                extension.application.packageMode.get() == WinRtApplicationPackageMode.Packaged &&
+                    extension.application.signPackage.get()
+            }
             task.dependsOn(packageApplicationTask)
         },
     )
@@ -511,30 +517,40 @@ private fun configureWinRtApplicationTasks(
             task.installPackage.set(extension.application.installPackage)
             task.powerShellExecutable.set(extension.application.installPowerShellExecutable)
             task.forceApplicationShutdown.set(extension.application.installForceApplicationShutdown)
+            task.onlyIf {
+                extension.application.packageMode.get() == WinRtApplicationPackageMode.Packaged &&
+                    extension.application.installPackage.get()
+            }
             task.dependsOn(packageApplicationTask)
             task.dependsOn(signPackageTask)
         },
     )
     project.plugins.withId("java") {
         project.tasks.matching { it.name == "processResources" }.configureEach(Action<Task> { task ->
-            task.dependsOn(stageApplicationPackageTask)
+            if (!packagedMode) {
+                task.dependsOn(stageApplicationPackageTask)
+            }
             if (task is Copy) {
-                task.from(stageApplicationPackageTask.flatMap { it.outputDirectory }, Action<CopySpec> { spec ->
-                    spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
-                })
+                if (!packagedMode) {
+                    task.from(stageApplicationPackageTask.flatMap { it.outputDirectory }, Action<CopySpec> { spec ->
+                        spec.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY)
+                    })
+                }
             }
         })
     }
     project.plugins.withId("application") {
-        project.extensions.configure(DistributionContainer::class.java, Action<DistributionContainer> { distributions ->
-            distributions.named("main").configure { distribution ->
-                distribution.contents(Action<CopySpec> { contents ->
-                    contents.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY, Action<CopySpec> { spec ->
-                        spec.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
+        if (!packagedMode) {
+            project.extensions.configure(DistributionContainer::class.java, Action<DistributionContainer> { distributions ->
+                distributions.named("main").configure { distribution ->
+                    distribution.contents(Action<CopySpec> { contents ->
+                        contents.into(KOTLIN_WINRT_RUNTIME_ASSETS_DIRECTORY, Action<CopySpec> { spec ->
+                            spec.from(stageApplicationPackageTask.flatMap { it.outputDirectory })
+                        })
                     })
-                })
-            }
-        })
+                }
+            })
+        }
     }
     project.extensions.extraProperties["kotlinWinRtIdentity"] = identityDependencies.name
     project.extensions.extraProperties["kotlinWinRtApplicationIdentityTask"] = applicationIdentityTask.name
