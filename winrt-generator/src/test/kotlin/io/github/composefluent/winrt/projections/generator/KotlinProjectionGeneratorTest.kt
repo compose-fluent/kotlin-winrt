@@ -13824,6 +13824,82 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_async_operation_without_result_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555559"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "fetchAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperation",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget ABI binding FETCHASYNC_SLOT return async Windows.Foundation.IAsyncOperation to carry 1 type argument(s) before projection rendering; found 0.",
+            ),
+        )
+    }
+
+    @Test
+    fun generator_rejects_async_operation_with_progress_without_progress_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555560"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "fetchAsync",
+                                    returnTypeName = "Windows.Foundation.IAsyncOperationWithProgress<String>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget ABI binding FETCHASYNC_SLOT return async Windows.Foundation.IAsyncOperationWithProgress to carry 2 type argument(s) before projection rendering; found 1.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_marshals_projected_interface_collection_parameters() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
