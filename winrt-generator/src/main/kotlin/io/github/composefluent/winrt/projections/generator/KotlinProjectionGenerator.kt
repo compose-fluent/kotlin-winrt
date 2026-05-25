@@ -246,6 +246,7 @@ class KotlinProjectionGenerator(
             plan.type.events.forEach { event ->
                 validateEventDelegateContract(plan, event)
             }
+            validateInstancePropertyBindingContracts(plan)
             validateEventAccessorBindingContracts(plan)
             plan.instanceMemberBindings.forEach { binding ->
                 validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
@@ -280,6 +281,25 @@ class KotlinProjectionGenerator(
                 }
             }
         }
+    }
+
+    private fun validateInstancePropertyBindingContracts(plan: KotlinTypeProjectionPlan) {
+        plan.type.properties
+            .filterNot(WinRtPropertyDefinition::isStatic)
+            .forEach { property ->
+                if (property.hasNativeProjectionGetterAccessor()) {
+                    val getterBindingName = "${property.name.uppercase()}_GETTER_SLOT"
+                    require(plan.instanceMemberBindings.any { it.bindingName == getterBindingName }) {
+                        "Generator requires ${plan.projectionContractSubject()} property ${property.name} getter binding $getterBindingName to be present before projection rendering."
+                    }
+                }
+                if (property.hasNativeProjectionSetterAccessor()) {
+                    val setterBindingName = "${property.name.uppercase()}_SETTER_SLOT"
+                    require(plan.instanceMemberBindings.any { it.bindingName == setterBindingName }) {
+                        "Generator requires ${plan.projectionContractSubject()} property ${property.name} setter binding $setterBindingName to be present before projection rendering."
+                    }
+                }
+            }
     }
 
     private fun validateStaticPropertyBindingContracts(plan: KotlinTypeProjectionPlan) {
