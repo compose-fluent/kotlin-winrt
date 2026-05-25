@@ -333,6 +333,11 @@ class KotlinProjectionGenerator(
         require(typeBinding.kind != KotlinProjectionAbiValueKind.Unsupported) {
             "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole to use supported ABI metadata before projection rendering; found ${typeBinding.describeAbiKind()}."
         }
+        if (typeBinding.kind == KotlinProjectionAbiValueKind.Enum) {
+            require(typeBinding.enumUnderlyingType != null) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole enum ${typeBinding.resolvedTypeName} to carry underlying type metadata before projection rendering."
+            }
+        }
         typeBinding.typeArguments.forEach { argument ->
             validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument)
         }
