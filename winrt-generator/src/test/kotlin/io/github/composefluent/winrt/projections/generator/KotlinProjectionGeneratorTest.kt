@@ -7325,6 +7325,75 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_delegate_without_iid_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains("requires delegate Sample.Foundation.WidgetHandler Invoke to carry metadata IID before projection rendering"),
+        )
+    }
+
+    @Test
+    fun generator_rejects_delegate_invoke_unsupported_return_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Sample.Foundation.NativeHandle",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains("requires delegate Sample.Foundation.WidgetHandler ABI binding Invoke return to use supported ABI metadata before projection rendering; found Unsupported(Sample.Foundation.NativeHandle)"),
+        )
+    }
+
+    @Test
     fun generator_emits_interface_abi_slots_after_inherited_interface_segments() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
