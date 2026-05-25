@@ -437,6 +437,7 @@ private fun configureWinRtApplicationTasks(
             task.projectPriLayoutFiles.from(extension.application.projectPriLayoutFiles)
             task.projectPriContentFiles.from(extension.application.projectPriContentFiles)
             task.projectPriEmbedFiles.from(extension.application.projectPriEmbedFiles)
+            task.packagePayloadFiles.from(extension.application.packagePayloadFiles)
             task.projectPriTargetPaths.set(extension.application.projectPriTargetPaths)
             task.projectPriExcludedFromBuildPaths.set(extension.application.projectPriExcludedFromBuildPaths)
             task.makePriExecutable.set("")

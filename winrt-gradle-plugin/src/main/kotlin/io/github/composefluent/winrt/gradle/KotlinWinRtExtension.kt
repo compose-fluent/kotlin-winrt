@@ -166,6 +166,7 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val projectPriLayoutFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriContentFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriEmbedFiles: ConfigurableFileCollection = objects.fileCollection()
+    val packagePayloadFiles: ConfigurableFileCollection = objects.fileCollection()
     val projectPriTargetPaths: MapProperty<String, String> =
         objects.mapProperty(String::class.java, String::class.java).convention(emptyMap())
     val projectPriExcludedFromBuildPaths: SetProperty<String> =
@@ -241,6 +242,15 @@ abstract class WinRtApplicationOptions @Inject constructor(
 
     fun projectPriEmbedFile(input: Any, targetPath: String) {
         projectPriEmbedFile(input)
+        projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
+    }
+
+    fun packagePayload(input: Any) {
+        packagePayloadFiles.from(input)
+    }
+
+    fun packagePayload(input: Any, targetPath: String) {
+        packagePayload(input)
         projectPriTargetPaths.put(project.file(input).toPath().toAbsolutePath().normalize().toString(), targetPath)
     }
 
