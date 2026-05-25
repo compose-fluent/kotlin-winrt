@@ -319,8 +319,24 @@ class KotlinProjectionGenerator(
     ) {
         if (typeBinding.kind == KotlinProjectionAbiValueKind.Delegate) {
             val invokeShape = typeBinding.delegateInvokeShape
-            require(invokeShape?.interfaceId != null) {
+            require(typeBinding.interfaceId != null || invokeShape?.interfaceId != null) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole delegate ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
+            }
+            invokeShape?.let { shape ->
+                validateProjectedAbiTypeBindingContract(
+                    plan,
+                    bindingName,
+                    "$bindingRole delegate ${typeBinding.resolvedTypeName} Invoke return",
+                    shape.returnBinding,
+                )
+                shape.parameterBindings.forEach { parameter ->
+                    validateProjectedAbiTypeBindingContract(
+                        plan,
+                        bindingName,
+                        "$bindingRole delegate ${typeBinding.resolvedTypeName} Invoke parameter ${parameter.name}",
+                        parameter.typeBinding,
+                    )
+                }
             }
         }
         if (typeBinding.kind == KotlinProjectionAbiValueKind.ProjectedRuntimeClass) {
