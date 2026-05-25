@@ -1633,7 +1633,7 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
-    fun application_package_task_copies_payload_items_when_makepri_is_missing() {
+    fun application_package_task_fails_when_makepri_is_missing_for_project_pri() {
         if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
             return
         }
@@ -1656,7 +1656,7 @@ class KotlinWinRtPluginTest {
             StageWinRtApplicationPackageTask::class.java,
         ) { registeredTask ->
             registeredTask.runtimeAssetsDirectory.set(project.layout.dir(project.provider { runtimeAssets.toFile() }))
-            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-payload-no-makepri"))
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("application-package-missing-makepri"))
             registeredTask.generateProjectPri.set(true)
             registeredTask.projectPriIndexName.set("Contoso.App")
             registeredTask.projectPriFallbackIndexName.set("ContosoFallback")
@@ -1673,14 +1673,11 @@ class KotlinWinRtPluginTest {
             registeredTask.runtimeIdentifier.set("win-x64")
         }.get()
 
-        task.stage()
+        val failure = runCatching { task.stage() }.exceptionOrNull()
 
-        val outputRoot = task.outputDirectory.get().asFile.toPath()
-        assertTrue(Files.isRegularFile(outputRoot.resolve("AppxManifest.xml")))
-        assertTrue(Files.readString(outputRoot.resolve("AppxManifest.xml")).contains("Contoso.App"))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Views/MainPage.xaml")))
-        assertTrue(Files.isRegularFile(outputRoot.resolve("Appx/Assets/Logo.png")))
-        assertFalse(Files.exists(outputRoot.resolve("resources.pri")))
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("makepri.exe was not found"))
+        assertFalse(Files.exists(task.outputDirectory.get().asFile.toPath().resolve("resources.pri")))
     }
 
     @Test

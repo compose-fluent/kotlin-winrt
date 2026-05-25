@@ -235,11 +235,10 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
         }
         ApplicationPackagePayloadWriter.copyPackagePayloads(projectPriRoot, outputRoot, copiedProjectPriItems)
         val makePri = discoverMakePriExecutable() ?: run {
-            logger.warn("Skipping application PRI generation because makepri.exe was not found.")
-            return
+            throw GradleException("Cannot generate application PRI because makepri.exe was not found.")
         }
         val configRoot = temporaryDir.toPath().resolve("project-pri-config")
-        ProjectPriGenerator.generateApplicationPri(
+        if (!ProjectPriGenerator.generateApplicationPri(
             makePri,
             outputRoot,
             projectPriRoot,
@@ -248,7 +247,9 @@ abstract class StageWinRtApplicationPackageTask : DefaultTask() {
             projectPriDefaultQualifierPairs(),
             copiedProjectPriItems,
             logger,
-        )
+        )) {
+            throw GradleException("Failed to generate application PRI for staged app package.")
+        }
     }
 
     private fun projectPriDefaultLanguageValue(): String =
