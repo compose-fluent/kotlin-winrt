@@ -176,6 +176,7 @@ abstract class WinRtApplicationOptions @Inject constructor(
     val generatePackage: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val packageOutputFile: RegularFileProperty = objects.fileProperty()
     val makeAppxExecutable: Property<String> = objects.property(String::class.java).convention("")
+    val verifyPackage: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
     val signPackage: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
     val signedPackageOutputFile: RegularFileProperty = objects.fileProperty()
     val signToolExecutable: Property<String> = objects.property(String::class.java).convention("")

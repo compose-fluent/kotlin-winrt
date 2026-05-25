@@ -710,6 +710,10 @@ class KotlinWinRtPluginTest {
         assertEquals(packageOutput.get().asFile, packageTask.outputFile.get().asFile)
         assertEquals("C:/Windows Kits/10/bin/makeappx.exe", packageTask.makeAppxExecutable.get())
         assertEquals(false, packageTask.generatePackage.get())
+        val verifyTask = project.tasks.named("verifyWinRtApplicationPackage", VerifyWinRtApplicationPackageTask::class.java).get()
+        assertEquals(packageOutput.get().asFile, verifyTask.packageFile.get().asFile)
+        assertEquals("C:/Windows Kits/10/bin/makeappx.exe", verifyTask.makeAppxExecutable.get())
+        assertEquals(true, verifyTask.verifyPackage.get())
         val stagePackageTask =
             project.tasks.named("stageWinRtApplicationPackage", StageWinRtApplicationPackageTask::class.java).get()
         assertTrue(stagePackageTask.packagePayloadFiles.files.any { it.path.replace("\\", "/").endsWith("build/libs/app.jar") })
@@ -744,12 +748,14 @@ class KotlinWinRtPluginTest {
         }
 
         val packageTask = project.tasks.named("packageWinRtApplication", PackageWinRtApplicationTask::class.java).get()
+        val verifyTask = project.tasks.named("verifyWinRtApplicationPackage", VerifyWinRtApplicationPackageTask::class.java).get()
         val signTask = project.tasks.named("signWinRtApplicationPackage", SignWinRtApplicationPackageTask::class.java).get()
         val installTask =
             project.tasks.named("installWinRtApplicationPackage", InstallWinRtApplicationPackageTask::class.java).get()
 
         assertEquals(WinRtApplicationPackageMode.Unpackaged, project.extensions.getByType(WinRtExtension::class.java).application.packageMode.get())
         assertFalse(packageTask.onlyIf.isSatisfiedBy(packageTask))
+        assertFalse(verifyTask.onlyIf.isSatisfiedBy(verifyTask))
         assertFalse(signTask.onlyIf.isSatisfiedBy(signTask))
         assertFalse(installTask.onlyIf.isSatisfiedBy(installTask))
     }
@@ -1955,6 +1961,81 @@ class KotlinWinRtPluginTest {
         assertTrue(failure is GradleException)
         assertTrue(failure?.message.orEmpty().contains("did not create appx/msix package"))
         assertFalse(Files.exists(outputFile))
+    }
+
+    @Test
+    fun verify_application_package_task_invokes_makeappx_unpack_for_msix() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/Contoso.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val makeAppxLog = project.layout.buildDirectory.file("makeappx-verify.log").get().asFile.toPath()
+        val makeAppx = writeFakeMakeAppx(
+            project.layout.buildDirectory.file("fake-makeappx-verify.cmd").get().asFile.toPath(),
+            makeAppxLog,
+        )
+        val markerFile = project.layout.buildDirectory.file("packages/Contoso.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyApplicationPackage",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        task.verify()
+
+        assertTrue(Files.isRegularFile(markerFile))
+        assertTrue(Files.isRegularFile(unpackRoot.resolve("AppxManifest.xml")))
+        val makeAppxCalls = Files.readString(makeAppxLog).replace("\\", "/")
+        assertTrue(makeAppxCalls.contains("unpack"))
+        assertTrue(makeAppxCalls.contains("/p"))
+        assertTrue(makeAppxCalls.contains("Contoso.msix"))
+        assertTrue(makeAppxCalls.contains("/d"))
+        assertTrue(makeAppxCalls.contains("verify-unpack"))
+    }
+
+    @Test
+    fun verify_application_package_task_fails_when_unpacked_manifest_is_missing() {
+        if (!System.getProperty("os.name").contains("Windows", ignoreCase = true)) {
+            return
+        }
+        val project = ProjectBuilder.builder().build()
+        val packageFile = project.layout.buildDirectory.file("packages/NoManifest.msix").get().asFile.toPath()
+        Files.createDirectories(packageFile.parent)
+        Files.writeString(packageFile, "msix")
+        val makeAppx = writeFakeMakeAppxUnpackWithoutManifest(
+            project.layout.buildDirectory.file("fake-makeappx-unpack-no-manifest.cmd").get().asFile.toPath(),
+        )
+        val markerFile = project.layout.buildDirectory.file("packages/NoManifest.verify.marker").get().asFile.toPath()
+        val unpackRoot = project.layout.buildDirectory.dir("verify-unpack-no-manifest").get().asFile.toPath()
+        val task = project.tasks.register(
+            "verifyApplicationPackageWithoutUnpackedManifest",
+            VerifyWinRtApplicationPackageTask::class.java,
+        ) { registeredTask ->
+            registeredTask.packageFile.set(project.layout.file(project.provider { packageFile.toFile() }))
+            registeredTask.markerFile.set(project.layout.file(project.provider { markerFile.toFile() }))
+            registeredTask.unpackDirectory.set(project.layout.dir(project.provider { unpackRoot.toFile() }))
+            registeredTask.verifyPackage.set(true)
+            registeredTask.makeAppxExecutable.set(makeAppx.toString())
+            registeredTask.windowsSdkVersion.set("")
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val failure = runCatching { task.verify() }.exceptionOrNull()
+
+        assertTrue(failure is GradleException)
+        assertTrue(failure?.message.orEmpty().contains("did not unpack an AppxManifest.xml"))
+        assertFalse(Files.exists(markerFile))
     }
 
     @Test
@@ -3314,19 +3395,41 @@ private fun writeFakeMakeAppx(path: Path, log: Path): Path {
         """
         @echo off
         echo %*>>"${log.toString()}"
+        set command=%~1
         set output=
+        set directory=
         :next
         if "%~1"=="" goto done
         if /I "%~1"=="/p" (
           set output=%~2
           shift
         )
+        if /I "%~1"=="/d" (
+          set directory=%~2
+          shift
+        )
         shift
         goto next
         :done
-        if not "%output%"=="" (
+        if /I "%command%"=="pack" if not "%output%"=="" (
           echo fake-msix>"%output%"
         )
+        if /I "%command%"=="unpack" if not "%directory%"=="" (
+          mkdir "%directory%" 2>nul
+          echo fake-manifest>"%directory%\AppxManifest.xml"
+        )
+        exit /b 0
+        """.trimIndent(),
+    )
+    return path
+}
+
+private fun writeFakeMakeAppxUnpackWithoutManifest(path: Path): Path {
+    Files.createDirectories(path.parent)
+    Files.writeString(
+        path,
+        """
+        @echo off
         exit /b 0
         """.trimIndent(),
     )
