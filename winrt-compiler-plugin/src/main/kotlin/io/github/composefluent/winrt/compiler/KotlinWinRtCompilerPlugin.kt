@@ -4400,8 +4400,25 @@ data class KotlinWinRtGenericAbiRegistryEntry(
     val typeArrayShape: List<String>,
 )
 
-fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistryEntry> =
-    readRequiredTsvRows(path, "generic ABI registry input", ::parseGenericAbiRegistryLine)
+fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistryEntry> {
+    val entries = readRequiredTsvRows(path, "generic ABI registry input", ::parseGenericAbiRegistryLine)
+    val duplicate = entries
+        .groupBy { entry -> entry.duplicateKey() }
+        .entries
+        .firstOrNull { (_, values) -> values.size > 1 }
+        ?.key
+    require(duplicate == null) {
+        "kotlin-winrt compiler plugin found duplicate generic ABI registry input for ${duplicate!!} in $path."
+    }
+    return entries
+}
+
+private fun KotlinWinRtGenericAbiRegistryEntry.duplicateKey(): String =
+    when (kind) {
+        "derived-interface" -> "$kind:$name"
+        "delegate" -> "$kind:$name:$sourceGenericType"
+        else -> "$kind:$name"
+    }
 
 fun <T> readCompilerSupportInputEntries(
     manifestPath: Path,
