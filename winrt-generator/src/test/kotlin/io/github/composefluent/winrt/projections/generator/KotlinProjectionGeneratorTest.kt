@@ -209,6 +209,51 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_renderer_rejects_authoring_activation_factory_member_references_with_missing_factory_interface() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                factories = listOf(
+                                    WinRtAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IMissingWidgetFactory",
+                                        kind = WinRtAttributedFactoryKind.Activatable,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val plans = KotlinProjectionPlanner().plan(model)
+
+        val error = runCatching {
+            KotlinProjectionSupportRenderer().render(
+                model = model,
+                plans = plans,
+                context = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            )
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Support renderer requires authored runtime class Sample.Foundation.Widget factory interface Sample.Foundation.IMissingWidgetFactory to be present before rendering authoring activation factory members.",
+            ),
+        )
+    }
+
+    @Test
     fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
         val runtimeOwned = listOf(
             "System.Object?",
