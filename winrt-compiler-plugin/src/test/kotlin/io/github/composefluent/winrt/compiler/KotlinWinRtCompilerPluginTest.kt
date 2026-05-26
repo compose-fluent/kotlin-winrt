@@ -352,6 +352,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_input_rejects_blank_required_columns() {
+        val input = Files.createTempFile("kotlin-winrt-projection-support-blank-columns-", ".tsv")
+        Files.writeString(
+            input,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            	Sample.Foundation.Widget	RuntimeClass	Sample.Foundation.WidgetBase	
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readProjectionRegistrarEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse projection registrar input row 2"),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_missing_declared_source_file() {
         val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-missing-source-")
         val manifest = manifestDirectory.resolve("compiler-support.tsv")
