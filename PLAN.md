@@ -80,6 +80,7 @@
 - [x] Composable factory create filtering closure: render composable constructors and factory helpers only from factory methods returning the current runtime class, matching the generator contract validator.
 - [x] Projected attribute fail-closed closure: reject projected attributes whose metadata arguments cannot render as Kotlin annotations instead of silently dropping them with `mapNotNull`.
 - [x] Projected generic arity fail-closed closure: reject projected interface and delegate ABI bindings whose generic argument count does not match metadata before generic IID/signature rendering.
+- [x] Mapped key-value pair arity fail-closed closure: reject malformed `IKeyValuePair` / `Map.Entry` ABI bindings without exactly two type arguments before projection rendering.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.

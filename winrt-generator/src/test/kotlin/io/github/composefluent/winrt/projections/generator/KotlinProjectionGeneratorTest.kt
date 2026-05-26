@@ -14023,6 +14023,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_mapped_key_value_pair_return_without_value_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IEntryProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555563"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getEntry",
+                                    returnTypeName = "Windows.Foundation.Collections.IKeyValuePair<String>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IEntryProvider ABI binding GETENTRY_SLOT return key-value pair Windows.Foundation.Collections.IKeyValuePair to carry 2 type argument(s) before projection rendering; found 1.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_async_operation_without_result_type_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
