@@ -16204,6 +16204,47 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_mapped_bindable_collection_with_generic_argument_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setItems",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("items", "Microsoft.UI.Xaml.Interop.IBindableVector<String>"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget ABI binding SETITEMS_SLOT parameter items collection Microsoft.UI.Xaml.Interop.IBindableVector to carry 0 type argument(s) before projection rendering; found 1.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_abi_member_unsupported_return_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

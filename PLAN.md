@@ -73,7 +73,7 @@
 - [x] ABI array contract closure: verify arrays always carry exactly one renderable element ABI binding before projection rendering, including nested generic/array cases and diagnostics that fail before marshaler fallback paths.
 - [x] Authored CCW fail-closed closure: validate unsupported authored CCW ABI member bindings before support-file rendering instead of emitting generated `E_NOTIMPL` fallback handlers for shapes the authoring ABI cannot marshal.
 - [x] Collection owner fail-closed closure: reject mapped collection owner interfaces whose element, key, or value ABI shape cannot be projected before silently dropping the Kotlin collection bridge.
-- [x] Mapped collection arity fail-closed closure: reject malformed `IIterable`, `IVector`, `IVectorView`, `IMap`, and `IMapView` ABI bindings before collection projection rendering.
+- [x] Mapped collection arity fail-closed closure: reject malformed `IIterable`, `IVector`, `IVectorView`, `IMap`, `IMapView`, and non-generic WinUI bindable collection ABI bindings before collection projection rendering.
 - [x] Mapped async arity fail-closed closure: reject malformed `IAsyncActionWithProgress`, `IAsyncOperation`, and `IAsyncOperationWithProgress` ABI bindings before async projection rendering.
 - [x] Composable factory shape fail-closed closure: reject malformed composable factory create methods that do not end with `baseInterface` and `innerInterface` object ABI parameters before constructor/support rendering.
 - [x] Static property accessor fail-closed closure: validate static getter and setter ABI bindings independently so setter-only metadata cannot bypass `STATIC_*_SETTER_SLOT` contract checks before projection rendering.
