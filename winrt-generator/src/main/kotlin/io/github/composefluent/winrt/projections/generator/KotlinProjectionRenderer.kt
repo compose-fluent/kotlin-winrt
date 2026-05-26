@@ -261,11 +261,11 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { nativeObject.queryInterface(%T.Metadata.IID).getOrThrow().use { %T(it.getRefPointer(), %T.Metadata.IID) } }",
+                            "lazy(%T.PUBLICATION) { nativeObject.queryInterface(%L).getOrThrow().use { %T(it.getRefPointer(), %L) } }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            projectionClassName(binding.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+                            runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                             IUNKNOWN_REFERENCE_CLASS_NAME,
-                            projectionClassName(binding.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+                            runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                         ),
                     )
                     .build(),
@@ -308,16 +308,44 @@ class KotlinProjectionRenderer(
     private data class KotlinProjectionCollectionSlotBinding(
         val ownerCachePropertyName: String,
         val slotInterfaceQualifiedName: String,
+        val slotInterfaceInstanceName: String,
     ) {
         constructor(binding: KotlinProjectionMutableCollectionBinding) : this(
             ownerCachePropertyName = binding.ownerCachePropertyName,
             slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+            slotInterfaceInstanceName = collectionSlotInterfaceInstanceName(
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                elementBinding = binding.elementBinding,
+                keyBinding = binding.keyBinding,
+                valueBinding = binding.valueBinding,
+            ),
         )
 
         constructor(binding: KotlinProjectionReadOnlyCollectionBinding) : this(
             ownerCachePropertyName = binding.ownerCachePropertyName,
             slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+            slotInterfaceInstanceName = collectionSlotInterfaceInstanceName(
+                slotInterfaceQualifiedName = binding.slotInterfaceQualifiedName,
+                elementBinding = binding.elementBinding,
+                keyBinding = binding.keyBinding,
+                valueBinding = binding.valueBinding,
+            ),
         )
+    }
+
+    private companion object {
+        private fun collectionSlotInterfaceInstanceName(
+            slotInterfaceQualifiedName: String,
+            elementBinding: KotlinProjectionAbiTypeBinding?,
+            keyBinding: KotlinProjectionAbiTypeBinding?,
+            valueBinding: KotlinProjectionAbiTypeBinding?,
+        ): String =
+            when {
+                elementBinding != null -> "$slotInterfaceQualifiedName<${elementBinding.typeName}>"
+                keyBinding != null && valueBinding != null ->
+                    "$slotInterfaceQualifiedName<${keyBinding.typeName}, ${valueBinding.typeName}>"
+                else -> slotInterfaceQualifiedName
+            }
     }
 
     private fun KotlinProjectionCollectionSlotBinding.requiresInterfaceNativeProjectionCache(
