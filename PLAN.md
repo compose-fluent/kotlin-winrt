@@ -95,6 +95,7 @@
 - [x] Authored CCW support-renderer interface plan closure: reject support rendering when authored CCW interface definitions lack projection plans instead of emitting empty method tables.
 - [x] Authored CCW support-renderer slot metadata closure: reject support rendering when authored CCW method tables lack ABI slot metadata instead of sorting unsupported members last.
 - [x] Authored CCW generic interface IID closure: render authored CCW implemented/default generic interface IDs through `WinRtTypeSignature` and `ParameterizedInterfaceId` instead of collapsing `IBox<T>` instances to raw interface IID metadata.
+- [x] Runtime-class required generic interface IID closure: render runtime-class required-interface cache acquisition for substituted generic closure interfaces through `WinRtTypeSignature` and `ParameterizedInterfaceId` instead of querying raw required interface IIDs.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.

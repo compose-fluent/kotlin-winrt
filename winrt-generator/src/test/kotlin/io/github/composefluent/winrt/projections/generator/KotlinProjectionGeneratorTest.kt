@@ -15456,7 +15456,10 @@ class KotlinProjectionGeneratorTest {
 
         assertTrue(contents, contents.contains("override fun current(): String"))
         assertTrue(contents, contents.contains("override val boxValue: String"))
-        assertTrue(contents, contents.contains("Metadata.acquireInterface(_inner, IBox.Metadata.IID)"))
+        assertTrue(contents, contents.contains("Metadata.acquireInterface(_inner,"))
+        assertTrue(contents, contents.contains("ParameterizedInterfaceId.createFromSignature(WinRtTypeSignature.parameterizedInterface(IBox.Metadata.IID,"))
+        assertTrue(contents, contents.contains("WinRtTypeSignature.string())))"))
+        assertFalse(contents, contents.contains("Metadata.acquireInterface(_inner, IBox.Metadata.IID)"))
         assertTrue(contents, contents.contains("_iBox"))
         assertFalse(contents, contents.contains("T0"))
     }
