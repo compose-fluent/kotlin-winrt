@@ -57,25 +57,39 @@ internal fun projectionTypeIndexRecordForSourceType(
     )
 }
 
-internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtType> =
-    if (!Files.exists(path)) {
-        emptyMap()
-    } else {
-        Files.readAllLines(path)
-            .filter(String::isNotBlank)
-            .map { line ->
-                val parts = line.split('\t')
-                IndexedWinRtType(
-                    qualifiedName = parts.getOrElse(0) { "" },
-                    kind = parts.getOrElse(1) { "" },
-                    overridableInterfaces = parts.getOrElse(2) { "" }
-                        .split(';')
-                        .filter(String::isNotBlank),
-                    baseTypeName = parts.getOrElse(3) { "" },
-                )
-            }
-            .associateBy(IndexedWinRtType::qualifiedName)
+internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtType> {
+    require(Files.isRegularFile(path)) {
+        "kotlin-winrt authoring metadata index $path does not exist."
     }
+    return Files.readAllLines(path)
+        .asSequence()
+        .mapIndexedNotNull { index, line ->
+            if (line.isBlank()) {
+                null
+            } else {
+                parseAuthoringMetadataIndexLine(line)
+                    ?: throw IllegalArgumentException(
+                        "kotlin-winrt authoring metadata index row ${index + 1} in $path must contain type name and kind columns.",
+                    )
+            }
+        }
+        .associateBy(IndexedWinRtType::qualifiedName)
+}
+
+private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
+    val parts = line.split('\t')
+    if (parts.size < 2 || parts[0].isBlank() || parts[1].isBlank()) {
+        return null
+    }
+    return IndexedWinRtType(
+        qualifiedName = parts[0],
+        kind = parts[1],
+        overridableInterfaces = parts.getOrElse(2) { "" }
+            .split(';')
+            .filter(String::isNotBlank),
+        baseTypeName = parts.getOrElse(3) { "" },
+    )
+}
 
 internal fun inheritedOverridableInterfaceNames(
     winRtBase: IndexedWinRtType?,
