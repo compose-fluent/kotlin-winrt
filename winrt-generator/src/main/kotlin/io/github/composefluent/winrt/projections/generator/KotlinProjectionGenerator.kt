@@ -1130,6 +1130,12 @@ class KotlinProjectionGenerator(
         require(typeBinding.typeArguments.size == 1) {
             "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole reference ${typeBinding.resolvedTypeName} to carry 1 type argument before projection rendering; found ${typeBinding.typeArguments.size}."
         }
+        val argument = typeBinding.typeArguments.single()
+        if (argument.kind != KotlinProjectionAbiValueKind.Unsupported) {
+            require(renderer.referenceTypeSignatureCode(typeBinding) != null) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole reference ${typeBinding.resolvedTypeName} element ${argument.resolvedTypeName} to have a renderable WinRT type signature before projection rendering."
+            }
+        }
     }
 
     private fun validateMappedKeyValuePairTypeBindingContract(
