@@ -4069,8 +4069,18 @@ data class KotlinWinRtCompilerSupportManifestEntry(
     val entries: Int,
 )
 
-fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> =
-    readRequiredTsvRows(path, "compiler support manifest", ::parseCompilerSupportManifestLine)
+fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> {
+    val entries = readRequiredTsvRows(path, "compiler support manifest", ::parseCompilerSupportManifestLine)
+    val duplicate = entries
+        .groupBy { entry -> Triple(entry.kind, entry.className, entry.sourceFile) }
+        .entries
+        .firstOrNull { (_, values) -> values.size > 1 }
+        ?.key
+    require(duplicate == null) {
+        "kotlin-winrt compiler plugin found duplicate compiler support manifest entry for kind ${duplicate!!.first}, class ${duplicate.second}, and source file ${duplicate.third} in $path."
+    }
+    return entries
+}
 
 fun readCompilerSupportManifestIfConfigured(path: String?): List<KotlinWinRtCompilerSupportManifestEntry> {
     val manifestPath = path?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
