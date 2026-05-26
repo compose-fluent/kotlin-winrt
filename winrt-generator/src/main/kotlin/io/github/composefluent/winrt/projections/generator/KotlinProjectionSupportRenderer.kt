@@ -1791,6 +1791,9 @@ class KotlinProjectionSupportRenderer {
             .sorted()
             .forEach { interfaceName ->
                 val interfacePlan = plansByQualifiedName[interfaceName]
+                    ?: throw IllegalArgumentException(
+                        "Support renderer requires authored runtime class ${plan.type.qualifiedName} CCW interface $interfaceName to have a projection plan before rendering authoring CCW definitions.",
+                    )
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
                 code.add("interfaceId = %T.Metadata.IID,\n", projectionClassNameForQualifiedName(interfaceName))
@@ -1848,8 +1851,8 @@ class KotlinProjectionSupportRenderer {
             .build()
     }
 
-    private fun authoringCcwInterfaceMethodsCode(interfacePlan: KotlinTypeProjectionPlan?): CodeBlock {
-        if (interfacePlan == null || interfacePlan.instanceMemberBindings.isEmpty()) {
+    private fun authoringCcwInterfaceMethodsCode(interfacePlan: KotlinTypeProjectionPlan): CodeBlock {
+        if (interfacePlan.instanceMemberBindings.isEmpty()) {
             return CodeBlock.of("emptyList()")
         }
         val slotOrder = interfacePlan.abiSlotBindings.associate { it.constantName to it.slot }
