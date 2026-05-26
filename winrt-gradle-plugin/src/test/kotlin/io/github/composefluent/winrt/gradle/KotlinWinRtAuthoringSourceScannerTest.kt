@@ -1131,6 +1131,60 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun rejects_authored_collection_returns_with_missing_element_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-missing-collection-element-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalShape",
+            sourceTypeName = "sample.LocalShape",
+            winRtBaseClassName = "Sample.Shape",
+            winRtInterfaceNames = listOf("Sample.IShapeOverrides"),
+            overridableInterfaceNames = listOf("Sample.IShapeOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Shape",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IShapeOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValuesCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Sample.Value>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("collection element type 'Sample.Value' without metadata"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalShape_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected missing authored collection return element metadata to fail closed.")
+    }
+
+    @Test
     fun writes_authoring_host_manifest_for_scanned_authored_types() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-host-")
         val manifest = output.resolve("SampleComponent.host.json")
