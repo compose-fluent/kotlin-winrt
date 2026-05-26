@@ -396,6 +396,122 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_runtime_class_override_parameters_through_metadata_wrap() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-object-parameter-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalPeerProvider",
+            sourceTypeName = "sample.LocalPeerProvider",
+            winRtBaseClassName = "Sample.PeerProvider",
+            winRtInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            overridableInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "PeerProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Peer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeerProviderOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("66666666-7777-8888-9999-aaaaaaaaaaaa"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetPeerCore",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("peer", "Sample.Peer")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt").readText()
+        assertTrue(generated.contains("Peer.Metadata.wrap"))
+        assertTrue(generated.contains("(value as PeerProvider).__winrtAuthoringInvokeSetPeerCore(__arg0)"))
+    }
+
+    @Test
+    fun rejects_unsupported_object_override_parameters() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-bad-object-parameter-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalPeerProvider",
+            sourceTypeName = "sample.LocalPeerProvider",
+            winRtBaseClassName = "Sample.PeerProvider",
+            winRtInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            overridableInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "PeerProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "PeerCallback",
+                            kind = WinRtTypeKind.Delegate,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeerProviderOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("66666666-7777-8888-9999-aaaaaaaaaaaa"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "SetPeerCallbackCore",
+                                    returnTypeName = "Void",
+                                    parameters = listOf(WinRtParameterDefinition("callback", "Sample.PeerCallback")),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("unsupported object type 'Sample.PeerCallback'"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected unsupported authored object parameters to fail closed.")
+    }
+
+    @Test
     fun renders_system_string_override_parameters_and_returns_through_hstring() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-string-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
