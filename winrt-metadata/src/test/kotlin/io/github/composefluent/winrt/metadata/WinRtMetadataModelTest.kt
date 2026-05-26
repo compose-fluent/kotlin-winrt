@@ -1900,6 +1900,63 @@ class WinRtMetadataModelTest {
     }
 
     @Test
+    fun generic_instantiation_writer_dependencies_include_nested_generic_arguments() {
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IReference",
+                            kind = WinRtTypeKind.Interface,
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Windows.Foundation.Collections",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation.Collections",
+                            name = "IVector",
+                            kind = WinRtTypeKind.Interface,
+                            genericParameterCount = 1,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetNestedReferences",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Windows.Foundation.IReference<String>>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val descriptors = model.semanticHelpers()
+            .genericInstantiationWriterDescriptors()
+            .associateBy(WinRtGenericInstantiationWriterDescriptor::sourceTypeName)
+
+        assertEquals(
+            listOf("Windows.Foundation.IReference<String>"),
+            descriptors
+                .getValue("Windows.Foundation.Collections.IVector<Windows.Foundation.IReference<String>>")
+                .initializationDependencies,
+        )
+        assertTrue("Windows.Foundation.IReference<String>" in descriptors.keys)
+    }
+
+    @Test
     fun semantic_helpers_render_generic_abi_delegate_fundamental_aliases_like_reference_abi_types() {
         val helpers = WinRtMetadataModel(emptyList()).semanticHelpers()
         val inventory = helpers.collectGenericAbiInventory(

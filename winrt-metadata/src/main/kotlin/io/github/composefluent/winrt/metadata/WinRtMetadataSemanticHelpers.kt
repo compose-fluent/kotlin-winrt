@@ -1193,6 +1193,9 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             }
         }
         val dependencies = buildList {
+            instantiation.genericArguments.forEach { argument ->
+                addGenericArgumentInstantiationDependencies(argument)
+            }
             definition?.implementedInterfaces.orEmpty().forEach { implemented ->
                 add(implemented.interfaceType.substituteTypeParameters(instantiation.genericArguments).normalized().typeName)
             }
@@ -1211,6 +1214,26 @@ class WinRtMetadataSemanticHelpers(private val model: WinRtMetadataModel) {
             projectedGenericFallbackFunctionNames = projectedGenericFallbackFunctions.distinct(),
             initializationDependencies = dependencies.distinct().sorted(),
         )
+    }
+
+    private fun MutableList<String>.addGenericArgumentInstantiationDependencies(type: WinRtTypeRef) {
+        val normalized = type.normalized()
+        when (normalized.kind) {
+            WinRtTypeRefKind.Named -> {
+                normalized.typeArguments.forEach { argument ->
+                    addGenericArgumentInstantiationDependencies(argument)
+                }
+                if (normalized.typeArguments.isNotEmpty()) {
+                    add(normalized.typeName)
+                }
+            }
+            WinRtTypeRefKind.Array ->
+                addGenericArgumentInstantiationDependencies(normalized.elementType ?: WinRtTypeRef.unknown())
+            WinRtTypeRefKind.GenericTypeParameter,
+            WinRtTypeRefKind.MethodTypeParameter,
+            WinRtTypeRefKind.Unknown,
+            -> Unit
+        }
     }
 
     private fun WinRtPropertyDefinition.getterMethod(methods: List<WinRtMethodDefinition>): WinRtMethodDefinition? =
