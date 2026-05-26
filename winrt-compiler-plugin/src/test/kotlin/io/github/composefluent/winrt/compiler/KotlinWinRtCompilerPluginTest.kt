@@ -476,6 +476,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_input_deletes_stale_class_artifacts_when_entries_are_empty() {
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-projection-support-empty-stale-class-")
+        val entries = listOf(
+            KotlinWinRtProjectionRegistrarEntry(
+                kotlinClassName = "java.lang.String",
+                projectedTypeName = "Sample.Foundation.Widget",
+                kind = "RuntimeClass",
+                baseTypeName = "Sample.Foundation.WidgetBase",
+                metadataClassName = "",
+            ),
+        )
+
+        val staleInternalName = writeProjectionSupportInitializerClass(entries, outputDirectory)
+        val currentInternalName = writeProjectionSupportInitializerClass(emptyList(), outputDirectory)
+
+        assertNotNull(staleInternalName)
+        assertNull(currentInternalName)
+        assertFalse(Files.exists(outputDirectory.resolve("$staleInternalName.class")))
+    }
+
+    @Test
     fun projection_support_initializer_input_rejects_malformed_rows() {
         val input = Files.createTempFile("kotlin-winrt-projection-support-malformed-", ".tsv")
         Files.writeString(
