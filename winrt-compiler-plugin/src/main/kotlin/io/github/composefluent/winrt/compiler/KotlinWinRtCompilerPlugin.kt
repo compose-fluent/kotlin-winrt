@@ -4088,6 +4088,9 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
     if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
         return null
     }
+    if (parts[0] !in COMPILER_SUPPORT_MANIFEST_KINDS) {
+        return null
+    }
     val entries = parts[3].toIntOrNull()?.takeIf { it >= 0 } ?: return null
     return KotlinWinRtCompilerSupportManifestEntry(
         kind = parts[0],
@@ -4096,6 +4099,9 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
         entries = entries,
     )
 }
+
+private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
+    setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry")
 
 private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest"
