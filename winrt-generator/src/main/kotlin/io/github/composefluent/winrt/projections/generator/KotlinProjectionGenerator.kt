@@ -187,6 +187,7 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>,
     ) {
         validateAuthoredCcwBindingContracts(model, plans)
+        validateAuthoringActivationFactorySupportContracts(model, plans)
         validateEventSourceHelperContracts(model, plans)
         plans.forEach { plan ->
             if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
@@ -505,6 +506,40 @@ class KotlinProjectionGenerator(
                     .forEach { interfacePlan ->
                         validateAuthoredCcwInterfaceBindingContracts(authoredPlan, interfacePlan)
                     }
+        }
+    }
+
+    private fun validateAuthoringActivationFactorySupportContracts(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ) {
+        if (!projectionContext.component) {
+            return
+        }
+        val authoredTypeNames = model.projectionInventory(projectionContext)
+            .authoredMetadataTypeMappings
+            .mapTo(mutableSetOf()) { it.projectedTypeName }
+        if (authoredTypeNames.isEmpty()) {
+            return
+        }
+        val semanticHelpers = model.semanticHelpers()
+        plans
+            .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass && plan.type.qualifiedName in authoredTypeNames }
+            .filterNot { plan -> semanticHelpers.isStatic(plan.type) }
+            .forEach { plan ->
+                val factory = plan.factorySurfaceDescriptor ?: semanticHelpers.factorySurfaceDescriptor(plan.type)
+                val factoryInterfaceNames = (
+                    factory.constructorFactories +
+                        factory.staticMemberTargets +
+                        factory.composableFactories
+                    ).distinct()
+                factoryInterfaceNames.forEach { interfaceName ->
+                    val interfaceType = plan.typesByQualifiedName[interfaceName]
+                        ?: plan.typesByQualifiedName[interfaceName.substringBefore('<').removeSuffix("?")]
+                    require(interfaceType?.kind == WinRtTypeKind.Interface) {
+                        "Generator requires authored runtime class ${plan.type.qualifiedName} activation factory interface $interfaceName to be present in the metadata model before authoring support rendering."
+                    }
+                }
             }
     }
 
