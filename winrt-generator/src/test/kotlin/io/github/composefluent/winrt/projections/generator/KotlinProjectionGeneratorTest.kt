@@ -209,6 +209,54 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_renders_parameterized_iids_for_authored_ccw_generic_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IBox<String>",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IBox<String>", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        ).generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val ccwFactories = filesByName.getValue("WinRTAuthoringCcwFactories.kt").contents
+        val authoringAbiClasses = filesByName.getValue("WinRTAuthoringAbiClasses.kt").contents
+
+        assertTrue(ccwFactories, ccwFactories.contains("interfaceId ="))
+        assertTrue(ccwFactories, ccwFactories.contains("defaultInterfaceId ="))
+        assertTrue(ccwFactories, ccwFactories.contains("ParameterizedInterfaceId.createFromSignature(WinRtTypeSignature.parameterizedInterface(IBox.Metadata.IID,"))
+        assertTrue(ccwFactories, ccwFactories.contains("WinRtTypeSignature.string()))"))
+        assertFalse(ccwFactories, ccwFactories.contains("interfaceId = IBox.Metadata.IID"))
+        assertFalse(ccwFactories, ccwFactories.contains("defaultInterfaceId = IBox.Metadata.IID"))
+        assertTrue(authoringAbiClasses, authoringAbiClasses.contains("defaultInterfaceId: Guid ="))
+        assertTrue(authoringAbiClasses, authoringAbiClasses.contains("ParameterizedInterfaceId.createFromSignature(WinRtTypeSignature.parameterizedInterface(IBox.Metadata.IID,"))
+        assertTrue(authoringAbiClasses, authoringAbiClasses.contains("WinRtTypeSignature.string()))"))
+        assertFalse(authoringAbiClasses, authoringAbiClasses.contains("defaultInterfaceId: Guid = IBox.Metadata.IID"))
+    }
+
+    @Test
     fun support_renderer_rejects_authoring_activation_factory_member_references_with_missing_factory_interface() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

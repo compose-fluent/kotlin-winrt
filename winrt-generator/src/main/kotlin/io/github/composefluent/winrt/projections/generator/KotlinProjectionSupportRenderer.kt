@@ -1451,8 +1451,7 @@ class KotlinProjectionSupportRenderer {
         val projectedType = projectionClassNameForQualifiedName(plan.type.qualifiedName)
         val wrapperType = ClassName(SUPPORT_PACKAGE, authoringWrapperClassName(plan))
         val defaultInterfaceCode = plan.defaultInterfaceName
-            ?.substringBefore('<')
-            ?.let { CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(it)) }
+            ?.let { authoringInterfaceIdCode(it, plan) }
             ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME)
         return TypeSpec.objectBuilder(authoringAbiClassName(plan))
             .addModifiers(KModifier.INTERNAL)
@@ -1786,17 +1785,18 @@ class KotlinProjectionSupportRenderer {
         code.add("interfaceDefinitions = listOf(\n")
         code.indent()
         plan.type.implementedInterfaces
-            .map { it.interfaceName.substringBefore('<') }
+            .map { it.interfaceName }
             .distinct()
             .sorted()
             .forEach { interfaceName ->
-                val interfacePlan = plansByQualifiedName[interfaceName]
+                val rawInterfaceName = interfaceName.substringBefore('<')
+                val interfacePlan = plansByQualifiedName[rawInterfaceName]
                     ?: throw IllegalArgumentException(
-                        "Support renderer requires authored runtime class ${plan.type.qualifiedName} CCW interface $interfaceName to have a projection plan before rendering authoring CCW definitions.",
+                        "Support renderer requires authored runtime class ${plan.type.qualifiedName} CCW interface $rawInterfaceName to have a projection plan before rendering authoring CCW definitions.",
                     )
                 code.add("%T(\n", WINRT_INSPECTABLE_INTERFACE_DEFINITION_CLASS_NAME)
                 code.indent()
-                code.add("interfaceId = %T.Metadata.IID,\n", projectionClassNameForQualifiedName(interfaceName))
+                code.add("interfaceId = %L,\n", authoringInterfaceIdCode(interfaceName, plan))
                 code.add("methods = %L,\n", authoringCcwInterfaceMethodsCode(interfacePlan))
                 code.unindent()
                 code.add("),\n")
@@ -1806,8 +1806,7 @@ class KotlinProjectionSupportRenderer {
         code.add(
             "defaultInterfaceId = %L,\n",
             defaultInterface
-                ?.substringBefore('<')
-                ?.let { CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(it)) }
+                ?.let { authoringInterfaceIdCode(it, plan) }
                 ?: CodeBlock.of("%T.IInspectable", IID_CLASS_NAME),
         )
         code.add("runtimeClassName = %S,\n", plan.type.qualifiedName)
@@ -1819,6 +1818,26 @@ class KotlinProjectionSupportRenderer {
         code.unindent()
         code.add(")\n")
         return code.build()
+    }
+
+    private fun authoringInterfaceIdCode(
+        interfaceName: String,
+        ownerPlan: KotlinTypeProjectionPlan,
+    ): CodeBlock {
+        val rawInterfaceName = interfaceName.substringBefore('<')
+        if ('<' !in interfaceName) {
+            return CodeBlock.of("%T.Metadata.IID", projectionClassNameForQualifiedName(rawInterfaceName))
+        }
+        val binding = typeRenderer.renderAbiTypeBinding(
+            typeName = interfaceName,
+            typesByQualifiedName = ownerPlan.typesByQualifiedName,
+            currentNamespace = ownerPlan.type.namespace,
+        )
+        val signature = typeRenderer.abiTypeSignature(binding)
+            ?: throw IllegalArgumentException(
+                "Support renderer requires authored interface $interfaceName to have a renderable type signature before rendering authoring support interface IDs.",
+            )
+        return CodeBlock.of("%T.createFromSignature(%L)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, signature)
     }
 
     private fun authoringCcwQueryInterfaceFunction(plan: KotlinTypeProjectionPlan): FunSpec {
