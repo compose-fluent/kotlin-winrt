@@ -4193,8 +4193,8 @@ fun readCompilerSupportManifestIfConfigured(path: String?): List<KotlinWinRtComp
 }
 
 private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerSupportManifestEntry? {
-    val parts = line.split('\t', limit = 4)
-    if (parts.size < 4) {
+    val parts = line.split('\t')
+    if (parts.size != 4) {
         return null
     }
     if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
@@ -4348,8 +4348,8 @@ private const val PROJECTION_REGISTRAR_HEADER: String =
     "kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName"
 
 private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionRegistrarEntry? {
-    val parts = line.split('\t', limit = 5)
-    if (parts.size < 5) {
+    val parts = line.split('\t')
+    if (parts.size != 5) {
         return null
     }
     if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
@@ -4579,8 +4579,8 @@ private const val GENERIC_TYPE_INSTANTIATION_HEADER: String =
     "className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies"
 
 private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericTypeInstantiationEntry? {
-    val parts = line.split('\t', limit = 9)
-    if (parts.size < 9) {
+    val parts = line.split('\t')
+    if (parts.size != 9) {
         return null
     }
     if (parts[0].isBlank() || parts[1].isBlank()) {
@@ -4698,8 +4698,8 @@ private fun <T> readRequiredTsvRows(
 }
 
 private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegistryEntry? {
-    val parts = line.split('\t', limit = 7)
-    if (parts.size < 7) {
+    val parts = line.split('\t')
+    if (parts.size != 7) {
         return null
     }
     if (parts[0].isBlank() || parts[1].isBlank()) {

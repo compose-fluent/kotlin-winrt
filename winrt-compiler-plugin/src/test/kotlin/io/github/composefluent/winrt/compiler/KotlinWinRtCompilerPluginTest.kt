@@ -209,6 +209,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_rejects_extra_columns() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-extra-column-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	extra
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readCompilerSupportManifest(manifest) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse compiler support manifest row 2"),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_negative_entry_counts() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-negative-count-", ".tsv")
         Files.writeString(
@@ -528,6 +549,27 @@ class KotlinWinRtCompilerPluginTest {
             """
             kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
             java.lang.String	Sample.Foundation.Widget	RuntimeClass
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readProjectionRegistrarEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse projection registrar input row 2"),
+        )
+    }
+
+    @Test
+    fun projection_support_initializer_input_rejects_extra_columns() {
+        val input = Files.createTempFile("kotlin-winrt-projection-support-extra-column-", ".tsv")
+        Files.writeString(
+            input,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            java.lang.String	Sample.Foundation.Widget	RuntimeClass	Sample.Foundation.WidgetBase	Sample.Foundation.Widget.Metadata	extra
             """.trimIndent() + "\n",
         )
 
@@ -902,6 +944,48 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun generic_type_instantiation_input_rejects_extra_columns() {
+        val input = Files.createTempFile("kotlin-winrt-generic-instantiation-extra-column-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf(
+                    "className",
+                    "sourceType",
+                    "isDelegate",
+                    "rcwFunctions",
+                    "vtableFunctions",
+                    "propertyAccessors",
+                    "genericReturnOnlyRcwFunctions",
+                    "projectedGenericFallbacks",
+                    "dependencies",
+                ),
+                listOf(
+                    "Windows_Foundation_IReference_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "false",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "extra",
+                ),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericTypeInstantiationEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic type instantiation input row 2"),
+        )
+    }
+
+    @Test
     fun generic_type_instantiation_input_rejects_unexpected_headers() {
         val input = Files.createTempFile("kotlin-winrt-generic-instantiation-header-", ".tsv")
         Files.writeString(
@@ -1106,6 +1190,27 @@ class KotlinWinRtCompilerPluginTest {
             kind	name	sourceGenericType	operation	declaration	abiParameterTypes	typeArrayShape
             delegate	_get_Value_Int	Windows.Foundation.IReference<Int>
             """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic ABI registry input row 2"),
+        )
+    }
+
+    @Test
+    fun generic_abi_registry_input_rejects_extra_columns() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-extra-column-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf("derived-interface", "Windows.Foundation.Collections.IVector", "", "", "", "", "", "extra"),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
         )
 
         val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
