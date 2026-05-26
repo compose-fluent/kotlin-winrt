@@ -531,7 +531,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 projectionClassName(method.returnTypeName, semanticHelpers),
                 outExpression,
             )
-            else -> renderObjectReturnProjection(returnType, outExpression, valueExpression, typesByName)
+            else -> renderObjectReturnProjection(method, returnType, outExpression, valueExpression, typesByName)
         }
     }
 
@@ -642,22 +642,43 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
     }
 
     private fun renderObjectReturnProjection(
+        method: WinRtMethodDefinition,
         returnType: WinRtTypeDefinition?,
         outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock {
         val interfaceId = when (returnType?.kind) {
-            WinRtTypeKind.RuntimeClass -> returnType.defaultInterfaceName
-                ?.let { defaultInterfaceName ->
-                    typesByName[defaultInterfaceName]
-                        ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
-                }
-                ?.iid
-                ?.let { CodeBlock.of("%T(%S)", guidType, it.toString().lowercase()) }
-            WinRtTypeKind.Interface -> returnType.iid?.let { CodeBlock.of("%T(%S)", guidType, it.toString().lowercase()) }
-            else -> null
-        } ?: CodeBlock.of("%T.IInspectable", iidType)
+            WinRtTypeKind.RuntimeClass -> {
+                val defaultInterfaceName = returnType.defaultInterfaceName
+                    ?: throw GradleException(
+                        "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' without default interface metadata.",
+                    )
+                val defaultInterface = typesByName[defaultInterfaceName]
+                    ?: typesByName[defaultInterfaceName.substringBefore('<').removeSuffix("?")]
+                    ?: throw GradleException(
+                        "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' whose default interface '$defaultInterfaceName' is missing.",
+                    )
+                val iid = defaultInterface.iid
+                    ?: throw GradleException(
+                        "Authored WinRT override ${method.name} returns runtime class '${method.returnTypeName}' whose default interface '$defaultInterfaceName' has no IID.",
+                    )
+                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+            }
+            WinRtTypeKind.Interface -> {
+                val iid = returnType.iid
+                    ?: throw GradleException(
+                        "Authored WinRT override ${method.name} returns interface '${method.returnTypeName}' without IID metadata.",
+                    )
+                CodeBlock.of("%T(%S)", guidType, iid.toString().lowercase())
+            }
+            null -> throw GradleException(
+                "Authored WinRT override ${method.name} returns '${method.returnTypeName}' without metadata.",
+            )
+            else -> throw GradleException(
+                "Authored WinRT override ${method.name} returns unsupported object type '${method.returnTypeName}'.",
+            )
+        }
         return CodeBlock.of(
             "%T.writePointer(%L, %T.detachCCWForObject(%L, %L))",
             platformAbiType,
