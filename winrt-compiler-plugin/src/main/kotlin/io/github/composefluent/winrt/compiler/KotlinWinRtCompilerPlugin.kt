@@ -3774,11 +3774,13 @@ class KotlinWinRtIrGenerationExtension(
                     }
                     val builderScope = currentScope?.scope?.scopeOwnerSymbol ?: return call
                     val builder = DeclarationIrBuilder(pluginContext, builderScope, call.startOffset, call.endOffset)
-                    if (registrar == null) {
-                        return builder.irUnit()
-                    }
-                    return builder.irCall(registrar.register).apply {
-                        dispatchReceiver = builder.irGetObject(registrar.registrarClass)
+                    val resolvedRegistrar = requireCompilerSupportPrerequisite(
+                        description = "authoring type-details registrar",
+                        prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
+                        value = registrar,
+                    )
+                    return builder.irCall(resolvedRegistrar.register).apply {
+                        dispatchReceiver = builder.irGetObject(resolvedRegistrar.registrarClass)
                     }
                 }
             },
@@ -3794,7 +3796,11 @@ class KotlinWinRtIrGenerationExtension(
         if (authoredTypeNames.isEmpty()) {
             return
         }
-        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext) ?: return
+        val registrar = requireCompilerSupportPrerequisite(
+            description = "authoring type-details registrar",
+            prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
+            value = authoringTypeDetailsRegistrarRegister(pluginContext),
+        )
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitConstructor(declaration: IrConstructor): IrStatement {
@@ -3827,7 +3833,11 @@ class KotlinWinRtIrGenerationExtension(
         if (authoredTypeNames.isEmpty()) {
             return
         }
-        val registrar = authoringTypeDetailsRegistrarRegister(pluginContext) ?: return
+        val registrar = requireCompilerSupportPrerequisite(
+            description = "authoring type-details registrar",
+            prerequisite = "WinRTAuthoringTypeDetailsRegistrar.register with no regular parameters",
+            value = authoringTypeDetailsRegistrarRegister(pluginContext),
+        )
         moduleFragment.transformChildrenVoid(
             object : IrElementTransformerVoidWithContext() {
                 override fun visitConstructorCall(expression: IrConstructorCall): IrExpression {
