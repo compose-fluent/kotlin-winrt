@@ -7648,6 +7648,76 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_generic_delegate_argument_without_renderable_iid_signature_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222223"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "GenericHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-2222-2222-2222-222222222224"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("value", "T0")),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IGenericHandlerSource",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-1111-1111-1111-111111111113"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setHandler",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition(
+                                            "handler",
+                                            "Sample.Foundation.GenericHandler<Sample.Foundation.WidgetHandler>",
+                                        ),
+                                    ),
+                                    methodRowId = 10,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IGenericHandlerSource ABI binding SETHANDLER_SLOT parameter handler delegate Sample.Foundation.GenericHandler generic arguments to have renderable WinRT type signatures before projection rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_delegates_without_a_single_invoke_method() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
