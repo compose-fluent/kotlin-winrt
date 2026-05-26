@@ -146,6 +146,7 @@
 - [x] Authoring TypeDetails interface metadata fail-closed closure: reject authored TypeDetails candidates whose scanned WinRT interface metadata is missing, not an interface, or lacks IID metadata instead of silently dropping authored support generation.
 - [x] Authoring scanner duplicate candidate fail-closed closure: reject duplicate authored source type candidates across source roots instead of silently keeping the first scanner result for compiler-plugin authoring handoff.
 - [x] Authoring inherited base metadata fail-closed closure: reject authoring metadata index runtime classes whose inherited base type is missing instead of silently truncating inherited overridable interfaces in scanner or IR-backed authoring discovery.
+- [x] Authoring metadata index kind fail-closed closure: reject metadata-index rows whose `kind` column is outside the generator-owned `WinRtTypeKind` vocabulary before scanner or IR-backed authoring discovery can silently ignore invalid type categories.
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
 - [x] Authoring scanner argument fail-closed closure: reject scanner path options without values using stable diagnostics instead of surfacing low-level argument indexing failures.
 - [x] Authoring metadata index duplicate fail-closed closure: reject duplicate authored metadata index type rows instead of allowing later rows to silently overwrite compiler-plugin discovery inputs.
