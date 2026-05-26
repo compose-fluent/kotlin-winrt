@@ -2868,16 +2868,14 @@ class KotlinProjectionRenderer(
             body.addStatement("_inner.getDefaultInterfaceObjectReference(%L)", objectReferencePlan.defaultInterfaceObjRefVtableSlot)
         } else if (objectReferencePlan?.requiresGenericInstantiation == true) {
             val signature = abiTypeSignature(renderAbiTypeBinding(objectReferencePlan.interfaceName, typesByQualifiedName, objectReferencePlan.interfaceName.substringBeforeLast('.', "")))
-            if (signature != null) {
-                body.addStatement(
-                    "Metadata.acquireInterface(_inner, %T.createFromSignature(%L))",
-                    PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
-                    signature,
+                ?: throw IllegalArgumentException(
+                    "Generator requires runtime class object-reference cache for ${objectReferencePlan.interfaceName} to have a renderable type signature before interface cache rendering.",
                 )
-            } else {
-                body.add(acquireExpression, *acquireArgs)
-                body.add("\n")
-            }
+            body.addStatement(
+                "Metadata.acquireInterface(_inner, %T.createFromSignature(%L))",
+                PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+                signature,
+            )
         } else {
             body.add(acquireExpression, *acquireArgs)
             body.add("\n")
