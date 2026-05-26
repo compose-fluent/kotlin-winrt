@@ -10649,6 +10649,11 @@ class KotlinProjectionGeneratorTest {
         assertFalse(widgetContents, widgetContents.contains("initializeDependencies(entry) { }"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IDefaultExclusive|cache=Sample_FastAbi_IDefaultExclusiveCache|default=true|skip=|inner=false|defaultObjRef=true|hierarchy=0|defaultObjRefSlot=8|generic=false"))
         assertTrue(widgetContents, widgetContents.contains("Sample.FastAbi.IGeneric<String>|cache=Sample_FastAbi_IGeneric_String_Cache|default=false|skip=|inner=false|defaultObjRef=false|hierarchy=|defaultObjRefSlot=|generic=true"))
+        assertTrue(widgetContents, widgetContents.contains("Metadata.acquireInterface(_inner,"))
+        assertTrue(widgetContents, widgetContents.contains("ParameterizedInterfaceId.createFromSignature("))
+        assertTrue(widgetContents, widgetContents.contains("WinRtTypeSignature.parameterizedInterface(IGeneric.Metadata.IID,"))
+        assertTrue(widgetContents, widgetContents.contains("WinRtTypeSignature.string()"))
+        assertFalse(widgetContents, widgetContents.contains("Metadata.acquireInterface(_inner, IGeneric.Metadata.IID)"))
     }
 
     @Test
