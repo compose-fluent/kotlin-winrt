@@ -10657,6 +10657,48 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_generic_object_reference_cache_without_renderable_signature() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.FastAbi",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "IGeneric",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555572"),
+                            genericParameterCount = 1,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.FastAbi",
+                            name = "FastWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.FastAbi.IGeneric<Sample.FastAbi.NativeHandle>",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition(
+                                    "Sample.FastAbi.IGeneric<Sample.FastAbi.NativeHandle>",
+                                    isDefault = true,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains("Generator requires runtime class object-reference cache for Sample.FastAbi.IGeneric<Sample.FastAbi.NativeHandle> to have a renderable type signature before interface cache rendering."),
+        )
+    }
+
+    @Test
     fun generator_binds_custom_object_mapped_abi_through_runtime_marshaler_facade() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
