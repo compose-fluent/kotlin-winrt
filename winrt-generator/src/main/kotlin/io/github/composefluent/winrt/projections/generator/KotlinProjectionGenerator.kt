@@ -188,6 +188,7 @@ class KotlinProjectionGenerator(
     ) {
         validateAuthoredCcwBindingContracts(model, plans)
         validateAuthoringActivationFactorySupportContracts(model, plans)
+        validateStaticEventAccessorBindingContracts(plans)
         validateEventSourceHelperContracts(model, plans)
         val runtimeClassStaticInterfaceNames = plans
             .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass }
@@ -899,6 +900,14 @@ class KotlinProjectionGenerator(
             .forEach { event ->
                 validateInstanceEventAccessorBindingContract(plan, event)
             }
+        validateStaticEventAccessorBindingContract(plan)
+    }
+
+    private fun validateStaticEventAccessorBindingContracts(plans: List<KotlinTypeProjectionPlan>) {
+        plans.forEach(::validateStaticEventAccessorBindingContract)
+    }
+
+    private fun validateStaticEventAccessorBindingContract(plan: KotlinTypeProjectionPlan) {
         if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
             return
         }
@@ -927,7 +936,7 @@ class KotlinProjectionGenerator(
             require(binding != null) {
                 "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to be present before projection rendering."
             }
-            validateEventAddAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
+            validateEventAddAccessorBindingContract(plan, event, bindingName, binding)
         }
         if (event.hasNativeProjectionRemoveAccessor()) {
             val bindingName = "${event.name.uppercase()}_REMOVE_SLOT"
@@ -935,7 +944,7 @@ class KotlinProjectionGenerator(
             require(binding != null) {
                 "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to be present before projection rendering."
             }
-            validateEventRemoveAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
+            validateEventRemoveAccessorBindingContract(plan, event, bindingName, binding)
         }
     }
 
@@ -950,7 +959,7 @@ class KotlinProjectionGenerator(
             require(binding != null) {
                 "Generator requires runtime class ${plan.type.qualifiedName} static event ${event.name} add binding $bindingName to be present before projection rendering."
             }
-            validateEventAddAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
+            validateEventAddAccessorBindingContract(plan, event, bindingName, binding)
         }
         if (event.hasNativeProjectionRemoveAccessor()) {
             val bindingName = "STATIC_${event.name.uppercase()}_REMOVE_SLOT"
@@ -958,7 +967,7 @@ class KotlinProjectionGenerator(
             require(binding != null) {
                 "Generator requires runtime class ${plan.type.qualifiedName} static event ${event.name} remove binding $bindingName to be present before projection rendering."
             }
-            validateEventRemoveAccessorBindingContract(plan, event, bindingName, binding.returnBinding, binding.parameterBindings)
+            validateEventRemoveAccessorBindingContract(plan, event, bindingName, binding)
         }
     }
 
@@ -977,8 +986,46 @@ class KotlinProjectionGenerator(
         plan: KotlinTypeProjectionPlan,
         event: WinRtEventDefinition,
         bindingName: String,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ) {
+        validateEventAddAccessorBindingContract(
+            plan,
+            event,
+            bindingName,
+            binding.returnBinding,
+            binding.parameterBindings,
+            binding.marshalerPlanDescriptor,
+            binding.suppressHResultCheck,
+            validateAbiCallPlan = false,
+        )
+    }
+
+    private fun validateEventAddAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        bindingName: String,
+        binding: KotlinProjectionStaticMemberBinding,
+    ) {
+        validateEventAddAccessorBindingContract(
+            plan,
+            event,
+            bindingName,
+            binding.returnBinding,
+            binding.parameterBindings,
+            binding.marshalerPlanDescriptor,
+            binding.suppressHResultCheck,
+        )
+    }
+
+    private fun validateEventAddAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor?,
+        suppressHResultCheck: Boolean,
+        validateAbiCallPlan: Boolean = true,
     ) {
         require(returnBinding.isEventRegistrationTokenBinding()) {
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to return Windows.Foundation.EventRegistrationToken before projection rendering; found ${returnBinding.describeAbiKind()}."
@@ -987,6 +1034,51 @@ class KotlinProjectionGenerator(
             val found = parameterBindings.singleOrNull()?.typeBinding?.describeAbiKind() ?: "${parameterBindings.size} parameter(s)"
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} add binding $bindingName to take exactly one delegate handler parameter before projection rendering; found $found."
         }
+        if (validateAbiCallPlan) {
+            validateProjectedAbiBindingContract(
+                plan,
+                bindingName,
+                returnBinding,
+                parameterBindings,
+                marshalerPlanDescriptor,
+                suppressHResultCheck,
+            )
+        }
+    }
+
+    private fun validateEventRemoveAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        bindingName: String,
+        binding: KotlinProjectionInstanceMemberBinding,
+    ) {
+        validateEventRemoveAccessorBindingContract(
+            plan,
+            event,
+            bindingName,
+            binding.returnBinding,
+            binding.parameterBindings,
+            binding.marshalerPlanDescriptor,
+            binding.suppressHResultCheck,
+            validateAbiCallPlan = false,
+        )
+    }
+
+    private fun validateEventRemoveAccessorBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        bindingName: String,
+        binding: KotlinProjectionStaticMemberBinding,
+    ) {
+        validateEventRemoveAccessorBindingContract(
+            plan,
+            event,
+            bindingName,
+            binding.returnBinding,
+            binding.parameterBindings,
+            binding.marshalerPlanDescriptor,
+            binding.suppressHResultCheck,
+        )
     }
 
     private fun validateEventRemoveAccessorBindingContract(
@@ -995,6 +1087,9 @@ class KotlinProjectionGenerator(
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor?,
+        suppressHResultCheck: Boolean,
+        validateAbiCallPlan: Boolean = true,
     ) {
         require(returnBinding.kind == KotlinProjectionAbiValueKind.Unit) {
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to return Unit before projection rendering; found ${returnBinding.describeAbiKind()}."
@@ -1002,6 +1097,16 @@ class KotlinProjectionGenerator(
         require(parameterBindings.size == 1 && parameterBindings.single().typeBinding.isEventRegistrationTokenBinding()) {
             val found = parameterBindings.singleOrNull()?.typeBinding?.describeAbiKind() ?: "${parameterBindings.size} parameter(s)"
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} remove binding $bindingName to take exactly one Windows.Foundation.EventRegistrationToken parameter before projection rendering; found $found."
+        }
+        if (validateAbiCallPlan) {
+            validateProjectedAbiBindingContract(
+                plan,
+                bindingName,
+                returnBinding,
+                parameterBindings,
+                marshalerPlanDescriptor,
+                suppressHResultCheck,
+            )
         }
     }
 
