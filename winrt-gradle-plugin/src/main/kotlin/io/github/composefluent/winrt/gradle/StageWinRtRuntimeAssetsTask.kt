@@ -206,19 +206,17 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         val outputRoot = outputDirectory.get().asFile.toPath()
         GradleFileOperations.cleanDirectory(outputRoot)
         Files.createDirectories(outputRoot)
-        (runtimeAssetFiles.files + dependencyRuntimeAssetFiles.files)
-            .map { it.toPath() }
-            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isRegularFile()) {
-                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
-                }
-            }
+        copyRequiredFiles(
+            paths = (runtimeAssetFiles.files + dependencyRuntimeAssetFiles.files).map { it.toPath() },
+            outputRoot = outputRoot,
+            description = "declared runtime asset",
+        )
         copyOptionalFiles(authoredMetadataFiles.files.map { it.toPath() }, outputRoot)
         copyRequiredFiles(
             paths = dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata).map(Path::of),
             outputRoot = outputRoot,
             description = "dependency-authored metadata",
+            origin = "declared by dependency identity",
         )
         copyOptionalFiles(authoredHostManifestFiles.files.map { it.toPath() }, outputRoot)
         val dependencyHostManifests = dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map(Path::of)
@@ -226,6 +224,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             paths = dependencyHostManifests,
             outputRoot = outputRoot,
             description = "dependency-authored host manifest",
+            origin = "declared by dependency identity",
         )
         stageAuthoringHostRuntimeConfigs(
             sources = authoredHostManifestFiles.files.filter(java.io.File::isFile) + dependencyHostManifests.map(Path::toFile),
@@ -236,6 +235,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             paths = dependencyIdentityFiles.files.flatMap(::readAuthoredTargetArtifacts).map(Path::of),
             outputRoot = outputRoot,
             description = "dependency-authored target artifact",
+            origin = "declared by dependency identity",
         )
         authoredHostDllFiles.files
             .asSequence()
@@ -286,12 +286,19 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         paths: Iterable<Path>,
         outputRoot: Path,
         description: String,
+        origin: String? = null,
     ) {
         paths
             .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
             .forEach { source ->
                 require(source.isRegularFile()) {
-                    "Kotlin/WinRT runtime asset staging requires $description file $source declared by dependency identity to exist."
+                    buildString {
+                        append("Kotlin/WinRT runtime asset staging requires $description file $source")
+                        if (origin != null) {
+                            append(" $origin")
+                        }
+                        append(" to exist.")
+                    }
                 }
                 GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
             }
