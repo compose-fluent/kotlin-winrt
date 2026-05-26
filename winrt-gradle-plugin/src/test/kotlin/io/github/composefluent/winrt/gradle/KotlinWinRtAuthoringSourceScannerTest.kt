@@ -458,6 +458,187 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun renders_object_override_returns_with_declared_interface_iid() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-object-return-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalPeerProvider",
+            sourceTypeName = "sample.LocalPeerProvider",
+            winRtBaseClassName = "Sample.PeerProvider",
+            winRtInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            overridableInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "PeerProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Peer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.IPeer",
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeer",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeerProviderOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("66666666-7777-8888-9999-aaaaaaaaaaaa"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetPeerCore",
+                                    returnTypeName = "Sample.Peer",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+            candidates = listOf(candidate),
+            metadataModel = metadataModel,
+            outputDirectory = output,
+        )
+
+        val generated = output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt").readText()
+        assertTrue(generated.contains("detachCCWForObject"))
+        assertTrue(generated.contains("Guid(\"11111111-2222-3333-4444-555555555555\")"))
+        assertTrue(generated, !generated.contains("detachCCWForObject(__result, IID.IInspectable)"))
+    }
+
+    @Test
+    fun rejects_runtime_class_object_returns_without_default_interface_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-object-return-missing-default-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalPeerProvider",
+            sourceTypeName = "sample.LocalPeerProvider",
+            winRtBaseClassName = "Sample.PeerProvider",
+            winRtInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            overridableInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "PeerProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Peer",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeerProviderOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("66666666-7777-8888-9999-aaaaaaaaaaaa"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetPeerCore",
+                                    returnTypeName = "Sample.Peer",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("without default interface metadata"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected runtime class object returns without default interface metadata to fail closed.")
+    }
+
+    @Test
+    fun rejects_interface_object_returns_without_iid_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-object-return-missing-iid-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalPeerProvider",
+            sourceTypeName = "sample.LocalPeerProvider",
+            winRtBaseClassName = "Sample.PeerProvider",
+            winRtInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            overridableInterfaceNames = listOf("Sample.IPeerProviderOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "PeerProvider",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeer",
+                            kind = WinRtTypeKind.Interface,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IPeerProviderOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("66666666-7777-8888-9999-aaaaaaaaaaaa"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetPeerCore",
+                                    returnTypeName = "Sample.IPeer",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("without IID metadata"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalPeerProvider_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected interface object returns without IID metadata to fail closed.")
+    }
+
+    @Test
     fun renders_system_fundamental_override_parameters_and_returns_through_scalar_abi_shapes() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-fundamental-details-")
         val candidate = KotlinWinRtAuthoredTypeCandidate(
