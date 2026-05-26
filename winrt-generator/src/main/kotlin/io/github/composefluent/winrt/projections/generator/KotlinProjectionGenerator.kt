@@ -188,7 +188,7 @@ class KotlinProjectionGenerator(
     ) {
         validateAuthoredCcwBindingContracts(model, plans)
         validateAuthoringActivationFactorySupportContracts(model, plans)
-        validateStaticEventAccessorBindingContracts(plans)
+        validateEventAccessorBindingContracts(plans)
         validateEventSourceHelperContracts(model, plans)
         val runtimeClassStaticInterfaceNames = plans
             .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass }
@@ -903,8 +903,8 @@ class KotlinProjectionGenerator(
         validateStaticEventAccessorBindingContract(plan)
     }
 
-    private fun validateStaticEventAccessorBindingContracts(plans: List<KotlinTypeProjectionPlan>) {
-        plans.forEach(::validateStaticEventAccessorBindingContract)
+    private fun validateEventAccessorBindingContracts(plans: List<KotlinTypeProjectionPlan>) {
+        plans.forEach(::validateEventAccessorBindingContracts)
     }
 
     private fun validateStaticEventAccessorBindingContract(plan: KotlinTypeProjectionPlan) {
@@ -996,7 +996,6 @@ class KotlinProjectionGenerator(
             binding.parameterBindings,
             binding.marshalerPlanDescriptor,
             binding.suppressHResultCheck,
-            validateAbiCallPlan = false,
         )
     }
 
@@ -1060,7 +1059,6 @@ class KotlinProjectionGenerator(
             binding.parameterBindings,
             binding.marshalerPlanDescriptor,
             binding.suppressHResultCheck,
-            validateAbiCallPlan = false,
         )
     }
 
