@@ -3173,7 +3173,9 @@ class KotlinProjectionSupportRenderer {
     ): List<String> =
         interfaceNames
             .flatMap { interfaceName ->
-                val interfaceType = plan.typesByQualifiedName[interfaceName] ?: return@flatMap emptyList()
+                val interfaceType = plan.typesByQualifiedName[interfaceName]
+                    ?: plan.typesByQualifiedName[interfaceName.substringBefore('<').removeSuffix("?")]
+                    ?: return@flatMap emptyList()
                 buildList {
                     interfaceType.methods.forEach { add("$interfaceName.${it.name}") }
                     interfaceType.properties.forEach { add("$interfaceName.${it.name}") }

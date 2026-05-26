@@ -145,6 +145,70 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_renders_authoring_activation_factory_member_references_for_generic_factory_interfaces() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555554"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "CreateInstance",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            activation = WinRtActivationShape(
+                                factories = listOf(
+                                    WinRtAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IWidgetFactory<String>",
+                                        kind = WinRtAttributedFactoryKind.Activatable,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val activationFactoryPlan = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+        ).generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+            .getValue("WinRTAuthoringActivationFactoryPlan.kt")
+            .contents
+
+        assertTrue(
+            activationFactoryPlan,
+            activationFactoryPlan.contains(
+                "listOf(\"Sample.Foundation.IWidgetFactory<String>.CreateInstance\")",
+            ),
+        )
+    }
+
+    @Test
     fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
         val runtimeOwned = listOf(
             "System.Object?",
