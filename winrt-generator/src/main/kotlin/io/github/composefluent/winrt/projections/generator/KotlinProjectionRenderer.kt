@@ -1192,11 +1192,17 @@ class KotlinProjectionRenderer(
         if (plan.usesMappedDisposableAugmentation) {
             builder.addSuperinterface(AUTO_CLOSEABLE_CLASS_NAME)
         }
-        requiredIteratorBinding(plan)?.let { iteratorBinding ->
+        val requiredIteratorBinding = requiredIteratorBinding(plan)
+        requiredIteratorBinding?.let { iteratorBinding ->
             addRequiredIteratorForwardMembers(builder, iteratorBinding)
         }
         addRuntimeClassInterfaceProjectionCaches(builder, plan)
-        renderRequiredInterfaceForwardMembers(plan, mappedCollectionMemberNames(plan)).forEach { member ->
+        val requiredForwardSuppressedMemberNames = if (requiredIteratorBinding != null) {
+            mappedCollectionMemberNames(plan) + requiredIteratorMemberNames
+        } else {
+            mappedCollectionMemberNames(plan)
+        }
+        renderRequiredInterfaceForwardMembers(plan, requiredForwardSuppressedMemberNames).forEach { member ->
             when (member) {
                 is TypeSpec -> error("Nested required-interface members are not supported.")
                 is FunSpec -> builder.addFunction(member)
@@ -1920,6 +1926,8 @@ class KotlinProjectionRenderer(
         val elementBinding: KotlinProjectionAbiTypeBinding,
         val ownerCachePropertyName: String,
     )
+
+    private val requiredIteratorMemberNames = setOf("Current", "HasCurrent", "MoveNext")
 
     private fun requiredIteratorBinding(plan: KotlinTypeProjectionPlan): RequiredIteratorBinding? {
         if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
@@ -2891,12 +2899,39 @@ class KotlinProjectionRenderer(
         if ('<' !in interfaceName) {
             return CodeBlock.of("%T.Metadata.IID", projectionClassName(rawInterfaceName))
         }
+        runtimeClassMappedIteratorInterfaceIdCode(interfaceName, plan)?.let { return it }
         val signature = abiTypeSignature(
             renderAbiTypeBinding(interfaceName, plan.typesByQualifiedName, plan.type.namespace),
         ) ?: throw IllegalArgumentException(
             "Generator requires runtime class ${plan.type.qualifiedName} interface $interfaceName to have a renderable type signature before interface cache rendering.",
         )
         return CodeBlock.of("%T.createFromSignature(%L)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, signature)
+    }
+
+    private fun runtimeClassMappedIteratorInterfaceIdCode(
+        interfaceName: String,
+        plan: KotlinTypeProjectionPlan,
+    ): CodeBlock? {
+        val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
+        if (mappedTypeByAbiName(rawInterfaceName)?.descriptionName != "Iterator") {
+            return null
+        }
+        val elementTypeName = splitGenericArguments(interfaceName.substringAfter('<').substringBeforeLast('>'))
+            .singleOrNull()
+            ?: throw IllegalArgumentException(
+                "Generator requires runtime class ${plan.type.qualifiedName} iterator interface $interfaceName to have exactly one generic argument before interface cache rendering.",
+            )
+        val elementSignature = abiTypeSignature(
+            renderAbiTypeBinding(elementTypeName, plan.typesByQualifiedName, rawInterfaceName.substringBeforeLast('.', "")),
+        ) ?: throw IllegalArgumentException(
+            "Generator requires runtime class ${plan.type.qualifiedName} iterator interface $interfaceName to have a renderable element type signature before interface cache rendering.",
+        )
+        return CodeBlock.of(
+            "%T.createFromSignature(%T.iteratorSignature(%L))",
+            PARAMETERIZED_INTERFACE_ID_CLASS_NAME,
+            WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME,
+            elementSignature,
+        )
     }
 
     internal fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {
