@@ -77,6 +77,21 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_unknown_authoring_metadata_index_kinds() {
+        val metadataIndex = Files.createTempFile("kotlin-winrt-unknown-kind-metadata-index-", ".tsv")
+        metadataIndex.writeText("Windows.Foundation.IStringable\tNotAWinRtKind\n")
+
+        val error = runCatching { readAuthoringMetadataIndex(metadataIndex) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("authoring metadata index row 1"),
+        )
+    }
+
+    @Test
     fun rejects_missing_authoring_source_roots() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-missing-root-")
         val missingSourceRoot = root.resolve("missing")

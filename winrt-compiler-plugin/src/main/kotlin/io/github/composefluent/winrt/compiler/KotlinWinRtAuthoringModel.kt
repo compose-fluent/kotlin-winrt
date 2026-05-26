@@ -1,5 +1,6 @@
 package io.github.composefluent.winrt.compiler
 
+import io.github.composefluent.winrt.metadata.WinRtTypeKind
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import java.nio.file.Files
 import java.nio.file.Path
@@ -86,6 +87,9 @@ private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
     if (parts.size < 2 || parts[0].isBlank() || parts[1].isBlank()) {
         return null
     }
+    if (parts[1] !in authoringMetadataIndexKinds) {
+        return null
+    }
     return IndexedWinRtType(
         qualifiedName = parts[0],
         kind = parts[1],
@@ -94,6 +98,8 @@ private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
         baseTypeName = parts.getOrElse(3) { "" },
     )
 }
+
+private val authoringMetadataIndexKinds = WinRtTypeKind.entries.map(WinRtTypeKind::name).toSet()
 
 private fun parseAuthoringMetadataIndexListField(value: String): List<String>? {
     if (value.isBlank()) {
