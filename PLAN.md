@@ -140,6 +140,7 @@
 - [x] Generic ABI registry kind/column fail-closed closure: reject unknown generic ABI registry `kind` values and blank delegate support columns instead of silently dropping invalid generator handoff rows.
 - [x] Generic ABI registry duplicate fail-closed closure: reject duplicate derived-interface and delegate registry rows instead of silently distincting or repeatedly registering generic ABI support entries.
 - [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
+- [x] Authoring metadata index list-field fail-closed closure: reject blank elements inside authoring metadata index list columns instead of silently compacting inherited/overridable interface metadata.
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
 - [x] Authoring scanner argument fail-closed closure: reject scanner path options without values using stable diagnostics instead of surfacing low-level argument indexing failures.
 - [x] Authoring metadata index duplicate fail-closed closure: reject duplicate authored metadata index type rows instead of allowing later rows to silently overwrite compiler-plugin discovery inputs.

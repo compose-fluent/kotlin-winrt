@@ -89,11 +89,21 @@ private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
     return IndexedWinRtType(
         qualifiedName = parts[0],
         kind = parts[1],
-        overridableInterfaces = parts.getOrElse(2) { "" }
-            .split(';')
-            .filter(String::isNotBlank),
+        overridableInterfaces = parseAuthoringMetadataIndexListField(parts.getOrElse(2) { "" })
+            ?: return null,
         baseTypeName = parts.getOrElse(3) { "" },
     )
+}
+
+private fun parseAuthoringMetadataIndexListField(value: String): List<String>? {
+    if (value.isBlank()) {
+        return emptyList()
+    }
+    val parts = value.split(';')
+    if (parts.any(String::isBlank)) {
+        return null
+    }
+    return parts
 }
 
 internal fun inheritedOverridableInterfaceNames(
