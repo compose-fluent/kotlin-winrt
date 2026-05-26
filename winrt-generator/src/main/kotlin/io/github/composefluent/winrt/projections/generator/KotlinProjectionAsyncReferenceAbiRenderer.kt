@@ -318,8 +318,10 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
     KotlinProjectionAbiValueKind.InspectableReference -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
     KotlinProjectionAbiValueKind.ProjectedInterface ->
         resolvedReturnClassName(binding)?.let { resultType ->
-            val arguments = binding.typeArguments.mapNotNull(::abiTypeSignature)
-            if (arguments.size == binding.typeArguments.size && arguments.isNotEmpty()) {
+            if (binding.typeArguments.isNotEmpty()) {
+                val arguments = binding.typeArguments.map { argument ->
+                    abiTypeSignature(argument) ?: return@let null
+                }
                 CodeBlock.builder()
                     .add("%T.parameterizedInterface(%T.Metadata.IID", WINRT_TYPE_SIGNATURE_CLASS_NAME, resultType)
                     .apply {
