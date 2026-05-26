@@ -19,6 +19,13 @@ internal fun authoredCcwBindingIsSupported(
         authoredCcwAbiBindingIsSupported(typeRenderer, binding.returnBinding)
 }
 
+internal fun authoredCcwBindingHasIntentionalFallback(
+    interfaceType: WinRtTypeDefinition,
+    binding: KotlinProjectionInstanceMemberBinding,
+): Boolean =
+    binding.parameterBindings.any { parameter -> parameter.category == WinRtMetadataParameterCategory.ReceiveArray } &&
+        authoredCcwReceiveArrayReturnParameter(interfaceType, binding) == null
+
 internal fun authoredCcwReceiveArrayReturnParameter(
     interfaceType: WinRtTypeDefinition,
     binding: KotlinProjectionInstanceMemberBinding,

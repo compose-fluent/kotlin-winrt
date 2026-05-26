@@ -814,6 +814,9 @@ class KotlinProjectionPlanner(
         val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
         val resolvedInterfaceName = qualifyTypeName(rawInterfaceName, currentNamespace, typesByQualifiedName) ?: rawInterfaceName
         val mappedType = mappedTypeByAbiName(resolvedInterfaceName) ?: return null
+        if (isUninstantiatedGenericMappedCollectionDefinition(interfaceName, resolvedInterfaceName, typesByQualifiedName)) {
+            return null
+        }
         val genericArguments = if ('<' in interfaceName && interfaceName.endsWith('>')) {
             splitGenericArguments(interfaceName.substringAfter('<').substringBeforeLast('>'))
                 .map { argument -> classifyAbiTypeBinding(argument, currentNamespace, typesByQualifiedName) }
@@ -893,6 +896,9 @@ class KotlinProjectionPlanner(
         val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
         val resolvedInterfaceName = qualifyTypeName(rawInterfaceName, currentNamespace, typesByQualifiedName) ?: rawInterfaceName
         val mappedType = mappedTypeByAbiName(resolvedInterfaceName) ?: return null
+        if (isUninstantiatedGenericMappedCollectionDefinition(interfaceName, resolvedInterfaceName, typesByQualifiedName)) {
+            return null
+        }
         val genericArguments = if ('<' in interfaceName && interfaceName.endsWith('>')) {
             splitGenericArguments(interfaceName.substringAfter('<').substringBeforeLast('>'))
                 .map { argument -> classifyAbiTypeBinding(argument, currentNamespace, typesByQualifiedName) }
@@ -950,6 +956,18 @@ class KotlinProjectionPlanner(
             typeName = "Any?",
             resolvedTypeName = "System.Object",
         )
+
+    private fun isUninstantiatedGenericMappedCollectionDefinition(
+        interfaceName: String,
+        resolvedInterfaceName: String,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+    ): Boolean {
+        if ('<' in interfaceName) {
+            return false
+        }
+        val type = typesByQualifiedName[resolvedInterfaceName] ?: return false
+        return type.genericParameterCount > 0 && mappedTypeByAbiName(resolvedInterfaceName)?.isBindableCollectionMapping() != true
+    }
 
     private fun KotlinProjectionMappedType.isBindableCollectionMapping(): Boolean =
         abiValueKind == KotlinProjectionAbiValueKind.MappedBindableIterable ||

@@ -16025,6 +16025,101 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_event_source_helper_without_projected_generic_metadata_wrap_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555556"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "get_Value",
+                                    returnTypeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>",
+                                    isSpecialName = true,
+                                    methodRowId = 9,
+                                ),
+                            ),
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "Array<Windows.Foundation.Collections.IKeyValuePair<String, String>>",
+                                    getterMethodName = "get_Value",
+                                    getterMethodRowId = 9,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetChangedHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("22222222-3333-4444-5555-666666666666"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("box", "Sample.Foundation.IBox<String>"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "add_Changed",
+                                    returnTypeName = "Windows.Foundation.EventRegistrationToken",
+                                    parameters = listOf(WinRtParameterDefinition("handler", "Sample.Foundation.WidgetChangedHandler")),
+                                    isSpecialName = true,
+                                    methodRowId = 6,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "remove_Changed",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(WinRtParameterDefinition("token", "Windows.Foundation.EventRegistrationToken")),
+                                    isSpecialName = true,
+                                    methodRowId = 7,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Sample.Foundation.WidgetChangedHandler",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget event Changed event-source helper for Sample.Foundation.IWidget::Sample.Foundation.WidgetChangedHandler to use supported event-source ABI metadata before projection rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_abi_member_runtime_class_parameter_without_default_interface_iid() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

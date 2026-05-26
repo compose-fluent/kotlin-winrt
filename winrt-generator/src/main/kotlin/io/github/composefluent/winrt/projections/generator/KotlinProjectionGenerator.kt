@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
 import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
+import io.github.composefluent.winrt.metadata.WinRtEventHelperSubclassDescriptor
 import io.github.composefluent.winrt.metadata.WinRtEventHandlerKind
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
@@ -186,6 +187,7 @@ class KotlinProjectionGenerator(
         plans: List<KotlinTypeProjectionPlan>,
     ) {
         validateAuthoredCcwBindingContracts(model, plans)
+        validateEventSourceHelperContracts(model, plans)
         plans.forEach { plan ->
             if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
                 plan.activatableFactoryInterfaceName?.let { factoryName ->
@@ -261,9 +263,15 @@ class KotlinProjectionGenerator(
             validateInstancePropertyBindingContracts(plan)
             validateEventAccessorBindingContracts(plan)
             plan.instanceMemberBindings.forEach { binding ->
+                if (binding.isInstanceEventAccessorBinding(plan)) {
+                    return@forEach
+                }
                 validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
             plan.staticMemberBindings.forEach { binding ->
+                if (binding.isStaticEventAccessorBinding(plan)) {
+                    return@forEach
+                }
                 validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
             }
             validateStaticMethodBindingContracts(plan)
@@ -295,6 +303,155 @@ class KotlinProjectionGenerator(
                 }
                 validateComposableFactoryCreateBindingContracts(plan, factoryType)
             }
+        }
+    }
+
+    private fun validateEventSourceHelperContracts(
+        model: WinRtMetadataModel,
+        plans: List<KotlinTypeProjectionPlan>,
+    ) {
+        val typesByQualifiedName = model.namespaces
+            .flatMap(WinRtNamespace::types)
+            .associateBy(WinRtTypeDefinition::qualifiedName)
+        val plansByType = plans.associateBy { plan -> plan.type.qualifiedName }
+        val descriptorsByOwnerAndEvent = model.semanticHelpers()
+            .let { helpers ->
+                model.namespaces
+                    .flatMap(WinRtNamespace::types)
+                    .flatMap(helpers::eventHelperSubclassDescriptors)
+            }
+            .associateBy { descriptor -> descriptor.ownerTypeName to descriptor.eventTypeName }
+        plans.forEach { plan ->
+            validateRuntimeClassEventSourceHelperContracts(plan, descriptorsByOwnerAndEvent, typesByQualifiedName, plansByType)
+            validateStaticEventSourceHelperContracts(plan, descriptorsByOwnerAndEvent, typesByQualifiedName, plansByType)
+            validateInterfaceNativeProjectionEventSourceHelperContracts(plan, descriptorsByOwnerAndEvent, typesByQualifiedName, plansByType)
+        }
+    }
+
+    private fun validateRuntimeClassEventSourceHelperContracts(
+        plan: KotlinTypeProjectionPlan,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ) {
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+            return
+        }
+        plan.type.events
+            .filterNot(WinRtEventDefinition::isStatic)
+            .forEach { event ->
+                val binding = plan.instanceMemberBindings.firstOrNull { it.bindingName == "${event.name.uppercase()}_ADD_SLOT" }
+                    ?: return@forEach
+                val eventTypeName = plan.eventInvokeDescriptors
+                    .firstOrNull { it.eventName == event.name && !it.isStatic }
+                    ?.delegateTypeName
+                    ?: event.delegateTypeName
+                validateEventSourceHelperContract(
+                    plan,
+                    event,
+                    binding.slotInterfaceQualifiedName,
+                    eventTypeName,
+                    descriptorsByOwnerAndEvent,
+                    typesByQualifiedName,
+                    plansByType,
+                )
+            }
+    }
+
+    private fun validateStaticEventSourceHelperContracts(
+        plan: KotlinTypeProjectionPlan,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ) {
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+            return
+        }
+        eventSourceStaticEvents(plan)
+            .forEach { event ->
+                val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT" }
+                    ?: return@forEach
+                val eventTypeName = plan.eventInvokeDescriptors
+                    .firstOrNull { it.eventName == event.name && it.isStatic }
+                    ?.delegateTypeName
+                    ?: event.delegateTypeName
+                validateEventSourceHelperContract(
+                    plan,
+                    event,
+                    binding.ownerInterfaceQualifiedName,
+                    eventTypeName,
+                    descriptorsByOwnerAndEvent,
+                    typesByQualifiedName,
+                    plansByType,
+                )
+            }
+    }
+
+    private fun eventSourceStaticEvents(plan: KotlinTypeProjectionPlan): List<WinRtEventDefinition> {
+        val merged = linkedMapOf<String, WinRtEventDefinition>()
+        plan.type.events
+            .filter(WinRtEventDefinition::isStatic)
+            .forEach { event ->
+                merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
+            }
+        plan.staticInterfaceNames
+            .mapNotNull(plan.typesByQualifiedName::get)
+            .flatMap(WinRtTypeDefinition::events)
+            .forEach { event ->
+                merged.putIfAbsent("${event.name}|${event.delegateTypeName}", event.copy(isStatic = true))
+            }
+        return merged.values.toList()
+    }
+
+    private fun validateInterfaceNativeProjectionEventSourceHelperContracts(
+        plan: KotlinTypeProjectionPlan,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ) {
+        if (plan.type.kind != WinRtTypeKind.Interface || !canRenderInterfaceWrapperSafely(plan)) {
+            return
+        }
+        renderer.collectInterfaceProxyTypes(plan).forEach { interfaceType ->
+            interfaceType.events
+                .filterNot(WinRtEventDefinition::isStatic)
+                .forEach { event ->
+                    val eventTypeName = plan.typesByQualifiedName[interfaceType.qualifiedName]
+                        ?.events
+                        ?.firstOrNull { rawEvent -> rawEvent.name == event.name }
+                        ?.delegateTypeName
+                        ?: event.delegateTypeName
+                    validateEventSourceHelperContract(
+                        plan,
+                        event,
+                        interfaceType.qualifiedName,
+                        eventTypeName,
+                        descriptorsByOwnerAndEvent,
+                        typesByQualifiedName,
+                        plansByType,
+                    )
+                }
+        }
+    }
+
+    private fun canRenderInterfaceWrapperSafely(plan: KotlinTypeProjectionPlan): Boolean =
+        runCatching { renderer.canRenderInterfaceWrapper(plan) }.getOrDefault(false)
+
+    private fun validateEventSourceHelperContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        ownerTypeName: String,
+        eventTypeName: String,
+        descriptorsByOwnerAndEvent: Map<Pair<String, String>, WinRtEventHelperSubclassDescriptor>,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ) {
+        val descriptor = descriptorsByOwnerAndEvent[ownerTypeName to eventTypeName]
+        require(descriptor != null) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} event-source helper for $ownerTypeName::$eventTypeName to be present before projection rendering."
+        }
+        require(supportRenderer.canRenderEventSourceHelper(descriptor, typesByQualifiedName, plansByType)) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} event-source helper for $ownerTypeName::$eventTypeName to use supported event-source ABI metadata before projection rendering."
         }
     }
 
@@ -362,6 +519,9 @@ class KotlinProjectionGenerator(
                     binding.bindingName == "${event.name.uppercase()}_REMOVE_SLOT"
             }
             if (event != null) {
+                return@forEach
+            }
+            if (authoredCcwBindingHasIntentionalFallback(interfaceType, binding)) {
                 return@forEach
             }
             require(authoredCcwBindingIsSupported(renderer, interfaceType, binding)) {
@@ -469,6 +629,7 @@ class KotlinProjectionGenerator(
         val mappedCollectionMemberNames = mappedCollectionMemberNames(plan)
         plan.type.methods
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .filter { method -> method.methodRowId != null }
             .filterNot { method -> method.hasKotlinOwnedRuntimeMethodProjection(plan, mappedCollectionMemberNames) }
             .forEach { method ->
                 val bindingName = method.abiSlotConstantName(plan.type.methods)
@@ -671,6 +832,32 @@ class KotlinProjectionGenerator(
         }
     }
 
+    private fun KotlinProjectionInstanceMemberBinding.isInstanceEventAccessorBinding(
+        plan: KotlinTypeProjectionPlan,
+    ): Boolean =
+        plan.type.events.any { event ->
+            !event.isStatic &&
+                (bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
+                    bindingName == "${event.name.uppercase()}_REMOVE_SLOT")
+        }
+
+    private fun KotlinProjectionStaticMemberBinding.isStaticEventAccessorBinding(
+        plan: KotlinTypeProjectionPlan,
+    ): Boolean {
+        if (plan.type.kind != WinRtTypeKind.RuntimeClass) {
+            return false
+        }
+        return buildList {
+            addAll(plan.type.events.filter(WinRtEventDefinition::isStatic))
+            plan.staticInterfaceNames
+                .mapNotNull(plan.typesByQualifiedName::get)
+                .forEach { staticInterface -> addAll(staticInterface.events) }
+        }.any { event ->
+            bindingName == "STATIC_${event.name.uppercase()}_ADD_SLOT" ||
+                bindingName == "STATIC_${event.name.uppercase()}_REMOVE_SLOT"
+        }
+    }
+
     private fun validateProjectedAbiBindingContract(
         plan: KotlinTypeProjectionPlan,
         bindingName: String,
@@ -756,6 +943,9 @@ class KotlinProjectionGenerator(
             }
         }
         if (typeBinding.kind == KotlinProjectionAbiValueKind.Struct && customStructAbi(typeBinding) == null) {
+            if (isRuntimeOwnedMappedTypeName(typeBinding.resolvedTypeName)) {
+                return
+            }
             val structType = plan.typesByQualifiedName[typeBinding.resolvedTypeName.removeSuffix("?")]
             require(structType?.kind == WinRtTypeKind.Struct) {
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole struct ${typeBinding.resolvedTypeName} to be present in the metadata model before projection rendering."
