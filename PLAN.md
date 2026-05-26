@@ -68,7 +68,7 @@
 
 ## Phase 3 Generator And Compiler Plugin
 
-- [ ] Generator declaration planning: keep declaration ownership, namespace/type shells, companion/metadata surfaces, and deterministic ordering as the first generator responsibility before member emission expands.
+- [x] Generator declaration planning: keep declaration ownership, namespace/type shells, companion/metadata surfaces, and deterministic ordering as the first generator responsibility before member emission expands.
 - [ ] Generator projection matrix closure 正在做: finish Kotlin-relevant activation, static, factory, custom mapped type, nullable reference, required/default interface, generic instantiation, collection, async, delegate/event, struct, array, attribute, and unsupported-shape behavior.
 - [x] ABI array contract closure: verify arrays always carry exactly one renderable element ABI binding before projection rendering, including nested generic/array cases and diagnostics that fail before marshaler fallback paths.
 - [x] Authored CCW fail-closed closure: validate unsupported authored CCW ABI member bindings before support-file rendering instead of emitting generated `E_NOTIMPL` fallback handlers for shapes the authoring ABI cannot marshal.
