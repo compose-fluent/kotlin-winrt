@@ -2932,11 +2932,7 @@ class KotlinWinRtIrGenerationExtension(
     }
 
     private fun readCompilerSupportManifest(): List<KotlinWinRtCompilerSupportManifestEntry> {
-        val manifestPath = compilerSupportManifestPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
-        if (!Files.isRegularFile(manifestPath)) {
-            return emptyList()
-        }
-        return readCompilerSupportManifest(manifestPath)
+        return readCompilerSupportManifestIfConfigured(compilerSupportManifestPath)
     }
 
     private fun writeCompilerSupportClasses(
@@ -4075,6 +4071,14 @@ data class KotlinWinRtCompilerSupportManifestEntry(
 
 fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> =
     readRequiredTsvRows(path, "compiler support manifest", ::parseCompilerSupportManifestLine)
+
+fun readCompilerSupportManifestIfConfigured(path: String?): List<KotlinWinRtCompilerSupportManifestEntry> {
+    val manifestPath = path?.takeIf(String::isNotBlank)?.let(Path::of) ?: return emptyList()
+    require(Files.isRegularFile(manifestPath)) {
+        "kotlin-winrt compiler plugin requires compiler support manifest $manifestPath to exist when compilerSupportManifest is configured."
+    }
+    return readCompilerSupportManifest(manifestPath)
+}
 
 private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerSupportManifestEntry? {
     val parts = line.split('\t', limit = 4)

@@ -187,6 +187,29 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_option_rejects_missing_file() {
+        val missingManifest = Files.createTempDirectory("kotlin-winrt-missing-compiler-support-")
+            .resolve("compiler-support.tsv")
+
+        val error = runCatching {
+            readCompilerSupportManifestIfConfigured(missingManifest.toString())
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin requires compiler support manifest"),
+        )
+    }
+
+    @Test
+    fun compiler_support_manifest_option_allows_unconfigured_path() {
+        assertTrue(readCompilerSupportManifestIfConfigured(null).isEmpty())
+        assertTrue(readCompilerSupportManifestIfConfigured("").isEmpty())
+    }
+
+    @Test
     fun compiler_support_manifest_writes_class_artifact() {
         val outputDirectory = Files.createTempDirectory("kotlin-winrt-support-class-")
         writeCompilerSupportManifestClass(
