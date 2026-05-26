@@ -11,7 +11,9 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import org.gradle.api.GradleException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -169,6 +171,87 @@ class KotlinWinRtAuthoringSourceScannerTest {
         val registrar = output.resolve("io/github/composefluent/winrt/projections/support/WinRTAuthoringTypeDetailsRegistrar.kt").readText()
         assertTrue(registrar.contains("object WinRTAuthoringTypeDetailsRegistrar"))
         assertTrue(registrar.contains("WinRT_App_TypeDetails.register()"))
+    }
+
+    @Test
+    fun rejects_authored_type_details_for_missing_winrt_interface_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-missing-interface-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "App",
+            sourceTypeName = "sample.App",
+            winRtBaseClassName = "Microsoft.UI.Xaml.Application",
+            winRtInterfaceNames = listOf("Microsoft.UI.Xaml.IMissingOverrides"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.IMissingOverrides"),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = model(),
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("references missing WinRT interface"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_App_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected missing authored WinRT interface metadata to fail closed.")
+    }
+
+    @Test
+    fun rejects_authored_type_details_for_non_interface_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-non-interface-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "App",
+            sourceTypeName = "sample.App",
+            winRtBaseClassName = "Microsoft.UI.Xaml.Application",
+            winRtInterfaceNames = listOf("Microsoft.UI.Xaml.Application"),
+            overridableInterfaceNames = listOf("Microsoft.UI.Xaml.Application"),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = model(),
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("references non-interface WinRT type"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_App_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected non-interface authored WinRT metadata to fail closed.")
+    }
+
+    @Test
+    fun rejects_authored_type_details_for_interface_without_iid_metadata() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-missing-iid-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalStringable",
+            sourceTypeName = "sample.LocalStringable",
+            winRtBaseClassName = "Windows.Foundation.IStringable",
+            winRtInterfaceNames = listOf("Windows.Foundation.IStringable"),
+            overridableInterfaceNames = listOf("Windows.Foundation.IStringable"),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = model(),
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("without metadata IID"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalStringable_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected authored WinRT interface metadata without IID to fail closed.")
     }
 
     @Test

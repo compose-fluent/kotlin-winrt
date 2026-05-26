@@ -23,6 +23,7 @@ import io.github.composefluent.winrt.metadata.WinRtTypeRef
 import io.github.composefluent.winrt.metadata.isWinRtObjectTypeName
 import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
+import org.gradle.api.GradleException
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 
@@ -110,12 +111,8 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             .flatMap { namespace -> namespace.types }
             .associateBy { type -> type.qualifiedName }
         val semanticHelpers = WinRtMetadataSemanticHelpers(metadataModel)
-        val renderedCandidates = candidates.mapNotNull { candidate ->
-            val interfaces = candidate.winRtInterfaceNames.mapNotNull(typesByName::get)
-                .filter { type -> type.kind == WinRtTypeKind.Interface && type.iid != null }
-            if (interfaces.isEmpty()) {
-                return@mapNotNull null
-            }
+        val renderedCandidates = candidates.map { candidate ->
+            val interfaces = resolveAuthoringInterfaces(candidate, typesByName)
             val packageDirectory = outputDirectory.resolve(candidate.packageName.replace('.', '/'))
             packageDirectory.createDirectories()
             render(candidate, interfaces, typesByName, semanticHelpers).writeTo(outputDirectory)
@@ -123,6 +120,34 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         }
         if (renderedCandidates.isNotEmpty()) {
             renderRegistrar(renderedCandidates).writeTo(outputDirectory)
+        }
+    }
+
+    private fun resolveAuthoringInterfaces(
+        candidate: KotlinWinRtAuthoredTypeCandidate,
+        typesByName: Map<String, WinRtTypeDefinition>,
+    ): List<WinRtTypeDefinition> {
+        if (candidate.winRtInterfaceNames.isEmpty()) {
+            throw GradleException(
+                "Authored type '${candidate.sourceTypeName}' has no WinRT interfaces for TypeDetails generation.",
+            )
+        }
+        return candidate.winRtInterfaceNames.map { interfaceName ->
+            val type = typesByName[interfaceName]
+                ?: throw GradleException(
+                    "Authored type '${candidate.sourceTypeName}' references missing WinRT interface '$interfaceName'.",
+                )
+            if (type.kind != WinRtTypeKind.Interface) {
+                throw GradleException(
+                    "Authored type '${candidate.sourceTypeName}' references non-interface WinRT type '$interfaceName'.",
+                )
+            }
+            if (type.iid == null) {
+                throw GradleException(
+                    "Authored type '${candidate.sourceTypeName}' references WinRT interface '$interfaceName' without metadata IID.",
+                )
+            }
+            type
         }
     }
 
