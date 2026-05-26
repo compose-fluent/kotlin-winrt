@@ -4152,6 +4152,9 @@ private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
 private const val PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX: String =
     "io/github/composefluent/winrt/projections/support/WinRTProjectionSupport_"
 
+private const val PROJECTION_SUPPORT_INITIALIZER_CLASS_NAME_PREFIX: String =
+    "WinRTProjectionSupport_"
+
 private const val STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH: String =
     "io/github/composefluent/winrt/projections/support/WinRTEventProjectionRegistry.class"
 
@@ -4251,6 +4254,7 @@ fun writeProjectionSupportInitializerClass(
         return null
     }
     val internalName = projectionSupportInitializerInternalName(entries)
+    deleteStaleProjectionSupportInitializerClasses(outputDirectory, internalName)
     val classWriter = ClassWriter(ClassWriter.COMPUTE_MAXS)
     classWriter.visit(
         Opcodes.V17,
@@ -4306,6 +4310,30 @@ fun writeProjectionSupportInitializerClass(
     Files.createDirectories(target.parent)
     Files.write(target, classWriter.toByteArray())
     return internalName
+}
+
+fun deleteStaleProjectionSupportInitializerClasses(
+    outputDirectory: Path,
+    currentInternalName: String?,
+) {
+    val supportDirectory = outputDirectory.resolve(PROJECTION_SUPPORT_INITIALIZER_INTERNAL_NAME_PREFIX)
+        .parent
+        ?: return
+    if (!Files.isDirectory(supportDirectory)) {
+        return
+    }
+    val currentRelativePath = currentInternalName?.let { "$it.class" }
+    Files.list(supportDirectory).use { stream ->
+        stream
+            .filter(Files::isRegularFile)
+            .filter { path -> path.fileName.toString().startsWith(PROJECTION_SUPPORT_INITIALIZER_CLASS_NAME_PREFIX) }
+            .filter { path -> path.fileName.toString().endsWith(".class") }
+            .filter { path ->
+                currentRelativePath == null ||
+                    outputDirectory.relativize(path).toString().replace('\\', '/') != currentRelativePath
+            }
+            .forEach(Files::deleteIfExists)
+    }
 }
 
 fun projectionSupportInitializerInternalName(
