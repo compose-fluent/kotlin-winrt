@@ -4251,6 +4251,7 @@ fun writeProjectionSupportInitializerClass(
     outputDirectory: Path,
 ): String? {
     if (entries.isEmpty()) {
+        deleteStaleProjectionSupportInitializerClasses(outputDirectory, currentInternalName = null)
         return null
     }
     val internalName = projectionSupportInitializerInternalName(entries)
