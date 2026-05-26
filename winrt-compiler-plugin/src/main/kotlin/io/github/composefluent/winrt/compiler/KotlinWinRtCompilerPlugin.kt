@@ -4161,6 +4161,9 @@ private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionReg
     if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
         return null
     }
+    if (parts[2] !in PROJECTION_REGISTRAR_KINDS) {
+        return null
+    }
     return KotlinWinRtProjectionRegistrarEntry(
         kotlinClassName = parts[0],
         projectedTypeName = parts[1],
@@ -4169,6 +4172,9 @@ private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionReg
         metadataClassName = parts[4],
     )
 }
+
+private val PROJECTION_REGISTRAR_KINDS: Set<String> =
+    setOf("Interface", "RuntimeClass", "Enum", "Struct", "Delegate")
 
 fun writeProjectionSupportInitializerClass(
     entries: List<KotlinWinRtProjectionRegistrarEntry>,
