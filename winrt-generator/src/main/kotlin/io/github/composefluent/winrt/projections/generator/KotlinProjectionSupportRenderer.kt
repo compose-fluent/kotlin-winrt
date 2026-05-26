@@ -3175,7 +3175,9 @@ class KotlinProjectionSupportRenderer {
             .flatMap { interfaceName ->
                 val interfaceType = plan.typesByQualifiedName[interfaceName]
                     ?: plan.typesByQualifiedName[interfaceName.substringBefore('<').removeSuffix("?")]
-                    ?: return@flatMap emptyList()
+                    ?: throw IllegalArgumentException(
+                        "Support renderer requires authored runtime class ${plan.type.qualifiedName} factory interface $interfaceName to be present before rendering authoring activation factory members.",
+                    )
                 buildList {
                     interfaceType.methods.forEach { add("$interfaceName.${it.name}") }
                     interfaceType.properties.forEach { add("$interfaceName.${it.name}") }

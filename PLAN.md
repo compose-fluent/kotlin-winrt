@@ -91,6 +91,7 @@
 - [x] Authored CCW accessor slot metadata closure: reject authored CCW support for implemented interface property/event accessors whose ABI slot metadata is missing before `WinRTAuthoringCcwFactories` emits handlers with unknown vtable ordering.
 - [x] Authored CCW interface plan closure: reject authored runtime classes whose implemented CCW interfaces do not have projection plans before `WinRTAuthoringCcwFactories` silently emits empty method tables.
 - [x] Authoring activation factory generic member-reference closure: resolve generic factory interface references through their raw metadata type before rendering `WinRTAuthoringActivationFactoryPlan` member lists.
+- [x] Authoring activation factory member-reference fail-closed closure: reject support rendering when factory member references name a missing factory interface instead of emitting empty member lists.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
