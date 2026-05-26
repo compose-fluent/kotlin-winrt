@@ -1856,8 +1856,13 @@ class KotlinProjectionSupportRenderer {
             return CodeBlock.of("emptyList()")
         }
         val slotOrder = interfacePlan.abiSlotBindings.associate { it.constantName to it.slot }
+        interfacePlan.instanceMemberBindings.forEach { binding ->
+            require(slotOrder.containsKey(binding.slotConstantName)) {
+                "Support renderer requires authored CCW binding ${interfacePlan.type.qualifiedName}.${binding.bindingName} to carry ABI slot metadata before rendering authoring CCW definitions."
+            }
+        }
         val methods = interfacePlan.instanceMemberBindings.sortedWith(
-            compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder[it.slotConstantName] ?: Int.MAX_VALUE }
+            compareBy<KotlinProjectionInstanceMemberBinding> { slotOrder.getValue(it.slotConstantName) }
                 .thenBy { it.bindingName },
         )
         val code = CodeBlock.builder()

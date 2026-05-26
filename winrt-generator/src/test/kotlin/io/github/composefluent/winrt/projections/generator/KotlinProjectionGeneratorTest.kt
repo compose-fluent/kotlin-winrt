@@ -302,6 +302,59 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_renderer_rejects_authored_ccw_method_without_slot_metadata_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Refresh",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val plans = KotlinProjectionPlanner().plan(model)
+
+        val error = runCatching {
+            KotlinProjectionSupportRenderer().render(
+                model = model,
+                plans = plans,
+                context = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            )
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Support renderer requires authored CCW binding Sample.Foundation.IWidget.REFRESH_SLOT to carry ABI slot metadata before rendering authoring CCW definitions.",
+            ),
+        )
+    }
+
+    @Test
     fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
         val runtimeOwned = listOf(
             "System.Object?",
