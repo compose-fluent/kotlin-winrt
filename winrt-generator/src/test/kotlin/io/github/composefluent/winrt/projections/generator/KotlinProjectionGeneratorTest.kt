@@ -10423,6 +10423,17 @@ class KotlinProjectionGeneratorTest {
         val model = WinRtMetadataModel(
             namespaces = listOf(
                 WinRtNamespace(
+                    name = "Microsoft.UI.Xaml.Input",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Microsoft.UI.Xaml.Input",
+                            name = "ICommand",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("E5AF3542-CA67-4081-995B-709DD13792DF"),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
                     name = "Sample.Foundation",
                     types = listOf(
                         WinRtTypeDefinition(
@@ -10607,6 +10618,27 @@ class KotlinProjectionGeneratorTest {
         assertTrue(expression, expression.contains("io.github.composefluent.winrt.runtime.WinRtReadOnlyListProjection.fromAbi(__collectionPointer, io.github.composefluent.winrt.runtime.WinRtReferenceValueAdapters.string)"))
         assertFalse(expression, expression.contains("val __collectionRef = io.github.composefluent.winrt.runtime.IUnknownReference("))
         assertFalse(expression, expression.contains("fromRawComPtr(__collectionRef.pointer)"))
+    }
+
+    @Test
+    fun generator_fails_closed_for_projected_interface_type_signature_with_unrenderable_generic_argument() {
+        val renderer = KotlinProjectionRenderer()
+        val binding = KotlinProjectionAbiTypeBinding(
+            kind = KotlinProjectionAbiValueKind.ProjectedInterface,
+            typeName = "Sample.Foundation.IBox<Sample.Foundation.NativeHandle>",
+            resolvedTypeName = "Sample.Foundation.IBox",
+            typeArguments = listOf(
+                KotlinProjectionAbiTypeBinding(
+                    kind = KotlinProjectionAbiValueKind.Unsupported,
+                    typeName = "Sample.Foundation.NativeHandle",
+                    resolvedTypeName = "Sample.Foundation.NativeHandle",
+                ),
+            ),
+        )
+
+        val signature = renderer.abiTypeSignature(binding)
+
+        assertEquals(null, signature)
     }
 
     @Test
