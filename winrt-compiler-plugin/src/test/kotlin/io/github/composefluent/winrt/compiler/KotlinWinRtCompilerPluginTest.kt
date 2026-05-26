@@ -447,6 +447,35 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_input_deletes_stale_content_addressed_class_artifacts() {
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-projection-support-stale-class-")
+        val firstEntries = listOf(
+            KotlinWinRtProjectionRegistrarEntry(
+                kotlinClassName = "java.lang.String",
+                projectedTypeName = "Sample.Foundation.Widget",
+                kind = "RuntimeClass",
+                baseTypeName = "Sample.Foundation.WidgetBase",
+                metadataClassName = "",
+            ),
+        )
+        val secondEntries = firstEntries + KotlinWinRtProjectionRegistrarEntry(
+            kotlinClassName = "java.lang.Integer",
+            projectedTypeName = "Sample.Foundation.Gadget",
+            kind = "RuntimeClass",
+            baseTypeName = "Sample.Foundation.GadgetBase",
+            metadataClassName = "",
+        )
+
+        val staleInternalName = writeProjectionSupportInitializerClass(firstEntries, outputDirectory)
+        val currentInternalName = writeProjectionSupportInitializerClass(secondEntries, outputDirectory)
+
+        assertNotNull(staleInternalName)
+        assertNotNull(currentInternalName)
+        assertFalse(Files.exists(outputDirectory.resolve("$staleInternalName.class")))
+        assertTrue(Files.isRegularFile(outputDirectory.resolve("$currentInternalName.class")))
+    }
+
+    @Test
     fun projection_support_initializer_input_rejects_malformed_rows() {
         val input = Files.createTempFile("kotlin-winrt-projection-support-malformed-", ".tsv")
         Files.writeString(

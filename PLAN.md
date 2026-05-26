@@ -123,6 +123,7 @@
 - [x] Compiler support manifest duplicate fail-closed closure: reject duplicate manifest `kind`/`className`/`sourceFile` rows instead of consuming the same generator handoff source more than once.
 - [x] Compiler support manifest mapping fail-closed closure: reject manifest `className` or `sourceFile` values that do not match the generator-owned support table mapping for the declared `kind`.
 - [x] Compiler support TSV header fail-closed closure: reject compiler-support, projection registrar, generic instantiation, and generic ABI registry TSV files whose headers do not match the generator-owned schema before parsing positional rows.
+- [x] Projection support initializer stale-class closure: delete stale content-addressed `WinRTProjectionSupport_*.class` artifacts when compiler support registrar rows change so old generated support initializers cannot remain on the classpath.
 - [x] Projection registrar required-column fail-closed closure: reject blank projection registrar `kotlinClassName`, `projectedTypeName`, or `kind` columns instead of generating invalid projection support initializer registrations.
 - [x] Projection registrar kind fail-closed closure: reject projection registrar `kind` values outside the generator-emitted non-`Unknown` `WinRtTypeKind` set instead of writing invalid support registrations.
 - [x] Projection registrar duplicate fail-closed closure: reject duplicate projection registrar `kotlinClassName`/`projectedTypeName` rows instead of generating repeated support initializer registrations.
