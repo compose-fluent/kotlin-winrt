@@ -6,6 +6,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeDefinition
 import io.github.composefluent.winrt.metadata.WinRtTypeKind
+import io.github.composefluent.winrt.projections.generator.KotlinProjectionGenerator
 import org.gradle.api.GradleException
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.testfixtures.ProjectBuilder
@@ -785,6 +786,64 @@ class KotlinWinRtPluginTest {
             listOf("SimpleMathComponent.SimpleMath"),
             dependencyProjectedTypeNames(model, listOf(dependencyIdentity)).toList(),
         )
+    }
+
+    @Test
+    fun dependency_identity_projection_surface_prevents_downstream_duplicate_generated_fqns() {
+        val project = ProjectBuilder.builder().build()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """
+            {
+              "includeNamespaces": ["Sample.Dependency"],
+              "includeTypes": [],
+              "projectedTypes": ["Sample.Dependency.SharedWidget"],
+              "excludeNamespaces": [],
+              "excludeTypes": []
+            }
+            """.trimIndent(),
+        )
+        val model = WinRtMetadataModel(
+            listOf(
+                WinRtNamespace(
+                    "Sample.Dependency",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Dependency",
+                            name = "SharedWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    "Sample.Application",
+                    listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Application",
+                            name = "AppWidget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val dependencyOwnedTypes = dependencyProjectedTypeNames(model, listOf(dependencyIdentity))
+        val filesByPath = KotlinProjectionGenerator(
+            emitSupportFiles = true,
+            suppressedProjectionTypeNames = dependencyOwnedTypes,
+        )
+            .generate(model)
+            .associateBy { it.relativePath }
+
+        assertEquals(setOf("Sample.Dependency.SharedWidget"), dependencyOwnedTypes)
+        assertFalse(filesByPath.containsKey("sample/dependency/SharedWidget.kt"))
+        assertTrue(filesByPath.containsKey("sample/application/AppWidget.kt"))
+        val registrar = filesByPath.getValue("kotlin-winrt-support/projection-registrar.tsv").contents
+        assertFalse(registrar.contains("Sample.Dependency.SharedWidget"))
+        assertTrue(registrar.contains("Sample.Application.AppWidget"))
     }
 
     @Test
