@@ -40,6 +40,26 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_duplicate_authoring_metadata_index_rows() {
+        val metadataIndex = Files.createTempFile("kotlin-winrt-duplicate-metadata-index-", ".tsv")
+        metadataIndex.writeText(
+            """
+            Windows.Foundation.IStringable	Interface
+            Windows.Foundation.IStringable	RuntimeClass
+            """.trimIndent(),
+        )
+
+        val error = runCatching { readAuthoringMetadataIndex(metadataIndex) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("duplicates type Windows.Foundation.IStringable"),
+        )
+    }
+
+    @Test
     fun rejects_missing_authoring_source_roots() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-missing-root-")
         val missingSourceRoot = root.resolve("missing")

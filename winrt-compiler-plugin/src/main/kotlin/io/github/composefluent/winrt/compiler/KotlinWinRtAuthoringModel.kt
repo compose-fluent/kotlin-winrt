@@ -61,19 +61,24 @@ internal fun readAuthoringMetadataIndex(path: Path): Map<String, IndexedWinRtTyp
     require(Files.isRegularFile(path)) {
         "kotlin-winrt authoring metadata index $path does not exist."
     }
-    return Files.readAllLines(path)
+    val types = linkedMapOf<String, IndexedWinRtType>()
+    Files.readAllLines(path)
         .asSequence()
-        .mapIndexedNotNull { index, line ->
+        .forEachIndexed { index, line ->
             if (line.isBlank()) {
-                null
+                return@forEachIndexed
             } else {
-                parseAuthoringMetadataIndexLine(line)
+                val type = parseAuthoringMetadataIndexLine(line)
                     ?: throw IllegalArgumentException(
                         "kotlin-winrt authoring metadata index row ${index + 1} in $path must contain type name and kind columns.",
                     )
+                require(!types.containsKey(type.qualifiedName)) {
+                    "kotlin-winrt authoring metadata index row ${index + 1} in $path duplicates type ${type.qualifiedName}."
+                }
+                types[type.qualifiedName] = type
             }
         }
-        .associateBy(IndexedWinRtType::qualifiedName)
+    return types
 }
 
 private fun parseAuthoringMetadataIndexLine(line: String): IndexedWinRtType? {
