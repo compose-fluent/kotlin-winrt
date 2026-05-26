@@ -165,6 +165,7 @@
 - [x] Runtime asset host manifest fail-closed closure: reject malformed authoring host manifests during runtimeconfig staging instead of silently omitting generated activation target maps from staged assets.
 - [x] Runtime asset dependency-authored file fail-closed closure: reject dependency identity authored metadata, host-manifest, or target-artifact paths that do not exist instead of silently omitting declared authoring payloads from staged assets.
 - [x] Runtime asset declared-file fail-closed closure: reject configured or dependency runtime asset files that do not exist instead of silently producing incomplete staged application payloads.
+- [x] Runtime NuGet resolution manifest fail-closed closure: reject malformed resolved NuGet package manifests without the generator-owned model marker or `packageRoots` array instead of treating resolver handoff drift as an empty modeled package root set.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.

@@ -198,8 +198,40 @@ internal fun writeResolvedRuntimeNuGetPackages(output: Path, packageRoots: List<
 
 internal fun readResolvedRuntimeNuGetPackageRoots(manifestFile: java.io.File): List<String> {
     val content = manifestFile.takeIf { it.isFile }?.readText().orEmpty()
-    return readJsonStringArrayField(content, "packageRoots")
+    require(readJsonString(content, "model") == "winrt-runtime-nuget-packages") {
+        "Resolved WinRT runtime NuGet package manifest '${manifestFile.absolutePath}' has malformed model."
+    }
+    return readRequiredJsonStringArrayField(content, "packageRoots", manifestFile)
 }
+
+private fun readJsonString(content: String, name: String): String? =
+    Regex(""""${Regex.escape(name)}"\s*:\s*"((?:\\.|[^"\\])*)"""")
+        .find(content)
+        ?.groupValues
+        ?.get(1)
+        ?.decodeJsonString()
+
+private fun readRequiredJsonStringArrayField(
+    content: String,
+    name: String,
+    manifestFile: java.io.File,
+): List<String> {
+    val match = Regex(""""${Regex.escape(name)}"\s*:\s*\[(.*?)\]""", RegexOption.DOT_MATCHES_ALL)
+        .find(content)
+        ?: throw IllegalArgumentException(
+            "Resolved WinRT runtime NuGet package manifest '${manifestFile.absolutePath}' is missing $name.",
+    )
+    return readJsonStringArray(match.groupValues[1])
+}
+
+private fun readJsonStringArray(content: String): List<String> =
+    Regex(""""((?:\\.|[^"\\])*)"""")
+        .findAll(content)
+        .map { it.groupValues[1].decodeJsonString() }
+        .toList()
+
+private fun String.decodeJsonString(): String =
+    replace("\\\"", "\"").replace("\\\\", "\\")
 
 private fun WinRtNuGetPackageIdentity.nuGetIdentityKey(): String =
     "${normalizedPackageId.lowercase()}:${normalizedVersion.lowercase()}"
