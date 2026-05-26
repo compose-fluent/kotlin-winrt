@@ -628,9 +628,17 @@ class KotlinProjectionPlanner(
                         signatureMatcher = { interfaceType ->
                             interfaceType.qualifiedName == staticInterface.qualifiedName &&
                                 interfaceType.events.any {
-                                    it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                    it.projectionSignatureIgnoringStaticKey() == event.projectionSignatureIgnoringStaticKey() &&
                                         it.hasNativeProjectionAddAccessor()
                                 }
+                        },
+                        slotConstantNameResolver = { interfaceType ->
+                            interfaceType.events
+                                .firstOrNull {
+                                    it.projectionSignatureIgnoringStaticKey() == event.projectionSignatureIgnoringStaticKey() &&
+                                        it.hasNativeProjectionAddAccessor()
+                                }
+                                ?.let { "${it.name.uppercase()}_ADD_SLOT" }
                         },
                     )?.let(::add)
                 }
@@ -655,9 +663,17 @@ class KotlinProjectionPlanner(
                         signatureMatcher = { interfaceType ->
                             interfaceType.qualifiedName == staticInterface.qualifiedName &&
                                 interfaceType.events.any {
-                                    it.projectionSignatureKey() == event.projectionSignatureKey() &&
+                                    it.projectionSignatureIgnoringStaticKey() == event.projectionSignatureIgnoringStaticKey() &&
                                         it.hasNativeProjectionRemoveAccessor()
                                 }
+                        },
+                        slotConstantNameResolver = { interfaceType ->
+                            interfaceType.events
+                                .firstOrNull {
+                                    it.projectionSignatureIgnoringStaticKey() == event.projectionSignatureIgnoringStaticKey() &&
+                                        it.hasNativeProjectionRemoveAccessor()
+                                }
+                                ?.let { "${it.name.uppercase()}_REMOVE_SLOT" }
                         },
                     )?.let(::add)
                 }
@@ -1847,6 +1863,12 @@ internal fun WinRtPropertyDefinition.projectionSignatureIgnoringStaticKey(): Str
 internal fun WinRtEventDefinition.projectionSignatureKey(): String = buildString {
     append(if (isStatic) 'S' else 'I')
     append('|')
+    append(name)
+    append('|')
+    append(delegateTypeName)
+}
+
+internal fun WinRtEventDefinition.projectionSignatureIgnoringStaticKey(): String = buildString {
     append(name)
     append('|')
     append(delegateTypeName)
