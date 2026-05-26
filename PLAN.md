@@ -120,6 +120,7 @@
 - [x] Compiler support manifest negative-count fail-closed closure: reject negative manifest-declared support entry counts instead of accepting impossible generator handoff totals.
 - [x] Compiler support manifest required-column fail-closed closure: reject blank manifest `kind`, `className`, or `sourceFile` columns instead of letting invalid support declarations be filtered, resolved as directories, or emitted into support classes.
 - [x] Projection registrar required-column fail-closed closure: reject blank projection registrar `kotlinClassName`, `projectedTypeName`, or `kind` columns instead of generating invalid projection support initializer registrations.
+- [x] Projection registrar kind fail-closed closure: reject projection registrar `kind` values outside the generator-emitted non-`Unknown` `WinRtTypeKind` set instead of writing invalid support registrations.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Generic type-instantiation required-column fail-closed closure: reject blank generic instantiation `className` or `sourceType` columns instead of accepting invalid generator handoff rows.
 - [x] Generic ABI registry kind/column fail-closed closure: reject unknown generic ABI registry `kind` values and blank delegate support columns instead of silently dropping invalid generator handoff rows.
