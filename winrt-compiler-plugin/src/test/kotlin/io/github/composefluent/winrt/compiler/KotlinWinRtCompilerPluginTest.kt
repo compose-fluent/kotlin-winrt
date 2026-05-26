@@ -463,6 +463,47 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun generic_type_instantiation_input_rejects_malformed_delegate_flags() {
+        val input = Files.createTempFile("kotlin-winrt-generic-instantiation-bool-malformed-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf(
+                    "className",
+                    "sourceType",
+                    "isDelegate",
+                    "rcwFunctions",
+                    "vtableFunctions",
+                    "propertyAccessors",
+                    "genericReturnOnlyRcwFunctions",
+                    "projectedGenericFallbacks",
+                    "dependencies",
+                ),
+                listOf(
+                    "Windows_Foundation_IReference_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "not-a-boolean",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericTypeInstantiationEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic type instantiation input row 2"),
+        )
+    }
+
+    @Test
     fun generic_abi_registry_input_rejects_malformed_rows() {
         val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-malformed-", ".tsv")
         Files.writeString(

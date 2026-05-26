@@ -4336,7 +4336,7 @@ private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericT
     return KotlinWinRtGenericTypeInstantiationEntry(
         className = parts[0],
         sourceType = parts[1],
-        isDelegate = parts[2].toBooleanStrictOrNull() ?: false,
+        isDelegate = parts[2].toBooleanStrictOrNull() ?: return null,
         rcwFunctions = parts[3].splitListField(),
         vtableFunctions = parts[4].splitListField(),
         propertyAccessors = parts[5].splitListField(),
