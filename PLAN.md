@@ -143,6 +143,7 @@
 - [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
 - [x] Authoring metadata index list-field fail-closed closure: reject blank elements inside authoring metadata index list columns instead of silently compacting inherited/overridable interface metadata.
 - [x] Authoring candidate TSV fail-closed closure: reject malformed scanner candidate rows, visibility flags, and list fields before Gradle authoring metadata or TypeDetails rendering can consume incomplete authored type data.
+- [x] Authoring TypeDetails interface metadata fail-closed closure: reject authored TypeDetails candidates whose scanned WinRT interface metadata is missing, not an interface, or lacks IID metadata instead of silently dropping authored support generation.
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
 - [x] Authoring scanner argument fail-closed closure: reject scanner path options without values using stable diagnostics instead of surfacing low-level argument indexing failures.
 - [x] Authoring metadata index duplicate fail-closed closure: reject duplicate authored metadata index type rows instead of allowing later rows to silently overwrite compiler-plugin discovery inputs.
