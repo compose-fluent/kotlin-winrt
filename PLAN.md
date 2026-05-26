@@ -82,6 +82,7 @@
 - [x] Projected generic arity fail-closed closure: reject projected interface and delegate ABI bindings whose generic argument count does not match metadata before generic IID/signature rendering.
 - [x] Mapped key-value pair arity fail-closed closure: reject malformed `IKeyValuePair` / `Map.Entry` ABI bindings without exactly two type arguments before projection rendering.
 - [x] Mapped reference arity fail-closed closure: reject malformed `IReference` / `IReferenceArray` ABI bindings without exactly one type argument and parameterized-interface IID before projection rendering.
+- [x] Mapped event delegate arity fail-closed closure: reject malformed mapped event delegates such as `EventHandler` without required generic arguments before event-source or add/remove projection rendering.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.

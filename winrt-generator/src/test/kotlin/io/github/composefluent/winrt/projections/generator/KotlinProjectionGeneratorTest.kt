@@ -15658,6 +15658,47 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_mapped_event_handler_without_event_args_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555565"),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Updated",
+                                    delegateTypeName = "Windows.Foundation.EventHandler",
+                                    addMethodName = "add_Updated",
+                                    removeMethodName = "remove_Updated",
+                                    addMethodRowId = 6,
+                                    removeMethodRowId = 7,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget event Updated mapped delegate Windows.Foundation.EventHandler to carry 1 generic argument(s) before projection rendering; found 0.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_runtime_event_without_accessor_binding() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
