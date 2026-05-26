@@ -2783,6 +2783,13 @@ class KotlinProjectionSupportRenderer {
         )
     }
 
+    internal fun canRenderEventSourceHelper(
+        descriptor: WinRtEventHelperSubclassDescriptor,
+        typesByQualifiedName: Map<String, WinRtTypeDefinition>,
+        plansByType: Map<String, KotlinTypeProjectionPlan>,
+    ): Boolean =
+        directEventSourceCreateCode(descriptor, typesByQualifiedName, plansByType) != null
+
     private fun eventSourceConstructorCode(descriptor: WinRtEventHelperSubclassDescriptor): CodeBlock {
         val genericArguments = eventSourceTypeVariables(descriptor)
         return if (genericArguments.isEmpty()) {
