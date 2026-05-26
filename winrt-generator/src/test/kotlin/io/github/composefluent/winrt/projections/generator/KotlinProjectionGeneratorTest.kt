@@ -15959,6 +15959,55 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_projected_interface_binding_with_wrong_generic_arity_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IBox",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555596"),
+                            genericParameterCount = 1,
+                            genericParameters = listOf(WinRtGenericParameterDefinition("T", 0)),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetSink",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555597"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "setBox",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("box", "Sample.Foundation.IBox<String, Int>"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidgetSink ABI binding SETBOX_SLOT parameter box interface Sample.Foundation.IBox to carry 1 generic argument(s) before projection rendering; found 2.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_abi_member_unsupported_parameter_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(

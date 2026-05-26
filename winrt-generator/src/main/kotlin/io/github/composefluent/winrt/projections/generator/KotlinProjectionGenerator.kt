@@ -703,6 +703,7 @@ class KotlinProjectionGenerator(
                 "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole interface ${typeBinding.resolvedTypeName} to carry metadata IID before projection rendering."
             }
         }
+        validateProjectedGenericTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         validateMappedAsyncTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         validateMappedCollectionTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         if (typeBinding.kind == KotlinProjectionAbiValueKind.Array) {
@@ -735,6 +736,23 @@ class KotlinProjectionGenerator(
         }
         typeBinding.typeArguments.forEach { argument ->
             validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument, delegateInvokeContext)
+        }
+    }
+
+    private fun validateProjectedGenericTypeBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        bindingName: String,
+        bindingRole: String,
+        typeBinding: KotlinProjectionAbiTypeBinding,
+    ) {
+        if (typeBinding.kind !in setOf(KotlinProjectionAbiValueKind.ProjectedInterface, KotlinProjectionAbiValueKind.Delegate)) {
+            return
+        }
+        val resolvedTypeName = typeBinding.resolvedTypeName.substringBefore('<').removeSuffix("?")
+        val resolvedType = plan.typesByQualifiedName[resolvedTypeName] ?: return
+        val expectedArgumentCount = resolvedType.genericParameterCount
+        require(typeBinding.typeArguments.size == expectedArgumentCount) {
+            "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole ${resolvedType.kind.name.lowercase()} ${typeBinding.resolvedTypeName} to carry $expectedArgumentCount generic argument(s) before projection rendering; found ${typeBinding.typeArguments.size}."
         }
     }
 
