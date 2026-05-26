@@ -539,6 +539,9 @@ class KotlinProjectionGenerator(
                     require(interfaceType?.kind == WinRtTypeKind.Interface) {
                         "Generator requires authored runtime class ${plan.type.qualifiedName} activation factory interface $interfaceName to be present in the metadata model before authoring support rendering."
                     }
+                    require(interfaceType.iid != null) {
+                        "Generator requires authored runtime class ${plan.type.qualifiedName} activation factory interface $interfaceName to carry metadata IID before authoring support rendering."
+                    }
                 }
             }
     }
