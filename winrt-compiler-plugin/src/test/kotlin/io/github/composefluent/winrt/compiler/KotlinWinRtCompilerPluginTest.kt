@@ -786,4 +786,48 @@ class KotlinWinRtCompilerPluginTest {
         )
     }
 
+    @Test
+    fun generic_abi_registry_input_rejects_duplicate_derived_interfaces() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-duplicate-derived-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf("derived-interface", "Windows.Foundation.Collections.IVector", "", "", "", "", ""),
+                listOf("derived-interface", "Windows.Foundation.Collections.IVector", "", "", "", "", ""),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("duplicate generic ABI registry input"),
+        )
+    }
+
+    @Test
+    fun generic_abi_registry_input_rejects_duplicate_delegates() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-duplicate-delegate-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf("delegate", "_get_Value_Int", "Windows.Foundation.IReference<Int>", "get_Value", "internal unsafe delegate int _get_Value_Int(void*, out int);", "void*\u001Fout int\u001Fint", "void*\u001Fint.MakeByRefType()\u001Fint"),
+                listOf("delegate", "_get_Value_Int", "Windows.Foundation.IReference<Int>", "get_Value", "internal unsafe delegate int _get_Value_Int(void*, out int);", "void*\u001Fout int\u001Fint", "void*\u001Fint.MakeByRefType()\u001Fint"),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("duplicate generic ABI registry input"),
+        )
+    }
+
 }
