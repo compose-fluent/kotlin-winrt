@@ -704,6 +704,7 @@ class KotlinProjectionGenerator(
             }
         }
         validateProjectedGenericTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
+        validateMappedReferenceTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         validateMappedAsyncTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         validateMappedCollectionTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
         validateMappedKeyValuePairTypeBindingContract(plan, bindingName, bindingRole, typeBinding)
@@ -754,6 +755,23 @@ class KotlinProjectionGenerator(
         val expectedArgumentCount = resolvedType.genericParameterCount
         require(typeBinding.typeArguments.size == expectedArgumentCount) {
             "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole ${resolvedType.kind.name.lowercase()} ${typeBinding.resolvedTypeName} to carry $expectedArgumentCount generic argument(s) before projection rendering; found ${typeBinding.typeArguments.size}."
+        }
+    }
+
+    private fun validateMappedReferenceTypeBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        bindingName: String,
+        bindingRole: String,
+        typeBinding: KotlinProjectionAbiTypeBinding,
+    ) {
+        if (typeBinding.kind !in setOf(KotlinProjectionAbiValueKind.Reference, KotlinProjectionAbiValueKind.ReferenceArray)) {
+            return
+        }
+        require(typeBinding.interfaceId != null) {
+            "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole reference ${typeBinding.resolvedTypeName} to carry parameterized-interface metadata IID before projection rendering."
+        }
+        require(typeBinding.typeArguments.size == 1) {
+            "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole reference ${typeBinding.resolvedTypeName} to carry 1 type argument before projection rendering; found ${typeBinding.typeArguments.size}."
         }
     }
 

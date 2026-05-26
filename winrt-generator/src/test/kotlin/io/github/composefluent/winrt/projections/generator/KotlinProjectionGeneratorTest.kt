@@ -14061,6 +14061,44 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_reference_return_without_value_type_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555564"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getValue",
+                                    returnTypeName = "Windows.Foundation.IReference",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget ABI binding GETVALUE_SLOT return reference Windows.Foundation.IReference to carry 1 type argument before projection rendering; found 0.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_async_operation_without_result_type_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
