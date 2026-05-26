@@ -4343,8 +4343,18 @@ data class KotlinWinRtGenericTypeInstantiationEntry(
     val dependencies: List<String>,
 )
 
-fun readGenericTypeInstantiationEntries(path: Path): List<KotlinWinRtGenericTypeInstantiationEntry> =
-    readRequiredTsvRows(path, "generic type instantiation input", ::parseGenericTypeInstantiationLine)
+fun readGenericTypeInstantiationEntries(path: Path): List<KotlinWinRtGenericTypeInstantiationEntry> {
+    val entries = readRequiredTsvRows(path, "generic type instantiation input", ::parseGenericTypeInstantiationLine)
+    val duplicate = entries
+        .groupBy { entry -> entry.sourceType to entry.className }
+        .entries
+        .firstOrNull { (_, values) -> values.size > 1 }
+        ?.key
+    require(duplicate == null) {
+        "kotlin-winrt compiler plugin found duplicate generic type instantiation input for source type ${duplicate!!.first} and class ${duplicate.second} in $path."
+    }
+    return entries
+}
 
 private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericTypeInstantiationEntry? {
     val parts = line.split('\t', limit = 9)

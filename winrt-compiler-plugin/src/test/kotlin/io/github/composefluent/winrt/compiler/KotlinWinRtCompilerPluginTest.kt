@@ -650,6 +650,58 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun generic_type_instantiation_input_rejects_duplicate_entries() {
+        val input = Files.createTempFile("kotlin-winrt-generic-instantiation-duplicate-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf(
+                    "className",
+                    "sourceType",
+                    "isDelegate",
+                    "rcwFunctions",
+                    "vtableFunctions",
+                    "propertyAccessors",
+                    "genericReturnOnlyRcwFunctions",
+                    "projectedGenericFallbacks",
+                    "dependencies",
+                ),
+                listOf(
+                    "Windows_Foundation_IReference_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "false",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ),
+                listOf(
+                    "Windows_Foundation_IReference_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "false",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericTypeInstantiationEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("duplicate generic type instantiation input"),
+        )
+    }
+
+    @Test
     fun generic_abi_registry_input_rejects_malformed_rows() {
         val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-malformed-", ".tsv")
         Files.writeString(
