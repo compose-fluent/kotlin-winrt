@@ -1126,6 +1126,17 @@ class KotlinProjectionGenerator(
         require(typeBinding.typeArguments.size == expectedArgumentCount) {
             "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole async ${typeBinding.resolvedTypeName} to carry $expectedArgumentCount type argument(s) before projection rendering; found ${typeBinding.typeArguments.size}."
         }
+        typeBinding.typeArguments.forEachIndexed { index, argument ->
+            require(renderer.asyncOperationResultTypeSignature(argument) != null) {
+                val asyncArgumentRole = when (typeBinding.kind) {
+                    KotlinProjectionAbiValueKind.MappedAsyncActionWithProgress -> "progress"
+                    KotlinProjectionAbiValueKind.MappedAsyncOperation -> "result"
+                    KotlinProjectionAbiValueKind.MappedAsyncOperationWithProgress -> if (index == 0) "result" else "progress"
+                    else -> "argument"
+                }
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole async ${typeBinding.resolvedTypeName} $asyncArgumentRole ${argument.resolvedTypeName} to have a renderable WinRT type signature before projection rendering."
+            }
+        }
     }
 
     private fun canRenderNativeStructMetadata(
