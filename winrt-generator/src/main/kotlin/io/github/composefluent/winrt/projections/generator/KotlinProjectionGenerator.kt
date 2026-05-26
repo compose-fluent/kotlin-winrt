@@ -551,6 +551,17 @@ class KotlinProjectionGenerator(
         interfacePlan: KotlinTypeProjectionPlan,
     ) {
         val interfaceType = interfacePlan.type
+        interfaceType.methods
+            .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
+            .forEach { method ->
+                val bindingName = method.abiSlotConstantName(interfaceType.methods)
+                require(interfacePlan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+                    "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.$bindingName to be present before support rendering."
+                }
+                require(interfacePlan.abiSlotBindings.any { it.constantName == bindingName }) {
+                    "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.$bindingName to carry ABI slot metadata before support rendering."
+                }
+            }
         interfacePlan.instanceMemberBindings.forEach { binding ->
             val event = interfaceType.events.firstOrNull { event ->
                 binding.bindingName == "${event.name.uppercase()}_ADD_SLOT" ||
