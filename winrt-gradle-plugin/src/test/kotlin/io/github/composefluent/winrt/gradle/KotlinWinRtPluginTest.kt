@@ -1299,6 +1299,62 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_rejects_missing_dependency_authored_assets() {
+        val project = ProjectBuilder.builder().build()
+        val missingWinmd = project.layout.buildDirectory.file("dependency/MissingComponent.winmd").get().asFile.toPath()
+        val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
+        Files.createDirectories(dependencyIdentity.toPath().parent)
+        Files.writeString(
+            dependencyIdentity.toPath(),
+            """{"authoredMetadata":["${missingWinmd.toString().replace("\\", "\\\\")}"],"authoredHostManifests":[],"authoredTargetArtifacts":[]}""",
+        )
+
+        val task = project.tasks.register(
+            "stageMissingDependencyAuthoredAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.runtimeAssetFiles.from(project.files())
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.authoredMetadataFiles.from(project.files())
+            registeredTask.authoredHostManifestFiles.from(project.files())
+            registeredTask.authoredTargetArtifactFiles.from(project.files())
+            registeredTask.authoredHostDllFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(dependencyIdentity)
+            registeredTask.appxManifestFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(project.files())
+            registeredTask.projectPriLayoutFiles.from(project.files())
+            registeredTask.projectPriContentFiles.from(project.files())
+            registeredTask.projectPriEmbedFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceFiles.from(project.files())
+            registeredTask.defaultProjectPriLayoutFiles.from(project.files())
+            registeredTask.defaultProjectPriContentFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        val error = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("dependency-authored metadata file"),
+        )
+        assertTrue(error.message.orEmpty().contains("declared by dependency identity"))
+    }
+
+    @Test
     fun authoring_host_task_generates_reference_style_native_exports() {
         val project = ProjectBuilder.builder().build()
         val manifest = project.layout.buildDirectory.file("component/SampleComponent.host.json").get().asFile.toPath()
