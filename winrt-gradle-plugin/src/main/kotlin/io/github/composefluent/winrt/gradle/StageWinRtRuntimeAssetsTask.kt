@@ -214,34 +214,29 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
                     GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
                 }
             }
-        (authoredMetadataFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata))
-            .map(Path::of)
-            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isRegularFile()) {
-                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
-                }
-            }
-        (authoredHostManifestFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests))
-            .map(Path::of)
-            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isRegularFile()) {
-                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
-                }
-            }
+        copyOptionalFiles(authoredMetadataFiles.files.map { it.toPath() }, outputRoot)
+        copyRequiredFiles(
+            paths = dependencyIdentityFiles.files.flatMap(::readAuthoredMetadata).map(Path::of),
+            outputRoot = outputRoot,
+            description = "dependency-authored metadata",
+        )
+        copyOptionalFiles(authoredHostManifestFiles.files.map { it.toPath() }, outputRoot)
+        val dependencyHostManifests = dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map(Path::of)
+        copyRequiredFiles(
+            paths = dependencyHostManifests,
+            outputRoot = outputRoot,
+            description = "dependency-authored host manifest",
+        )
         stageAuthoringHostRuntimeConfigs(
-            sources = authoredHostManifestFiles.files + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map { java.io.File(it) },
+            sources = authoredHostManifestFiles.files.filter(java.io.File::isFile) + dependencyHostManifests.map(Path::toFile),
             outputRoot = outputRoot,
         )
-        (authoredTargetArtifactFiles.files.map { it.absolutePath } + dependencyIdentityFiles.files.flatMap(::readAuthoredTargetArtifacts))
-            .map(Path::of)
-            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
-            .forEach { source ->
-                if (source.isRegularFile()) {
-                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
-                }
-            }
+        copyOptionalFiles(authoredTargetArtifactFiles.files.map { it.toPath() }, outputRoot)
+        copyRequiredFiles(
+            paths = dependencyIdentityFiles.files.flatMap(::readAuthoredTargetArtifacts).map(Path::of),
+            outputRoot = outputRoot,
+            description = "dependency-authored target artifact",
+        )
         authoredHostDllFiles.files
             .asSequence()
             .map { it.toPath() }
@@ -272,6 +267,34 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             )
         }
         generateProjectPri(outputRoot)
+    }
+
+    private fun copyOptionalFiles(
+        paths: Iterable<Path>,
+        outputRoot: Path,
+    ) {
+        paths
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                if (source.isRegularFile()) {
+                    GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
+                }
+            }
+    }
+
+    private fun copyRequiredFiles(
+        paths: Iterable<Path>,
+        outputRoot: Path,
+        description: String,
+    ) {
+        paths
+            .distinctBy { it.toAbsolutePath().normalize().toString().lowercase() }
+            .forEach { source ->
+                require(source.isRegularFile()) {
+                    "Kotlin/WinRT runtime asset staging requires $description file $source declared by dependency identity to exist."
+                }
+                GradleFileOperations.copyFile(source, outputRoot.resolve(source.name))
+            }
     }
 
     private fun resolveNuGetPackages(
