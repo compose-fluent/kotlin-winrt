@@ -140,7 +140,7 @@ private fun readProjectionRegistrarProjectedTypeNames(file: File): List<String> 
             return@mapIndexedNotNull null
         }
         val rowNumber = index + 2
-        val parts = line.split('\t', limit = projectionRegistrarHeader.size)
+        val parts = line.split('\t')
         if (parts.size != projectionRegistrarHeader.size || parts.any(String::isBlank)) {
             throw GradleException(
                 "Projection registrar '${file.absolutePath}' has malformed row $rowNumber.",
