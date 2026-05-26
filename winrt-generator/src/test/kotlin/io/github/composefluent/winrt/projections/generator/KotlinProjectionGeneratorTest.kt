@@ -254,6 +254,54 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_renderer_rejects_authored_ccw_interface_without_projection_plan_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555555"),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                                WinRtInterfaceImplementationDefinition("Windows.Foundation.Collections.IVector<String>"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val plans = KotlinProjectionPlanner().plan(model)
+
+        val error = runCatching {
+            KotlinProjectionSupportRenderer().render(
+                model = model,
+                plans = plans,
+                context = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            )
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Support renderer requires authored runtime class Sample.Foundation.Widget CCW interface Windows.Foundation.Collections.IVector to have a projection plan before rendering authoring CCW definitions.",
+            ),
+        )
+    }
+
+    @Test
     fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
         val runtimeOwned = listOf(
             "System.Object?",
