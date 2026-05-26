@@ -124,6 +124,7 @@
 - [x] Projection registrar kind fail-closed closure: reject projection registrar `kind` values outside the generator-emitted non-`Unknown` `WinRtTypeKind` set instead of writing invalid support registrations.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Generic type-instantiation required-column fail-closed closure: reject blank generic instantiation `className` or `sourceType` columns instead of accepting invalid generator handoff rows.
+- [x] Generic type-instantiation duplicate fail-closed closure: reject duplicate generic instantiation `sourceType`/`className` rows instead of generating repeated initialization calls from ambiguous handoff data.
 - [x] Generic ABI registry kind/column fail-closed closure: reject unknown generic ABI registry `kind` values and blank delegate support columns instead of silently dropping invalid generator handoff rows.
 - [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
