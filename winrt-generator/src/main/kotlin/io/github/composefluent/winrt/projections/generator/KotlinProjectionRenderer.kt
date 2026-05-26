@@ -2552,7 +2552,8 @@ class KotlinProjectionRenderer(
         }
         val resolvedType = typesByQualifiedName[qualifiedName] ?: return null
         if (resolvedType.kind == WinRtTypeKind.Enum) {
-            return "enum($qualifiedName;i4)"
+            val underlyingSignature = resolvedType.enumUnderlyingType?.guidSignatureFragment() ?: return null
+            return "enum($qualifiedName;$underlyingSignature)"
         }
         val type = resolvedType.takeIf { it.kind == WinRtTypeKind.Struct } ?: return null
         val fieldSignatures = type.fields
@@ -2608,7 +2609,14 @@ class KotlinProjectionRenderer(
             }
         }
         if (enumQualifiedName != null) {
-            return CodeBlock.of("%T(%S, %T.INT32)", NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME, field.name.replaceFirstChar(Char::lowercase), NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME)
+            val underlyingType = typesByQualifiedName[enumQualifiedName]?.enumUnderlyingType ?: return null
+            return CodeBlock.of(
+                "%T(%S, %T.%L)",
+                NATIVE_SCALAR_FIELD_SPEC_CLASS_NAME,
+                field.name.replaceFirstChar(Char::lowercase),
+                NATIVE_STRUCT_SCALAR_KIND_CLASS_NAME,
+                underlyingType.toNativeStructScalarKindName(),
+            )
         }
         val fieldQualifiedName = nativeNestedStructFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
         val fieldType = runCatching { resolveTypeName(fieldQualifiedName) as? ClassName }.getOrNull() ?: return null
@@ -2671,6 +2679,30 @@ class KotlinProjectionRenderer(
         }
         return winRtFundamentalTypeForName(typeName)?.toNativeStructScalarKindName()
     }
+
+    private fun WinRtIntegralType.toNativeStructScalarKindName(): String =
+        when (this) {
+            WinRtIntegralType.Int8,
+            WinRtIntegralType.UInt8 -> "INT8"
+            WinRtIntegralType.Int16,
+            WinRtIntegralType.UInt16 -> "INT16"
+            WinRtIntegralType.Int32,
+            WinRtIntegralType.UInt32 -> "INT32"
+            WinRtIntegralType.Int64,
+            WinRtIntegralType.UInt64 -> "INT64"
+        }
+
+    private fun WinRtIntegralType.guidSignatureFragment(): String =
+        when (this) {
+            WinRtIntegralType.Int8 -> "i1"
+            WinRtIntegralType.UInt8 -> "u1"
+            WinRtIntegralType.Int16 -> "i2"
+            WinRtIntegralType.UInt16 -> "u2"
+            WinRtIntegralType.Int32 -> "i4"
+            WinRtIntegralType.UInt32 -> "u4"
+            WinRtIntegralType.Int64 -> "i8"
+            WinRtIntegralType.UInt64 -> "u8"
+        }
 
     internal fun nativeNestedStructFieldTypeName(
         typeName: String,
@@ -2737,7 +2769,8 @@ class KotlinProjectionRenderer(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock? {
         val enumType = nativeStructEnumFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
-        return CodeBlock.of("%T.Metadata.fromAbi(%T.readInt32(%L))", resolveTypeName(enumType), PLATFORM_ABI_CLASS_NAME, slice)
+        val underlyingType = typesByQualifiedName[enumType]?.enumUnderlyingType ?: return null
+        return CodeBlock.of("%T.Metadata.fromAbi(%L)", resolveTypeName(enumType), integralPlatformReadExpression(underlyingType, slice))
     }
 
     private fun nativeStructEnumFieldWriteCode(
@@ -2748,7 +2781,12 @@ class KotlinProjectionRenderer(
         typesByQualifiedName: Map<String, WinRtTypeDefinition>,
     ): CodeBlock? {
         val enumType = nativeStructEnumFieldTypeName(field.typeName, currentNamespace, typesByQualifiedName) ?: return null
-        return CodeBlock.of("%T.writeInt32(%L, %T.Metadata.toAbi(%L))", PLATFORM_ABI_CLASS_NAME, slice, resolveTypeName(enumType), value)
+        val underlyingType = typesByQualifiedName[enumType]?.enumUnderlyingType ?: return null
+        return integralPlatformWriteCode(
+            underlyingType,
+            slice,
+            CodeBlock.of("%T.Metadata.toAbi(%L)", resolveTypeName(enumType), value),
+        )
     }
 
     private fun nativeStructEnumFieldTypeName(
