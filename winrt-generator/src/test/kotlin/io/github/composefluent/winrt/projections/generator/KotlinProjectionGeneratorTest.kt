@@ -556,6 +556,137 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun custom_mapped_type_matrix_declares_projection_and_abi_ownership() {
+        data class MappedTypeExpectation(
+            val abiName: String,
+            val abiKind: KotlinProjectionAbiValueKind?,
+            val runtimeOwned: Boolean = false,
+            val simpleLookup: Boolean = false,
+            val customStructFromAbi: String? = null,
+            val customStructCopyTo: String? = null,
+            val customObjectFromAbi: String? = null,
+            val customObjectTypeHandle: String? = null,
+            val readOnlyCollectionKind: KotlinProjectionReadOnlyCollectionKind? = null,
+            val mutableCollectionKind: KotlinProjectionMutableCollectionKind? = null,
+        )
+
+        listOf(
+            MappedTypeExpectation("System.Object", null, runtimeOwned = true, simpleLookup = true),
+            MappedTypeExpectation(
+                "Windows.Foundation.DateTime",
+                KotlinProjectionAbiValueKind.Struct,
+                runtimeOwned = true,
+                simpleLookup = true,
+                customStructFromAbi = "dateTimeFromAbi",
+                customStructCopyTo = "copyDateTimeTo",
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.TimeSpan",
+                KotlinProjectionAbiValueKind.Struct,
+                runtimeOwned = true,
+                simpleLookup = true,
+                customStructFromAbi = "timeSpanFromAbi",
+                customStructCopyTo = "copyTimeSpanTo",
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.HResult",
+                KotlinProjectionAbiValueKind.Struct,
+                runtimeOwned = true,
+                simpleLookup = true,
+                customStructFromAbi = "hResultFromAbi",
+                customStructCopyTo = "copyHResultTo",
+            ),
+            MappedTypeExpectation(
+                "Windows.UI.Xaml.Interop.TypeName",
+                KotlinProjectionAbiValueKind.Struct,
+                runtimeOwned = true,
+                simpleLookup = true,
+                customStructFromAbi = "typeNameFromAbi",
+                customStructCopyTo = "copyTypeNameTo",
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.Uri",
+                KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                runtimeOwned = true,
+                simpleLookup = true,
+                customObjectFromAbi = "uriFromAbi",
+                customObjectTypeHandle = "io.github.composefluent.winrt.runtime.WinRtUri",
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.IReference",
+                KotlinProjectionAbiValueKind.Reference,
+                simpleLookup = true,
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.Collections.IVector",
+                KotlinProjectionAbiValueKind.MappedVector,
+                mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+            ),
+            MappedTypeExpectation(
+                "Windows.Foundation.Collections.IMapView",
+                KotlinProjectionAbiValueKind.MappedMapView,
+                readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.MapView,
+            ),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.Interop.IBindableVector",
+                KotlinProjectionAbiValueKind.MappedBindableVector,
+                mutableCollectionKind = KotlinProjectionMutableCollectionKind.Vector,
+            ),
+            MappedTypeExpectation(
+                "Microsoft.UI.Xaml.Data.INotifyPropertyChanged",
+                KotlinProjectionAbiValueKind.ProjectedInterface,
+                runtimeOwned = true,
+                customObjectFromAbi = "objectFromAbi",
+                customObjectTypeHandle = "io.github.composefluent.winrt.runtime.WinRtPropertyChangedNotifier",
+            ),
+            MappedTypeExpectation(
+                "Windows.UI.Xaml.Interop.IBindableVectorView",
+                KotlinProjectionAbiValueKind.MappedBindableVectorView,
+                readOnlyCollectionKind = KotlinProjectionReadOnlyCollectionKind.VectorView,
+            ),
+            MappedTypeExpectation(
+                "Windows.UI.Xaml.Interop.NotifyCollectionChangedEventArgs",
+                KotlinProjectionAbiValueKind.ProjectedRuntimeClass,
+                runtimeOwned = true,
+                customObjectFromAbi = "objectFromAbi",
+                customObjectTypeHandle = "io.github.composefluent.winrt.runtime.WinRtNotifyCollectionChangedEventArgs",
+            ),
+        ).forEach { expected ->
+            val mappedType = mappedTypeByAbiName(expected.abiName)
+
+            assertNotNull(expected.abiName, mappedType)
+            assertEquals(expected.abiName, expected.abiKind, mappedType!!.abiValueKind)
+            assertEquals(expected.abiName, expected.runtimeOwned, mappedType.isRuntimeOwnedProjection())
+            assertEquals(expected.abiName, expected.simpleLookup, mappedType.simpleAbiLookup)
+            assertEquals(expected.abiName, expected.customStructFromAbi, mappedType.customStructAbi?.fromAbiFunctionName)
+            assertEquals(expected.abiName, expected.customStructCopyTo, mappedType.customStructAbi?.copyToFunctionName)
+            assertEquals(expected.abiName, expected.customObjectFromAbi, mappedType.customObjectAbi?.fromAbiFunctionName)
+            assertEquals(expected.abiName, expected.customObjectTypeHandle, mappedType.customObjectAbi?.typeHandleName)
+            assertEquals(expected.abiName, expected.readOnlyCollectionKind, mappedType.readOnlyCollectionKind)
+            assertEquals(expected.abiName, expected.mutableCollectionKind, mappedType.mutableCollectionKind)
+        }
+
+        val planner = KotlinProjectionPlanner()
+
+        assertEquals(
+            KotlinProjectionAbiValueKind.String,
+            planner.classifyAbiTypeBinding(
+                typeName = "String",
+                currentNamespace = "Sample.Foundation",
+                typesByQualifiedName = emptyMap(),
+            ).kind,
+        )
+        assertEquals(
+            KotlinProjectionAbiValueKind.GuidValue,
+            planner.classifyAbiTypeBinding(
+                typeName = "Guid",
+                currentNamespace = "Sample.Foundation",
+                typesByQualifiedName = emptyMap(),
+            ).kind,
+        )
+    }
+
+    @Test
     fun planner_resolves_namespace_relative_mapped_abi_types() {
         val iterable = WinRtTypeDefinition(
             namespace = "Windows.Foundation.Collections",
