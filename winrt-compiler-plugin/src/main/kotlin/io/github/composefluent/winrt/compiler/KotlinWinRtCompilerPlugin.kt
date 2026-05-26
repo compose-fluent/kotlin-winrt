@@ -4339,6 +4339,9 @@ private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericT
     if (parts.size < 9) {
         return null
     }
+    if (parts[0].isBlank() || parts[1].isBlank()) {
+        return null
+    }
     return KotlinWinRtGenericTypeInstantiationEntry(
         className = parts[0],
         sourceType = parts[1],
