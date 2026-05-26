@@ -107,6 +107,7 @@
 - [x] Reference type-signature fail-closed closure: reject `IReference<T>` / `IReferenceArray<T>` bindings whose element argument cannot render a WinRT type signature before reference marshaler or readback helpers silently fall back.
 - [x] Key-value pair type-signature fail-closed closure: reject `IKeyValuePair<K, V>` bindings whose key or value argument cannot render a WinRT type signature before collection adapter or generic signature helpers silently fall back.
 - [x] Generic delegate type-signature fail-closed closure: reject parameterized delegate bindings whose generic arguments cannot render WinRT type signatures before delegate parameterized IID helper rendering silently falls back.
+- [x] ABI call-plan fail-closed closure: validate instance and static member ABI call plans before member rendering so unsupported marshaler shapes fail with stable diagnostics instead of surfacing from renderer fallback paths.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
