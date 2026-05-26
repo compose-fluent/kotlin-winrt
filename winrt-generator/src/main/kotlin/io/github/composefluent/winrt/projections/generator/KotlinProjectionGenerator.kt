@@ -1038,6 +1038,7 @@ class KotlinProjectionGenerator(
         typeBinding.typeArguments.forEach { argument ->
             validateProjectedAbiTypeBindingContract(plan, bindingName, bindingRole, argument, delegateInvokeContext)
         }
+        validateMappedCollectionAdapterBindingContract(plan, bindingName, bindingRole, typeBinding)
     }
 
     private fun validateProjectedGenericTypeBindingContract(
@@ -1107,6 +1108,32 @@ class KotlinProjectionGenerator(
         }
         require(typeBinding.typeArguments.size == expectedArgumentCount) {
             "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole collection ${typeBinding.resolvedTypeName} to carry $expectedArgumentCount type argument(s) before projection rendering; found ${typeBinding.typeArguments.size}."
+        }
+    }
+
+    private fun validateMappedCollectionAdapterBindingContract(
+        plan: KotlinTypeProjectionPlan,
+        bindingName: String,
+        bindingRole: String,
+        typeBinding: KotlinProjectionAbiTypeBinding,
+    ) {
+        val adapterArguments = when (typeBinding.kind) {
+            KotlinProjectionAbiValueKind.MappedIterable,
+            KotlinProjectionAbiValueKind.MappedVector,
+            KotlinProjectionAbiValueKind.MappedVectorView ->
+                listOf("element" to typeBinding.typeArguments.singleOrNull())
+            KotlinProjectionAbiValueKind.MappedMap,
+            KotlinProjectionAbiValueKind.MappedMapView ->
+                listOf(
+                    "key" to typeBinding.typeArguments.getOrNull(0),
+                    "value" to typeBinding.typeArguments.getOrNull(1),
+                )
+            else -> return
+        }
+        adapterArguments.forEach { (role, argument) ->
+            require(argument != null && renderer.collectionReferenceAdapterCode(argument) != null) {
+                "Generator requires ${plan.projectionContractSubject()} ABI binding $bindingName $bindingRole collection ${typeBinding.resolvedTypeName} $role ${argument?.resolvedTypeName ?: "<missing>"} to have a supported collection reference adapter before projection rendering."
+            }
         }
     }
 
