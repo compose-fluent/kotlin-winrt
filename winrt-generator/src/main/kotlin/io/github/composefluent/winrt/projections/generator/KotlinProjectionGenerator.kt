@@ -5,6 +5,7 @@ import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerPlanDescriptor
 import io.github.composefluent.winrt.metadata.WinRtAbiMarshalerSlotDescriptor
 import io.github.composefluent.winrt.metadata.WinRtCustomMappedMemberOutputDescriptor
 import io.github.composefluent.winrt.metadata.WinRtEventDefinition
+import io.github.composefluent.winrt.metadata.WinRtEventHandlerKind
 import io.github.composefluent.winrt.metadata.WinRtEventInvokeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFactorySurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtFieldDefinition
@@ -42,6 +43,7 @@ import io.github.composefluent.winrt.metadata.isWinRtVoidTypeName
 import io.github.composefluent.winrt.metadata.requireValidForProjection
 import io.github.composefluent.winrt.metadata.semanticHelpers
 import io.github.composefluent.winrt.metadata.winRtFundamentalTypeForName
+import io.github.composefluent.winrt.metadata.winRtEventHandlerKindForTypeName
 import io.github.composefluent.winrt.runtime.ActivationFactory
 import io.github.composefluent.winrt.runtime.ComObjectReference
 import io.github.composefluent.winrt.runtime.ComVtableInvoker
@@ -590,9 +592,16 @@ class KotlinProjectionGenerator(
         event: WinRtEventDefinition,
         rawDelegateTypeName: String,
     ) {
-        val expectedArgumentCount = when (rawDelegateTypeName) {
-            "Windows.Foundation.EventHandler" -> 1
-            else -> return
+        val expectedArgumentCount = when (winRtEventHandlerKindForTypeName(rawDelegateTypeName)) {
+            WinRtEventHandlerKind.EventHandler,
+            WinRtEventHandlerKind.VectorChangedEventHandler,
+            WinRtEventHandlerKind.AsyncActionProgressHandler -> 1
+            WinRtEventHandlerKind.TypedEventHandler,
+            WinRtEventHandlerKind.MapChangedEventHandler,
+            WinRtEventHandlerKind.AsyncOperationProgressHandler -> 2
+            WinRtEventHandlerKind.PropertyChangedEventHandler,
+            WinRtEventHandlerKind.NotifyCollectionChangedEventHandler -> 0
+            null -> return
         }
         val argumentCount = WinRtTypeRef.fromDisplayName(event.delegateTypeName)
             .normalized()
