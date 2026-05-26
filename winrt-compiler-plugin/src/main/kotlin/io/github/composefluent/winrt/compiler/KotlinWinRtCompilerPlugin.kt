@@ -4378,7 +4378,11 @@ fun <T> readCompilerSupportInputEntries(
             require(Files.isRegularFile(sourcePath)) {
                 "kotlin-winrt compiler plugin requires $description file $sourcePath declared by $manifestPath to exist."
             }
-            read(sourcePath).asSequence()
+            val entries = read(sourcePath)
+            require(entries.size == entry.entries) {
+                "kotlin-winrt compiler plugin expected ${entry.entries} $description entries in $sourcePath declared by $manifestPath, but found ${entries.size}."
+            }
+            entries.asSequence()
         }
         .toList()
 }
