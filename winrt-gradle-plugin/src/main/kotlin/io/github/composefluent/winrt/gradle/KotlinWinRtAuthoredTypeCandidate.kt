@@ -19,21 +19,46 @@ object KotlinWinRtAuthoringCandidateFile {
             return emptyList()
         }
         return Files.readAllLines(path)
-            .filter(String::isNotBlank)
-            .map { line ->
-                val parts = line.split('\t')
-                KotlinWinRtAuthoredTypeCandidate(
-                    packageName = parts.getOrElse(0) { "" },
-                    className = parts.getOrElse(1) { "" },
-                    sourceTypeName = parts.getOrElse(2) { "" },
-                    winRtBaseClassName = parts.getOrElse(3) { "" }.takeIf(String::isNotBlank),
-                    winRtInterfaceNames = parts.getOrElse(4) { "" }.semicolonList(),
-                    overridableInterfaceNames = parts.getOrElse(5) { "" }.semicolonList(),
-                    isPublic = parts.getOrElse(6) { "true" }.toBoolean(),
-                )
+            .mapIndexedNotNull { index, line ->
+                if (line.isBlank()) {
+                    null
+                } else {
+                    parseLine(line)
+                        ?: throw IllegalArgumentException(
+                            "kotlin-winrt authored candidate row ${index + 1} in $path is malformed.",
+                        )
+                }
             }
     }
 
-    private fun String.semicolonList(): List<String> =
-        split(';').filter(String::isNotBlank)
+    private fun parseLine(line: String): KotlinWinRtAuthoredTypeCandidate? {
+        val parts = line.split('\t', limit = 7)
+        if (parts.size < 7) {
+            return null
+        }
+        if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+            return null
+        }
+        val isPublic = parts[6].toBooleanStrictOrNull() ?: return null
+        return KotlinWinRtAuthoredTypeCandidate(
+            packageName = parts[0],
+            className = parts[1],
+            sourceTypeName = parts[2],
+            winRtBaseClassName = parts[3].takeIf(String::isNotBlank),
+            winRtInterfaceNames = parts[4].semicolonListOrNull() ?: return null,
+            overridableInterfaceNames = parts[5].semicolonListOrNull() ?: return null,
+            isPublic = isPublic,
+        )
+    }
+
+    private fun String.semicolonListOrNull(): List<String>? {
+        if (isBlank()) {
+            return emptyList()
+        }
+        val parts = split(';')
+        if (parts.any(String::isBlank)) {
+            return null
+        }
+        return parts
+    }
 }

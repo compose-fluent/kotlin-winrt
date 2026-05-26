@@ -16,8 +16,73 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
 class KotlinWinRtAuthoringSourceScannerTest {
+    @Test
+    fun reads_authored_candidate_file_rows() {
+        val input = Files.createTempFile("kotlin-winrt-authored-candidates-", ".tsv")
+        input.writeText(
+            "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\n",
+        )
+
+        val candidate = KotlinWinRtAuthoringCandidateFile.read(input).single()
+
+        assertEquals("sample", candidate.packageName)
+        assertEquals("App", candidate.className)
+        assertEquals("sample.App", candidate.sourceTypeName)
+        assertEquals("Microsoft.UI.Xaml.Application", candidate.winRtBaseClassName)
+        assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), candidate.winRtInterfaceNames)
+        assertEquals(listOf("Microsoft.UI.Xaml.IApplicationOverrides"), candidate.overridableInterfaceNames)
+        assertTrue(candidate.isPublic)
+    }
+
+    @Test
+    fun rejects_malformed_authored_candidate_file_rows() {
+        val input = Files.createTempFile("kotlin-winrt-authored-candidates-malformed-", ".tsv")
+        input.writeText("sample\tApp\tsample.App\n")
+
+        val error = runCatching { KotlinWinRtAuthoringCandidateFile.read(input) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt authored candidate row 1"),
+        )
+    }
+
+    @Test
+    fun rejects_blank_authored_candidate_file_list_elements() {
+        val input = Files.createTempFile("kotlin-winrt-authored-candidates-list-", ".tsv")
+        input.writeText(
+            "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides;;Other.Interface\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\n",
+        )
+
+        val error = runCatching { KotlinWinRtAuthoringCandidateFile.read(input) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt authored candidate row 1"),
+        )
+    }
+
+    @Test
+    fun rejects_malformed_authored_candidate_file_visibility_flags() {
+        val input = Files.createTempFile("kotlin-winrt-authored-candidates-visibility-", ".tsv")
+        input.writeText(
+            "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\tnot-a-boolean\n",
+        )
+
+        val error = runCatching { KotlinWinRtAuthoringCandidateFile.read(input) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt authored candidate row 1"),
+        )
+    }
+
     @Test
     fun merges_scanned_authored_runtime_classes_into_projection_metadata_model() {
         val augmented = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
