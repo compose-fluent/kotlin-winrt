@@ -167,6 +167,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_rejects_unexpected_headers() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-header-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	entries	sourceFile
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	12	projection-registrar.tsv
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readCompilerSupportManifest(manifest) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin expected compiler support manifest header"),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_malformed_rows() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-malformed-", ".tsv")
         Files.writeString(
@@ -447,6 +468,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_input_rejects_unexpected_headers() {
+        val input = Files.createTempFile("kotlin-winrt-projection-support-header-", ".tsv")
+        Files.writeString(
+            input,
+            """
+            projectedTypeName	kotlinClassName	kind	baseTypeName	metadataClassName
+            Sample.Foundation.Widget	java.lang.String	RuntimeClass	Sample.Foundation.WidgetBase
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readProjectionRegistrarEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin expected projection registrar input header"),
+        )
+    }
+
+    @Test
     fun projection_support_initializer_input_rejects_blank_required_columns() {
         val input = Files.createTempFile("kotlin-winrt-projection-support-blank-columns-", ".tsv")
         Files.writeString(
@@ -664,6 +706,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun generic_type_instantiation_input_rejects_unexpected_headers() {
+        val input = Files.createTempFile("kotlin-winrt-generic-instantiation-header-", ".tsv")
+        Files.writeString(
+            input,
+            """
+            sourceType	className	isDelegate	rcwFunctions	vtableFunctions	propertyAccessors	genericReturnOnlyRcwFunctions	projectedGenericFallbacks	dependencies
+            Windows.Foundation.IReference<Int>	Windows_Foundation_IReference_Int	false
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readGenericTypeInstantiationEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin expected generic type instantiation input header"),
+        )
+    }
+
+    @Test
     fun generic_type_instantiation_input_rejects_malformed_delegate_flags() {
         val input = Files.createTempFile("kotlin-winrt-generic-instantiation-bool-malformed-", ".tsv")
         Files.writeString(
@@ -856,6 +919,27 @@ class KotlinWinRtCompilerPluginTest {
         assertTrue(
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic ABI registry input row 2"),
+        )
+    }
+
+    @Test
+    fun generic_abi_registry_input_rejects_unexpected_headers() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-header-", ".tsv")
+        Files.writeString(
+            input,
+            """
+            kind	name	sourceGenericType	declaration	operation	abiParameterTypes	typeArrayShape
+            derived-interface	Windows.Foundation.Collections.IVector
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin expected generic ABI registry input header"),
         )
     }
 
