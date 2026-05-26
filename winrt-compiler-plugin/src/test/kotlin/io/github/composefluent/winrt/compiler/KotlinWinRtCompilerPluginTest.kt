@@ -746,6 +746,47 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun generic_type_instantiation_input_rejects_blank_list_elements() {
+        val input = Files.createTempFile("kotlin-winrt-generic-instantiation-blank-list-element-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf(
+                    "className",
+                    "sourceType",
+                    "isDelegate",
+                    "rcwFunctions",
+                    "vtableFunctions",
+                    "propertyAccessors",
+                    "genericReturnOnlyRcwFunctions",
+                    "projectedGenericFallbacks",
+                    "dependencies",
+                ),
+                listOf(
+                    "Windows_Foundation_IReference_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "false",
+                    "Create,,CreateFallback",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericTypeInstantiationEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic type instantiation input row 2"),
+        )
+    }
+
+    @Test
     fun generic_type_instantiation_input_rejects_duplicate_entries() {
         val input = Files.createTempFile("kotlin-winrt-generic-instantiation-duplicate-", ".tsv")
         Files.writeString(
@@ -847,6 +888,35 @@ class KotlinWinRtCompilerPluginTest {
             listOf(
                 listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
                 listOf("delegate", "_get_Value_Int", "", "get_Value", "internal unsafe delegate int _get_Value_Int(void*, out int);", "void*\u001Fout int\u001Fint", "void*\u001Fint.MakeByRefType()\u001Fint"),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic ABI registry input row 2"),
+        )
+    }
+
+    @Test
+    fun generic_abi_registry_input_rejects_blank_list_elements() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-blank-list-element-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf(
+                    "delegate",
+                    "_get_Value_Int",
+                    "Windows.Foundation.IReference<Int>",
+                    "get_Value",
+                    "internal unsafe delegate int _get_Value_Int(void*, out int);",
+                    "void*\u001F\u001Fint",
+                    "void*\u001Fint.MakeByRefType()\u001Fint",
+                ),
             ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
         )
 
