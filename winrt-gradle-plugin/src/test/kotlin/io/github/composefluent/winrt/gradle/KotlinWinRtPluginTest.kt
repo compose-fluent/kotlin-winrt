@@ -1244,6 +1244,61 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_assets_task_rejects_malformed_authoring_host_manifests() {
+        val project = ProjectBuilder.builder().build()
+        val manifest = project.layout.buildDirectory.file("component/AppComponent.host.json").get().asFile.toPath()
+        Files.createDirectories(manifest.parent)
+        Files.writeString(
+            manifest,
+            """{"assemblyName":"AppComponent","targetArtifact":"AppComponent.jar","activatableClasses":[],"activatableClassTargets":{}}""",
+        )
+
+        val task = project.tasks.register(
+            "stageMalformedHostManifestAssets",
+            StageWinRtRuntimeAssetsTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("runtime-assets"))
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+            registeredTask.runtimeAssetFiles.from(project.files())
+            registeredTask.dependencyRuntimeAssetFiles.from(project.files())
+            registeredTask.nugetPackageContentFiles.from(project.files())
+            registeredTask.resolvedNuGetPackageManifestFiles.from(project.files())
+            registeredTask.authoredMetadataFiles.from(project.files())
+            registeredTask.authoredHostManifestFiles.from(manifest)
+            registeredTask.authoredTargetArtifactFiles.from(project.files())
+            registeredTask.authoredHostDllFiles.from(project.files())
+            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.appxManifestFiles.from(project.files())
+            registeredTask.projectPriResourceFiles.from(project.files())
+            registeredTask.projectPriLayoutFiles.from(project.files())
+            registeredTask.projectPriContentFiles.from(project.files())
+            registeredTask.projectPriEmbedFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceFiles.from(project.files())
+            registeredTask.defaultProjectPriLayoutFiles.from(project.files())
+            registeredTask.defaultProjectPriContentFiles.from(project.files())
+            registeredTask.defaultProjectPriResourceRoot.set(project.layout.buildDirectory.dir("default-pri"))
+            registeredTask.nugetGlobalPackagesRoots.set(emptyList())
+            registeredTask.useNuGetCliGlobalPackages.set(false)
+            registeredTask.nugetExecutable.set("nuget")
+            registeredTask.nugetCliVersion.set("7.3.1")
+            registeredTask.nugetCliCacheDirectory.set(project.layout.buildDirectory.dir("nuget-cli"))
+            registeredTask.restoreNuGetPackages.set(false)
+            registeredTask.runtimeIdentifier.set("win-x64")
+            registeredTask.generateProjectPri.set(false)
+        }.get()
+
+        val error = runCatching { task.stage() }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("does not declare any activatable class targets"),
+        )
+        assertFalse(Files.exists(task.outputDirectory.get().asFile.toPath().resolve("AppComponent.runtimeconfig.json")))
+    }
+
+    @Test
     fun authoring_host_task_generates_reference_style_native_exports() {
         val project = ProjectBuilder.builder().build()
         val manifest = project.layout.buildDirectory.file("component/SampleComponent.host.json").get().asFile.toPath()

@@ -417,7 +417,7 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
         outputRoot: Path,
     ) {
         sources
-            .mapNotNull { source -> readAuthoringHostRuntimeConfig(source) }
+            .map { source -> readAuthoringHostRuntimeConfig(source) }
             .groupBy { it.assemblyName }
             .forEach { (assemblyName, configs) ->
                 val activatableClasses = configs
@@ -432,11 +432,12 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             }
     }
 
-    private fun readAuthoringHostRuntimeConfig(source: java.io.File): AuthoringHostRuntimeConfig? {
+    private fun readAuthoringHostRuntimeConfig(source: java.io.File): AuthoringHostRuntimeConfig {
         val content = source.takeIf { it.isFile }?.readText().orEmpty()
-        val assemblyName = readJsonString(content, "assemblyName") ?: return null
+        val assemblyName = readJsonString(content, "assemblyName")
+            ?: throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' is missing assemblyName.")
         if (assemblyName.isBlank()) {
-            return null
+            throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' has blank assemblyName.")
         }
         val targetArtifact = readJsonString(content, "targetArtifact").orEmpty()
         val explicitTargets = readJsonStringMap(content, "activatableClassTargets")
@@ -444,6 +445,9 @@ abstract class StageWinRtRuntimeAssetsTask : DefaultTask() {
             .filter { it.isNotBlank() && targetArtifact.isNotBlank() }
             .associateWith { targetArtifact }
         val activatableClasses = defaultTargets + explicitTargets
+        if (activatableClasses.isEmpty()) {
+            throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' does not declare any activatable class targets.")
+        }
         return AuthoringHostRuntimeConfig(
             assemblyName = assemblyName,
             activatableClasses = activatableClasses,
