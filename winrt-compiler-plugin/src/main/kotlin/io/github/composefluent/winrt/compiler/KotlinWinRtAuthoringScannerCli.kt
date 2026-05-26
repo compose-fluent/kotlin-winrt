@@ -49,7 +49,11 @@ object KotlinWinRtAuthoringScannerCli {
         winRtTypes: Map<String, IndexedWinRtType>,
     ): List<KotlinWinRtAuthoredTypeCandidate> {
         val sourceFiles = sourceRoots
-            .filter(Files::exists)
+            .onEach { root ->
+                require(Files.exists(root)) {
+                    "kotlin-winrt authoring scanner source root $root does not exist."
+                }
+            }
             .flatMap(::kotlinSourceFiles)
             .distinct()
             .sorted()
