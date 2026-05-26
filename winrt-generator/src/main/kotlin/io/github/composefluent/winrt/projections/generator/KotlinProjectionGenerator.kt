@@ -572,6 +572,7 @@ class KotlinProjectionGenerator(
         val delegateTypeName = event.delegateTypeName
         val rawDelegateTypeName = delegateTypeName.substringBefore('<').removeSuffix("?")
         if (mappedTypeByAbiName(rawDelegateTypeName) != null) {
+            validateMappedEventDelegateContract(plan, event, rawDelegateTypeName)
             return
         }
         val delegateType = eventDelegateType(delegateTypeName, plan)
@@ -582,6 +583,24 @@ class KotlinProjectionGenerator(
             "Generator requires ${plan.projectionContractSubject()} event ${event.name} delegate $delegateTypeName to carry metadata IID before projection rendering."
         }
         requireDelegateInvokeMethod(delegateType)
+    }
+
+    private fun validateMappedEventDelegateContract(
+        plan: KotlinTypeProjectionPlan,
+        event: WinRtEventDefinition,
+        rawDelegateTypeName: String,
+    ) {
+        val expectedArgumentCount = when (rawDelegateTypeName) {
+            "Windows.Foundation.EventHandler" -> 1
+            else -> return
+        }
+        val argumentCount = WinRtTypeRef.fromDisplayName(event.delegateTypeName)
+            .normalized()
+            .typeArguments
+            .size
+        require(argumentCount == expectedArgumentCount) {
+            "Generator requires ${plan.projectionContractSubject()} event ${event.name} mapped delegate ${event.delegateTypeName} to carry $expectedArgumentCount generic argument(s) before projection rendering; found $argumentCount."
+        }
     }
 
     private fun validateEventAccessorBindingContracts(plan: KotlinTypeProjectionPlan) {
