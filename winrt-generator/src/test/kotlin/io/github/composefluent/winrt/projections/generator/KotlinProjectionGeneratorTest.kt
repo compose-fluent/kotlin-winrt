@@ -715,6 +715,100 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generated_output_audit_rejects_stale_fallbacks_registries_duplicates_and_size_growth() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Windows.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "EventHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555551"),
+                            genericParameterCount = 1,
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("sender", "System.Object"),
+                                        WinRtParameterDefinition("args", "T0"),
+                                    ),
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Windows.Foundation",
+                            name = "IReference",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555552"),
+                            genericParameterCount = 1,
+                            properties = listOf(
+                                WinRtPropertyDefinition(
+                                    name = "Value",
+                                    typeName = "T0",
+                                    getterMethodName = "get_Value",
+                                    getterMethodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555553"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetBoxedCount",
+                                    returnTypeName = "Windows.Foundation.IReference<Int>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                            events = listOf(
+                                WinRtEventDefinition(
+                                    name = "Changed",
+                                    delegateTypeName = "Windows.Foundation.EventHandler<Int>",
+                                    addMethodName = "add_Changed",
+                                    removeMethodName = "remove_Changed",
+                                    addMethodRowId = 7,
+                                    removeMethodRowId = 8,
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            defaultInterfaceName = "Sample.Foundation.IWidget",
+                            implementedInterfaces = listOf(
+                                WinRtInterfaceImplementationDefinition("Sample.Foundation.IWidget", isDefault = true),
+                            ),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetBoxedCount",
+                                    returnTypeName = "Windows.Foundation.IReference<Int>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val files = KotlinProjectionGenerator(emitSupportFiles = true).generate(model)
+
+        assertGeneratedOutputAuditPasses(files)
+    }
+
+    @Test
     fun generator_can_emit_expect_common_and_jvm_actual_interface_slice() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
@@ -13179,18 +13273,6 @@ class KotlinProjectionGeneratorTest {
         assertTrue(genericTypeInstantiations.contains("WinRtGenericTypeInstantiationSupportIntrinsic.initializeBySourceType(sourceType)"))
         assertFalse(genericTypeInstantiations.contains("WinRTGenericTypeInstantiationRegistry"))
         assertFalse(genericTypeInstantiations.contains("Class.forName"))
-        val forbiddenRuntimeLookupTokens = listOf(
-            "Class.forName",
-            "Proxy.newProxyInstance",
-            "java.lang.reflect",
-        )
-        filesByName.values
-            .filter { file -> file.relativePath.endsWith(".kt") }
-            .forEach { file ->
-                forbiddenRuntimeLookupTokens.forEach { token ->
-                    assertFalse(file.relativePath, file.contents.contains(token))
-                }
-            }
         val eventProjectionHelpers = filesByName.getValue("WinRTEventProjectionHelpers.kt").contents
         assertFalse(filesByName.containsKey("event-sources.tsv"))
         assertTrue(eventProjectionHelpers.contains("@file:Suppress("))
@@ -19128,5 +19210,101 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("\"REDUNDANT_CALL_OF_CONVERSION_METHOD\""))
         assertTrue(contents, contents.contains("\"REDUNDANT_NULLABLE\""))
     }
+
+    private fun assertGeneratedOutputAuditPasses(files: List<KotlinProjectionFile>) {
+        val kotlinFiles = files.filter { file -> file.relativePath.endsWith(".kt") }
+        assertTrue("Generated-output audit requires generated Kotlin source.", kotlinFiles.isNotEmpty())
+
+        val forbiddenTokens = listOf(
+            "ComVtableInvoker.invokeArgs",
+            "ComVtableInvoker.invokeGenericArgs",
+            "Class.forName",
+            "Proxy.newProxyInstance",
+            "java.lang.reflect",
+            "WinRTProjectionRegistrar",
+            "WinRTGenericAbiRegistry",
+            "WinRTGenericTypeInstantiationRegistry",
+            "GenericTypeInstantiationRuntimeBinding",
+            "WinRtGenericTypeInstantiationRuntime",
+            "WinRTEventProjectionRegistry",
+            "EventSourceEntry",
+            "eventSourceEntriesChunk",
+            "GENERIC_ABI_DELEGATES",
+            "installRuntimeBinding",
+            "registerGenericInstantiation",
+            "fun installEventSources()",
+            "fun createEventSource(",
+            "WinRtEventSourceRuntime.createEventSource(",
+        )
+        kotlinFiles.forEach { file ->
+            forbiddenTokens.forEach { token ->
+                assertFalse(
+                    "Generated output ${file.relativePath} must not contain stale registry, reflection/proxy, or fallback token $token.",
+                    file.contents.contains(token),
+                )
+            }
+        }
+
+        val supportManifests = setOf(
+            "compiler-support.tsv",
+            "projection-registrar.tsv",
+            "generic-abi-registry.tsv",
+            "generic-instantiations.tsv",
+            "type-shape-descriptors.tsv",
+        )
+        supportManifests.forEach { manifest ->
+            assertTrue(
+                "Generated-output audit requires compiler-owned support manifest $manifest.",
+                files.any { file -> file.relativePath.endsWith("/$manifest") || file.relativePath == manifest },
+            )
+        }
+        assertFalse("Stale event-source registry manifest must not be emitted.", files.any { it.relativePath.endsWith("event-sources.tsv") })
+
+        val duplicateFqns = generatedTopLevelFqns(kotlinFiles)
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { count -> count > 1 }
+            .keys
+        assertTrue("Generated output must not contain duplicate top-level FQNs: $duplicateFqns", duplicateFqns.isEmpty())
+
+        val duplicateTablePatterns = listOf(
+            Regex("""when\s*\(\s*(sourceType|projectedTypeName|runtimeClassName|ownerType|typeName|kind)\s*\)"""),
+            Regex("""(sourceType|projectedTypeName|runtimeClassName|ownerType|typeName)\s+to\s+(?:\{|\w+Entry\()"""),
+        )
+        kotlinFiles.forEach { file ->
+            duplicateTablePatterns.forEach { pattern ->
+                assertFalse(
+                    "Generated output ${file.relativePath} must not reintroduce duplicate type/category branch tables matching ${pattern.pattern}.",
+                    pattern.containsMatchIn(file.contents),
+                )
+            }
+        }
+
+        val totalKotlinBytes = kotlinFiles.sumOf { file -> file.contents.length }
+        assertTrue(
+            "Generated support audit fixture grew unexpectedly to $totalKotlinBytes bytes.",
+            totalKotlinBytes <= 450_000,
+        )
+        kotlinFiles.forEach { file ->
+            val lineCount = file.contents.lineSequence().count()
+            assertTrue(
+                "Generated file ${file.relativePath} grew unexpectedly to $lineCount lines.",
+                lineCount <= 2_500,
+            )
+        }
+    }
+
+    private fun generatedTopLevelFqns(files: List<KotlinProjectionFile>): List<String> =
+        files.flatMap { file ->
+            val packageName = Regex("""(?m)^package\s+([A-Za-z0-9_.]+)""")
+                .find(file.contents)
+                ?.groupValues
+                ?.get(1)
+                .orEmpty()
+            Regex("""(?m)^(?:public|internal)?\s*(?:actual\s+|expect\s+)?(?:data\s+)?(?:enum\s+class|class|interface|object|typealias)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .findAll(file.contents)
+                .map { match -> "$packageName.${match.groupValues[1]}" }
+                .toList()
+        }
 
 }
