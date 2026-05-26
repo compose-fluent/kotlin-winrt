@@ -13326,6 +13326,8 @@ class KotlinProjectionGeneratorTest {
         assertTrue(contents, contents.contains("REQUIRED_MAPPED_HELPER_PLANS"))
         assertTrue(contents, contents.contains("Windows.Foundation.Collections.IVector<String>|IList|idic"))
         assertTrue(contents, contents.contains("removeGeneric=System.Collections.Generic.IEnumerable<String>"))
+        assertTrue(contents, contents.contains("ParameterizedInterfaceId.createFromSignature(WinRtCollectionInterfaceIds.vectorSignature(WinRtTypeSignature.string()))"))
+        assertFalse(contents, contents.contains("Metadata.acquireInterface(_inner, IVector.Metadata.IID)"))
     }
 
     @Test

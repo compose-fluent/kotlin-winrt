@@ -2117,9 +2117,9 @@ class KotlinProjectionRenderer(
                     .addModifiers(KModifier.PRIVATE)
                     .delegate(
                         CodeBlock.of(
-                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %T.Metadata.IID) }",
+                            "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
                             LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                            projectionClassName(binding.slotInterfaceQualifiedName.substringBefore('<').removeSuffix("?")),
+                            runtimeClassInterfaceIdCode(binding.slotInterfaceInstanceName, plan),
                         ),
                     )
                     .build(),
