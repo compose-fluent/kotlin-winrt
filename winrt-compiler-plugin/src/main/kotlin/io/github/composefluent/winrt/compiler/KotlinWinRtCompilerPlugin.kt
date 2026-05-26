@@ -2941,9 +2941,6 @@ class KotlinWinRtIrGenerationExtension(
     ) {
         val outputDirectory = compilerSupportClassOutputDirectoryPath?.takeIf(String::isNotBlank)?.let(Path::of) ?: return
         Files.deleteIfExists(outputDirectory.resolve(STALE_EVENT_PROJECTION_REGISTRY_CLASS_PATH))
-        if (entries.isEmpty()) {
-            return
-        }
         writeCompilerSupportManifestClass(entries, outputDirectory)
         writeProjectionSupportInitializerClass(
             entries = projectionRegistrarEntries,
@@ -4167,6 +4164,7 @@ fun writeCompilerSupportManifestClass(
     outputDirectory: Path,
 ) {
     if (entries.isEmpty()) {
+        Files.deleteIfExists(outputDirectory.resolve("$COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME.class"))
         return
     }
     val classWriter = ClassWriter(0)

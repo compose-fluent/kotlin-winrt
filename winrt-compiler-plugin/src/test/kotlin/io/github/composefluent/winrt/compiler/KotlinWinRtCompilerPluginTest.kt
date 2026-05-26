@@ -409,6 +409,30 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_deletes_stale_class_artifact_when_entries_are_empty() {
+        val outputDirectory = Files.createTempDirectory("kotlin-winrt-empty-support-class-")
+        writeCompilerSupportManifestClass(
+            entries = listOf(
+                KotlinWinRtCompilerSupportManifestEntry(
+                    kind = "projection-registrar",
+                    className = "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic",
+                    sourceFile = "projection-registrar.tsv",
+                    entries = 12,
+                ),
+            ),
+            outputDirectory = outputDirectory,
+        )
+        val manifestClass = outputDirectory.resolve(
+            "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest.class",
+        )
+        assertTrue(Files.isRegularFile(manifestClass))
+
+        writeCompilerSupportManifestClass(emptyList(), outputDirectory)
+
+        assertFalse(Files.exists(manifestClass))
+    }
+
+    @Test
     fun projection_support_initializer_input_writes_content_addressed_class_artifact() {
         val input = Files.createTempFile("kotlin-winrt-projection-support-", ".tsv")
         Files.writeString(
