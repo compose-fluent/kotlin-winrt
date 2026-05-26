@@ -50,7 +50,7 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
         Files.createDirectories(outputRoot)
         Files.createDirectories(sourceRoot)
         val manifests = (authoredHostManifestFiles.files + dependencyIdentityFiles.files.flatMap(::readAuthoredHostManifests).map { java.io.File(it) })
-            .mapNotNull(::readHostBuildManifest)
+            .map(::readHostBuildManifest)
             .distinctBy { it.assemblyName.lowercase() }
         if (manifests.isEmpty()) {
             return
@@ -127,15 +127,16 @@ abstract class BuildWinRtAuthoringHostTask : DefaultTask() {
         }
     }
 
-    private fun readHostBuildManifest(source: java.io.File): HostBuildManifest? {
+    private fun readHostBuildManifest(source: java.io.File): HostBuildManifest {
         val content = source.takeIf { it.isFile }?.readText().orEmpty()
-        val assemblyName = readJsonString(content, "assemblyName") ?: return null
+        val assemblyName = readJsonString(content, "assemblyName")
+            ?: throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' is missing assemblyName.")
         if (assemblyName.isBlank()) {
-            return null
+            throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' has blank assemblyName.")
         }
         val classNames = readJsonStringArray(content, "activatableClasses") + readJsonStringMap(content, "activatableClassTargets").keys
         if (classNames.none { it.isNotBlank() }) {
-            return null
+            throw IllegalArgumentException("Kotlin/WinRT authoring host manifest '${source.absolutePath}' does not declare any activatable classes.")
         }
         return HostBuildManifest(assemblyName)
     }

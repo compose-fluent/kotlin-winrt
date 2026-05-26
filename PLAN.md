@@ -161,6 +161,7 @@
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
 - [x] Authoring scanner argument fail-closed closure: reject scanner path options without values using stable diagnostics instead of surfacing low-level argument indexing failures.
 - [x] Authoring metadata index duplicate fail-closed closure: reject duplicate authored metadata index type rows instead of allowing later rows to silently overwrite compiler-plugin discovery inputs.
+- [x] Authoring host manifest fail-closed closure: reject generated or dependency host manifests without assembly identity or activatable classes instead of silently treating malformed authoring handoff data as no host build input.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
