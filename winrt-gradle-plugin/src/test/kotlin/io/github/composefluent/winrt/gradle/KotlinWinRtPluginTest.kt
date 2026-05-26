@@ -885,6 +885,27 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun runtime_nuget_resolution_manifest_rejects_missing_package_roots() {
+        val manifest = Files.createTempFile("kotlin-winrt-runtime-nuget-packages-", ".json")
+        Files.writeString(
+            manifest,
+            """
+            {
+              "model": "winrt-runtime-nuget-packages"
+            }
+            """.trimIndent(),
+        )
+
+        val error = runCatching { readResolvedRuntimeNuGetPackageRoots(manifest.toFile()) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("is missing packageRoots"),
+        )
+    }
+
+    @Test
     fun plugin_registers_compiler_plugin_dependency_for_late_kmp_compiler_plugin_classpath_configurations() {
         val project = ProjectBuilder.builder().build()
 
