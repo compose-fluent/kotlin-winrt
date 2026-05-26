@@ -138,6 +138,7 @@
 - [x] Projection registrar kind fail-closed closure: reject projection registrar `kind` values outside the generator-emitted non-`Unknown` `WinRtTypeKind` set instead of writing invalid support registrations.
 - [x] Projection registrar duplicate fail-closed closure: reject duplicate projection registrar `kotlinClassName`/`projectedTypeName` rows instead of generating repeated support initializer registrations.
 - [x] Projection identity registrar fail-closed closure: reject malformed projection registrar headers and rows before dependency identity JSON can under-report generated projected types for downstream suppression.
+- [x] Projection identity registrar schema fail-closed closure: reject projection registrar rows with extra columns before dependency identity JSON can fold generator/schema drift into the last parsed field.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Authored candidate TSV schema fail-closed closure: reject authored source-scanner candidate rows with extra columns instead of accepting generator/compiler handoff schema drift through positional parsing.
 - [x] Generic type-instantiation required-column fail-closed closure: reject blank generic instantiation `className` or `sourceType` columns instead of accepting invalid generator handoff rows.

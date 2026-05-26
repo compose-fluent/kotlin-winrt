@@ -382,6 +382,46 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun identity_task_rejects_projection_registrar_rows_with_extra_columns() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-identity-extra-registrar-test-")
+        val registrar = root.resolve("projection-registrar.tsv")
+        Files.writeString(
+            registrar,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata	extra
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "generateWinRtIdentityWithExtraRegistrarUnderTest",
+            GenerateWinRtIdentityTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputFile.set(root.resolve("identity.json").toFile())
+            registeredTask.metadataInputs.set(emptyList())
+            registeredTask.includeNamespaces.set(emptyList())
+            registeredTask.includeTypes.set(emptyList())
+            registeredTask.projectionRegistrarFiles.from(registrar)
+            registeredTask.excludeNamespaces.set(emptyList())
+            registeredTask.excludeTypes.set(emptyList())
+            registeredTask.additionExcludeNamespaces.set(emptyList())
+            registeredTask.includeWindowsSdkExtensions.set(false)
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+        }.get()
+
+        try {
+            task.generate()
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("malformed row 2"))
+            assertFalse(Files.exists(root.resolve("identity.json")))
+            return
+        }
+
+        throw AssertionError("Expected projection registrar rows with extra columns to fail closed.")
+    }
+
+    @Test
     fun identity_task_rejects_projection_registrar_header_mismatch() {
         val project = ProjectBuilder.builder().build()
         val root = Files.createTempDirectory("kotlin-winrt-identity-bad-registrar-header-test-")
