@@ -543,6 +543,46 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun merge_compiler_support_task_rejects_malformed_manifest_rows() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-malformed-compiler-support-test-")
+        val localRoot = root.resolve("local")
+        val outputRoot = root.resolve("merged")
+        Files.createDirectories(localRoot)
+        Files.writeString(
+            localRoot.resolve("compiler-support.tsv"),
+            """
+            kind	className	sourceFile	entries
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1	extra
+            """.trimIndent(),
+        )
+        Files.writeString(
+            localRoot.resolve("projection-registrar.tsv"),
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "mergeMalformedWinRtCompilerSupportUnderTest",
+            MergeWinRtCompilerSupportTask::class.java,
+        ) { registeredTask ->
+            registeredTask.localCompilerSupportManifest.set(localRoot.resolve("compiler-support.tsv").toFile())
+            registeredTask.outputDirectory.set(outputRoot.toFile())
+        }.get()
+
+        try {
+            task.merge()
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("malformed row 2"))
+            assertFalse(Files.exists(outputRoot.resolve("compiler-support.tsv")))
+            return
+        }
+
+        throw AssertionError("Expected malformed compiler support manifest rows to fail closed.")
+    }
+
+    @Test
     fun dependency_identity_projection_surface_suppresses_downstream_projection_types() {
         val project = ProjectBuilder.builder().build()
         val dependencyIdentity = project.layout.buildDirectory.file("dependency/kotlin-winrt.json").get().asFile
