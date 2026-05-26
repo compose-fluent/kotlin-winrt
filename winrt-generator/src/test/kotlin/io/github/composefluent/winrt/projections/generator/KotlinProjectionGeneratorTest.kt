@@ -7528,6 +7528,57 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_uses_enum_underlying_type_for_native_struct_fields() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetMode",
+                            kind = WinRtTypeKind.Enum,
+                            enumUnderlyingType = WinRtIntegralType.UInt16,
+                            enumMembers = listOf(
+                                WinRtEnumMemberDefinition("Off", 0u),
+                                WinRtEnumMemberDefinition("On", 1u),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetState",
+                            kind = WinRtTypeKind.Struct,
+                            fields = listOf(
+                                WinRtFieldDefinition("Mode", "Sample.Foundation.WidgetMode"),
+                                WinRtFieldDefinition("Generation", "UInt32"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val filesByName = KotlinProjectionGenerator()
+            .generate(model)
+            .associateBy { it.relativePath.substringAfterLast('/') }
+        val mode = filesByName.getValue("WidgetMode.kt").contents
+        val state = filesByName.getValue("WidgetState.kt").contents
+
+        assertTrue(mode, mode.contains("public enum class WidgetMode"))
+        assertTrue(mode, mode.contains("public val abiValue: UShort"))
+        assertTrue(mode, mode.contains("public fun fromAbi("))
+        assertTrue(mode, mode.contains("UShort): WidgetMode"))
+        assertTrue(state, state.contains("NativeScalarFieldSpec(\"mode\", NativeStructScalarKind.INT16)"))
+        assertTrue(state, state.contains("\"struct(Sample.Foundation.WidgetState;u4;enum(Sample.Foundation.WidgetMode;u2))\""))
+        assertTrue(state, state.contains("WidgetMode.Metadata.fromAbi(PlatformAbi.readInt16(layout.slice(source,"))
+        assertTrue(state, state.contains("\"mode\")).toUShort())"))
+        assertTrue(state, state.contains("PlatformAbi.writeInt16(layout.slice(destination, \"mode\"),"))
+        assertTrue(state, state.contains("WidgetMode.Metadata.toAbi(value.mode).toShort())"))
+        assertFalse(state, state.contains("WidgetMode.Metadata.fromAbi(PlatformAbi.readInt32(layout.slice(source, \"mode\")))"))
+        assertFalse(state, state.contains("PlatformAbi.writeInt32(layout.slice(destination, \"mode\")"))
+    }
+
+    @Test
     fun generator_binds_non_blittable_struct_abi_helpers() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
