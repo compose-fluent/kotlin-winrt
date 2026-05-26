@@ -680,6 +680,37 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_prerequisite_rejects_missing_helper_symbol() {
+        val error = runCatching {
+            requireCompilerSupportPrerequisite<String>(
+                description = "generic type instantiation",
+                prerequisite = "class io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations",
+                value = null,
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertEquals(
+            "kotlin-winrt compiler plugin requires generic type instantiation support input to resolve " +
+                "class io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations.",
+            error!!.message,
+        )
+    }
+
+    @Test
+    fun compiler_support_prerequisite_returns_resolved_helper_symbol() {
+        assertEquals(
+            "resolved",
+            requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "kotlin.collections.listOf vararg function",
+                value = "resolved",
+            ),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_missing_declared_source_file() {
         val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-missing-source-")
         val manifest = manifestDirectory.resolve("compiler-support.tsv")
