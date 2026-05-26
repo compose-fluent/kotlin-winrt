@@ -4092,12 +4092,7 @@ data class KotlinWinRtCompilerSupportManifestEntry(
 )
 
 fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> =
-    Files.readAllLines(path)
-        .asSequence()
-        .drop(1)
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseCompilerSupportManifestLine)
-        .toList()
+    readRequiredTsvRows(path, "compiler support manifest", ::parseCompilerSupportManifestLine)
 
 private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerSupportManifestEntry? {
     val parts = line.split('\t', limit = 4)
@@ -4167,12 +4162,7 @@ data class KotlinWinRtProjectionRegistrarEntry(
 )
 
 fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> =
-    Files.readAllLines(path)
-        .asSequence()
-        .drop(1)
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseProjectionRegistrarLine)
-        .toList()
+    readRequiredTsvRows(path, "projection registrar input", ::parseProjectionRegistrarLine)
 
 private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionRegistrarEntry? {
     val parts = line.split('\t', limit = 5)
@@ -4350,12 +4340,7 @@ data class KotlinWinRtGenericTypeInstantiationEntry(
 )
 
 fun readGenericTypeInstantiationEntries(path: Path): List<KotlinWinRtGenericTypeInstantiationEntry> =
-    Files.readAllLines(path)
-        .asSequence()
-        .drop(1)
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseGenericTypeInstantiationLine)
-        .toList()
+    readRequiredTsvRows(path, "generic type instantiation input", ::parseGenericTypeInstantiationLine)
 
 private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericTypeInstantiationEntry? {
     val parts = line.split('\t', limit = 9)
@@ -4389,11 +4374,26 @@ data class KotlinWinRtGenericAbiRegistryEntry(
 )
 
 fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistryEntry> =
+    readRequiredTsvRows(path, "generic ABI registry input", ::parseGenericAbiRegistryLine)
+
+private fun <T> readRequiredTsvRows(
+    path: Path,
+    description: String,
+    parse: (String) -> T?,
+): List<T> =
     Files.readAllLines(path)
         .asSequence()
         .drop(1)
-        .filter(String::isNotBlank)
-        .mapNotNull(::parseGenericAbiRegistryLine)
+        .mapIndexedNotNull { index, line ->
+            if (line.isBlank()) {
+                null
+            } else {
+                parse(line)
+                    ?: throw IllegalArgumentException(
+                        "kotlin-winrt compiler plugin could not parse $description row ${index + 2} in $path.",
+                    )
+            }
+        }
         .toList()
 
 private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegistryEntry? {
