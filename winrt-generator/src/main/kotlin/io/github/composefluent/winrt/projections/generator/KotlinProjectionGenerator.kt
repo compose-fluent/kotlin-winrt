@@ -502,8 +502,11 @@ class KotlinProjectionGenerator(
                 authoredPlan.type.implementedInterfaces
                     .map { implementation -> implementation.interfaceName.substringBefore('<') }
                     .distinct()
-                    .mapNotNull(plansByQualifiedName::get)
-                    .forEach { interfacePlan ->
+                    .forEach { interfaceName ->
+                        val interfacePlan = plansByQualifiedName[interfaceName]
+                        require(interfacePlan != null) {
+                            "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW interface $interfaceName to have a projection plan before support rendering."
+                        }
                         validateAuthoredCcwInterfaceBindingContracts(authoredPlan, interfacePlan)
                     }
         }
