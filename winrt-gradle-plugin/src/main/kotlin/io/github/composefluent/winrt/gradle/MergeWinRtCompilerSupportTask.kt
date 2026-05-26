@@ -124,6 +124,13 @@ private fun CompilerSupportManifestRow.rejectRetiredRuntimeDiscoveryKind(manifes
 
 private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifestRow> =
     manifest.readLines()
+        .also { lines ->
+            if (lines.firstOrNull() != COMPILER_SUPPORT_MANIFEST_HEADER) {
+                throw GradleException(
+                    "Compiler support manifest ${manifest.absolutePath} has unexpected header.",
+                )
+            }
+        }
         .asSequence()
         .drop(1)
         .filter(String::isNotBlank)
@@ -137,3 +144,6 @@ private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifes
             CompilerSupportManifestRow(parts[0], parts[1], parts[2])
         }
         .toList()
+
+private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
+    "kind\tclassName\tsourceFile\tentries"
