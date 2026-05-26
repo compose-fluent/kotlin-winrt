@@ -4421,6 +4421,21 @@ private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegi
     if (parts.size < 7) {
         return null
     }
+    if (parts[0].isBlank() || parts[1].isBlank()) {
+        return null
+    }
+    when (parts[0]) {
+        "derived-interface" -> Unit
+        "delegate" -> {
+            if (parts[2].isBlank() || parts[3].isBlank() || parts[4].isBlank()) {
+                return null
+            }
+            if (parts[5].splitGenericAbiRegistryListField().isEmpty() || parts[6].splitGenericAbiRegistryListField().isEmpty()) {
+                return null
+            }
+        }
+        else -> return null
+    }
     return KotlinWinRtGenericAbiRegistryEntry(
         kind = parts[0],
         name = parts[1],

@@ -628,4 +628,46 @@ class KotlinWinRtCompilerPluginTest {
         )
     }
 
+    @Test
+    fun generic_abi_registry_input_rejects_unknown_kinds() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-unknown-kind-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf("unsupported-kind", "Windows.Foundation.Collections.IVector", "", "", "", "", ""),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic ABI registry input row 2"),
+        )
+    }
+
+    @Test
+    fun generic_abi_registry_input_rejects_blank_required_columns() {
+        val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-blank-columns-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kind", "name", "sourceGenericType", "operation", "declaration", "abiParameterTypes", "typeArrayShape"),
+                listOf("delegate", "_get_Value_Int", "", "get_Value", "internal unsafe delegate int _get_Value_Int(void*, out int);", "void*\u001Fout int\u001Fint", "void*\u001Fint.MakeByRefType()\u001Fint"),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readGenericAbiRegistryEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse generic ABI registry input row 2"),
+        )
+    }
+
 }
