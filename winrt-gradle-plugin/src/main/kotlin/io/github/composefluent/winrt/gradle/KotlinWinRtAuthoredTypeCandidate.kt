@@ -32,8 +32,8 @@ object KotlinWinRtAuthoringCandidateFile {
     }
 
     private fun parseLine(line: String): KotlinWinRtAuthoredTypeCandidate? {
-        val parts = line.split('\t', limit = 7)
-        if (parts.size < 7) {
+        val parts = line.split('\t')
+        if (parts.size != 7) {
             return null
         }
         if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {

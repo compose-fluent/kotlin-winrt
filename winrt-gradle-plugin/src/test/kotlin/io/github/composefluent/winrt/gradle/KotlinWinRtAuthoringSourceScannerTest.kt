@@ -86,6 +86,22 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun rejects_authored_candidate_file_rows_with_extra_columns() {
+        val input = Files.createTempFile("kotlin-winrt-authored-candidates-extra-columns-", ".tsv")
+        input.writeText(
+            "sample\tApp\tsample.App\tMicrosoft.UI.Xaml.Application\tMicrosoft.UI.Xaml.IApplicationOverrides\tMicrosoft.UI.Xaml.IApplicationOverrides\ttrue\textra\n",
+        )
+
+        val error = runCatching { KotlinWinRtAuthoringCandidateFile.read(input) }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt authored candidate row 1"),
+        )
+    }
+
+    @Test
     fun merges_scanned_authored_runtime_classes_into_projection_metadata_model() {
         val augmented = KotlinWinRtAuthoringMetadataModel.mergeAuthoredRuntimeClasses(
             model = model(),
