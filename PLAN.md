@@ -122,6 +122,7 @@
 - [x] Compiler support manifest kind fail-closed closure: reject manifest `kind` values outside the generator-emitted support table set instead of recording handoff rows that no compiler-plugin reader consumes.
 - [x] Projection registrar required-column fail-closed closure: reject blank projection registrar `kotlinClassName`, `projectedTypeName`, or `kind` columns instead of generating invalid projection support initializer registrations.
 - [x] Projection registrar kind fail-closed closure: reject projection registrar `kind` values outside the generator-emitted non-`Unknown` `WinRtTypeKind` set instead of writing invalid support registrations.
+- [x] Projection registrar duplicate fail-closed closure: reject duplicate projection registrar `kotlinClassName`/`projectedTypeName` rows instead of generating repeated support initializer registrations.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Generic type-instantiation required-column fail-closed closure: reject blank generic instantiation `className` or `sourceType` columns instead of accepting invalid generator handoff rows.
 - [x] Generic type-instantiation duplicate fail-closed closure: reject duplicate generic instantiation `sourceType`/`className` rows instead of generating repeated initialization calls from ambiguous handoff data.

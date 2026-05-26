@@ -415,6 +415,28 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_input_rejects_duplicate_entries() {
+        val input = Files.createTempFile("kotlin-winrt-projection-support-duplicate-", ".tsv")
+        Files.writeString(
+            input,
+            listOf(
+                listOf("kotlinClassName", "projectedTypeName", "kind", "baseTypeName", "metadataClassName"),
+                listOf("java.lang.String", "Sample.Foundation.Widget", "RuntimeClass", "Sample.Foundation.WidgetBase", ""),
+                listOf("java.lang.String", "Sample.Foundation.Widget", "RuntimeClass", "Sample.Foundation.WidgetBase", ""),
+            ).joinToString(separator = "\n", postfix = "\n") { row -> row.joinToString("\t") },
+        )
+
+        val error = runCatching { readProjectionRegistrarEntries(input) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("duplicate projection registrar input"),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_missing_declared_source_file() {
         val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-missing-source-")
         val manifest = manifestDirectory.resolve("compiler-support.tsv")

@@ -4156,8 +4156,18 @@ data class KotlinWinRtProjectionRegistrarEntry(
     val metadataClassName: String,
 )
 
-fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> =
-    readRequiredTsvRows(path, "projection registrar input", ::parseProjectionRegistrarLine)
+fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> {
+    val entries = readRequiredTsvRows(path, "projection registrar input", ::parseProjectionRegistrarLine)
+    val duplicate = entries
+        .groupBy { entry -> entry.kotlinClassName to entry.projectedTypeName }
+        .entries
+        .firstOrNull { (_, values) -> values.size > 1 }
+        ?.key
+    require(duplicate == null) {
+        "kotlin-winrt compiler plugin found duplicate projection registrar input for Kotlin class ${duplicate!!.first} and projected type ${duplicate.second} in $path."
+    }
+    return entries
+}
 
 private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionRegistrarEntry? {
     val parts = line.split('\t', limit = 5)
