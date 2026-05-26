@@ -140,6 +140,7 @@ class KotlinProjectionSupportRenderer {
         excludedProjectionTypeNames: Set<String> = emptySet(),
     ): List<KotlinProjectionFile> {
         val inventory = WinRtMetadataProjectionInventoryBuilder.create(model, context).build()
+        validateAuthoringMetadataProjectionPlans(inventory, plans)
         val semanticHelpers = model.semanticHelpers()
         val genericInstantiationWriters = semanticHelpers.genericInstantiationWriterDescriptors(context)
         return listOfNotNull(
@@ -164,6 +165,21 @@ class KotlinProjectionSupportRenderer {
             renderAuthoringCcwFactories(inventory, plans, semanticHelpers),
             renderNamespaceAdditions(inventory),
         )
+    }
+
+    private fun validateAuthoringMetadataProjectionPlans(
+        inventory: WinRtMetadataProjectionInventory,
+        plans: List<KotlinTypeProjectionPlan>,
+    ) {
+        if (!inventory.helperOutputs.authoringMetadataTypeMappingHelperRequired) {
+            return
+        }
+        val plansByType = plans.associateBy { it.type.qualifiedName }
+        inventory.authoredMetadataTypeMappings.forEach { mapping ->
+            require(mapping.projectedTypeName in plansByType) {
+                "Support renderer requires authored metadata type ${mapping.projectedTypeName} to have a projection plan before rendering authoring support files."
+            }
+        }
     }
 
     private fun renderTypeShapeDescriptorCompilerInput(plans: List<KotlinTypeProjectionPlan>): KotlinProjectionFile? {
