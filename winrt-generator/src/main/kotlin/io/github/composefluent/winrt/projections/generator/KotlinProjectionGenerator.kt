@@ -189,6 +189,10 @@ class KotlinProjectionGenerator(
         validateAuthoredCcwBindingContracts(model, plans)
         validateAuthoringActivationFactorySupportContracts(model, plans)
         validateEventSourceHelperContracts(model, plans)
+        val runtimeClassStaticInterfaceNames = plans
+            .filter { plan -> plan.type.kind == WinRtTypeKind.RuntimeClass }
+            .flatMap { plan -> plan.staticInterfaceNames }
+            .toSet()
         plans.forEach { plan ->
             if (KotlinProjectionCompanionKind.ActivationFactory in plan.companionKinds) {
                 plan.activatableFactoryInterfaceName?.let { factoryName ->
@@ -267,13 +271,29 @@ class KotlinProjectionGenerator(
                 if (binding.isInstanceEventAccessorBinding(plan)) {
                     return@forEach
                 }
-                validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
+                validateProjectedAbiBindingContract(
+                    plan,
+                    binding.bindingName,
+                    binding.returnBinding,
+                    binding.parameterBindings,
+                    binding.marshalerPlanDescriptor,
+                    binding.suppressHResultCheck,
+                    validateAbiCallPlan = plan.type.qualifiedName !in runtimeClassStaticInterfaceNames,
+                )
             }
             plan.staticMemberBindings.forEach { binding ->
                 if (binding.isStaticEventAccessorBinding(plan)) {
                     return@forEach
                 }
-                validateProjectedAbiBindingContract(plan, binding.bindingName, binding.returnBinding, binding.parameterBindings)
+                validateProjectedAbiBindingContract(
+                    plan,
+                    binding.bindingName,
+                    binding.returnBinding,
+                    binding.parameterBindings,
+                    binding.marshalerPlanDescriptor,
+                    binding.suppressHResultCheck,
+                    validateAbiCallPlan = false,
+                )
             }
             validateStaticMethodBindingContracts(plan)
             validateStaticPropertyBindingContracts(plan)
@@ -740,9 +760,18 @@ class KotlinProjectionGenerator(
                 return@forEach
             }
             val bindingName = staticMethodBindingName(plan, method)
-            require(plan.staticMemberBindings.any { it.bindingName == bindingName }) {
+            val binding = plan.staticMemberBindings.firstOrNull { it.bindingName == bindingName }
+            require(binding != null) {
                 "Generator requires runtime class ${plan.type.qualifiedName} static method ${method.name} binding $bindingName to be present before projection rendering."
             }
+            validateProjectedAbiBindingContract(
+                plan,
+                binding.bindingName,
+                binding.returnBinding,
+                binding.parameterBindings,
+                binding.marshalerPlanDescriptor,
+                binding.suppressHResultCheck,
+            )
         }
     }
 
@@ -1001,7 +1030,10 @@ class KotlinProjectionGenerator(
         bindingName: String,
         returnBinding: KotlinProjectionAbiTypeBinding,
         parameterBindings: List<KotlinProjectionAbiParameterBinding>,
+        marshalerPlanDescriptor: WinRtAbiMarshalerPlanDescriptor? = null,
+        suppressHResultCheck: Boolean = marshalerPlanDescriptor?.hasNoExceptionAttribute == true,
         delegateInvokeContext: Boolean = false,
+        validateAbiCallPlan: Boolean = true,
     ) {
         validateProjectedAbiTypeBindingContract(plan, bindingName, "return", returnBinding, delegateInvokeContext)
         parameterBindings.forEach { parameter ->
@@ -1011,6 +1043,15 @@ class KotlinProjectionGenerator(
                 "parameter ${parameter.name}",
                 parameter.typeBinding,
                 delegateInvokeContext,
+            )
+        }
+        if (!delegateInvokeContext && validateAbiCallPlan) {
+            renderer.requireAbiCallPlan(
+                bindingName = bindingName,
+                returnBinding = returnBinding,
+                parameterBindings = parameterBindings,
+                marshalerPlanDescriptor = marshalerPlanDescriptor,
+                suppressHResultCheck = suppressHResultCheck,
             )
         }
     }
