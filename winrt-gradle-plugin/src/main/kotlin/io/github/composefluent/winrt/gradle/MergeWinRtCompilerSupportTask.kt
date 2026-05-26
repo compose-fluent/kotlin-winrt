@@ -127,12 +127,13 @@ private fun readCompilerSupportRows(manifest: File): List<CompilerSupportManifes
         .asSequence()
         .drop(1)
         .filter(String::isNotBlank)
-        .mapNotNull { line ->
+        .mapIndexed { index, line ->
             val parts = line.split('\t')
-            if (parts.size < 3) {
-                null
-            } else {
-                CompilerSupportManifestRow(parts[0], parts[1], parts[2])
+            if (parts.size != 4 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+                throw GradleException(
+                    "Compiler support manifest ${manifest.absolutePath} has malformed row ${index + 2}.",
+                )
             }
+            CompilerSupportManifestRow(parts[0], parts[1], parts[2])
         }
         .toList()
