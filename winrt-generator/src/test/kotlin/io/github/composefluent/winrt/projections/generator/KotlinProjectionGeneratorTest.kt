@@ -302,6 +302,42 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun support_renderer_rejects_authored_metadata_mapping_without_projection_plan_before_support_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionSupportRenderer().render(
+                model = model,
+                plans = emptyList(),
+                context = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            )
+        }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Support renderer requires authored metadata type Sample.Foundation.Widget to have a projection plan before rendering authoring support files.",
+            ),
+        )
+    }
+
+    @Test
     fun support_renderer_rejects_authored_ccw_interface_without_projection_plan_before_support_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
