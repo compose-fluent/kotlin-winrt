@@ -127,6 +127,7 @@
 - [x] Projection registrar duplicate fail-closed closure: reject duplicate projection registrar `kotlinClassName`/`projectedTypeName` rows instead of generating repeated support initializer registrations.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Generic type-instantiation required-column fail-closed closure: reject blank generic instantiation `className` or `sourceType` columns instead of accepting invalid generator handoff rows.
+- [x] Compiler support list-field fail-closed closure: reject blank elements inside generic instantiation and generic ABI registry support-list columns instead of silently compacting malformed generator handoff lists.
 - [x] Generic type-instantiation duplicate fail-closed closure: reject duplicate generic instantiation `sourceType`/`className` rows instead of generating repeated initialization calls from ambiguous handoff data.
 - [x] Generic ABI registry kind/column fail-closed closure: reject unknown generic ABI registry `kind` values and blank delegate support columns instead of silently dropping invalid generator handoff rows.
 - [x] Generic ABI registry duplicate fail-closed closure: reject duplicate derived-interface and delegate registry rows instead of silently distincting or repeatedly registering generic ABI support entries.

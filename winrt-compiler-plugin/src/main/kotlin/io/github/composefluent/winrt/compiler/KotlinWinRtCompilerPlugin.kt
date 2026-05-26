@@ -4409,21 +4409,27 @@ private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericT
     if (parts[0].isBlank() || parts[1].isBlank()) {
         return null
     }
+    val rcwFunctions = parts[3].splitListFieldOrNull() ?: return null
+    val vtableFunctions = parts[4].splitListFieldOrNull() ?: return null
+    val propertyAccessors = parts[5].splitListFieldOrNull() ?: return null
+    val genericReturnOnlyRcwFunctions = parts[6].splitListFieldOrNull() ?: return null
+    val projectedGenericFallbacks = parts[7].splitListFieldOrNull() ?: return null
+    val dependencies = parts[8].splitListFieldOrNull() ?: return null
     return KotlinWinRtGenericTypeInstantiationEntry(
         className = parts[0],
         sourceType = parts[1],
         isDelegate = parts[2].toBooleanStrictOrNull() ?: return null,
-        rcwFunctions = parts[3].splitListField(),
-        vtableFunctions = parts[4].splitListField(),
-        propertyAccessors = parts[5].splitListField(),
-        genericReturnOnlyRcwFunctions = parts[6].splitListField(),
-        projectedGenericFallbacks = parts[7].splitListField(),
-        dependencies = parts[8].splitListField(),
+        rcwFunctions = rcwFunctions,
+        vtableFunctions = vtableFunctions,
+        propertyAccessors = propertyAccessors,
+        genericReturnOnlyRcwFunctions = genericReturnOnlyRcwFunctions,
+        projectedGenericFallbacks = projectedGenericFallbacks,
+        dependencies = dependencies,
     )
 }
 
-private fun String.splitListField(): List<String> =
-    split(',').filter(String::isNotBlank)
+private fun String.splitListFieldOrNull(): List<String>? =
+    splitSupportListFieldOrNull(',')
 
 data class KotlinWinRtGenericAbiRegistryEntry(
     val kind: String,
@@ -4508,13 +4514,15 @@ private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegi
     if (parts[0].isBlank() || parts[1].isBlank()) {
         return null
     }
+    val abiParameterTypes = parts[5].splitGenericAbiRegistryListFieldOrNull() ?: return null
+    val typeArrayShape = parts[6].splitGenericAbiRegistryListFieldOrNull() ?: return null
     when (parts[0]) {
         "derived-interface" -> Unit
         "delegate" -> {
             if (parts[2].isBlank() || parts[3].isBlank() || parts[4].isBlank()) {
                 return null
             }
-            if (parts[5].splitGenericAbiRegistryListField().isEmpty() || parts[6].splitGenericAbiRegistryListField().isEmpty()) {
+            if (abiParameterTypes.isEmpty() || typeArrayShape.isEmpty()) {
                 return null
             }
         }
@@ -4526,13 +4534,27 @@ private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegi
         sourceGenericType = parts[2],
         operation = parts[3],
         declaration = parts[4],
-        abiParameterTypes = parts[5].splitGenericAbiRegistryListField(),
-        typeArrayShape = parts[6].splitGenericAbiRegistryListField(),
+        abiParameterTypes = abiParameterTypes,
+        typeArrayShape = typeArrayShape,
     )
 }
 
-private fun String.splitGenericAbiRegistryListField(): List<String> =
-    split(GENERIC_ABI_REGISTRY_LIST_SEPARATOR).filter(String::isNotBlank)
+private fun String.splitGenericAbiRegistryListFieldOrNull(): List<String>? =
+    splitSupportListFieldOrNull(GENERIC_ABI_REGISTRY_LIST_SEPARATOR)
+
+private fun String.splitSupportListFieldOrNull(separator: String): List<String>? {
+    if (isEmpty()) {
+        return emptyList()
+    }
+    val parts = split(separator)
+    if (parts.any(String::isBlank)) {
+        return null
+    }
+    return parts
+}
+
+private fun String.splitSupportListFieldOrNull(separator: Char): List<String>? =
+    splitSupportListFieldOrNull(separator.toString())
 
 private fun org.jetbrains.org.objectweb.asm.MethodVisitor.addWinRtTypeHandle(
     projectedTypeName: String,
