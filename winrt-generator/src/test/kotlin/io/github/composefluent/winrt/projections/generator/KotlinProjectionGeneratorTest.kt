@@ -3985,8 +3985,52 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidget",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("22222222-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    methodRowId = 25,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "String"),
+                                        WinRtParameterDefinition("culture", "String"),
+                                    ),
+                                    methodRowId = 26,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ReceiveNamesForPrefix",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("prefix", "String"),
+                                        WinRtParameterDefinition(
+                                            "names",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                    methodRowId = 27,
+                                ),
+                            ),
                             properties = listOf(
-                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name", getterMethodRowId = 21),
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                    setterMethodName = "put_Name",
+                                    getterMethodRowId = 21,
+                                    setterMethodRowId = 28,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "Owner",
+                                    typeName = "Sample.Foundation.Widget?",
+                                    getterMethodName = "get_Owner",
+                                    getterMethodRowId = 29,
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler", addMethodRowId = 23, removeMethodRowId = 24),
@@ -3997,8 +4041,32 @@ class KotlinProjectionGeneratorTest {
                             name = "IWidgetStatics",
                             kind = WinRtTypeKind.Interface,
                             iid = Guid("33333333-2222-3333-4444-555555555555"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Find",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(WinRtParameterDefinition("name", "String")),
+                                    methodRowId = 30,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Find",
+                                    returnTypeName = "Sample.Foundation.Widget",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("name", "String"),
+                                        WinRtParameterDefinition("culture", "String"),
+                                    ),
+                                    methodRowId = 31,
+                                ),
+                            ),
                             properties = listOf(
-                                WinRtPropertyDefinition(name = "Count", typeName = "Int", getterMethodName = "get_Count", getterMethodRowId = 22),
+                                WinRtPropertyDefinition(
+                                    name = "Count",
+                                    typeName = "Int",
+                                    getterMethodName = "get_Count",
+                                    setterMethodName = "put_Count",
+                                    getterMethodRowId = 22,
+                                    setterMethodRowId = 32,
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(
@@ -4045,9 +4113,51 @@ class KotlinProjectionGeneratorTest {
                                     isStatic = true,
                                     methodRowId = 20,
                                 ),
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(WinRtParameterDefinition("value", "String")),
+                                    methodRowId = 25,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "Rename",
+                                    returnTypeName = "String",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("value", "String"),
+                                        WinRtParameterDefinition("culture", "String"),
+                                    ),
+                                    methodRowId = 26,
+                                ),
+                                WinRtMethodDefinition(
+                                    name = "ReceiveNamesForPrefix",
+                                    returnTypeName = "Unit",
+                                    parameters = listOf(
+                                        WinRtParameterDefinition("prefix", "String"),
+                                        WinRtParameterDefinition(
+                                            "names",
+                                            "Array<String>",
+                                            typeIsByRef = true,
+                                            isOutParameter = true,
+                                        ),
+                                    ),
+                                    methodRowId = 27,
+                                ),
                             ),
                             properties = listOf(
-                                WinRtPropertyDefinition(name = "Name", typeName = "String", getterMethodName = "get_Name", getterMethodRowId = 21),
+                                WinRtPropertyDefinition(
+                                    name = "Name",
+                                    typeName = "String",
+                                    getterMethodName = "get_Name",
+                                    setterMethodName = "put_Name",
+                                    getterMethodRowId = 21,
+                                    setterMethodRowId = 28,
+                                ),
+                                WinRtPropertyDefinition(
+                                    name = "Owner",
+                                    typeName = "Sample.Foundation.Widget?",
+                                    getterMethodName = "get_Owner",
+                                    getterMethodRowId = 29,
+                                ),
                             ),
                             events = listOf(
                                 WinRtEventDefinition(name = "Changed", delegateTypeName = "Sample.Foundation.WidgetHandler", addMethodRowId = 23, removeMethodRowId = 24),
@@ -4104,12 +4214,27 @@ class KotlinProjectionGeneratorTest {
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(filesByName.getValue("IInternalContract.kt").contents.contains("fun removeChanged(token: EventRegistrationToken)"))
 
+        val iWidgetContents = filesByName.getValue("IWidget.kt").contents
+        assertTrue(iWidgetContents.contains("fun rename(`value`: String): String"))
+        assertTrue(iWidgetContents.contains("fun rename(`value`: String, culture: String): String"))
+        assertTrue(iWidgetContents.contains("fun receiveNamesForPrefix(prefix: String): Array<String>"))
+        assertFalse(iWidgetContents.contains("receiveNamesForPrefix(prefix: String, names: Array<String>)"))
+        assertTrue(iWidgetContents.contains("var name: String"))
+        assertTrue(iWidgetContents.contains("val owner: Widget?"))
+
         val widgetContents = filesByName.getValue("Widget.kt").contents
         assertTrue(widgetContents.contains("public class Widget internal constructor("))
         assertTrue(widgetContents.contains("private val _inner: IInspectableReference"))
         assertTrue(widgetContents.contains("private val _defaultInterface: ComObjectReference"))
         assertTrue(widgetContents.contains("ActivationFactory.activateInstance(Metadata.TYPE_NAME)"))
-        assertTrue(widgetContents.contains("val name: String"))
+        assertTrue(widgetContents.contains("fun rename(`value`: String): String"))
+        assertTrue(widgetContents.contains("fun rename(`value`: String, culture: String): String"))
+        assertTrue(widgetContents.contains("fun receiveNamesForPrefix(prefix: String): Array<String>"))
+        assertTrue(widgetContents.contains("IWidget.Metadata.RECEIVENAMESFORPREFIX_SLOT"))
+        assertFalse(widgetContents.contains("receiveNamesForPrefix(prefix: String, names: Array<String>)"))
+        assertTrue(widgetContents.contains("var name: String"))
+        assertTrue(widgetContents.contains("_iWidgetProjection.name = value"))
+        assertTrue(widgetContents.contains("val owner: Widget?"))
         assertTrue(widgetContents.contains("companion object Metadata"))
         assertFalse(widgetContents.contains("init {\n        register()\n    }"))
         assertTrue(widgetContents.contains("internal fun acquireInterface(instance: IInspectableReference, iid: Guid): IUnknownReference"))
@@ -4126,17 +4251,27 @@ class KotlinProjectionGeneratorTest {
         assertTrue(widgetContents.contains("public constructor() : this(ComposableFactory.createInstance(), kotlin.Unit)"))
         assertTrue(widgetContents.contains("const val CREATE_METHOD_ROW_ID: Int = 20"))
         assertTrue(widgetContents.contains("const val NAME_GETTER_METHOD_ROW_ID: Int = 21"))
+        assertTrue(widgetContents.contains("const val NAME_SETTER_METHOD_ROW_ID: Int = 28"))
+        assertTrue(widgetContents.contains("const val OWNER_GETTER_METHOD_ROW_ID: Int = 29"))
         assertTrue(widgetContents.contains("const val CHANGED_ADD_METHOD_ROW_ID: Int = 23"))
         assertTrue(widgetContents.contains("const val CHANGED_REMOVE_METHOD_ROW_ID: Int = 24"))
         assertTrue(filesByName.getValue("IWidgetStatics.kt").contents.contains("const val COUNT_GETTER_METHOD_ROW_ID: Int = 22"))
+        assertTrue(filesByName.getValue("IWidgetStatics.kt").contents.contains("const val COUNT_SETTER_METHOD_ROW_ID: Int = 32"))
+        assertTrue(filesByName.getValue("IWidgetStatics.kt").contents.contains("const val FIND_30_METHOD_ROW_ID: Int = 30"))
+        assertTrue(filesByName.getValue("IWidgetStatics.kt").contents.contains("const val FIND_31_METHOD_ROW_ID: Int = 31"))
         assertTrue(filesByName.getValue("IWidgetStatics.kt").contents.contains("const val LOADED_ADD_METHOD_ROW_ID: Int = 11"))
         assertTrue(filesByName.getValue("IWidgetStatics.kt").contents.contains("const val LOADED_REMOVE_METHOD_ROW_ID: Int = 12"))
         assertTrue(widgetContents.contains("fun acquireDefaultInterface(instance: IInspectableReference): IUnknownReference"))
         assertTrue(widgetContents.contains("acquireInterface(instance, DEFAULT_INTERFACE_IID)"))
         assertTrue(widgetContents.contains("fun create(): Widget"))
+        assertTrue(widgetContents.contains("fun find(name: String): Widget"))
+        assertTrue(widgetContents.contains("fun find(name: String, culture: String): Widget"))
+        assertTrue(widgetContents.contains("STATIC_FIND_30_SLOT"))
+        assertTrue(widgetContents.contains("STATIC_FIND_31_SLOT"))
         assertTrue(widgetContents.contains("Metadata.wrap("))
         assertTrue(widgetContents.contains("ActivationFactory.activate()"))
-        assertTrue(widgetContents.contains("val count: Int"))
+        assertTrue(widgetContents.contains("var count: Int"))
+        assertTrue(widgetContents.contains("STATIC_COUNT_SETTER_SLOT"))
         assertTrue(widgetContents.contains("val changed: WinRtEvent<WidgetHandler>"))
         assertTrue(widgetContents.contains("fun addChanged(handler: WidgetHandler): EventRegistrationToken"))
         assertTrue(widgetContents.contains("fun removeChanged(token: EventRegistrationToken)"))
