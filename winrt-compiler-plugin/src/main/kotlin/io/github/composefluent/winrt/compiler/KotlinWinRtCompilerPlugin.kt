@@ -3087,19 +3087,26 @@ class KotlinWinRtIrGenerationExtension(
         if (entries.isEmpty()) {
             return null
         }
-        val file = moduleFragment.files.firstOrNull() ?: return null
-        val registerGeneratedProjectionTypeIndex = pluginContext.referenceFunctions(
-            CallableId(
-                FqName("io.github.composefluent.winrt.runtime"),
-                Name.identifier("registerGeneratedProjectionTypeIndex"),
-            ),
+        val file = requireCompilerSupportPrerequisite(
+            description = "projection registrar",
+            prerequisite = "module file",
+            value = moduleFragment.files.firstOrNull(),
         )
-            .map { symbol -> symbol.owner }
-            .singleOrNull { function ->
-                function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 4
-            }
-            ?.symbol
-            ?: return null
+        val registerGeneratedProjectionTypeIndex = requireCompilerSupportPrerequisite(
+            description = "projection registrar",
+            prerequisite = "io.github.composefluent.winrt.runtime.registerGeneratedProjectionTypeIndex with 4 regular parameters",
+            value = pluginContext.referenceFunctions(
+                CallableId(
+                    FqName("io.github.composefluent.winrt.runtime"),
+                    Name.identifier("registerGeneratedProjectionTypeIndex"),
+                ),
+            )
+                .map { symbol -> symbol.owner }
+                .singleOrNull { function ->
+                    function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 4
+                }
+                ?.symbol,
+        )
         val function = pluginContext.irFactory.buildFun {
             name = Name.identifier("kotlinWinRtProjectionSupportInitialize_${projectionSupportInitializerHash(entries)}")
             returnType = pluginContext.irBuiltIns.unitType

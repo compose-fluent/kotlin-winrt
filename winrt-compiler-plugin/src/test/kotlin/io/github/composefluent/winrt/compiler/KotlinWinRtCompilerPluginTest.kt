@@ -711,6 +711,25 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_registrar_prerequisite_rejects_missing_registration_function() {
+        val error = runCatching {
+            requireCompilerSupportPrerequisite<String>(
+                description = "projection registrar",
+                prerequisite = "io.github.composefluent.winrt.runtime.registerGeneratedProjectionTypeIndex with 4 regular parameters",
+                value = null,
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertEquals(
+            "kotlin-winrt compiler plugin requires projection registrar support input to resolve " +
+                "io.github.composefluent.winrt.runtime.registerGeneratedProjectionTypeIndex with 4 regular parameters.",
+            error!!.message,
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_missing_declared_source_file() {
         val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-missing-source-")
         val manifest = manifestDirectory.resolve("compiler-support.tsv")
