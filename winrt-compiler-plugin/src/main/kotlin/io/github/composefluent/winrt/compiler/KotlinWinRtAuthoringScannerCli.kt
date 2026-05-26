@@ -57,10 +57,18 @@ object KotlinWinRtAuthoringScannerCli {
             .flatMap(::kotlinSourceFiles)
             .distinct()
             .sorted()
-        return sourceFiles
+        val candidates = sourceFiles
             .flatMap { source -> scanSource(parseSource(source), winRtTypes) }
-            .distinctBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
-            .sortedBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
+        val duplicateTypeNames = candidates
+            .groupBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
+            .filterValues { matches -> matches.size > 1 }
+            .keys
+            .sorted()
+        require(duplicateTypeNames.isEmpty()) {
+            "kotlin-winrt authoring scanner found duplicate authored type candidates: " +
+                duplicateTypeNames.joinToString()
+        }
+        return candidates.sortedBy(KotlinWinRtAuthoredTypeCandidate::sourceTypeName)
     }
 
     private fun scanSource(
