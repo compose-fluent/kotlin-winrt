@@ -286,6 +286,37 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_rejects_missing_declared_source_file() {
+        val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-missing-source-")
+        val manifest = manifestDirectory.resolve("compiler-support.tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	1
+            """.trimIndent() + "\n",
+        )
+        val manifestEntries = readCompilerSupportManifest(manifest)
+
+        val error = runCatching {
+            readCompilerSupportInputEntries(
+                manifestPath = manifest,
+                manifestEntries = manifestEntries,
+                kind = "projection-registrar",
+                description = "projection registrar input",
+                read = ::readProjectionRegistrarEntries,
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin requires projection registrar input file"),
+        )
+    }
+
+    @Test
     fun generic_abi_registry_input_reads_compile_time_facts() {
         val input = Files.createTempFile("kotlin-winrt-generic-abi-registry-", ".tsv")
         Files.writeString(
