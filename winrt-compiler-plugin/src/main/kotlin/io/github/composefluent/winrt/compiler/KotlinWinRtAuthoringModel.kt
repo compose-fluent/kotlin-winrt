@@ -119,7 +119,9 @@ internal fun inheritedOverridableInterfaceNames(
             .takeIf(String::isNotBlank)
             ?.takeUnless(::isWinRtObjectTypeName)
             ?: break
-        current = winRtTypes[baseTypeName]
+        current = requireNotNull(winRtTypes[baseTypeName]) {
+            "kotlin-winrt authoring metadata index type ${current.qualifiedName} references missing base type $baseTypeName."
+        }
     }
     return names.sorted()
 }

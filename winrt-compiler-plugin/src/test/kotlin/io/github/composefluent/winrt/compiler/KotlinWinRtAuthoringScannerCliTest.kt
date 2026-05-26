@@ -315,4 +315,47 @@ class KotlinWinRtAuthoringScannerCliTest {
             output.readText().trimEnd(),
         )
     }
+
+    @Test
+    fun rejects_authoring_metadata_index_missing_inherited_base_type() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-missing-base-scan-")
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        root.resolve("Sample.kt").writeText(
+            """
+            package sample
+
+            import microsoft.ui.xaml.controls.Grid
+
+            class SampleHostPanel : Grid()
+            """.trimIndent(),
+        )
+        metadataIndex.writeText(
+            """
+            Microsoft.UI.Xaml.Controls.Grid	RuntimeClass		Microsoft.UI.Xaml.Controls.Panel
+            """.trimIndent(),
+        )
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    root.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains(
+                "references missing base type Microsoft.UI.Xaml.Controls.Panel",
+            ),
+        )
+    }
 }
