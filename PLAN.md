@@ -115,6 +115,7 @@
 - [x] Compiler support handoff fail-closed closure: reject malformed compiler-support, projection registrar, generic instantiation, and generic ABI registry TSV rows instead of silently dropping generator handoff entries in the compiler plugin.
 - [x] Compiler support manifest source fail-closed closure: reject compiler-support manifest entries whose declared projection registrar, generic instantiation, or generic ABI registry source files are missing instead of silently skipping those generator handoff inputs.
 - [x] Compiler support manifest option fail-closed closure: reject explicitly configured compiler-support manifest paths that do not exist instead of treating a broken generator handoff configuration as no compiler support input.
+- [x] Compiler support relative-manifest fail-closed closure: resolve parent-less compiler support manifests against the current directory so declared source inputs cannot be silently skipped.
 - [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
 - [x] Authoring scanner argument fail-closed closure: reject scanner path options without values using stable diagnostics instead of surfacing low-level argument indexing failures.

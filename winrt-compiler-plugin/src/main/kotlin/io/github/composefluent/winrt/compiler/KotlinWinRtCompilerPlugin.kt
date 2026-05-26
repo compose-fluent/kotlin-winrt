@@ -4369,7 +4369,7 @@ fun <T> readCompilerSupportInputEntries(
     description: String,
     read: (Path) -> List<T>,
 ): List<T> {
-    val manifestDirectory = manifestPath.parent ?: return emptyList()
+    val manifestDirectory = manifestPath.parent ?: Path.of("")
     return manifestEntries
         .asSequence()
         .filter { it.kind == kind }

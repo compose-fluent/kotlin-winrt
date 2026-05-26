@@ -16,6 +16,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
+import java.nio.file.Path
 import java.net.URLClassLoader
 
 @OptIn(ExperimentalCompilerApi::class)
@@ -336,6 +337,36 @@ class KotlinWinRtCompilerPluginTest {
         assertTrue(
             error!!.message.orEmpty(),
             error.message.orEmpty().contains("kotlin-winrt compiler plugin requires projection registrar input file"),
+        )
+    }
+
+    @Test
+    fun compiler_support_manifest_without_parent_resolves_declared_source_from_current_directory() {
+        val manifest = Path.of("compiler-support.tsv")
+        val manifestEntries = listOf(
+            KotlinWinRtCompilerSupportManifestEntry(
+                kind = "projection-registrar",
+                className = "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic",
+                sourceFile = "missing-projection-registrar.tsv",
+                entries = 1,
+            ),
+        )
+
+        val error = runCatching {
+            readCompilerSupportInputEntries(
+                manifestPath = manifest,
+                manifestEntries = manifestEntries,
+                kind = "projection-registrar",
+                description = "projection registrar input",
+                read = ::readProjectionRegistrarEntries,
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("missing-projection-registrar.tsv"),
         )
     }
 
