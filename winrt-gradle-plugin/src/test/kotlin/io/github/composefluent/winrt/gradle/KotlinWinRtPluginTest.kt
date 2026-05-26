@@ -1278,6 +1278,37 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun authoring_host_task_rejects_malformed_host_manifests() {
+        val project = ProjectBuilder.builder().build()
+        val manifest = project.layout.buildDirectory.file("component/SampleComponent.host.json").get().asFile.toPath()
+        Files.createDirectories(manifest.parent)
+        Files.writeString(
+            manifest,
+            """{"assemblyName":"SampleComponent","targetArtifact":"SampleComponent.jar","activatableClasses":[],"activatableClassTargets":{}}""",
+        )
+        val task = project.tasks.register(
+            "buildMalformedAuthoringHost",
+            BuildWinRtAuthoringHostTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputDirectory.set(project.layout.buildDirectory.dir("authoring-host/bin"))
+            registeredTask.generatedSourceDirectory.set(project.layout.buildDirectory.dir("authoring-host/src"))
+            registeredTask.authoredHostManifestFiles.from(manifest)
+            registeredTask.dependencyIdentityFiles.from(project.files())
+            registeredTask.javaHome.set(System.getProperty("java.home"))
+            registeredTask.runtimeIdentifier.set("win-x64")
+        }.get()
+
+        val error = runCatching { task.build() }.exceptionOrNull()
+
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("does not declare any activatable classes"),
+        )
+        assertFalse(Files.exists(task.generatedSourceDirectory.get().asFile.toPath().resolve("kotlin_winrt_authoring_host.c")))
+    }
+
+    @Test
     fun runtime_assets_task_stages_package_declared_framework_layout() {
         val project = ProjectBuilder.builder().build()
         val globalPackagesRoot = project.layout.buildDirectory.dir("nuget").get().asFile.toPath()
