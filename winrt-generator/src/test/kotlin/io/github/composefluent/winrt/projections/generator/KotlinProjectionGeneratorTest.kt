@@ -99,6 +99,52 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_authoring_activation_factory_plan_with_factory_interface_without_iid() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidgetFactory",
+                            kind = WinRtTypeKind.Interface,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "Widget",
+                            kind = WinRtTypeKind.RuntimeClass,
+                            activation = WinRtActivationShape(
+                                factories = listOf(
+                                    WinRtAttributedFactoryShape(
+                                        interfaceName = "Sample.Foundation.IWidgetFactory",
+                                        kind = WinRtAttributedFactoryKind.Activatable,
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching {
+            KotlinProjectionGenerator(
+                emitSupportFiles = true,
+                projectionContext = WinRtMetadataProjectionContext(sources = emptyList(), component = true),
+            ).generate(model)
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains(
+                "Generator requires authored runtime class Sample.Foundation.Widget activation factory interface Sample.Foundation.IWidgetFactory to carry metadata IID before authoring support rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun runtime_owned_mapped_type_decision_is_declared_on_mapped_type_entries() {
         val runtimeOwned = listOf(
             "System.Object?",
