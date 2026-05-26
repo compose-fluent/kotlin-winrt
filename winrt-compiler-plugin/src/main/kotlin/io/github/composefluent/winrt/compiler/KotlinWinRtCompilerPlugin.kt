@@ -3173,20 +3173,38 @@ class KotlinWinRtIrGenerationExtension(
         if (entries.isEmpty()) {
             return null
         }
-        val file = moduleFragment.files.firstOrNull() ?: return null
-        val supportClass = pluginContext.referenceClass(
-            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations")),
-        ) ?: return null
-        val entryClass = pluginContext.referenceClass(
-            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry")),
-        ) ?: return null
+        val file = requireCompilerSupportPrerequisite(
+            description = "generic type instantiation",
+            prerequisite = "module file",
+            value = moduleFragment.files.firstOrNull(),
+        )
+        val supportClass = requireCompilerSupportPrerequisite(
+            description = "generic type instantiation",
+            prerequisite = "class io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations",
+            value = pluginContext.referenceClass(
+                ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations")),
+            ),
+        )
+        val entryClass = requireCompilerSupportPrerequisite(
+            description = "generic type instantiation",
+            prerequisite = "class io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry",
+            value = pluginContext.referenceClass(
+                ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericTypeInstantiationEntry")),
+            ),
+        )
         val entryConstructor = entryClass.owner.declarations
             .filterIsInstance<IrConstructor>()
             .singleOrNull { constructor ->
                 constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 9
             }
             ?.symbol
-            ?: return null
+            .let { symbol ->
+                requireCompilerSupportPrerequisite(
+                    description = "generic type instantiation",
+                    prerequisite = "GenericTypeInstantiationEntry constructor with 9 regular parameters",
+                    value = symbol,
+                )
+            }
         val initializeEntry = supportClass.owner.declarations
             .filterIsInstance<IrSimpleFunction>()
             .singleOrNull { function ->
@@ -3194,14 +3212,26 @@ class KotlinWinRtIrGenerationExtension(
                     function.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 1
             }
             ?.symbol
-            ?: return null
+            .let { symbol ->
+                requireCompilerSupportPrerequisite(
+                    description = "generic type instantiation",
+                    prerequisite = "WinRTGenericTypeInstantiations.initializeEntry with 1 regular parameter",
+                    value = symbol,
+                )
+            }
         val listOf = pluginContext.referenceFunctions(
             CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
         ).singleOrNull { function ->
             function.owner.parameters
                 .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
                 ?.varargElementType != null
-        } ?: return null
+        }.let { symbol ->
+            requireCompilerSupportPrerequisite(
+                description = "generic type instantiation",
+                prerequisite = "kotlin.collections.listOf vararg function",
+                value = symbol,
+            )
+        }
 
         val sortedEntries = entries.sortedWith(
             compareBy(KotlinWinRtGenericTypeInstantiationEntry::sourceType, KotlinWinRtGenericTypeInstantiationEntry::className),
@@ -3369,39 +3399,93 @@ class KotlinWinRtIrGenerationExtension(
         if (entries.isEmpty()) {
             return null
         }
-        val file = moduleFragment.files.firstOrNull() ?: return null
-        val entryClass = pluginContext.referenceClass(
-            ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry")),
-        ) ?: return null
+        val file = requireCompilerSupportPrerequisite(
+            description = "generic ABI registry",
+            prerequisite = "module file",
+            value = moduleFragment.files.firstOrNull(),
+        )
+        val entryClass = requireCompilerSupportPrerequisite(
+            description = "generic ABI registry",
+            prerequisite = "class io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry",
+            value = pluginContext.referenceClass(
+                ClassId.topLevel(FqName("io.github.composefluent.winrt.projections.support.GenericAbiDelegateEntry")),
+            ),
+        )
         val entryConstructor = entryClass.owner.declarations
             .filterIsInstance<IrConstructor>()
             .singleOrNull { constructor ->
                 constructor.parameters.count { parameter -> parameter.kind == IrParameterKind.Regular } == 6
             }
             ?.symbol
-            ?: return null
-        val intrinsicClass = pluginContext.referenceClass(
-            ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic")),
-        ) ?: return null
-        val delegateNamedIntrinsic = intrinsicClass.functionNamedWithRegularParameterCount("delegateNamed", 1) ?: return null
+            .let { symbol ->
+                requireCompilerSupportPrerequisite(
+                    description = "generic ABI registry",
+                    prerequisite = "GenericAbiDelegateEntry constructor with 6 regular parameters",
+                    value = symbol,
+                )
+            }
+        val intrinsicClass = requireCompilerSupportPrerequisite(
+            description = "generic ABI registry",
+            prerequisite = "class io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
+            value = pluginContext.referenceClass(
+                ClassId.topLevel(FqName("io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic")),
+            ),
+        )
+        val delegateNamedIntrinsic = requireCompilerSupportPrerequisite(
+            description = "generic ABI registry",
+            prerequisite = "WinRtGenericAbiSupportIntrinsic.delegateNamed with 1 regular parameter",
+            value = intrinsicClass.functionNamedWithRegularParameterCount("delegateNamed", 1),
+        )
         val delegatesForSourceTypeIntrinsic =
-            intrinsicClass.functionNamedWithRegularParameterCount("delegatesForSourceType", 1) ?: return null
+            requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "WinRtGenericAbiSupportIntrinsic.delegatesForSourceType with 1 regular parameter",
+                value = intrinsicClass.functionNamedWithRegularParameterCount("delegatesForSourceType", 1),
+            )
         val isDerivedGenericInterfaceIntrinsic =
-            intrinsicClass.functionNamedWithRegularParameterCount("isDerivedGenericInterface", 1) ?: return null
+            requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "WinRtGenericAbiSupportIntrinsic.isDerivedGenericInterface with 1 regular parameter",
+                value = intrinsicClass.functionNamedWithRegularParameterCount("isDerivedGenericInterface", 1),
+            )
         val registerAbiDelegatesIntrinsic =
-            intrinsicClass.functionNamedWithRegularParameterCount("registerAbiDelegates", 1) ?: return null
+            requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "WinRtGenericAbiSupportIntrinsic.registerAbiDelegates with 1 regular parameter",
+                value = intrinsicClass.functionNamedWithRegularParameterCount("registerAbiDelegates", 1),
+            )
         val listOf = pluginContext.referenceFunctions(
             CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("listOf")),
         ).singleOrNull { function ->
             function.owner.parameters
                 .singleOrNull { parameter -> parameter.kind == IrParameterKind.Regular }
                 ?.varargElementType != null
-        } ?: return null
+        }.let { symbol ->
+            requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "kotlin.collections.listOf vararg function",
+                value = symbol,
+            )
+        }
         val emptyList = pluginContext.referenceFunctions(
             CallableId(KOTLIN_COLLECTIONS_PACKAGE_FQ_NAME, Name.identifier("emptyList")),
-        ).singleOrNull() ?: return null
-        val function2 = pluginContext.referenceClass(KOTLIN_FUNCTION2_CLASS_ID) ?: return null
-        val function2Invoke = function2.functionNamed("invoke") ?: return null
+        ).singleOrNull().let { symbol ->
+            requireCompilerSupportPrerequisite(
+                description = "generic ABI registry",
+                prerequisite = "kotlin.collections.emptyList function",
+                value = symbol,
+            )
+        }
+        val function2 = requireCompilerSupportPrerequisite(
+            description = "generic ABI registry",
+            prerequisite = "class kotlin.Function2",
+            value = pluginContext.referenceClass(KOTLIN_FUNCTION2_CLASS_ID),
+        )
+        val function2Invoke = requireCompilerSupportPrerequisite(
+            description = "generic ABI registry",
+            prerequisite = "kotlin.Function2.invoke",
+            value = function2.functionNamed("invoke"),
+        )
 
         val delegates = entries
             .filter { entry -> entry.kind == "delegate" }
@@ -4213,6 +4297,17 @@ fun <T : Any> resolveProjectionRegistrarClasses(
             }
             entry to projectedClass
         }
+
+fun <T : Any> requireCompilerSupportPrerequisite(
+    description: String,
+    prerequisite: String,
+    value: T?,
+): T {
+    require(value != null) {
+        "kotlin-winrt compiler plugin requires $description support input to resolve $prerequisite."
+    }
+    return value
+}
 
 fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> {
     val entries = readRequiredTsvRows(
