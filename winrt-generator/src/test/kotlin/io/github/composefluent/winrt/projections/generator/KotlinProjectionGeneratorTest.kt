@@ -14492,6 +14492,56 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_mapped_key_value_pair_return_without_renderable_value_signature_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555569"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IEntryProvider",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-55555555556a"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getEntry",
+                                    returnTypeName = "Windows.Foundation.Collections.IKeyValuePair<String, Sample.Foundation.WidgetHandler>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IEntryProvider ABI binding GETENTRY_SLOT return key-value pair Windows.Foundation.Collections.IKeyValuePair value Sample.Foundation.WidgetHandler to have a renderable WinRT type signature before projection rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_reference_return_without_value_type_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
