@@ -188,6 +188,27 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_rejects_negative_entry_counts() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-negative-count-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	projection-registrar.tsv	-1
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readCompilerSupportManifest(manifest) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse compiler support manifest row 2"),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_option_rejects_missing_file() {
         val missingManifest = Files.createTempDirectory("kotlin-winrt-missing-compiler-support-")
             .resolve("compiler-support.tsv")
