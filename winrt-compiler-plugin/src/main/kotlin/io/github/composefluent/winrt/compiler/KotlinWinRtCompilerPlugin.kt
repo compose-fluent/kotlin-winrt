@@ -4070,7 +4070,12 @@ data class KotlinWinRtCompilerSupportManifestEntry(
 )
 
 fun readCompilerSupportManifest(path: Path): List<KotlinWinRtCompilerSupportManifestEntry> {
-    val entries = readRequiredTsvRows(path, "compiler support manifest", ::parseCompilerSupportManifestLine)
+    val entries = readRequiredTsvRows(
+        path = path,
+        description = "compiler support manifest",
+        expectedHeader = COMPILER_SUPPORT_MANIFEST_HEADER,
+        parse = ::parseCompilerSupportManifestLine,
+    )
     val duplicate = entries
         .groupBy { entry -> Triple(entry.kind, entry.className, entry.sourceFile) }
         .entries
@@ -4116,6 +4121,9 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
 
 private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
     setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry")
+
+private const val COMPILER_SUPPORT_MANIFEST_HEADER: String =
+    "kind\tclassName\tsourceFile\tentries"
 
 private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupportManifestExpectedEntry> =
     mapOf(
@@ -4192,7 +4200,12 @@ data class KotlinWinRtProjectionRegistrarEntry(
 )
 
 fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> {
-    val entries = readRequiredTsvRows(path, "projection registrar input", ::parseProjectionRegistrarLine)
+    val entries = readRequiredTsvRows(
+        path = path,
+        description = "projection registrar input",
+        expectedHeader = PROJECTION_REGISTRAR_HEADER,
+        parse = ::parseProjectionRegistrarLine,
+    )
     val duplicate = entries
         .groupBy { entry -> entry.kotlinClassName to entry.projectedTypeName }
         .entries
@@ -4203,6 +4216,9 @@ fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegist
     }
     return entries
 }
+
+private const val PROJECTION_REGISTRAR_HEADER: String =
+    "kotlinClassName\tprojectedTypeName\tkind\tbaseTypeName\tmetadataClassName"
 
 private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionRegistrarEntry? {
     val parts = line.split('\t', limit = 5)
@@ -4389,7 +4405,12 @@ data class KotlinWinRtGenericTypeInstantiationEntry(
 )
 
 fun readGenericTypeInstantiationEntries(path: Path): List<KotlinWinRtGenericTypeInstantiationEntry> {
-    val entries = readRequiredTsvRows(path, "generic type instantiation input", ::parseGenericTypeInstantiationLine)
+    val entries = readRequiredTsvRows(
+        path = path,
+        description = "generic type instantiation input",
+        expectedHeader = GENERIC_TYPE_INSTANTIATION_HEADER,
+        parse = ::parseGenericTypeInstantiationLine,
+    )
     val duplicate = entries
         .groupBy { entry -> entry.sourceType to entry.className }
         .entries
@@ -4400,6 +4421,9 @@ fun readGenericTypeInstantiationEntries(path: Path): List<KotlinWinRtGenericType
     }
     return entries
 }
+
+private const val GENERIC_TYPE_INSTANTIATION_HEADER: String =
+    "className\tsourceType\tisDelegate\trcwFunctions\tvtableFunctions\tpropertyAccessors\tgenericReturnOnlyRcwFunctions\tprojectedGenericFallbacks\tdependencies"
 
 private fun parseGenericTypeInstantiationLine(line: String): KotlinWinRtGenericTypeInstantiationEntry? {
     val parts = line.split('\t', limit = 9)
@@ -4442,7 +4466,12 @@ data class KotlinWinRtGenericAbiRegistryEntry(
 )
 
 fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistryEntry> {
-    val entries = readRequiredTsvRows(path, "generic ABI registry input", ::parseGenericAbiRegistryLine)
+    val entries = readRequiredTsvRows(
+        path = path,
+        description = "generic ABI registry input",
+        expectedHeader = GENERIC_ABI_REGISTRY_HEADER,
+        parse = ::parseGenericAbiRegistryLine,
+    )
     val duplicate = entries
         .groupBy { entry -> entry.duplicateKey() }
         .entries
@@ -4453,6 +4482,9 @@ fun readGenericAbiRegistryEntries(path: Path): List<KotlinWinRtGenericAbiRegistr
     }
     return entries
 }
+
+private const val GENERIC_ABI_REGISTRY_HEADER: String =
+    "kind\tname\tsourceGenericType\toperation\tdeclaration\tabiParameterTypes\ttypeArrayShape"
 
 private fun KotlinWinRtGenericAbiRegistryEntry.duplicateKey(): String =
     when (kind) {
@@ -4489,9 +4521,14 @@ fun <T> readCompilerSupportInputEntries(
 private fun <T> readRequiredTsvRows(
     path: Path,
     description: String,
+    expectedHeader: String,
     parse: (String) -> T?,
-): List<T> =
-    Files.readAllLines(path)
+): List<T> {
+    val lines = Files.readAllLines(path)
+    require(lines.firstOrNull() == expectedHeader) {
+        "kotlin-winrt compiler plugin expected $description header '$expectedHeader' in $path."
+    }
+    return lines
         .asSequence()
         .drop(1)
         .mapIndexedNotNull { index, line ->
@@ -4505,6 +4542,7 @@ private fun <T> readRequiredTsvRows(
             }
         }
         .toList()
+}
 
 private fun parseGenericAbiRegistryLine(line: String): KotlinWinRtGenericAbiRegistryEntry? {
     val parts = line.split('\t', limit = 7)
