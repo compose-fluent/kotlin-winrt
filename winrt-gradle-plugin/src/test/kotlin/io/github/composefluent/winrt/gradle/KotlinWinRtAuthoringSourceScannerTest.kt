@@ -775,6 +775,65 @@ class KotlinWinRtAuthoringSourceScannerTest {
     }
 
     @Test
+    fun rejects_authored_collection_returns_without_supported_element_adapter() {
+        val output = Files.createTempDirectory("kotlin-winrt-authoring-bad-collection-details-")
+        val candidate = KotlinWinRtAuthoredTypeCandidate(
+            packageName = "sample",
+            className = "LocalShape",
+            sourceTypeName = "sample.LocalShape",
+            winRtBaseClassName = "Sample.Shape",
+            winRtInterfaceNames = listOf("Sample.IShapeOverrides"),
+            overridableInterfaceNames = listOf("Sample.IShapeOverrides"),
+            isPublic = false,
+        )
+        val metadataModel = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Shape",
+                            kind = WinRtTypeKind.RuntimeClass,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "Value",
+                            kind = WinRtTypeKind.Struct,
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample",
+                            name = "IShapeOverrides",
+                            kind = WinRtTypeKind.Interface,
+                            iid = io.github.composefluent.winrt.runtime.Guid("33333333-3333-3333-3333-333333333333"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "GetValuesCore",
+                                    returnTypeName = "Windows.Foundation.Collections.IVector<Sample.Value>",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        try {
+            KotlinWinRtAuthoringTypeDetailsRenderer.renderTo(
+                candidates = listOf(candidate),
+                metadataModel = metadataModel,
+                outputDirectory = output,
+            )
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("unsupported collection element type 'Sample.Value'"))
+            assertFalse(Files.exists(output.resolve("sample/WinRT_LocalShape_TypeDetails.kt")))
+            return
+        }
+
+        throw AssertionError("Expected unsupported authored collection return element adapters to fail closed.")
+    }
+
+    @Test
     fun writes_authoring_host_manifest_for_scanned_authored_types() {
         val output = Files.createTempDirectory("kotlin-winrt-authoring-host-")
         val manifest = output.resolve("SampleComponent.host.json")

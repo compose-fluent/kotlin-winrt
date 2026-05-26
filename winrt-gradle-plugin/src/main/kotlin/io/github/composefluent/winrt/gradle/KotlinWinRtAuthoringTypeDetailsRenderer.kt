@@ -518,7 +518,7 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         fundamentalType(method.returnTypeName)?.let { type ->
             return renderFundamentalReturnProjection(type, outExpression, valueExpression)
         }
-        renderCollectionReturnProjection(method.returnTypeName, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
+        renderCollectionReturnProjection(method, outExpression, valueExpression, typesByName, semanticHelpers)?.let {
             return it
         }
         val returnType = typesByName[method.returnTypeName]
@@ -575,22 +575,29 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
         winRtFundamentalTypeForName(typeName)
 
     private fun renderCollectionReturnProjection(
-        returnTypeName: String,
+        method: WinRtMethodDefinition,
         outExpression: CodeBlock,
         valueExpression: String,
         typesByName: Map<String, WinRtTypeDefinition>,
         semanticHelpers: WinRtMetadataSemanticHelpers,
     ): CodeBlock? {
+        val returnTypeName = method.returnTypeName
         val returnType = WinRtTypeRef.fromDisplayName(returnTypeName).normalized()
         val collectionTypeName = returnType.qualifiedName ?: return null
-        val elementType = returnType.typeArguments.singleOrNull()?.normalized() ?: return null
-        val elementAdapter = renderCollectionElementAdapter(elementType, typesByName, semanticHelpers) ?: return null
         val projectionType = when (collectionTypeName) {
             "Windows.Foundation.Collections.IIterable" -> winRtIterableProjectionType
             "Windows.Foundation.Collections.IVectorView" -> winRtReadOnlyListProjectionType
             "Windows.Foundation.Collections.IVector" -> winRtListProjectionType
             else -> return null
         }
+        val elementType = returnType.typeArguments.singleOrNull()?.normalized()
+            ?: throw GradleException(
+                "Authored WinRT override ${method.name} returns collection type '$returnTypeName' without exactly one element type.",
+            )
+        val elementAdapter = renderCollectionElementAdapter(elementType, typesByName, semanticHelpers)
+            ?: throw GradleException(
+                "Authored WinRT override ${method.name} returns unsupported collection element type '${elementType.displayName()}'.",
+            )
         return CodeBlock.of(
             "%T.writePointer(%L, %T.fromManaged(%L, %L))",
             platformAbiType,
@@ -600,6 +607,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
             elementAdapter,
         )
     }
+
+    private fun WinRtTypeRef.displayName(): String =
+        qualifiedName ?: toString()
 
     private fun renderCollectionElementAdapter(
         elementType: WinRtTypeRef,
