@@ -173,15 +173,15 @@ object KotlinWinRtAuthoringScannerCli {
                 while (index < args.size) {
                     when (args[index]) {
                         "--metadata-index" -> {
-                            metadataIndex = Path.of(args[index + 1])
+                            metadataIndex = Path.of(argumentValue(args, index))
                             index += 2
                         }
                         "--output" -> {
-                            output = Path.of(args[index + 1])
+                            output = Path.of(argumentValue(args, index))
                             index += 2
                         }
                         "--source-root" -> {
-                            sourceRoots.add(Path.of(args[index + 1]))
+                            sourceRoots.add(Path.of(argumentValue(args, index)))
                             index += 2
                         }
                         else -> error("Unknown kotlin-winrt authoring scanner argument: ${args[index]}")
@@ -193,6 +193,12 @@ object KotlinWinRtAuthoringScannerCli {
                     sourceRoots = sourceRoots,
                 )
             }
+
+            private fun argumentValue(args: Array<String>, index: Int): String =
+                args.getOrNull(index + 1)
+                    ?: throw IllegalArgumentException(
+                        "kotlin-winrt authoring scanner argument ${args[index]} requires a path value.",
+                    )
         }
     }
 

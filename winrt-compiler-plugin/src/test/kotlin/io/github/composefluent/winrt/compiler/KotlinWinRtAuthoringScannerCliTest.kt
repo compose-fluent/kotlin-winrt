@@ -69,6 +69,20 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_authoring_scanner_arguments_without_values() {
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(arrayOf("--source-root"))
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("--source-root requires a path value"),
+        )
+    }
+
+    @Test
     fun scans_public_runtime_class_and_interface_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
