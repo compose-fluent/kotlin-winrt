@@ -183,7 +183,7 @@
 
 - [ ] Broad projection generation: generate Windows and WinAppSDK slices through plugin-owned deterministic output instead of hand-maintained checked-in growth.
 - [x] Dependency projection ownership: keep identity/suppression files as the cross-module ownership boundary so application modules do not duplicate dependency-owned projected FQNs.
-- [ ] Projection breadth control: expand checked-in generated output only after the corresponding runtime, metadata, and generator contracts exist for the same feature; do not shrink or delete generated surfaces as a substitute for missing generator coverage.
+- [x] Projection breadth control: expand checked-in generated output only after the corresponding runtime, metadata, and generator contracts exist for the same feature; do not shrink or delete generated surfaces as a substitute for missing generator coverage.
 - [x] Generated-output audits: scan generated projection source/classes for forbidden runtime fallback, reflection/proxy, stale support registries, duplicate type/category tables, duplicate FQNs, and unexpected source-size growth before expanding projection breadth.
 
 ## Phase 5 Authoring
