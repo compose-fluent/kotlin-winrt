@@ -179,6 +179,49 @@ class KotlinWinRtAuthoringScannerCliTest {
     }
 
     @Test
+    fun rejects_duplicate_authored_type_candidates() {
+        val root = Files.createTempDirectory("kotlin-winrt-authoring-duplicate-scan-")
+        val sourceRootA = root.resolve("a")
+        val sourceRootB = root.resolve("b")
+        Files.createDirectories(sourceRootA)
+        Files.createDirectories(sourceRootB)
+        val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
+        val output = Files.createTempFile("kotlin-winrt-authoring-candidates-", ".tsv")
+        val source = """
+            package sample
+
+            import windows.foundation.IStringable
+
+            class StringableThing : IStringable
+        """.trimIndent()
+        sourceRootA.resolve("Sample.kt").writeText(source)
+        sourceRootB.resolve("Sample.kt").writeText(source)
+        metadataIndex.writeText("Windows.Foundation.IStringable\tInterface\n")
+
+        val error = runCatching {
+            KotlinWinRtAuthoringScannerCli.main(
+                arrayOf(
+                    "--metadata-index",
+                    metadataIndex.toString(),
+                    "--output",
+                    output.toString(),
+                    "--source-root",
+                    sourceRootA.toString(),
+                    "--source-root",
+                    sourceRootB.toString(),
+                ),
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("duplicate authored type candidates: sample.StringableThing"),
+        )
+    }
+
+    @Test
     fun scans_internal_winui_runtime_class_for_local_type_details() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-internal-")
         val metadataIndex = Files.createTempFile("kotlin-winrt-metadata-index-", ".tsv")
