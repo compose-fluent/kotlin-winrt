@@ -14530,6 +14530,56 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_reference_return_without_renderable_element_signature_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "WidgetHandler",
+                            kind = WinRtTypeKind.Delegate,
+                            iid = Guid("11111111-2222-3333-4444-555555555567"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "Invoke",
+                                    returnTypeName = "Unit",
+                                ),
+                            ),
+                        ),
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555568"),
+                            methods = listOf(
+                                WinRtMethodDefinition(
+                                    name = "getValue",
+                                    returnTypeName = "Windows.Foundation.IReference<Sample.Foundation.WidgetHandler>",
+                                    methodRowId = 6,
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget ABI binding GETVALUE_SLOT return reference Windows.Foundation.IReference element Sample.Foundation.WidgetHandler to have a renderable WinRT type signature before projection rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_rejects_async_operation_without_result_type_before_projection_rendering() {
         val model = WinRtMetadataModel(
             namespaces = listOf(
