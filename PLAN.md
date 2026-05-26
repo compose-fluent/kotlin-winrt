@@ -78,6 +78,7 @@
 - [x] Composable factory shape fail-closed closure: reject malformed composable factory create methods that do not end with `baseInterface` and `innerInterface` object ABI parameters before constructor/support rendering.
 - [x] Static property accessor fail-closed closure: validate static getter and setter ABI bindings independently so setter-only metadata cannot bypass `STATIC_*_SETTER_SLOT` contract checks before projection rendering.
 - [x] Composable factory create filtering closure: render composable constructors and factory helpers only from factory methods returning the current runtime class, matching the generator contract validator.
+- [x] Projected attribute fail-closed closure: reject projected attributes whose metadata arguments cannot render as Kotlin annotations instead of silently dropping them with `mapNotNull`.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
