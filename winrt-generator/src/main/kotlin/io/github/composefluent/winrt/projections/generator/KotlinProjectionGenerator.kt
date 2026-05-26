@@ -26,6 +26,7 @@ import io.github.composefluent.winrt.metadata.WinRtNamespace
 import io.github.composefluent.winrt.metadata.WinRtObjectReferenceSurfaceDescriptor
 import io.github.composefluent.winrt.metadata.WinRtParameterDefinition
 import io.github.composefluent.winrt.metadata.WinRtPropertyDefinition
+import io.github.composefluent.winrt.metadata.WinRtProjectedAttributeDescriptor
 import io.github.composefluent.winrt.metadata.WinRtRequiredInterfaceAugmentationDescriptor
 import io.github.composefluent.winrt.metadata.WinRtSignatureWriterDescriptor
 import io.github.composefluent.winrt.metadata.WinRtTypeDeclarationDescriptor
@@ -265,6 +266,7 @@ class KotlinProjectionGenerator(
             }
             validateStaticMethodBindingContracts(plan)
             validateStaticPropertyBindingContracts(plan)
+            validateProjectedAttributeContracts(plan)
             if (KotlinProjectionCompanionKind.ComposableFactory in plan.companionKinds) {
                 val factoryName = plan.composableFactoryInterfaceName
                     ?: throw IllegalArgumentException(
@@ -291,6 +293,32 @@ class KotlinProjectionGenerator(
                 }
                 validateComposableFactoryCreateBindingContracts(plan, factoryType)
             }
+        }
+    }
+
+    private fun validateProjectedAttributeContracts(plan: KotlinTypeProjectionPlan) {
+        plan.projectedAttributes.forEach { attribute ->
+            validateProjectedAttributeContract(plan, "type", attribute)
+        }
+        plan.instanceMemberBindings.forEach { binding ->
+            binding.projectedAttributes.forEach { attribute ->
+                validateProjectedAttributeContract(plan, "ABI binding ${binding.bindingName}", attribute)
+            }
+        }
+        plan.staticMemberBindings.forEach { binding ->
+            binding.projectedAttributes.forEach { attribute ->
+                validateProjectedAttributeContract(plan, "ABI binding ${binding.bindingName}", attribute)
+            }
+        }
+    }
+
+    private fun validateProjectedAttributeContract(
+        plan: KotlinTypeProjectionPlan,
+        ownerLabel: String,
+        attribute: WinRtProjectedAttributeDescriptor,
+    ) {
+        require(renderProjectedAttributeAnnotation(attribute) != null) {
+            "Generator requires ${plan.projectionContractSubject()} $ownerLabel projected attribute ${attribute.metadataTypeName} to use renderable attribute metadata before projection rendering."
         }
     }
 

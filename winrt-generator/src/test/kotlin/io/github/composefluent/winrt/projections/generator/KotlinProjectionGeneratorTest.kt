@@ -7945,6 +7945,46 @@ class KotlinProjectionGeneratorTest {
     }
 
     @Test
+    fun generator_rejects_unrenderable_projected_attribute_before_projection_rendering() {
+        val model = WinRtMetadataModel(
+            namespaces = listOf(
+                WinRtNamespace(
+                    name = "Sample.Foundation",
+                    types = listOf(
+                        WinRtTypeDefinition(
+                            namespace = "Sample.Foundation",
+                            name = "IWidget",
+                            kind = WinRtTypeKind.Interface,
+                            iid = Guid("11111111-2222-3333-4444-555555555596"),
+                            customAttributes = listOf(
+                                WinRtCustomAttributeDefinition(
+                                    typeName = "Windows.Foundation.Metadata.ContractVersionAttribute",
+                                    fixedArguments = listOf(
+                                        WinRtCustomAttributeValue.StringValue("Windows.Foundation.UniversalApiContract"),
+                                        WinRtCustomAttributeValue.StringValue("not-a-version"),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val error = runCatching { KotlinProjectionGenerator().generate(model) }.exceptionOrNull()
+        val message = error?.message.orEmpty()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            message,
+            message.contains(
+                "Generator requires interface Sample.Foundation.IWidget type projected attribute Windows.Foundation.Metadata.ContractVersionAttribute to use renderable attribute metadata before projection rendering.",
+            ),
+        )
+    }
+
+    @Test
     fun generator_propagates_declaring_interface_platform_attributes_to_runtime_members() {
         val interfaceAvailability = WinRtAvailabilityMetadata(
             contractVersion = WinRtContractVersionMetadata(
