@@ -1,12 +1,44 @@
 package io.github.composefluent.winrt.compiler
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 class KotlinWinRtAuthoringScannerCliTest {
+    @Test
+    fun rejects_missing_authoring_metadata_index() {
+        val missingIndex = Files.createTempDirectory("kotlin-winrt-missing-authoring-index-")
+            .resolve("metadata-index.tsv")
+
+        val error = runCatching { readAuthoringMetadataIndex(missingIndex) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt authoring metadata index"),
+        )
+    }
+
+    @Test
+    fun rejects_malformed_authoring_metadata_index_rows() {
+        val metadataIndex = Files.createTempFile("kotlin-winrt-malformed-metadata-index-", ".tsv")
+        metadataIndex.writeText("Microsoft.UI.Xaml.Application\n")
+
+        val error = runCatching { readAuthoringMetadataIndex(metadataIndex) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("authoring metadata index row 1"),
+        )
+    }
+
     @Test
     fun scans_public_runtime_class_and_interface_candidates() {
         val root = Files.createTempDirectory("kotlin-winrt-authoring-scan-")

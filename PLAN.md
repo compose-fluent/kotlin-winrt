@@ -115,6 +115,7 @@
 - [x] Compiler support handoff fail-closed closure: reject malformed compiler-support, projection registrar, generic instantiation, and generic ABI registry TSV rows instead of silently dropping generator handoff entries in the compiler plugin.
 - [x] Compiler support manifest source fail-closed closure: reject compiler-support manifest entries whose declared projection registrar, generic instantiation, or generic ABI registry source files are missing instead of silently skipping those generator handoff inputs.
 - [x] Compiler support manifest option fail-closed closure: reject explicitly configured compiler-support manifest paths that do not exist instead of treating a broken generator handoff configuration as no compiler support input.
+- [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
 - [ ] Member emission closure: finish method, property, event, overload, accessor, out/ref, nullable, static, factory, and activation member rendering against `.cswinrt/src/cswinrt` responsibility split.
 - [ ] Custom mapped type closure: align string, object, type-name, date/time, guid, uri, collection, bindable, WinUI-specific mapped types, and ABI/projection conversions with CsWinRT behavior where the Kotlin runtime owns equivalent behavior.
 - [ ] Generic instantiation closure: finish projected generic interface/delegate naming, type-signature rendering, parameterized IID use, helper emission, and nested generic ABI ownership.
