@@ -385,7 +385,9 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                 renderEnumRawArgument(rawArg, type),
             )
             WinRtTypeKind.Struct -> CodeBlock.of("%T.Metadata.fromAbi(%L as %T)", projectionClassName(parameter.typeName, semanticHelpers), rawArg, rawAddressType)
-            else -> {
+            WinRtTypeKind.RuntimeClass,
+            WinRtTypeKind.Interface,
+            -> {
                 CodeBlock.of(
                     "%T.Metadata.wrap(%T(%T.toRawComPtr(%L as %T), %T.IInspectable, preventReleaseOnDispose = true))",
                     projectionClassName(parameter.typeName, semanticHelpers),
@@ -396,6 +398,12 @@ object KotlinWinRtAuthoringTypeDetailsRenderer {
                     iidType,
                 )
             }
+            null -> throw GradleException(
+                "Authored WinRT override parameter '${parameter.name}' of type '${parameter.typeName}' has no metadata.",
+            )
+            else -> throw GradleException(
+                "Authored WinRT override parameter '${parameter.name}' has unsupported object type '${parameter.typeName}'.",
+            )
         }
     }
 
