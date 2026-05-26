@@ -1100,9 +1100,9 @@ class KotlinProjectionRenderer(
                         .addModifiers(KModifier.PRIVATE)
                         .delegate(
                             CodeBlock.of(
-                                "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %T.Metadata.IID) }",
+                                "lazy(%T.PUBLICATION) { Metadata.acquireInterface(_inner, %L) }",
                                 LAZY_THREAD_SAFETY_MODE_CLASS_NAME,
-                                projectionClassName(binding.qualifiedName.substringBefore('<')),
+                                runtimeClassInterfaceIdCode(binding.qualifiedName, plan),
                             ),
                         )
                         .build(),
@@ -2853,6 +2853,22 @@ class KotlinProjectionRenderer(
             .unindent()
             .add("}")
             .build()
+    }
+
+    private fun runtimeClassInterfaceIdCode(
+        interfaceName: String,
+        plan: KotlinTypeProjectionPlan,
+    ): CodeBlock {
+        val rawInterfaceName = interfaceName.substringBefore('<').removeSuffix("?")
+        if ('<' !in interfaceName) {
+            return CodeBlock.of("%T.Metadata.IID", projectionClassName(rawInterfaceName))
+        }
+        val signature = abiTypeSignature(
+            renderAbiTypeBinding(interfaceName, plan.typesByQualifiedName, plan.type.namespace),
+        ) ?: throw IllegalArgumentException(
+            "Generator requires runtime class ${plan.type.qualifiedName} interface $interfaceName to have a renderable type signature before interface cache rendering.",
+        )
+        return CodeBlock.of("%T.createFromSignature(%L)", PARAMETERIZED_INTERFACE_ID_CLASS_NAME, signature)
     }
 
     internal fun renderDelegate(plan: KotlinTypeProjectionPlan): TypeSpec {
