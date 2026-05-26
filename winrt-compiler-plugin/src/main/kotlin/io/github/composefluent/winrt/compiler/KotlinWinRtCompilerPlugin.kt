@@ -4085,6 +4085,9 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
     if (parts.size < 4) {
         return null
     }
+    if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+        return null
+    }
     val entries = parts[3].toIntOrNull()?.takeIf { it >= 0 } ?: return null
     return KotlinWinRtCompilerSupportManifestEntry(
         kind = parts[0],
