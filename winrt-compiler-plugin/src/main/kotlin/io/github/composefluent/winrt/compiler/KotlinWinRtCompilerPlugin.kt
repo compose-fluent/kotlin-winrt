@@ -3109,25 +3109,24 @@ class KotlinWinRtIrGenerationExtension(
             parent = file
         }
         val builder = DeclarationIrBuilder(pluginContext, function.symbol)
+        val resolvedEntries = resolveProjectionRegistrarClasses(entries) { className ->
+            pluginContext.referenceClass(ClassId.topLevel(FqName(className)))
+        }
         function.body = builder.irBlockBody {
-            entries
-                .sortedWith(compareBy(KotlinWinRtProjectionRegistrarEntry::kotlinClassName, KotlinWinRtProjectionRegistrarEntry::projectedTypeName))
-                .forEach { entry ->
-                    val projectedClass = pluginContext.referenceClass(ClassId.topLevel(FqName(entry.kotlinClassName)))
-                        ?: return@forEach
-                    +builder.irCall(registerGeneratedProjectionTypeIndex).apply {
-                        arguments[0] = IrClassReferenceImpl(
-                            startOffset = 0,
-                            endOffset = 0,
-                            type = pluginContext.irBuiltIns.kClassClass.owner.defaultType,
-                            symbol = projectedClass,
-                            classType = projectedClass.owner.defaultType,
-                        )
-                        arguments[1] = builder.irString(entry.projectedTypeName)
-                        arguments[2] = builder.irString(entry.kind)
-                        arguments[3] = builder.irString(entry.baseTypeName)
-                    }
+            resolvedEntries.forEach { (entry, projectedClass) ->
+                +builder.irCall(registerGeneratedProjectionTypeIndex).apply {
+                    arguments[0] = IrClassReferenceImpl(
+                        startOffset = 0,
+                        endOffset = 0,
+                        type = pluginContext.irBuiltIns.kClassClass.owner.defaultType,
+                        symbol = projectedClass,
+                        classType = projectedClass.owner.defaultType,
+                    )
+                    arguments[1] = builder.irString(entry.projectedTypeName)
+                    arguments[2] = builder.irString(entry.kind)
+                    arguments[3] = builder.irString(entry.baseTypeName)
                 }
+            }
         }
         file.declarations += function
         return function.symbol
@@ -4199,6 +4198,21 @@ data class KotlinWinRtProjectionRegistrarEntry(
     val baseTypeName: String,
     val metadataClassName: String,
 )
+
+fun <T : Any> resolveProjectionRegistrarClasses(
+    entries: List<KotlinWinRtProjectionRegistrarEntry>,
+    resolve: (String) -> T?,
+): List<Pair<KotlinWinRtProjectionRegistrarEntry, T>> =
+    entries
+        .sortedWith(compareBy(KotlinWinRtProjectionRegistrarEntry::kotlinClassName, KotlinWinRtProjectionRegistrarEntry::projectedTypeName))
+        .map { entry ->
+            val projectedClass = resolve(entry.kotlinClassName)
+            require(projectedClass != null) {
+                "kotlin-winrt compiler plugin requires projection registrar input for ${entry.projectedTypeName} " +
+                    "to reference resolvable Kotlin class ${entry.kotlinClassName}."
+            }
+            entry to projectedClass
+        }
 
 fun readProjectionRegistrarEntries(path: Path): List<KotlinWinRtProjectionRegistrarEntry> {
     val entries = readRequiredTsvRows(

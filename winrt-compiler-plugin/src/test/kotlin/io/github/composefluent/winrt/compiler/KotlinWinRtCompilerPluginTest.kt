@@ -627,6 +627,59 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun projection_support_initializer_rejects_unresolvable_kotlin_class() {
+        val entries = listOf(
+            KotlinWinRtProjectionRegistrarEntry(
+                kotlinClassName = "sample.MissingWidget",
+                projectedTypeName = "Sample.Foundation.Widget",
+                kind = "RuntimeClass",
+                baseTypeName = "Sample.Foundation.WidgetBase",
+                metadataClassName = "",
+            ),
+        )
+
+        val error = runCatching {
+            resolveProjectionRegistrarClasses(entries) { null }
+        }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertEquals(
+            "kotlin-winrt compiler plugin requires projection registrar input for Sample.Foundation.Widget " +
+                "to reference resolvable Kotlin class sample.MissingWidget.",
+            error!!.message,
+        )
+    }
+
+    @Test
+    fun projection_support_initializer_resolves_classes_in_stable_order() {
+        val entries = listOf(
+            KotlinWinRtProjectionRegistrarEntry(
+                kotlinClassName = "sample.WidgetB",
+                projectedTypeName = "Sample.Foundation.WidgetB",
+                kind = "RuntimeClass",
+                baseTypeName = "",
+                metadataClassName = "",
+            ),
+            KotlinWinRtProjectionRegistrarEntry(
+                kotlinClassName = "sample.WidgetA",
+                projectedTypeName = "Sample.Foundation.WidgetA",
+                kind = "RuntimeClass",
+                baseTypeName = "",
+                metadataClassName = "",
+            ),
+        )
+
+        val resolved = resolveProjectionRegistrarClasses(entries) { className -> className.substringAfterLast('.') }
+
+        assertEquals(
+            listOf("sample.WidgetA", "sample.WidgetB"),
+            resolved.map { (entry, _) -> entry.kotlinClassName },
+        )
+        assertEquals(listOf("WidgetA", "WidgetB"), resolved.map { (_, klass) -> klass })
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_missing_declared_source_file() {
         val manifestDirectory = Files.createTempDirectory("kotlin-winrt-compiler-support-missing-source-")
         val manifest = manifestDirectory.resolve("compiler-support.tsv")
