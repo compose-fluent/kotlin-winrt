@@ -4158,6 +4158,9 @@ private fun parseProjectionRegistrarLine(line: String): KotlinWinRtProjectionReg
     if (parts.size < 5) {
         return null
     }
+    if (parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+        return null
+    }
     return KotlinWinRtProjectionRegistrarEntry(
         kotlinClassName = parts[0],
         projectedTypeName = parts[1],

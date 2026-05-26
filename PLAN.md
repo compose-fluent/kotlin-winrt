@@ -119,6 +119,7 @@
 - [x] Compiler support manifest entry-count fail-closed closure: reject generator/compiler-plugin support TSV files whose actual row count does not match the manifest-declared entry count.
 - [x] Compiler support manifest negative-count fail-closed closure: reject negative manifest-declared support entry counts instead of accepting impossible generator handoff totals.
 - [x] Compiler support manifest required-column fail-closed closure: reject blank manifest `kind`, `className`, or `sourceFile` columns instead of letting invalid support declarations be filtered, resolved as directories, or emitted into support classes.
+- [x] Projection registrar required-column fail-closed closure: reject blank projection registrar `kotlinClassName`, `projectedTypeName`, or `kind` columns instead of generating invalid projection support initializer registrations.
 - [x] Generic type-instantiation delegate-flag fail-closed closure: reject malformed generic instantiation `isDelegate` flags instead of silently treating invalid generator handoff values as interface instantiations.
 - [x] Authoring metadata index fail-closed closure: reject missing or malformed authored metadata index rows instead of silently disabling authored type discovery in the compiler plugin.
 - [x] Authoring scanner source-root fail-closed closure: reject missing authored source roots instead of silently producing an empty compiler-plugin authored type discovery result.
