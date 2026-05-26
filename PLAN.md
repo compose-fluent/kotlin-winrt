@@ -177,7 +177,7 @@
 - [ ] Compiler-plugin IR closure: move semantic authored type discovery, descriptor-backed projection lowering, native-call lowering, and support artifact generation onto K2/IR symbols where needed for functional parity.
 - [ ] Expect/actual closure: remove common fallback gates for async, collections, custom mapped types, static members, events, setter-only properties, and unsupported ABI shapes only after both JVM and later `mingwX64` contracts exist.
 - [ ] Unsupported-shape diagnostics: fail closed with stable diagnostics when metadata or generator input requires unsupported ABI, projection, authoring, or platform behavior.
-- [ ] Generated support-file closure: verify helper/init/metadata support emission against CsWinRT responsibility split, including activation factories, static interfaces, delegate bridges, generic interface helpers, event tokens, and marshaling support.
+- [x] Generated support-file closure: verify helper/init/metadata support emission against CsWinRT responsibility split, including activation factories, static interfaces, delegate bridges, generic interface helpers, event tokens, and marshaling support.
 
 ## Phase 4 Projections
 
