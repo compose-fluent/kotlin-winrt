@@ -305,6 +305,123 @@ class KotlinWinRtPluginTest {
     }
 
     @Test
+    fun identity_task_reads_projection_registrar_projected_type_names() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-identity-registrar-test-")
+        val registrar = root.resolve("projection-registrar.tsv")
+        Files.writeString(
+            registrar,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
+            windows.system.DisplayRequest	Windows.System.DisplayRequest	RuntimeClass	System.Object	windows.system.DisplayRequest.Metadata
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass	System.Object	windows.foundation.Uri.Metadata
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "generateWinRtIdentityWithRegistrarUnderTest",
+            GenerateWinRtIdentityTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputFile.set(root.resolve("identity.json").toFile())
+            registeredTask.metadataInputs.set(emptyList())
+            registeredTask.includeNamespaces.set(emptyList())
+            registeredTask.includeTypes.set(emptyList())
+            registeredTask.projectionRegistrarFiles.from(registrar)
+            registeredTask.excludeNamespaces.set(emptyList())
+            registeredTask.excludeTypes.set(emptyList())
+            registeredTask.additionExcludeNamespaces.set(emptyList())
+            registeredTask.includeWindowsSdkExtensions.set(false)
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+        }.get()
+
+        task.generate()
+
+        val json = Files.readString(root.resolve("identity.json"))
+        assertTrue(json.contains("\"projectedTypes\": [\"Windows.Foundation.Uri\", \"Windows.System.DisplayRequest\"]"))
+    }
+
+    @Test
+    fun identity_task_rejects_malformed_projection_registrar_rows() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-identity-bad-registrar-test-")
+        val registrar = root.resolve("projection-registrar.tsv")
+        Files.writeString(
+            registrar,
+            """
+            kotlinClassName	projectedTypeName	kind	baseTypeName	metadataClassName
+            windows.foundation.Uri		RuntimeClass	System.Object	windows.foundation.Uri.Metadata
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "generateWinRtIdentityWithBadRegistrarUnderTest",
+            GenerateWinRtIdentityTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputFile.set(root.resolve("identity.json").toFile())
+            registeredTask.metadataInputs.set(emptyList())
+            registeredTask.includeNamespaces.set(emptyList())
+            registeredTask.includeTypes.set(emptyList())
+            registeredTask.projectionRegistrarFiles.from(registrar)
+            registeredTask.excludeNamespaces.set(emptyList())
+            registeredTask.excludeTypes.set(emptyList())
+            registeredTask.additionExcludeNamespaces.set(emptyList())
+            registeredTask.includeWindowsSdkExtensions.set(false)
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+        }.get()
+
+        try {
+            task.generate()
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("malformed row 2"))
+            assertFalse(Files.exists(root.resolve("identity.json")))
+            return
+        }
+
+        throw AssertionError("Expected malformed projection registrar rows to fail closed.")
+    }
+
+    @Test
+    fun identity_task_rejects_projection_registrar_header_mismatch() {
+        val project = ProjectBuilder.builder().build()
+        val root = Files.createTempDirectory("kotlin-winrt-identity-bad-registrar-header-test-")
+        val registrar = root.resolve("projection-registrar.tsv")
+        Files.writeString(
+            registrar,
+            """
+            kotlinClassName	projectedTypeName	kind
+            windows.foundation.Uri	Windows.Foundation.Uri	RuntimeClass
+            """.trimIndent(),
+        )
+        val task = project.tasks.register(
+            "generateWinRtIdentityWithBadRegistrarHeaderUnderTest",
+            GenerateWinRtIdentityTask::class.java,
+        ) { registeredTask ->
+            registeredTask.outputFile.set(root.resolve("identity.json").toFile())
+            registeredTask.metadataInputs.set(emptyList())
+            registeredTask.includeNamespaces.set(emptyList())
+            registeredTask.includeTypes.set(emptyList())
+            registeredTask.projectionRegistrarFiles.from(registrar)
+            registeredTask.excludeNamespaces.set(emptyList())
+            registeredTask.excludeTypes.set(emptyList())
+            registeredTask.additionExcludeNamespaces.set(emptyList())
+            registeredTask.includeWindowsSdkExtensions.set(false)
+            registeredTask.nugetPackages.set(emptyList())
+            registeredTask.runtimeAssets.set(emptyList())
+        }.get()
+
+        try {
+            task.generate()
+        } catch (error: GradleException) {
+            assertTrue(error.message.orEmpty().contains("malformed header"))
+            assertFalse(Files.exists(root.resolve("identity.json")))
+            return
+        }
+
+        throw AssertionError("Expected malformed projection registrar headers to fail closed.")
+    }
+
+    @Test
     fun merge_compiler_support_task_combines_local_and_dependency_support_tables() {
         val project = ProjectBuilder.builder().build()
         val root = Files.createTempDirectory("kotlin-winrt-compiler-support-merge-test-")
