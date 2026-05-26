@@ -4101,6 +4101,10 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
     if (parts[0] !in COMPILER_SUPPORT_MANIFEST_KINDS) {
         return null
     }
+    val expected = COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND[parts[0]] ?: return null
+    if (parts[1] != expected.className || parts[2] != expected.sourceFile) {
+        return null
+    }
     val entries = parts[3].toIntOrNull()?.takeIf { it >= 0 } ?: return null
     return KotlinWinRtCompilerSupportManifestEntry(
         kind = parts[0],
@@ -4112,6 +4116,27 @@ private fun parseCompilerSupportManifestLine(line: String): KotlinWinRtCompilerS
 
 private val COMPILER_SUPPORT_MANIFEST_KINDS: Set<String> =
     setOf("projection-registrar", "generic-type-instantiation", "generic-abi-registry")
+
+private val COMPILER_SUPPORT_MANIFEST_ENTRY_BY_KIND: Map<String, CompilerSupportManifestExpectedEntry> =
+    mapOf(
+        "projection-registrar" to CompilerSupportManifestExpectedEntry(
+            className = "io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic",
+            sourceFile = "projection-registrar.tsv",
+        ),
+        "generic-type-instantiation" to CompilerSupportManifestExpectedEntry(
+            className = "io.github.composefluent.winrt.projections.support.WinRTGenericTypeInstantiations",
+            sourceFile = "generic-instantiations.tsv",
+        ),
+        "generic-abi-registry" to CompilerSupportManifestExpectedEntry(
+            className = "io.github.composefluent.winrt.runtime.WinRtGenericAbiSupportIntrinsic",
+            sourceFile = "generic-abi-registry.tsv",
+        ),
+    )
+
+private data class CompilerSupportManifestExpectedEntry(
+    val className: String,
+    val sourceFile: String,
+)
 
 private const val COMPILER_SUPPORT_MANIFEST_CLASS_INTERNAL_NAME: String =
     "io/github/composefluent/winrt/projections/support/WinRTCompilerSupportManifest"

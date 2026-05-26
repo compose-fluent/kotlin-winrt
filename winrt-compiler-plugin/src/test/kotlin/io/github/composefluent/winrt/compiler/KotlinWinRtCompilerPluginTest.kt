@@ -251,6 +251,48 @@ class KotlinWinRtCompilerPluginTest {
     }
 
     @Test
+    fun compiler_support_manifest_rejects_mismatched_class_names() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-mismatched-class-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            projection-registrar	io.github.composefluent.winrt.runtime.WrongIntrinsic	projection-registrar.tsv	1
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readCompilerSupportManifest(manifest) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse compiler support manifest row 2"),
+        )
+    }
+
+    @Test
+    fun compiler_support_manifest_rejects_mismatched_source_files() {
+        val manifest = Files.createTempFile("kotlin-winrt-compiler-support-mismatched-source-", ".tsv")
+        Files.writeString(
+            manifest,
+            """
+            kind	className	sourceFile	entries
+            projection-registrar	io.github.composefluent.winrt.runtime.WinRtProjectionSupportIntrinsic	generic-instantiations.tsv	1
+            """.trimIndent() + "\n",
+        )
+
+        val error = runCatching { readCompilerSupportManifest(manifest) }.exceptionOrNull()
+
+        assertNotNull(error)
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(
+            error!!.message.orEmpty(),
+            error.message.orEmpty().contains("kotlin-winrt compiler plugin could not parse compiler support manifest row 2"),
+        )
+    }
+
+    @Test
     fun compiler_support_manifest_rejects_duplicate_entries() {
         val manifest = Files.createTempFile("kotlin-winrt-compiler-support-duplicate-", ".tsv")
         Files.writeString(
