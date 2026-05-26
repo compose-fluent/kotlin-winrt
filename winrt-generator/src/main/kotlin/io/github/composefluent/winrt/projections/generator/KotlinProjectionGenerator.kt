@@ -555,11 +555,26 @@ class KotlinProjectionGenerator(
             .filter(WinRtMethodDefinition::isOrdinaryProjectedMethod)
             .forEach { method ->
                 val bindingName = method.abiSlotConstantName(interfaceType.methods)
-                require(interfacePlan.instanceMemberBindings.any { it.bindingName == bindingName }) {
-                    "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.$bindingName to be present before support rendering."
+                validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, bindingName)
+            }
+        interfaceType.properties
+            .filterNot(WinRtPropertyDefinition::isStatic)
+            .forEach { property ->
+                if (property.hasNativeProjectionGetterAccessor()) {
+                    validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, "${property.name.uppercase()}_GETTER_SLOT")
                 }
-                require(interfacePlan.abiSlotBindings.any { it.constantName == bindingName }) {
-                    "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.$bindingName to carry ABI slot metadata before support rendering."
+                if (property.hasNativeProjectionSetterAccessor()) {
+                    validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, "${property.name.uppercase()}_SETTER_SLOT")
+                }
+            }
+        interfaceType.events
+            .filterNot(WinRtEventDefinition::isStatic)
+            .forEach { event ->
+                if (event.hasNativeProjectionAddAccessor()) {
+                    validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, "${event.name.uppercase()}_ADD_SLOT")
+                }
+                if (event.hasNativeProjectionRemoveAccessor()) {
+                    validateAuthoredCcwSlotMetadataContract(authoredPlan, interfacePlan, "${event.name.uppercase()}_REMOVE_SLOT")
                 }
             }
         interfacePlan.instanceMemberBindings.forEach { binding ->
@@ -576,6 +591,20 @@ class KotlinProjectionGenerator(
             require(authoredCcwBindingIsSupported(renderer, interfaceType, binding)) {
                 "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.${binding.bindingName} to use supported authored ABI metadata before support rendering."
             }
+        }
+    }
+
+    private fun validateAuthoredCcwSlotMetadataContract(
+        authoredPlan: KotlinTypeProjectionPlan,
+        interfacePlan: KotlinTypeProjectionPlan,
+        bindingName: String,
+    ) {
+        val interfaceType = interfacePlan.type
+        require(interfacePlan.instanceMemberBindings.any { it.bindingName == bindingName }) {
+            "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.$bindingName to be present before support rendering."
+        }
+        require(interfacePlan.abiSlotBindings.any { it.constantName == bindingName }) {
+            "Generator requires authored runtime class ${authoredPlan.type.qualifiedName} CCW binding ${interfaceType.qualifiedName}.$bindingName to carry ABI slot metadata before support rendering."
         }
     }
 
