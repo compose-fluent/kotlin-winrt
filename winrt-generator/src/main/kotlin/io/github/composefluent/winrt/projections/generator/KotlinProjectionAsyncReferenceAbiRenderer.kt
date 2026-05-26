@@ -285,11 +285,17 @@ internal fun KotlinProjectionRenderer.abiTypeSignature(
         val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
         if (key != null && value != null) CodeBlock.of("%T.mapViewSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
     }
-        KotlinProjectionAbiValueKind.MappedMap -> {
-            val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
-            val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
-            if (key != null && value != null) CodeBlock.of("%T.mapSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
-        }
+    KotlinProjectionAbiValueKind.MappedMap -> {
+        val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        if (key != null && value != null) CodeBlock.of("%T.mapSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
+    }
+    KotlinProjectionAbiValueKind.MappedKeyValuePair -> {
+        val key = binding.typeArguments.getOrNull(0)?.let(::abiTypeSignature)
+        val value = binding.typeArguments.getOrNull(1)?.let(::abiTypeSignature)
+        if (key != null && value != null) CodeBlock.of("%T.keyValuePairSignature(%L, %L)", WINRT_COLLECTION_INTERFACE_IDS_CLASS_NAME, key, value) else null
+    }
+    KotlinProjectionAbiValueKind.GenericParameter -> CodeBlock.of("%T.object_()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
     KotlinProjectionAbiValueKind.Reference,
     KotlinProjectionAbiValueKind.ReferenceArray -> referenceTypeSignatureCode(binding)
     KotlinProjectionAbiValueKind.String -> CodeBlock.of("%T.string()", WINRT_TYPE_SIGNATURE_CLASS_NAME)
